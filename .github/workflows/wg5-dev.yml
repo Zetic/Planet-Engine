@@ -1,0 +1,36 @@
+name: Temporary WG-5 development patch
+
+on:
+  push:
+    branches: [worldgen-wg5-coupled-climate]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: worldgen-wg5-coupled-climate
+      - name: Apply narrow compiler fix
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('rust/interlink-worldgen/src/climate.rs')
+          text = path.read_text()
+          old = 'let mut precipitation_phase_max = vec![0.0; sample_count];'
+          new = 'let mut precipitation_phase_max = vec![0.0_f64; sample_count];'
+          if old not in text:
+              raise SystemExit('expected WG-5 accumulator line not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Commit fix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add rust/interlink-worldgen/src/climate.rs
+          git commit -m 'Fix WG-5 precipitation accumulator type'
+          git push origin HEAD:worldgen-wg5-coupled-climate
