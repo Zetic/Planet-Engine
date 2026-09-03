@@ -10,97 +10,61 @@ def replace_once(old: str, new: str, label: str) -> None:
     text = text.replace(old, new, 1)
 
 replace_once(
-    '''fn mean_ocean_neighbor(
-    topology: &GeodesicTopology,
-    ocean: &[bool],
-    values: &[f64],
-    sample: usize,
-) -> f64 {
-    let mut sum = 0.0;
-    let mut count = 0usize;
-    for neighbor in topology.neighbors_of(sample as u32) {
-        let index = *neighbor as usize;
-        if ocean[index] {
-            sum += values[index];
-            count += 1;
-        }
-    }
-    if count > 0 {
-        sum / count as f64
-    } else {
-        values[sample]
-    }
-}
+    '''                for i in 0..sample_count {
+                    air_mass[i] = pressure[i] / planet.surface_gravity_m_s2 * cell_area_m2[i];
+                    moisture_mass[i] = humidity[i] * air_mass[i];
+                }
 ''',
-    '''#[derive(Clone, Debug)]
-struct OceanNeighborGeometry {
-    offsets: Vec<usize>,
-    neighbors: Vec<u32>,
-}
-
-fn build_ocean_neighbor_geometry(
-    topology: &GeodesicTopology,
-    ocean: &[bool],
-) -> OceanNeighborGeometry {
-    let sample_count = topology.metrics().sample_count as usize;
-    let mut offsets = Vec::with_capacity(sample_count + 1);
-    let mut neighbors = Vec::with_capacity(sample_count.saturating_mul(6));
-    offsets.push(0);
-    for sample in 0..sample_count {
-        for neighbor in topology.neighbors_of(sample as u32) {
-            if ocean[*neighbor as usize] {
-                neighbors.push(*neighbor);
-            }
-        }
-        offsets.push(neighbors.len());
-    }
-    OceanNeighborGeometry { offsets, neighbors }
-}
-
-fn mean_ocean_neighbor_cached(
-    geometry: &OceanNeighborGeometry,
-    values: &[f64],
-    sample: usize,
-) -> f64 {
-    let start = geometry.offsets[sample];
-    let end = geometry.offsets[sample + 1];
-    let neighbors = &geometry.neighbors[start..end];
-    let mut sum = 0.0;
-    for neighbor in neighbors {
-        sum += values[*neighbor as usize];
-    }
-    if !neighbors.is_empty() {
-        sum / neighbors.len() as f64
-    } else {
-        values[sample]
-    }
-}
+    '''                for i in 0..sample_count {
+                    air_mass[i] = pressure[i] / planet.surface_gravity_m_s2 * cell_area_m2[i];
+                    moisture_mass[i] = humidity[i] * air_mass[i];
+                    phase_saturation_air[i] =
+                        saturation_specific_humidity(temperature[i], pressure[i]);
+                }
 ''',
-    'replace ocean neighbor scan with cached geometry',
+    'precompute phase air saturation with air mass',
 )
 
 replace_once(
-    '''        water_depth_m[i] = f64::from(terrain.water_depth_m[i]).max(0.0);
-    }
-
-    let scalar_gradient_geometry =
+    '''                    let surface_temperature = if ocean[i] {
+                        sea_surface_temperature[i]
+                    } else {
+                        temperature[i]
+                    };
+                    let saturation_surface =
+                        saturation_specific_humidity(surface_temperature, pressure[i]);
 ''',
-    '''        water_depth_m[i] = f64::from(terrain.water_depth_m[i]).max(0.0);
-    }
-
-    let ocean_neighbor_geometry = build_ocean_neighbor_geometry(topology, &ocean);
-    let scalar_gradient_geometry =
+    '''                    let saturation_surface = if ocean[i] {
+                        saturation_specific_humidity(sea_surface_temperature[i], pressure[i])
+                    } else {
+                        phase_saturation_air[i]
+                    };
 ''',
-    'build ocean neighbor cache once',
+    'reuse air saturation for land evaporation',
 )
 
 replace_once(
-    '''                let neighbor_sst = mean_ocean_neighbor(topology, &ocean, &previous_sst, i);
+    '''                // Temperature and pressure remain fixed throughout all moisture
+                // substeps in this orbital phase. Saturation humidity therefore
+                // only needs to be evaluated once per cell per phase.
+                for i in 0..sample_count {
+                    phase_saturation_air[i] =
+                        saturation_specific_humidity(temperature[i], pressure[i]);
+                }
 ''',
-    '''                let neighbor_sst =
-                    mean_ocean_neighbor_cached(&ocean_neighbor_geometry, &previous_sst, i);
+    '''                // Temperature and pressure remain fixed throughout moisture
+                // transport and condensation, so the air-saturation field computed
+                // above is reused for the entire phase.
 ''',
-    'use cached ocean neighbors for sst diffusion',
+    'remove duplicate saturation fill',
+)
+
+replace_once(
+    '''                    let saturation_air = saturation_specific_humidity(temperature[i], pressure[i]);
+''',
+    '''                    let saturation_air = phase_saturation_air[i];
+''',
+    'reuse air saturation for condensation',
 )
 
 path.write_text(text)
