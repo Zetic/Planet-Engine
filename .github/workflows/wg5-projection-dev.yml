@@ -1,4 +1,4 @@
-name: Temporary WG-5 projection parameter cleanup
+name: Temporary WG-5 rotation-response hardening
 
 on:
   push:
@@ -9,15 +9,15 @@ permissions:
   contents: write
 
 jobs:
-  finalize:
+  harden:
     if: ${{ github.actor != 'github-actions[bot]' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: worldgen-wg5-coupled-climate
-      - name: Remove obsolete current-smoothing parameter
-        run: python scripts/wg5_finalize_projection_params.py
+      - name: Apply rotation-rate climate response
+        run: python scripts/wg5_rotation_response.py
       - name: Validate Rust climate core
         run: cargo test --workspace
       - name: Prepare pinned browser WASM toolchain
@@ -26,10 +26,10 @@ jobs:
           cargo install wasm-bindgen-cli --version 0.2.127 --locked
       - name: Rebuild browser WASM package
         run: npm run build:worldgen-wasm
-      - name: Commit final projection parameter contract
+      - name: Commit rotation-response hardening
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add rust/interlink-worldgen/src/climate.rs src/wasm-worldgen
-          git commit -m 'Finalize WG-5 ocean projection parameters'
+          git add rust/interlink-worldgen/src/climate.rs rust/interlink-worldgen/tests/climate_ensemble.rs src/wasm-worldgen
+          git commit -m 'Make WG-5 circulation respond to rotation rate'
           git push origin HEAD:worldgen-wg5-coupled-climate
