@@ -13,7 +13,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Disable ocean heat advection
-        run: sed -i 's/ocean_advection_relaxation: 0.025/ocean_advection_relaxation: 0.0/' rust/interlink-worldgen/src/climate.rs
+        run: |
+          sed -i 's/ocean_advection_relaxation: 0.025/ocean_advection_relaxation: 0.0/' rust/interlink-worldgen/src/climate.rs
       - name: Instrument convergence
         run: python scripts/wg5_spinup_trace.py
       - name: Run L7 climate
@@ -26,7 +27,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Reduce ocean heat advection
-        run: sed -i 's/ocean_advection_relaxation: 0.025/ocean_advection_relaxation: 0.010/' rust/interlink-worldgen/src/climate.rs
+        run: |
+          sed -i 's/ocean_advection_relaxation: 0.025/ocean_advection_relaxation: 0.010/' rust/interlink-worldgen/src/climate.rs
       - name: Instrument convergence
         run: python scripts/wg5_spinup_trace.py
       - name: Run L7 climate
