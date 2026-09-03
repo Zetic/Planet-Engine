@@ -1,0 +1,20 @@
+name: Temporary WG-5 Calibration Measurement
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    if: github.head_ref == 'wg5-calibration-baseline'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust stable
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - name: Run WG-5 calibration quality ensemble
+        run: bash scripts/run-wg5-calibration.sh quality
