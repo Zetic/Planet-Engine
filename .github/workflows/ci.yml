@@ -40,5 +40,7 @@ jobs:
           cargo run -p interlink-worldgen-cli -- topography --seed ci-wg4 --coarse-level 4 --level 6 --plates 18
           cargo run -p interlink-worldgen-cli -- climate --seed ci-wg5 --coarse-level 3 --level 4 --plates 12
           cargo run -p interlink-worldgen-cli -- profile
+      - name: WG-5 L7 convergence and conservation acceptance
+        run: cargo run --release -p interlink-worldgen-cli -- climate --seed ci-wg5-l7 --coarse-level 5 --level 7 --plates 24
       - name: Compile browser bridge
         run: cargo check -p interlink-worldgen-wasm --target wasm32-unknown-unknown
