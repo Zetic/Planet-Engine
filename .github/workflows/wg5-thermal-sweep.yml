@@ -20,7 +20,7 @@ jobs:
           rustup default stable
       - name: Compile candidate architecture
         env:
-          SW_REFLECTIVITY: '0.22'
+          SW_REFLECTIVITY: '0.20'
           HEAT_DIFFUSIVITY: '100000.0'
           AIR_SEA_EXCHANGE: '8.0'
           MIXED_LAYER_DEPTH: '50.0'
@@ -28,14 +28,28 @@ jobs:
         run: |
           python scripts/wg5_thermal_sweep_patch.py
           cargo check --workspace
-      - name: Shortwave sweep at L6
+      - name: Extended-spinup shortwave sweep at L6
         run: |
           set -euo pipefail
-          for sw in 0.18 0.20 0.22 0.24; do
+          for sw in 0.16 0.18 0.20 0.22; do
             echo "===== SW_REFLECTIVITY=${sw} ====="
             git checkout -- rust/interlink-worldgen/src/climate.rs rust/interlink-worldgen/src/climate_calibration.rs
             SW_REFLECTIVITY="${sw}" HEAT_DIFFUSIVITY=100000.0 AIR_SEA_EXCHANGE=8.0 MIXED_LAYER_DEPTH=50.0 HEAT_SOLVER_ITERS=10 \
               python scripts/wg5_thermal_sweep_patch.py
+            sed -i 's/maximum_spinup_years: 10/maximum_spinup_years: 24/' rust/interlink-worldgen/src/climate.rs
             cargo run --release -q -p interlink-worldgen-cli --example climate_calibration -- \
-              --seed interlink-wg5 --coarse-level 4 --level 6 --plates 16 --skip-orography-intervention
+              --seed interlink-wg5 --coarse-level 4 --level 6 --plates 16 --skip-orography-intervention || true
+          done
+      - name: Diffusivity and mixed-layer sweep at L6
+        run: |
+          set -euo pipefail
+          for spec in '50000.0 20.0 8.0' '50000.0 30.0 10.0' '100000.0 20.0 8.0' '150000.0 20.0 8.0'; do
+            read -r diffusivity depth exchange <<< "${spec}"
+            echo "===== DIFF=${diffusivity} DEPTH=${depth} EXCHANGE=${exchange} ====="
+            git checkout -- rust/interlink-worldgen/src/climate.rs rust/interlink-worldgen/src/climate_calibration.rs
+            SW_REFLECTIVITY=0.20 HEAT_DIFFUSIVITY="${diffusivity}" AIR_SEA_EXCHANGE="${exchange}" MIXED_LAYER_DEPTH="${depth}" HEAT_SOLVER_ITERS=10 \
+              python scripts/wg5_thermal_sweep_patch.py
+            sed -i 's/maximum_spinup_years: 10/maximum_spinup_years: 24/' rust/interlink-worldgen/src/climate.rs
+            cargo run --release -q -p interlink-worldgen-cli --example climate_calibration -- \
+              --seed interlink-wg5 --coarse-level 4 --level 6 --plates 16 --skip-orography-intervention || true
           done
