@@ -28,6 +28,7 @@ jobs:
           SURFACE_ALBEDO_COUPLING=0.25 python scripts/wg5_thermal_coupling_patch.py
           python scripts/wg5_thermal_finalize_patch.py
           python scripts/wg5_thermal_finalize_test_patch.py
+          python scripts/wg5_thermal_airless_patch.py
           cargo fmt --all
           cargo fmt --all -- --check
       - name: Validate Rust workspace
