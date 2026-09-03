@@ -17,11 +17,18 @@ jobs:
         with:
           ref: worldgen-wg5-coupled-climate
       - name: Apply staged WG-5 patch
-        run: python scripts/wg5_patch_wasm_lib.py
+        run: python scripts/wg5_patch_protocol_browser.py
+      - name: Build and test browser protocol
+        run: |
+          npm ci
+          npm run build
+          npm test
+      - name: Test Rust bridge
+        run: cargo test --workspace
       - name: Commit staged integration
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add rust/interlink-worldgen-wasm/src/lib.rs
-          git commit -m 'Export WG-5 climate WASM bridge'
+          git add rust/interlink-worldgen/src/lib.rs rust/interlink-worldgen-wasm/src/lib.rs src/worldgen/protocol.ts src/worldgen/worldgenClient.ts src/worldgen/worldgenWorker.ts dist/worldgen
+          git commit -m 'Wire WG-5 protocol v8 browser transport'
           git push origin HEAD:worldgen-wg5-coupled-climate
