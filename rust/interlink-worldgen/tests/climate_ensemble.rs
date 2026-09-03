@@ -74,6 +74,14 @@ fn earthlike_climate_is_deterministic_and_couples_atmosphere_ocean_and_moisture(
     assert!(first.metrics.mean_temperature_k > 220.0);
     assert!(first.metrics.mean_temperature_k < 330.0);
     assert!(first.metrics.mean_wind_speed_m_s > 0.1);
+    assert!(first.metrics.mean_surface_current_m_s > 0.0);
+    assert!(
+        first.metrics.ocean_divergence_residual_m_s
+            < first.metrics.mean_surface_current_m_s * 0.10 + 1.0e-6,
+        "projected ocean transport should have a small divergence residual: residual={} mean_current={}",
+        first.metrics.ocean_divergence_residual_m_s,
+        first.metrics.mean_surface_current_m_s,
+    );
     assert!(first.metrics.maximum_surface_current_m_s > 0.01);
     assert!(first.metrics.mean_annual_precipitation_mm >= 0.0);
     assert!(first.metrics.moisture_budget_relative_error < 1.0e-8);
