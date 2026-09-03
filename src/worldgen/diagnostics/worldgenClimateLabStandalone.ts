@@ -395,6 +395,8 @@ let drag: { x: number; y: number; yaw: number; pitch: number } | null = null;
 let frameRequest = 0;
 let animationRequest = 0;
 let animationPhase = 0;
+let lastVectorAnimationMs = Number.NEGATIVE_INFINITY;
+const VECTOR_ANIMATION_INTERVAL_MS = 50;
 
 function orbitalPhase(): number { return Number(season.value) / 1000; }
 function updateSeasonLabel(): void { seasonValue.textContent = `${(orbitalPhase() * 100).toFixed(1)}% orbit`; }
@@ -406,16 +408,20 @@ function scheduleRedraw(interactive: boolean): void {
   if (frameRequest) return;
   frameRequest = requestAnimationFrame(() => { frameRequest = 0; redraw(interactive && drag !== null); });
 }
-function vectorAnimationFrame(): void {
+function vectorAnimationFrame(timestampMs: number): void {
   animationRequest = 0;
   if (visualization.value === 'winds' || visualization.value === 'currents') {
-    animationPhase = (animationPhase + 0.45) % 1000;
-    redraw(false);
+    if (timestampMs - lastVectorAnimationMs >= VECTOR_ANIMATION_INTERVAL_MS) {
+      animationPhase = (animationPhase + 0.9) % 1000;
+      lastVectorAnimationMs = timestampMs;
+      redraw(true);
+    }
     animationRequest = requestAnimationFrame(vectorAnimationFrame);
   }
 }
 function updateAnimation(): void {
   if (animationRequest) { cancelAnimationFrame(animationRequest); animationRequest = 0; }
+  lastVectorAnimationMs = Number.NEGATIVE_INFINITY;
   if (visualization.value === 'winds' || visualization.value === 'currents') animationRequest = requestAnimationFrame(vectorAnimationFrame);
 }
 function showMetrics(result: WorldgenClimateResult): void {

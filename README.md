@@ -26,7 +26,7 @@ WG-5 coupled planetary climate
 WG-6 hydrology (next)
 ```
 
-WG-5 derives deterministic seasonal insolation, temperature and pressure, prevailing winds, wind-driven surface-ocean circulation, sea-surface temperature and heat transport, atmospheric moisture, precipitation, aridity, and snow/sea-ice potential from the accepted WG-4 physical planet. Orbital phases are generation-time climatology samples; the Lab season slider reconstructs stored seasonal harmonics and does not run a live climate simulation.
+WG-5 derives deterministic seasonal insolation, temperature and pressure, rotation-sensitive prevailing winds, mass-projected wind-driven surface-ocean circulation, sea-surface temperature and conservative ocean heat transport, atmospheric moisture, precipitation, aridity, and snow/sea-ice potential from the accepted WG-4 physical planet. Orbital phases are generation-time climatology samples; the Lab season slider reconstructs stored seasonal harmonics and does not run a live climate simulation.
 
 Gameplay Regions, Features, resource nodes, selection, factories, and the industrial runtime are intentionally outside this repository.
 

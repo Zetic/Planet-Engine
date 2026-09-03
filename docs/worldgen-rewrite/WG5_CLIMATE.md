@@ -29,7 +29,9 @@ orographic lifting / condensation / precipitation
 moisture balance / aridity / snow and sea-ice potential
 ```
 
-WG-5 intentionally includes a reduced B+ surface-ocean circulation model: currents are generated from wind stress, Coriolis response, WG-4 ocean connectivity, coastlines, and bathymetric mobility; SST transport feeds back into the atmospheric thermal solution. It does not attempt a full 3-D salinity/thermohaline ocean.
+WG-5 intentionally includes a reduced B+ surface-ocean circulation model. Wind stress produces candidate currents, latitude- and rotation-rate-dependent Coriolis response deflects them, WG-4 ocean connectivity removes land-crossing flow, and bathymetry reduces shallow-water mobility. The candidate field is converted to antisymmetric ocean-interface transports and passed through a deterministic graph pressure projection so the retained transport has a small divergence residual. ENU current vectors are reconstructed from those projected interface transports for diagnostics, while SST heat advection uses the projected transports directly; ocean diffusion also remains on ocean-only neighbors. SST then feeds back into atmospheric temperature and circulation. WG-5 does not attempt a full 3-D salinity/thermohaline ocean.
+
+Rotation is a physical input rather than an Earth-fixed display assumption. Slower rotation broadens the reduced overturning/Hadley regime and weakens zonal/Coriolis control, while faster rotation narrows the overturning regime and increases rotational control. Coriolis deflection varies continuously with latitude and is exactly zero at the equator.
 
 ## Physical parameter boundary
 

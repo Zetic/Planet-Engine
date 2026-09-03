@@ -43,6 +43,8 @@ test('cumulative WG-5 Lab exposes climate diagnostics and stored seasonal recons
     'currentEastAnnualCosMS', 'currentEastAnnualSinMS',
   ]) assert.match(source, new RegExp(field));
   assert.match(source, /requestAnimationFrame/);
+  assert.match(source, /VECTOR_ANIMATION_INTERVAL_MS\s*=\s*50/);
+  assert.match(source, /redraw\(true\)/);
 });
 
 test('WG-5 browser transport preserves seasonal SST and current harmonics', () => {

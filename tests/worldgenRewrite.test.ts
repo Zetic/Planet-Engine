@@ -107,7 +107,7 @@ test('Planet Engine browser protocol v8 preserves WG-0 through WG-3.75 contracts
   assert.throws(() => validateInheritanceRequest({ seed: 'x', coarseLevel: 5, fineLevel: 4, plateCount: 16 }), /fine level/i);
 });
 
-test('Planet Engine source stays independent from legacy gameplay world objects through WG-4', () => {
+test('Planet Engine source stays independent from legacy gameplay world objects through WG-5', () => {
   const files = [
     'src/worldgen/protocol.ts',
     'src/worldgen/worldgenClient.ts',
@@ -115,6 +115,7 @@ test('Planet Engine source stays independent from legacy gameplay world objects 
     'src/worldgen/diagnostics/worldgenLabStandalone.ts',
     'src/worldgen/diagnostics/worldgenInheritanceLabStandalone.ts',
     'src/worldgen/diagnostics/worldgenTopographyLabStandalone.ts',
+    'src/worldgen/diagnostics/worldgenClimateLabStandalone.ts',
   ];
   const forbidden = [/\.\.\/world\//, /Region\b/, /MapSelection\b/, /GeographyPatch\b/, /resourceNode/i];
   for (const path of files) {
@@ -130,6 +131,8 @@ test('Planet Engine source stays independent from legacy gameplay world objects 
     'rust/interlink-worldgen/src/refinement.rs',
     'rust/interlink-worldgen/src/boundary_refinement.rs',
     'rust/interlink-worldgen/src/topography.rs',
+    'rust/interlink-worldgen/src/climate.rs',
+    'rust/interlink-worldgen/tests/climate_ensemble.rs',
     'rust/interlink-worldgen-wasm/Cargo.toml',
     'rust/interlink-worldgen-cli/Cargo.toml',
     'docs/worldgen-rewrite/GEOLOGY.md',
@@ -137,6 +140,7 @@ test('Planet Engine source stays independent from legacy gameplay world objects 
     'docs/worldgen-rewrite/MULTIRESOLUTION.md',
     'docs/worldgen-rewrite/PLANET_PARAMETERS.md',
     'docs/worldgen-rewrite/TOPOGRAPHY.md',
+    'docs/worldgen-rewrite/WG5_CLIMATE.md',
   ]) assert.ok(fs.existsSync(path), `${path} must exist`);
 });
 
