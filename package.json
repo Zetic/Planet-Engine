@@ -1,0 +1,29 @@
+{
+  "name": "project-interlink-planet-engine",
+  "version": "0.1.0",
+  "description": "Standalone deterministic planetary physical-world generator for Project Interlink",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "node --input-type=module -e \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true });\" && tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && npm run test:ts && cargo test --workspace",
+    "test:ts": "tsx --test tests/*.test.ts",
+    "test:rust": "cargo test --workspace",
+    "check:worldgen-wasm": "cargo check -p interlink-worldgen-wasm --target wasm32-unknown-unknown",
+    "build:worldgen-wasm": "bash scripts/build-worldgen-wasm.sh",
+    "check:worldgen-wasm-package": "bash scripts/build-worldgen-wasm.sh target/worldgen-wasm-package",
+    "worldgen:generate": "cargo run -p interlink-worldgen-cli -- generate",
+    "worldgen:benchmark": "cargo run -p interlink-worldgen-cli -- benchmark",
+    "worldgen:topology": "cargo run -p interlink-worldgen-cli -- topology --level 4",
+    "worldgen:tectonics": "cargo run -p interlink-worldgen-cli -- tectonics --level 5 --plates 16",
+    "worldgen:geology": "cargo run -p interlink-worldgen-cli -- geology --level 5 --plates 16",
+    "worldgen:lithosphere": "cargo run -p interlink-worldgen-cli -- lithosphere --level 5 --plates 16",
+    "worldgen:inheritance": "cargo run -p interlink-worldgen-cli -- inheritance --seed test-world --coarse-level 4 --level 6 --plates 16",
+    "worldgen:profile": "cargo run -p interlink-worldgen-cli -- profile"
+  },
+  "devDependencies": {
+    "tsx": "4.23.13",
+    "typescript": "5.8.3"
+  }
+}

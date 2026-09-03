@@ -1,0 +1,4 @@
+/target/
+/node_modules/
+/target/worldgen-wasm-package/
+.DS_Store
