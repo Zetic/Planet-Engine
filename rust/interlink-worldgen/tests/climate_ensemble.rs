@@ -86,6 +86,17 @@ fn earthlike_climate_is_deterministic_and_couples_atmosphere_ocean_and_moisture(
     assert!(first.metrics.mean_annual_precipitation_mm >= 0.0);
     assert!(first.metrics.moisture_budget_relative_error < 1.0e-8);
 
+
+    let mut no_ocean_heat_request = request.clone();
+    no_ocean_heat_request.parameters.ocean_advection_relaxation = 0.0;
+    let no_ocean_heat =
+        generate_coupled_climate(&topology, &terrain, planet, &no_ocean_heat_request).unwrap();
+    assert_ne!(
+        first.sea_surface_temperature_mean_k,
+        no_ocean_heat.sea_surface_temperature_mean_k,
+        "surface-current heat advection must causally affect SST",
+    );
+
     for i in 0..terrain.submerged_mask.len() {
         if terrain.submerged_mask[i] == 0 {
             assert_eq!(first.current_east_mean_m_s[i], 0.0);
@@ -158,4 +169,81 @@ fn airless_planet_retains_radiative_temperature_but_has_no_wind_or_precipitation
     assert!(climate.wind_east_mean_m_s.iter().all(|value| *value == 0.0));
     assert!(climate.wind_north_mean_m_s.iter().all(|value| *value == 0.0));
     assert!(climate.annual_precipitation_mm.iter().all(|value| *value == 0.0));
+}
+
+
+fn mean_field(values: &[f32]) -> f64 {
+    values.iter().map(|value| f64::from(*value)).sum::<f64>() / values.len() as f64
+}
+
+fn zonal_fraction(east: &[f32], north: &[f32]) -> f64 {
+    let east_total = east.iter().map(|value| f64::from(*value).abs()).sum::<f64>();
+    let north_total = north.iter().map(|value| f64::from(*value).abs()).sum::<f64>();
+    east_total / (east_total + north_total).max(1.0e-12)
+}
+
+#[test]
+fn axial_tilt_controls_seasonal_insolation_on_a_fixed_wg4_surface() {
+    let planet = PlanetPhysicalParameters::earthlike_reference();
+    let (topology, terrain) = generated_surface("wg5-tilt", planet);
+    let normal = generate_coupled_climate(
+        &topology,
+        &terrain,
+        planet,
+        &ClimateRequest::new("wg5-tilt"),
+    )
+    .unwrap();
+    let mut zero_tilt = planet;
+    zero_tilt.axial_tilt_rad = 0.0;
+    let no_tilt = generate_coupled_climate(
+        &topology,
+        &terrain,
+        zero_tilt,
+        &ClimateRequest::new("wg5-tilt"),
+    )
+    .unwrap();
+    let normal_amplitude = mean_field(&normal.seasonal_insolation_amplitude_w_m2);
+    let zero_tilt_amplitude = mean_field(&no_tilt.seasonal_insolation_amplitude_w_m2);
+    assert!(
+        zero_tilt_amplitude < normal_amplitude * 0.90,
+        "removing axial tilt should materially reduce seasonal insolation amplitude: normal={normal_amplitude} zero_tilt={zero_tilt_amplitude}",
+    );
+}
+
+#[test]
+fn rotation_rate_changes_circulation_and_faster_rotation_is_more_zonal() {
+    let planet = PlanetPhysicalParameters::earthlike_reference();
+    let (topology, terrain) = generated_surface("wg5-rotation", planet);
+    let mut slow = planet;
+    slow.rotation_period_s *= 4.0;
+    let mut fast = planet;
+    fast.rotation_period_s *= 0.5;
+    let slow_climate = generate_coupled_climate(
+        &topology,
+        &terrain,
+        slow,
+        &ClimateRequest::new("wg5-rotation"),
+    )
+    .unwrap();
+    let fast_climate = generate_coupled_climate(
+        &topology,
+        &terrain,
+        fast,
+        &ClimateRequest::new("wg5-rotation"),
+    )
+    .unwrap();
+    let slow_zonal = zonal_fraction(
+        &slow_climate.wind_east_mean_m_s,
+        &slow_climate.wind_north_mean_m_s,
+    );
+    let fast_zonal = zonal_fraction(
+        &fast_climate.wind_east_mean_m_s,
+        &fast_climate.wind_north_mean_m_s,
+    );
+    assert!(
+        fast_zonal > slow_zonal,
+        "faster rotation should increase zonal control: slow={slow_zonal} fast={fast_zonal}",
+    );
+    assert_ne!(slow_climate.wind_east_mean_m_s, fast_climate.wind_east_mean_m_s);
+    assert_ne!(slow_climate.current_east_mean_m_s, fast_climate.current_east_mean_m_s);
 }

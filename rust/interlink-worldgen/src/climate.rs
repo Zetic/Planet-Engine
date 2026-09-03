@@ -8,6 +8,7 @@ const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 const STEFAN_BOLTZMANN: f64 = 5.670_374_419e-8;
 const UNIVERSAL_GAS_CONSTANT: f64 = 8.314_462_618;
 const TWO_PI: f64 = std::f64::consts::PI * 2.0;
+const EARTH_REFERENCE_ROTATION_PERIOD_S: f64 = 86_164.0905;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ClimatePhysicalParameters {
@@ -508,17 +509,39 @@ fn saturation_specific_humidity(temperature_k: f64, pressure_pa: f64) -> f64 {
     }
 }
 
-fn baseline_zonal_wind(latitude_rad: f64) -> f64 {
+fn rotation_response(rotation_period_s: f64) -> f64 {
+    (EARTH_REFERENCE_ROTATION_PERIOD_S / rotation_period_s).clamp(0.05, 8.0)
+}
+
+fn circulation_cell_edges(rotation_ratio: f64) -> (f64, f64) {
+    let hadley_edge_deg = (30.0 / rotation_ratio.sqrt()).clamp(15.0, 60.0);
+    let polar_edge_deg = hadley_edge_deg + 0.5 * (90.0 - hadley_edge_deg);
+    (hadley_edge_deg, polar_edge_deg)
+}
+
+fn baseline_zonal_wind(latitude_rad: f64, rotation_ratio: f64) -> f64 {
     let degrees = latitude_rad.abs().to_degrees();
-    if degrees < 30.0 {
-        -8.0 * (1.0 - 0.35 * degrees / 30.0)
-    } else if degrees < 60.0 {
-        10.0 * ((degrees - 30.0) / 30.0 * std::f64::consts::PI).sin()
+    let (hadley_edge_deg, polar_edge_deg) = circulation_cell_edges(rotation_ratio);
+    let zonal_strength = rotation_ratio.sqrt().clamp(0.35, 2.5);
+    if degrees < hadley_edge_deg {
+        -8.0 * zonal_strength * (1.0 - 0.35 * degrees / hadley_edge_deg)
+    } else if degrees < polar_edge_deg {
+        let phase = (degrees - hadley_edge_deg) / (polar_edge_deg - hadley_edge_deg);
+        10.0 * zonal_strength * (phase * std::f64::consts::PI).sin()
     } else {
-        -4.0 * ((degrees - 60.0) / 30.0 * std::f64::consts::FRAC_PI_2)
-            .sin()
-            .abs()
+        let phase = ((degrees - polar_edge_deg) / (90.0 - polar_edge_deg)).clamp(0.0, 1.0);
+        -4.0 * zonal_strength * (phase * std::f64::consts::FRAC_PI_2).sin().abs()
     }
+}
+
+fn coriolis_deflection_factor(latitude_rad: f64, omega: f64, configured_strength: f64) -> f64 {
+    let coriolis = 2.0 * omega * latitude_rad.sin();
+    if coriolis.abs() <= 1.0e-15 {
+        return 0.0;
+    }
+    let earth_omega = TWO_PI / EARTH_REFERENCE_ROTATION_PERIOD_S;
+    let normalized = (coriolis.abs() / (2.0 * earth_omega)).clamp(0.0, 2.5);
+    coriolis.signum() * configured_strength * normalized
 }
 
 fn clamp_vector(east: f64, north: f64, maximum: f64) -> (f64, f64) {
@@ -869,6 +892,12 @@ pub fn generate_coupled_climate(
     } else {
         0.0
     };
+    let rotation_ratio = rotation_response(planet.rotation_period_s);
+    let (hadley_edge_deg, _) = circulation_cell_edges(rotation_ratio);
+    let rotational_strength = rotation_ratio.sqrt().clamp(0.35, 2.5);
+    let overturning_strength = (1.0 / rotation_ratio.sqrt()).clamp(0.4, 2.5);
+    let rotational_transition_start_deg = (4.0 / rotational_strength).clamp(2.0, 12.0);
+    let rotational_transition_width_deg = (18.0 / rotational_strength).clamp(8.0, 36.0);
     let atmosphere_exists = planet.reference_surface_pressure_pa > 0.0;
     let specific_gas_constant = UNIVERSAL_GAS_CONSTANT / physical.atmospheric_mean_molar_mass_kg_per_mol;
     let phase_seconds = planet.orbital_period_s / phase_count as f64;
@@ -1130,19 +1159,23 @@ pub fn generate_coupled_climate(
                         north_bases[i],
                     );
                     let latitude_abs_deg = latitude[i].abs().to_degrees();
-                    let rotational_blend = ((latitude_abs_deg - 4.0) / 18.0).clamp(0.0, 1.0);
-                    let rotation_sign = if omega >= 0.0 { 1.0 } else { -1.0 };
-                    let geostrophic_east = -rotation_sign
-                        * gradient_north
+                    let rotational_blend = ((latitude_abs_deg - rotational_transition_start_deg)
+                        / rotational_transition_width_deg)
+                        .clamp(0.0, 1.0);
+                    let geostrophic_east = -gradient_north
                         * 1_000_000.0
-                        * parameters.wind_thermal_gradient_scale;
-                    let geostrophic_north = rotation_sign
-                        * gradient_east
+                        * parameters.wind_thermal_gradient_scale
+                        * rotational_strength;
+                    let geostrophic_north = gradient_east
                         * 1_000_000.0
-                        * parameters.wind_thermal_gradient_scale;
-                    let zonal = baseline_zonal_wind(latitude[i]) * rotation_sign;
-                    let meridional = if latitude_abs_deg < 30.0 {
-                        -latitude[i].signum() * 2.6 * (1.0 - latitude_abs_deg / 30.0)
+                        * parameters.wind_thermal_gradient_scale
+                        * rotational_strength;
+                    let zonal = baseline_zonal_wind(latitude[i], rotation_ratio);
+                    let meridional = if latitude_abs_deg < hadley_edge_deg {
+                        -latitude[i].signum()
+                            * 2.6
+                            * overturning_strength
+                            * (1.0 - latitude_abs_deg / hadley_edge_deg)
                     } else {
                         0.0
                     };
@@ -1165,19 +1198,20 @@ pub fn generate_coupled_climate(
                     if !ocean[i] {
                         continue;
                     }
-                    let coriolis = 2.0 * omega * latitude[i].sin();
-                    let sign = if coriolis >= 0.0 { 1.0 } else { -1.0 };
+                    let deflection = coriolis_deflection_factor(
+                        latitude[i],
+                        omega,
+                        parameters.ocean_coriolis_deflection,
+                    );
                     let mobility = (water_depth_m[i] / parameters.ocean_bathymetric_drag_depth_m)
                         .clamp(0.08, 1.0)
                         .sqrt();
                     let east = parameters.ocean_wind_coupling
                         * mobility
-                        * (wind_east[i]
-                            + sign * parameters.ocean_coriolis_deflection * wind_north[i]);
+                        * (wind_east[i] + deflection * wind_north[i]);
                     let north = parameters.ocean_wind_coupling
                         * mobility
-                        * (wind_north[i]
-                            - sign * parameters.ocean_coriolis_deflection * wind_east[i]);
+                        * (wind_north[i] - deflection * wind_east[i]);
                     (current_east[i], current_north[i]) =
                         clamp_vector(east, north, parameters.maximum_surface_current_m_s);
                 }
@@ -1683,5 +1717,25 @@ mod tests {
         );
         assert!(equator > 400.0);
         assert_eq!(north_pole_winter, 0.0);
+    }
+
+    #[test]
+    fn rotation_response_broadens_slow_hadley_cells_and_zeroes_equatorial_coriolis() {
+        let earth_ratio = rotation_response(EARTH_REFERENCE_ROTATION_PERIOD_S);
+        let slow_ratio = rotation_response(EARTH_REFERENCE_ROTATION_PERIOD_S * 4.0);
+        let fast_ratio = rotation_response(EARTH_REFERENCE_ROTATION_PERIOD_S * 0.5);
+        let (earth_hadley, _) = circulation_cell_edges(earth_ratio);
+        let (slow_hadley, _) = circulation_cell_edges(slow_ratio);
+        let (fast_hadley, _) = circulation_cell_edges(fast_ratio);
+        assert!(slow_hadley > earth_hadley);
+        assert!(fast_hadley < earth_hadley);
+        let earth_omega = TWO_PI / EARTH_REFERENCE_ROTATION_PERIOD_S;
+        assert_eq!(coriolis_deflection_factor(0.0, earth_omega, 0.55), 0.0);
+        assert!(coriolis_deflection_factor(45_f64.to_radians(), earth_omega, 0.55) > 0.0);
+        assert!(coriolis_deflection_factor(-45_f64.to_radians(), earth_omega, 0.55) < 0.0);
+        assert!(
+            coriolis_deflection_factor(45_f64.to_radians(), earth_omega * 2.0, 0.55).abs()
+                > coriolis_deflection_factor(45_f64.to_radians(), earth_omega, 0.55).abs()
+        );
     }
 }
