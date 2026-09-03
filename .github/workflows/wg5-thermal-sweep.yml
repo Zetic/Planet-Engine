@@ -18,28 +18,22 @@ jobs:
         run: |
           rustup toolchain install stable --profile minimal
           rustup default stable
-      - name: Compile reduced-shortwave candidate
-        run: |
-          SW_REFLECTIVITY=0.27 HEAT_DIFFUSIVITY=100000.0 AIR_SEA_EXCHANGE=8.0 MIXED_LAYER_DEPTH=20.0 HEAT_SOLVER_ITERS=12 \
-            python scripts/wg5_thermal_sweep_patch.py
-          SURFACE_ALBEDO_COUPLING=0.10 python scripts/wg5_thermal_coupling_patch.py
-          cargo check --workspace
-      - name: Background reflectivity and surface coupling sweep at L6
+      - name: Atmospheric diffusivity sweep at L6
         run: |
           set -euo pipefail
           for spec in \
-            '0.24 0.00' \
-            '0.24 0.10' \
-            '0.26 0.10' \
-            '0.27 0.10' \
-            '0.27 0.15' \
-            '0.28 0.15' \
-            '0.29 0.10' \
-            '0.30 0.10'; do
-            read -r reflectivity coupling <<< "${spec}"
-            echo "===== REFLECTIVITY=${reflectivity} COUPLING=${coupling} ====="
+            '0.20 0.00 500000.0' \
+            '0.20 0.00 1000000.0' \
+            '0.22 0.00 200000.0' \
+            '0.22 0.00 500000.0' \
+            '0.22 0.00 1000000.0' \
+            '0.22 0.00 2000000.0' \
+            '0.24 0.00 500000.0' \
+            '0.24 0.00 1000000.0'; do
+            read -r reflectivity coupling diffusivity <<< "${spec}"
+            echo "===== REFLECTIVITY=${reflectivity} COUPLING=${coupling} DIFF=${diffusivity} ====="
             git checkout -- rust/interlink-worldgen/src/climate.rs rust/interlink-worldgen/src/climate_calibration.rs
-            SW_REFLECTIVITY="${reflectivity}" HEAT_DIFFUSIVITY=100000.0 AIR_SEA_EXCHANGE=8.0 MIXED_LAYER_DEPTH=20.0 HEAT_SOLVER_ITERS=12 \
+            SW_REFLECTIVITY="${reflectivity}" HEAT_DIFFUSIVITY="${diffusivity}" AIR_SEA_EXCHANGE=8.0 MIXED_LAYER_DEPTH=20.0 HEAT_SOLVER_ITERS=16 \
               python scripts/wg5_thermal_sweep_patch.py
             SURFACE_ALBEDO_COUPLING="${coupling}" python scripts/wg5_thermal_coupling_patch.py
             sed -i 's/maximum_spinup_years: 10/maximum_spinup_years: 24/' rust/interlink-worldgen/src/climate.rs
