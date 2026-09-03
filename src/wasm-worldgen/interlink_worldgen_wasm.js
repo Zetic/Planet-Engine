@@ -2344,6 +2344,15 @@ export class WasmWorldgenTopography {
         return v1;
     }
     /**
+     * @returns {Uint32Array}
+     */
+    boundary_coarse_source_indices() {
+        const ret = wasm.wasmworldgentopography_boundary_coarse_source_indices(this.__wbg_ptr);
+        var v1 = getArrayU32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
      * @returns {string}
      */
     boundary_hash_hex() {
@@ -2357,6 +2366,15 @@ export class WasmWorldgenTopography {
         } finally {
             wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
         }
+    }
+    /**
+     * @returns {Uint8Array}
+     */
+    boundary_kinds() {
+        const ret = wasm.wasmworldgentopography_boundary_kinds(this.__wbg_ptr);
+        var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        return v1;
     }
     /**
      * @returns {Uint32Array}
@@ -2404,12 +2422,30 @@ export class WasmWorldgenTopography {
         }
     }
     /**
+     * @returns {Float32Array}
+     */
+    crust_age_myr() {
+        const ret = wasm.wasmworldgentopography_crust_age_myr(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
      * @returns {Uint8Array}
      */
     crust_kind() {
         const ret = wasm.wasmworldgentopography_crust_kind(this.__wbg_ptr);
         var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    crust_thickness_km() {
+        const ret = wasm.wasmworldgentopography_crust_thickness_km(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
         return v1;
     }
     /**
@@ -2474,6 +2510,15 @@ export class WasmWorldgenTopography {
         }
     }
     /**
+     * @returns {Float32Array}
+     */
+    fragmentation_propensity() {
+        const ret = wasm.wasmworldgentopography_fragmentation_propensity(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
      * @returns {number}
      */
     generator_version() {
@@ -2527,6 +2572,15 @@ export class WasmWorldgenTopography {
         }
     }
     /**
+     * @returns {Uint8Array}
+     */
+    inherited_sample_mask() {
+        const ret = wasm.wasmworldgentopography_inherited_sample_mask(this.__wbg_ptr);
+        var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        return v1;
+    }
+    /**
      * @returns {number}
      */
     internal_heat_flux_w_per_m2() {
@@ -2548,6 +2602,15 @@ export class WasmWorldgenTopography {
     isostatic_mantle_density_kg_per_m3() {
         const ret = wasm.wasmworldgentopography_isostatic_mantle_density_kg_per_m3(this.__wbg_ptr);
         return ret;
+    }
+    /**
+     * @returns {Uint16Array}
+     */
+    kinematic_domain_ids() {
+        const ret = wasm.wasmworldgentopography_kinematic_domain_ids(this.__wbg_ptr);
+        var v1 = getArrayU16FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 2, 2);
+        return v1;
     }
     /**
      * @returns {number}
@@ -2576,6 +2639,15 @@ export class WasmWorldgenTopography {
      */
     mantle_dynamic_elevation_m() {
         const ret = wasm.wasmworldgentopography_mantle_dynamic_elevation_m(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    mantle_dynamic_support_index() {
+        const ret = wasm.wasmworldgentopography_mantle_dynamic_support_index(this.__wbg_ptr);
         var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
         return v1;
@@ -2639,6 +2711,15 @@ export class WasmWorldgenTopography {
     /**
      * @returns {Uint32Array}
      */
+    nearest_coarse_source() {
+        const ret = wasm.wasmworldgentopography_nearest_coarse_source(this.__wbg_ptr);
+        var v1 = getArrayU32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Uint32Array}
+     */
     neighbor_offsets() {
         const ret = wasm.wasmworldgentopography_neighbor_offsets(this.__wbg_ptr);
         var v1 = getArrayU32FromWasm0(ret[0], ret[1]).slice();
@@ -2690,6 +2771,15 @@ export class WasmWorldgenTopography {
      */
     orogenic_elevation_m() {
         const ret = wasm.wasmworldgentopography_orogenic_elevation_m(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    orogenic_history() {
+        const ret = wasm.wasmworldgentopography_orogenic_history(this.__wbg_ptr);
         var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
         return v1;
@@ -2767,6 +2857,15 @@ export class WasmWorldgenTopography {
     /**
      * @returns {Float32Array}
      */
+    ridge_history() {
+        const ret = wasm.wasmworldgentopography_ridge_history(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
     rift_basin_elevation_m() {
         const ret = wasm.wasmworldgentopography_rift_basin_elevation_m(this.__wbg_ptr);
         var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
@@ -2832,6 +2931,24 @@ export class WasmWorldgenTopography {
     stage_version() {
         const ret = wasm.wasmworldgentopography_stage_version(this.__wbg_ptr);
         return ret >>> 0;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    strength_index() {
+        const ret = wasm.wasmworldgentopography_strength_index(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Uint8Array}
+     */
+    structural_zone_kind() {
+        const ret = wasm.wasmworldgentopography_structural_zone_kind(this.__wbg_ptr);
+        var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        return v1;
     }
     /**
      * @returns {Uint8Array}
@@ -2929,6 +3046,15 @@ export class WasmWorldgenTopography {
     /**
      * @returns {Float32Array}
      */
+    trench_history() {
+        const ret = wasm.wasmworldgentopography_trench_history(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
     water_depth_m() {
         const ret = wasm.wasmworldgentopography_water_depth_m(this.__wbg_ptr);
         var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
@@ -2941,6 +3067,15 @@ export class WasmWorldgenTopography {
     water_volume_relative_error() {
         const ret = wasm.wasmworldgentopography_water_volume_relative_error(this.__wbg_ptr);
         return ret;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    weakness_index() {
+        const ret = wasm.wasmworldgentopography_weakness_index(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
     }
 }
 if (Symbol.dispose) WasmWorldgenTopography.prototype[Symbol.dispose] = WasmWorldgenTopography.prototype.free;
