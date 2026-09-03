@@ -84,4 +84,57 @@ replace_once(
     'pass ocean heat workspace',
 )
 
+replace_once(
+    '''        let mut tendency = vec![0.0; 2];
+        conservative_ocean_heat_tendency(
+            &geometry,
+            &[20.0],
+''',
+    '''        let mut tendency = vec![0.0; 2];
+        let mut workspace = OceanHeatWorkspace::new(2);
+        conservative_ocean_heat_tendency(
+            &geometry,
+            &mut workspace,
+            &[20.0],
+''',
+    'update conservative heat test workspace',
+)
+
+replace_once(
+    '''        let mut tendency = [0.0, 0.0];
+        conservative_ocean_heat_tendency(
+            &geometry,
+            &[100.0],
+''',
+    '''        let mut tendency = [0.0, 0.0];
+        let mut workspace = OceanHeatWorkspace::new(2);
+        conservative_ocean_heat_tendency(
+            &geometry,
+            &mut workspace,
+            &[100.0],
+''',
+    'update cfl test first workspace call',
+)
+
+replace_once(
+    '''        conservative_ocean_heat_tendency(
+            &geometry,
+            &[100.0],
+            &temperature,
+            &area,
+            10.0,
+            0.0,
+''',
+    '''        conservative_ocean_heat_tendency(
+            &geometry,
+            &mut workspace,
+            &[100.0],
+            &temperature,
+            &area,
+            10.0,
+            0.0,
+''',
+    'update cfl test second workspace call',
+)
+
 path.write_text(text)
