@@ -2180,6 +2180,8 @@ fn generate_coupled_climate_internal(
                 for i in 0..sample_count {
                     air_mass[i] = pressure[i] / planet.surface_gravity_m_s2 * cell_area_m2[i];
                     moisture_mass[i] = humidity[i] * air_mass[i];
+                    phase_saturation_air[i] =
+                        saturation_specific_humidity(temperature[i], pressure[i]);
                 }
                 let moisture_before = moisture_mass.iter().sum::<f64>();
                 let mut phase_evaporation = 0.0;
@@ -2199,13 +2201,11 @@ fn generate_coupled_climate_internal(
                     }
                     let q = moisture_mass[i] / air_mass[i];
                     let wind_speed = norm2(wind_east[i], wind_north[i]).max(1.0);
-                    let surface_temperature = if ocean[i] {
-                        sea_surface_temperature[i]
+                    let saturation_surface = if ocean[i] {
+                        saturation_specific_humidity(sea_surface_temperature[i], pressure[i])
                     } else {
-                        temperature[i]
+                        phase_saturation_air[i]
                     };
-                    let saturation_surface =
-                        saturation_specific_humidity(surface_temperature, pressure[i]);
                     let density = pressure[i] / (specific_gas_constant * temperature[i].max(120.0));
                     let evaporation_flux = density
                         * parameters.evaporation_bulk_transfer_coefficient
@@ -2275,13 +2275,9 @@ fn generate_coupled_climate_internal(
                 maximum_moisture_transport_substeps_used =
                     maximum_moisture_transport_substeps_used.max(moisture_substeps);
                 let substep_seconds = phase_seconds / f64::from(moisture_substeps);
-                // Temperature and pressure remain fixed throughout all moisture
-                // substeps in this orbital phase. Saturation humidity therefore
-                // only needs to be evaluated once per cell per phase.
-                for i in 0..sample_count {
-                    phase_saturation_air[i] =
-                        saturation_specific_humidity(temperature[i], pressure[i]);
-                }
+                // Temperature and pressure remain fixed throughout moisture
+                // transport and condensation, so the air-saturation field computed
+                // above is reused for the entire phase.
                 for _ in 0..usize::from(moisture_substeps) {
                     let (limited_donors, active_donors) = advect_moisture_substep(
                         &phase_moisture_edges,
@@ -2331,7 +2327,7 @@ fn generate_coupled_climate_internal(
                     }
                     let wind_speed = norm2(wind_east[i], wind_north[i]);
                     let current_q = moisture_mass[i] / air_mass[i];
-                    let saturation_air = saturation_specific_humidity(temperature[i], pressure[i]);
+                    let saturation_air = phase_saturation_air[i];
                     let threshold = saturation_air * parameters.condensation_relative_humidity;
                     let excess_q = (current_q - threshold).max(0.0);
                     let condensation_mass =
