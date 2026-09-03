@@ -1084,20 +1084,30 @@ fn advect_moisture_substep(
     cell_area_m2: &[f64],
     substep_seconds: f64,
     cfl_limit: f64,
+    column_moisture: &mut [f64],
+    requested_edge_mass: &mut [f64],
     requested_outflow: &mut [f64],
     donor_scale: &mut [f64],
     delta: &mut [f64],
 ) -> (usize, usize) {
+    debug_assert!(requested_edge_mass.len() >= edges.len());
     requested_outflow.fill(0.0);
     donor_scale.fill(1.0);
     delta.fill(0.0);
 
-    for edge in edges {
-        let donor_column_moisture = moisture_mass[edge.donor] / cell_area_m2[edge.donor].max(1.0);
-        let mass = donor_column_moisture
+    // Moisture mass is unchanged during the request pass, so compute each
+    // donor column density once per cell rather than repeating the same
+    // division for every incident transport edge (and then repeating it again
+    // during application).
+    for i in 0..moisture_mass.len() {
+        column_moisture[i] = moisture_mass[i] / cell_area_m2[i].max(1.0);
+    }
+    for (edge_index, edge) in edges.iter().enumerate() {
+        let mass = column_moisture[edge.donor]
             * edge.normal_speed_abs_m_s
             * edge.interface_length_m
             * substep_seconds;
+        requested_edge_mass[edge_index] = mass;
         if mass > 0.0 {
             requested_outflow[edge.donor] += mass;
         }
@@ -1117,13 +1127,11 @@ fn advect_moisture_substep(
         }
     }
 
-    for edge in edges {
-        let donor_column_moisture = moisture_mass[edge.donor] / cell_area_m2[edge.donor].max(1.0);
-        let mass = donor_column_moisture
-            * edge.normal_speed_abs_m_s
-            * edge.interface_length_m
-            * substep_seconds;
-        let transfer = mass * donor_scale[edge.donor];
+    // Reuse the exact request mass calculated above. Donor scaling does not
+    // mutate moisture until this pass, so recomputing the mass here was pure
+    // duplicate floating-point work.
+    for (edge_index, edge) in edges.iter().enumerate() {
+        let transfer = requested_edge_mass[edge_index] * donor_scale[edge.donor];
         delta[edge.donor] -= transfer;
         delta[edge.receiver] += transfer;
     }
@@ -1560,9 +1568,12 @@ fn generate_coupled_climate_internal(
         build_atmospheric_moisture_edges(topology, &east_bases, &north_bases, planet.radius_m);
     let mut phase_moisture_edges = Vec::with_capacity(atmospheric_moisture_edges.len());
     let mut moisture_outgoing_rate = vec![0.0; sample_count];
+    let mut moisture_column_mass_per_m2 = vec![0.0; sample_count];
+    let mut moisture_requested_edge_mass = vec![0.0; atmospheric_moisture_edges.len()];
     let mut moisture_requested_outflow = vec![0.0; sample_count];
     let mut moisture_donor_scale = vec![1.0; sample_count];
     let mut moisture_transport_delta = vec![0.0; sample_count];
+    let mut phase_saturation_air = vec![0.0; sample_count];
     let ocean_projection_geometry = build_ocean_projection_geometry(
         topology,
         &ocean,
@@ -2037,6 +2048,13 @@ fn generate_coupled_climate_internal(
                 maximum_moisture_transport_substeps_used =
                     maximum_moisture_transport_substeps_used.max(moisture_substeps);
                 let substep_seconds = phase_seconds / f64::from(moisture_substeps);
+                // Temperature and pressure remain fixed throughout all moisture
+                // substeps in this orbital phase. Saturation humidity therefore
+                // only needs to be evaluated once per cell per phase.
+                for i in 0..sample_count {
+                    phase_saturation_air[i] =
+                        saturation_specific_humidity(temperature[i], pressure[i]);
+                }
                 for _ in 0..usize::from(moisture_substeps) {
                     let (limited_donors, active_donors) = advect_moisture_substep(
                         &phase_moisture_edges,
@@ -2044,6 +2062,8 @@ fn generate_coupled_climate_internal(
                         &cell_area_m2,
                         substep_seconds,
                         parameters.moisture_transport_cfl_limit,
+                        &mut moisture_column_mass_per_m2,
+                        &mut moisture_requested_edge_mass,
                         &mut moisture_requested_outflow,
                         &mut moisture_donor_scale,
                         &mut moisture_transport_delta,
@@ -2054,8 +2074,7 @@ fn generate_coupled_climate_internal(
                         if moisture_transport_delta[i] <= 0.0 || air_mass[i] <= 0.0 {
                             continue;
                         }
-                        let saturation_air =
-                            saturation_specific_humidity(temperature[i], pressure[i]);
+                        let saturation_air = phase_saturation_air[i];
                         if saturation_air <= 1.0e-12 {
                             continue;
                         }
