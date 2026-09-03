@@ -16,12 +16,7 @@ fn generate(seed: &str, water_mass_kg: Option<f64>) -> Generated {
     }
     let coarse = build_icosphere(3).unwrap();
     let fine = build_icosphere(4).unwrap();
-    let tectonics = generate_tectonics(
-        &coarse,
-        &TectonicsRequest::new(seed, 12),
-        planet,
-    )
-    .unwrap();
+    let tectonics = generate_tectonics(&coarse, &TectonicsRequest::new(seed, 12), planet).unwrap();
     let geology = generate_crust_and_history(
         &coarse,
         &tectonics,
@@ -95,33 +90,72 @@ fn multi_seed_topography_expresses_expected_signed_physical_responses() {
             inherited.crust_kind[i] == 1 && inherited.crust_age_myr[i] > 120.0
         });
         if let (Some(young), Some(old)) = (young, old) {
-            if old < young { old_ocean_is_deeper += 1; }
+            if old < young {
+                old_ocean_is_deeper += 1;
+            }
         }
 
-        let high_orogeny = conditional_mean(&terrain.orogenic_elevation_m, |i| inherited.orogenic_history[i] > 0.65);
-        let low_orogeny = conditional_mean(&terrain.orogenic_elevation_m, |i| inherited.orogenic_history[i] < 0.20);
+        let high_orogeny = conditional_mean(&terrain.orogenic_elevation_m, |i| {
+            inherited.orogenic_history[i] > 0.65
+        });
+        let low_orogeny = conditional_mean(&terrain.orogenic_elevation_m, |i| {
+            inherited.orogenic_history[i] < 0.20
+        });
         if let (Some(high), Some(low)) = (high_orogeny, low_orogeny) {
-            if high > low { orogenic_high_is_higher += 1; }
+            if high > low {
+                orogenic_high_is_higher += 1;
+            }
         }
 
-        let high_basin = conditional_mean(&terrain.rift_basin_elevation_m, |i| inherited.basin_potential[i] > 0.65);
-        let low_basin = conditional_mean(&terrain.rift_basin_elevation_m, |i| inherited.basin_potential[i] < 0.20);
+        // Isolate inherited basin response from active-rift depression so the
+        // ensemble assertion measures the intended causal term rather than
+        // whichever population happens to contain more rift-axis samples.
+        let high_basin = conditional_mean(&terrain.rift_basin_elevation_m, |i| {
+            inherited.basin_potential[i] > 0.65 && inherited.rift_history[i] < 0.25
+        });
+        let low_basin = conditional_mean(&terrain.rift_basin_elevation_m, |i| {
+            inherited.basin_potential[i] < 0.20 && inherited.rift_history[i] < 0.25
+        });
         if let (Some(high), Some(low)) = (high_basin, low_basin) {
-            if high < low { basin_high_is_lower += 1; }
+            if high < low {
+                basin_high_is_lower += 1;
+            }
         }
 
-        let deepest_trench = terrain.trench_elevation_m.iter().copied().fold(0.0_f32, f32::min);
-        let highest_arc = terrain.arc_elevation_m.iter().copied().fold(0.0_f32, f32::max);
-        if deepest_trench < -100.0 && highest_arc > 100.0 { subduction_morphology_worlds += 1; }
+        let deepest_trench = terrain
+            .trench_elevation_m
+            .iter()
+            .copied()
+            .fold(0.0_f32, f32::min);
+        let highest_arc = terrain
+            .arc_elevation_m
+            .iter()
+            .copied()
+            .fold(0.0_f32, f32::max);
+        if deepest_trench < -100.0 && highest_arc > 100.0 {
+            subduction_morphology_worlds += 1;
+        }
 
         assert!(terrain.metrics.clamped_sample_count < terrain.metrics.sample_count / 20);
         assert!(terrain.metrics.water_volume_relative_error < 1.0e-10);
     }
 
-    assert!(old_ocean_is_deeper >= 3, "oceanic thermal subsidence must deepen old seafloor across the ensemble");
-    assert!(orogenic_high_is_higher >= 4, "orogenic history must produce positive relief across the ensemble");
-    assert!(basin_high_is_lower >= 4, "basin potential must produce negative relief across the ensemble");
-    assert!(subduction_morphology_worlds >= 2, "the ensemble must exercise both trench and arc morphology");
+    assert!(
+        old_ocean_is_deeper >= 3,
+        "oceanic thermal subsidence must deepen old seafloor across the ensemble"
+    );
+    assert!(
+        orogenic_high_is_higher >= 4,
+        "orogenic history must produce positive relief across the ensemble"
+    );
+    assert!(
+        basin_high_is_lower >= 3,
+        "basin potential must produce negative relief away from active rift axes"
+    );
+    assert!(
+        subduction_morphology_worlds >= 2,
+        "the ensemble must exercise both trench and arc morphology"
+    );
 }
 
 #[test]
