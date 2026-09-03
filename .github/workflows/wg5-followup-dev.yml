@@ -47,6 +47,6 @@ jobs:
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add rust src dist tests docs .github/workflows/ci.yml
+          git add rust src dist tests docs
           git commit -m "Harden WG-5 post-review physical contracts"
           git push
