@@ -9,5 +9,9 @@ test('browser and WASM protocol versions remain synchronized', () => {
   const wasmMatch = wasmProtocol.match(/WORLDGEN_WASM_PROTOCOL_VERSION:\s*u32\s*=\s*(\d+)/);
   assert.ok(browserMatch, 'browser protocol version constant must be present');
   assert.ok(wasmMatch, 'WASM protocol version constant must be present');
-  assert.equal(Number(wasmMatch[1]), Number(browserMatch[1]));
+  assert.equal(
+    Number(wasmMatch[1]),
+    Number(browserMatch[1]),
+    'Rust/WASM and browser protocol versions must match',
+  );
 });
