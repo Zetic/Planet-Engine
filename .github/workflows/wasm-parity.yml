@@ -1,0 +1,42 @@
+name: Planet Engine WASM Parity
+
+on:
+  pull_request:
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust/**'
+      - 'scripts/build-worldgen-wasm.sh'
+      - 'src/wasm-worldgen/**'
+  push:
+    branches: [main]
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust/**'
+      - 'scripts/build-worldgen-wasm.sh'
+      - 'src/wasm-worldgen/**'
+
+jobs:
+  package:
+    name: Packaged WASM parity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust stable and browser target
+        run: |
+          rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown
+          rustup default stable
+      - name: Restore wasm-bindgen CLI cache
+        id: wasm-bindgen-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/wasm-bindgen*
+          key: ${{ runner.os }}-wasm-bindgen-cli-0.2.127
+      - name: Install pinned wasm-bindgen CLI
+        if: steps.wasm-bindgen-cache.outputs.cache-hit != 'true'
+        run: cargo install wasm-bindgen-cli --version 0.2.127 --locked
+      - name: Rebuild committed browser WASM package
+        run: npm run build:worldgen-wasm
+      - name: Verify committed WASM package parity
+        run: git diff --exit-code -- src/wasm-worldgen
