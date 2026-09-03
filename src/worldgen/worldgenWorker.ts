@@ -4,6 +4,7 @@ import {
   validateInheritanceRequest,
   validateLithosphereRequest,
   validateSyntheticRequest,
+  validateTopographyRequest,
   validateTectonicsRequest,
   validateTopologyRequest,
   type WorldgenCommand,
@@ -12,12 +13,14 @@ import {
   type WorldgenGeneratedInheritanceEvent,
   type WorldgenGeneratedLithosphereEvent,
   type WorldgenGeneratedSyntheticEvent,
+  type WorldgenGeneratedTopographyEvent,
   type WorldgenGeneratedTectonicsEvent,
   type WorldgenGeneratedTopologyEvent,
   type WorldgenGeologyResult,
   type WorldgenInheritanceResult,
   type WorldgenLithosphereResult,
   type WorldgenSyntheticResult,
+  type WorldgenTopographyResult,
   type WorldgenTectonicsResult,
   type WorldgenTopologyResult,
 } from './protocol.js';
@@ -59,6 +62,18 @@ interface WasmInheritance {
   boundary_samples(): Uint32Array; boundary_kinds(): Uint8Array; geological_boundary_regimes(): Uint8Array; subduction_polarities(): Uint8Array; boundary_normal_rates_m_per_year(): Float64Array; boundary_shear_rates_m_per_year(): Float64Array; boundary_coarse_source_indices(): Uint32Array;
   free(): void;
 }
+
+interface WasmTopography {
+  generator_version(): number; stage_id(): string; stage_version(): number; stage_seed_hex(): string;
+  coarse_level(): number; fine_level(): number; coarse_sample_count(): number; fine_sample_count(): number; plate_count(): number; fine_boundary_edge_count(): number;
+  topography_hash_hex(): string; topography_parameter_hash_hex(): string; inheritance_hash_hex(): string; boundary_hash_hex(): string; planet_parameter_hash_hex(): string; coarse_topology_hash_hex(): string; fine_topology_hash_hex(): string; tectonic_hash_hex(): string; geology_hash_hex(): string; lithosphere_hash_hex(): string;
+  minimum_solid_elevation_m(): number; maximum_solid_elevation_m(): number; mean_solid_elevation_m(): number; p05_solid_elevation_m(): number; median_solid_elevation_m(): number; p95_solid_elevation_m(): number;
+  has_sea_level(): boolean; sea_level_m(): number; land_area_fraction(): number; ocean_area_fraction(): number; mean_land_elevation_m(): number; mean_water_depth_m(): number; maximum_water_depth_m(): number; target_water_volume_m3(): number; solved_water_volume_m3(): number; water_volume_relative_error(): number; clamped_sample_count(): number;
+  radius_m(): number; surface_gravity_m_s2(): number; surface_water_mass_kg(): number; equivalent_global_water_depth_m(): number; ocean_water_density_kg_per_m3(): number; isostatic_mantle_density_kg_per_m3(): number;
+  positions(): Float64Array; faces(): Uint32Array; neighbor_offsets(): Uint32Array; neighbors(): Uint32Array; plate_ids(): Uint16Array; crust_kind(): Uint8Array; boundary_samples(): Uint32Array; geological_boundary_regimes(): Uint8Array;
+  isostatic_elevation_m(): Float32Array; thermal_elevation_m(): Float32Array; orogenic_elevation_m(): Float32Array; ridge_elevation_m(): Float32Array; rift_basin_elevation_m(): Float32Array; trench_elevation_m(): Float32Array; arc_elevation_m(): Float32Array; mantle_dynamic_elevation_m(): Float32Array; solid_elevation_m(): Float32Array; elevation_above_sea_level_m(): Float32Array; water_depth_m(): Float32Array; submerged_mask(): Uint8Array;
+  free(): void;
+}
 interface WorldgenWasmModule {
   default(): Promise<unknown>;
   worldgen_protocol_version(): number;
@@ -69,10 +84,11 @@ interface WorldgenWasmModule {
   WasmWorldgenGeology: new (seed: string, level: number, plateCount: number) => WasmGeology;
   WasmWorldgenLithosphere: new (seed: string, level: number, plateCount: number) => WasmLithosphere;
   WasmWorldgenInheritance: new (seed: string, coarseLevel: number, fineLevel: number, plateCount: number) => WasmInheritance;
+  WasmWorldgenTopography: new (seed: string, coarseLevel: number, fineLevel: number, plateCount: number) => WasmTopography;
 }
 interface WorldgenWorkerScope {
   addEventListener(type: 'message', listener: (event: MessageEvent<WorldgenCommand>) => void): void;
-  postMessage(message: WorldgenGeneratedSyntheticEvent | WorldgenGeneratedTopologyEvent | WorldgenGeneratedTectonicsEvent | WorldgenGeneratedGeologyEvent | WorldgenGeneratedLithosphereEvent | WorldgenGeneratedInheritanceEvent | WorldgenErrorEvent, transfer?: Transferable[]): void;
+  postMessage(message: WorldgenGeneratedSyntheticEvent | WorldgenGeneratedTopologyEvent | WorldgenGeneratedTectonicsEvent | WorldgenGeneratedGeologyEvent | WorldgenGeneratedLithosphereEvent | WorldgenGeneratedInheritanceEvent | WorldgenGeneratedTopographyEvent | WorldgenErrorEvent, transfer?: Transferable[]): void;
 }
 
 const workerScope = self as unknown as WorldgenWorkerScope;
@@ -177,6 +193,32 @@ async function generateInheritance(command: Extract<WorldgenCommand, { type: 'ge
   } finally { output.free(); }
 }
 
+
+async function generateTopography(command: Extract<WorldgenCommand, { type: 'generate-topography' }>): Promise<WorldgenTopographyResult> {
+  validateTopographyRequest(command.payload);
+  const module = await loadWorldgenWasm();
+  const startedAt = nowMs();
+  const output = new module.WasmWorldgenTopography(command.payload.seed, command.payload.coarseLevel, command.payload.fineLevel, command.payload.plateCount);
+  try {
+    const positions = output.positions(); const faces = output.faces(); const neighborOffsets = output.neighbor_offsets(); const neighbors = output.neighbors();
+    const plateIds = output.plate_ids(); const crustKind = output.crust_kind(); const boundarySamples = output.boundary_samples(); const geologicalBoundaryRegimes = output.geological_boundary_regimes();
+    const isostaticElevationM = output.isostatic_elevation_m(); const thermalElevationM = output.thermal_elevation_m(); const orogenicElevationM = output.orogenic_elevation_m(); const ridgeElevationM = output.ridge_elevation_m(); const riftBasinElevationM = output.rift_basin_elevation_m(); const trenchElevationM = output.trench_elevation_m(); const arcElevationM = output.arc_elevation_m(); const mantleDynamicElevationM = output.mantle_dynamic_elevation_m(); const solidElevationM = output.solid_elevation_m(); const elevationAboveSeaLevelM = output.elevation_above_sea_level_m(); const waterDepthM = output.water_depth_m(); const submergedMask = output.submerged_mask();
+    return {
+      engineVersion: output.generator_version(), coarseLevel: output.coarse_level(), fineLevel: output.fine_level(),
+      stage: { id: output.stage_id(), version: output.stage_version(), stageSeed: output.stage_seed_hex(), durationMs: Math.max(0, nowMs() - startedAt) },
+      metrics: {
+        coarseSampleCount: output.coarse_sample_count(), fineSampleCount: output.fine_sample_count(), plateCount: output.plate_count(), fineBoundaryEdgeCount: output.fine_boundary_edge_count(),
+        minimumSolidElevationM: output.minimum_solid_elevation_m(), maximumSolidElevationM: output.maximum_solid_elevation_m(), meanSolidElevationM: output.mean_solid_elevation_m(), p05SolidElevationM: output.p05_solid_elevation_m(), medianSolidElevationM: output.median_solid_elevation_m(), p95SolidElevationM: output.p95_solid_elevation_m(),
+        hasSeaLevel: output.has_sea_level(), seaLevelM: output.sea_level_m(), landAreaFraction: output.land_area_fraction(), oceanAreaFraction: output.ocean_area_fraction(), meanLandElevationM: output.mean_land_elevation_m(), meanWaterDepthM: output.mean_water_depth_m(), maximumWaterDepthM: output.maximum_water_depth_m(), targetWaterVolumeM3: output.target_water_volume_m3(), solvedWaterVolumeM3: output.solved_water_volume_m3(), waterVolumeRelativeError: output.water_volume_relative_error(), clampedSampleCount: output.clamped_sample_count(),
+        coarseTopologyHash: output.coarse_topology_hash_hex(), fineTopologyHash: output.fine_topology_hash_hex(), tectonicHash: output.tectonic_hash_hex(), geologyHash: output.geology_hash_hex(), lithosphereHash: output.lithosphere_hash_hex(), inheritanceHash: output.inheritance_hash_hex(), boundaryHash: output.boundary_hash_hex(), planetParameterHash: output.planet_parameter_hash_hex(), topographyParameterHash: output.topography_parameter_hash_hex(), topographyHash: output.topography_hash_hex(),
+      },
+      parameters: { radiusM: output.radius_m(), surfaceGravityMS2: output.surface_gravity_m_s2(), surfaceWaterMassKg: output.surface_water_mass_kg(), equivalentGlobalWaterDepthM: output.equivalent_global_water_depth_m(), oceanWaterDensityKgPerM3: output.ocean_water_density_kg_per_m3(), isostaticMantleDensityKgPerM3: output.isostatic_mantle_density_kg_per_m3(), internalHeatFluxWPerM2: 0, mantleThermalExpansivityPerK: 0 },
+      positions, faces, neighborOffsets, neighbors, plateIds, crustKind, boundarySamples, geologicalBoundaryRegimes,
+      isostaticElevationM, thermalElevationM, orogenicElevationM, ridgeElevationM, riftBasinElevationM, trenchElevationM, arcElevationM, mantleDynamicElevationM, solidElevationM, elevationAboveSeaLevelM, waterDepthM, submergedMask,
+    };
+  } finally { output.free(); }
+}
+
 workerScope.addEventListener('message', async messageEvent => {
   const command = messageEvent.data;
   try {
@@ -195,6 +237,10 @@ workerScope.addEventListener('message', async messageEvent => {
     if (command.type === 'generate-inheritance') {
       const result = await generateInheritance(command);
       workerScope.postMessage({ protocolVersion: WORLDGEN_PROTOCOL_VERSION, requestId: command.requestId, type: 'generated-inheritance', payload: result }, [result.positions.buffer, result.faces.buffer, result.neighborOffsets.buffer, result.neighbors.buffer, result.nearestCoarseSource.buffer, result.inheritedSampleMask.buffer, result.plateIds.buffer, result.crustKind.buffer, result.crustProvinceId.buffer, result.crustAgeMyr.buffer, result.crustThicknessKm.buffer, result.crustDensityKgPerM3.buffer, result.buoyancyIndex.buffer, result.orogenicHistory.buffer, result.riftHistory.buffer, result.ridgeHistory.buffer, result.subductionHistory.buffer, result.trenchHistory.buffer, result.volcanicArcHistory.buffer, result.transformHistory.buffer, result.subsidenceHistory.buffer, result.basinPotential.buffer, result.crustalStrain.buffer, result.strengthIndex.buffer, result.weaknessIndex.buffer, result.effectiveElasticThicknessKm.buffer, result.thermalAnomalyIndex.buffer, result.mantleUpwellingIndex.buffer, result.mantleDynamicSupportIndex.buffer, result.compensatedBuoyancyIndex.buffer, result.structuralFabricStrength.buffer, result.structuralZoneKind.buffer, result.fragmentationPropensity.buffer, result.fragmentIds.buffer, result.kinematicDomainIds.buffer, result.boundarySamples.buffer, result.boundaryKinds.buffer, result.geologicalBoundaryRegimes.buffer, result.subductionPolarities.buffer, result.boundaryNormalRatesMPerYear.buffer, result.boundaryShearRatesMPerYear.buffer, result.boundaryCoarseSourceIndices.buffer]); return;
+    }
+    if (command.type === 'generate-topography') {
+      const result = await generateTopography(command);
+      workerScope.postMessage({ protocolVersion: WORLDGEN_PROTOCOL_VERSION, requestId: command.requestId, type: 'generated-topography', payload: result }, [result.positions.buffer, result.faces.buffer, result.neighborOffsets.buffer, result.neighbors.buffer, result.plateIds.buffer, result.crustKind.buffer, result.boundarySamples.buffer, result.geologicalBoundaryRegimes.buffer, result.isostaticElevationM.buffer, result.thermalElevationM.buffer, result.orogenicElevationM.buffer, result.ridgeElevationM.buffer, result.riftBasinElevationM.buffer, result.trenchElevationM.buffer, result.arcElevationM.buffer, result.mantleDynamicElevationM.buffer, result.solidElevationM.buffer, result.elevationAboveSeaLevelM.buffer, result.waterDepthM.buffer, result.submergedMask.buffer]); return;
     }
     throw new Error(`Unsupported worldgen command '${String((command as { type?: unknown }).type)}'.`);
   } catch (error) {

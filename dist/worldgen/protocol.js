@@ -1,4 +1,4 @@
-export const WORLDGEN_PROTOCOL_VERSION = 6;
+export const WORLDGEN_PROTOCOL_VERSION = 7;
 export const WORLDGEN_SYNTHETIC_MAX_SAMPLES = 4_194_304;
 export const WORLDGEN_TOPOLOGY_MAX_LEVEL = 7;
 export const WORLDGEN_TECTONICS_MAX_LEVEL = 6;
@@ -6,6 +6,8 @@ export const WORLDGEN_GEOLOGY_MAX_LEVEL = 6;
 export const WORLDGEN_LITHOSPHERE_MAX_LEVEL = 6;
 export const WORLDGEN_INHERITANCE_COARSE_MAX_LEVEL = 6;
 export const WORLDGEN_INHERITANCE_FINE_MAX_LEVEL = 7;
+export const WORLDGEN_TOPOGRAPHY_COARSE_MAX_LEVEL = 6;
+export const WORLDGEN_TOPOGRAPHY_FINE_MAX_LEVEL = 7;
 export const WORLDGEN_TECTONICS_MIN_PLATES = 4;
 export const WORLDGEN_TECTONICS_MAX_PLATES = 48;
 export const WORLDGEN_BOUNDARY_CONVERGENT = 1;
@@ -94,9 +96,23 @@ export function validateInheritanceRequest(request) {
     if (request.plateCount > coarseSamples)
         throw new Error('WG-3.75 plate count cannot exceed coarse topology sample count.');
 }
+export function validateTopographyRequest(request) {
+    if (!request.seed.trim())
+        throw new Error('WG-4 topography seed must not be empty.');
+    if (!Number.isInteger(request.coarseLevel) || request.coarseLevel < 0 || request.coarseLevel > WORLDGEN_TOPOGRAPHY_COARSE_MAX_LEVEL)
+        throw new Error(`WG-4 coarse level must be an integer from 0 through ${WORLDGEN_TOPOGRAPHY_COARSE_MAX_LEVEL}.`);
+    if (!Number.isInteger(request.fineLevel) || request.fineLevel < request.coarseLevel || request.fineLevel > WORLDGEN_TOPOGRAPHY_FINE_MAX_LEVEL)
+        throw new Error(`WG-4 fine level must be an integer from coarse level through ${WORLDGEN_TOPOGRAPHY_FINE_MAX_LEVEL}.`);
+    if (!Number.isInteger(request.plateCount) || request.plateCount < WORLDGEN_TECTONICS_MIN_PLATES || request.plateCount > WORLDGEN_TECTONICS_MAX_PLATES)
+        throw new Error(`WG-4 plate count must be an integer from ${WORLDGEN_TECTONICS_MIN_PLATES} through ${WORLDGEN_TECTONICS_MAX_PLATES}.`);
+    const coarseSamples = 10 * (4 ** request.coarseLevel) + 2;
+    if (request.plateCount > coarseSamples)
+        throw new Error('WG-4 plate count cannot exceed coarse topology sample count.');
+}
 export function worldgenSyntheticCommand(requestId, payload) { validateSyntheticRequest(payload); return { protocolVersion: WORLDGEN_PROTOCOL_VERSION, requestId, type: 'generate-synthetic', payload }; }
 export function worldgenTopologyCommand(requestId, payload) { validateTopologyRequest(payload); return { protocolVersion: WORLDGEN_PROTOCOL_VERSION, requestId, type: 'generate-topology', payload }; }
 export function worldgenTectonicsCommand(requestId, payload) { validateTectonicsRequest(payload); return { protocolVersion: WORLDGEN_PROTOCOL_VERSION, requestId, type: 'generate-tectonics', payload }; }
 export function worldgenGeologyCommand(requestId, payload) { validateGeologyRequest(payload); return { protocolVersion: WORLDGEN_PROTOCOL_VERSION, requestId, type: 'generate-geology', payload }; }
 export function worldgenLithosphereCommand(requestId, payload) { validateLithosphereRequest(payload); return { protocolVersion: WORLDGEN_PROTOCOL_VERSION, requestId, type: 'generate-lithosphere', payload }; }
 export function worldgenInheritanceCommand(requestId, payload) { validateInheritanceRequest(payload); return { protocolVersion: WORLDGEN_PROTOCOL_VERSION, requestId, type: 'generate-inheritance', payload }; }
+export function worldgenTopographyCommand(requestId, payload) { validateTopographyRequest(payload); return { protocolVersion: WORLDGEN_PROTOCOL_VERSION, requestId, type: 'generate-topography', payload }; }

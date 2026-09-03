@@ -8,6 +8,7 @@ mod parameters;
 mod random;
 mod refinement;
 mod tectonics;
+mod topography;
 mod topology;
 
 use std::fmt;
@@ -45,12 +46,16 @@ pub use tectonics::{
     TectonicPlate, TectonicsRequest, MAX_TECTONIC_PLATES, MIN_TECTONIC_PLATES, TECTONICS_STAGE_ID,
     TECTONICS_STAGE_VERSION,
 };
+pub use topography::{
+    generate_initial_topography, TopographyMetrics, TopographyParameters, TopographyRequest,
+    TopographyState, TOPOGRAPHY_STAGE_ID, TOPOGRAPHY_STAGE_VERSION,
+};
 pub use topology::{
     build_icosphere, expected_edge_count, expected_face_count, expected_sample_count,
     GeodesicTopology, PlanetTopology, TopologyMetrics, INVALID_SAMPLE_ID, MAX_TOPOLOGY_LEVEL,
 };
 
-pub const WORLDGEN_ENGINE_VERSION: u32 = 6;
+pub const WORLDGEN_ENGINE_VERSION: u32 = 7;
 pub const SYNTHETIC_STAGE_ID: &str = "foundation:synthetic";
 pub const SYNTHETIC_STAGE_VERSION: u32 = 1;
 const SYNTHETIC_NAMESPACE: &str = "worldgen:foundation:synthetic:v1";
@@ -65,6 +70,7 @@ pub enum WorldgenError {
     InvalidGeology(&'static str),
     InvalidLithosphere(&'static str),
     InvalidRefinement(&'static str),
+    InvalidTopography(&'static str),
 }
 impl fmt::Display for WorldgenError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -76,7 +82,8 @@ impl fmt::Display for WorldgenError {
             | Self::InvalidTectonics(message)
             | Self::InvalidGeology(message)
             | Self::InvalidLithosphere(message)
-            | Self::InvalidRefinement(message) => formatter.write_str(message),
+            | Self::InvalidRefinement(message)
+            | Self::InvalidTopography(message) => formatter.write_str(message),
         }
     }
 }

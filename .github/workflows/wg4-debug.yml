@@ -1,0 +1,22 @@
+name: WG-4 Manual Physical Validation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Run WG-4 physical validation
+        run: |
+          cargo test -p interlink-worldgen --test topography_ensemble
+          cargo run -p interlink-worldgen-cli -- topography --seed manual-wg4-a --coarse-level 4 --level 6 --plates 18
+          cargo run -p interlink-worldgen-cli -- topography --seed manual-wg4-b --coarse-level 4 --level 6 --plates 18
+          cargo check -p interlink-worldgen-wasm --target wasm32-unknown-unknown

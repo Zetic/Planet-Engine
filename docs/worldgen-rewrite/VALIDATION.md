@@ -148,3 +148,7 @@ The native `inheritance` CLI reports coarse/fine levels and sample counts, deter
 Later stages add validation for hypsometry and isostatic response, lithologic distributions, climate zonation, drainage acyclicity, water routing, erosion/sediment conservation, and glacial/coastal morphology.
 
 Earth datasets are validation targets for distributions and morphology, not required generated outputs.
+
+## WG-4 initial-topography gates
+
+WG-4 acceptance requires finite sample-aligned component and final elevation fields; deterministic topography identity; unchanged upstream identities; nontrivial crustal/isostatic and tectonic relief; bounded safety-clamp use; area-weighted hypsometry; exact dry-profile behavior; and an Earth-like water-volume solve whose integrated standing-water volume matches the explicit target within numerical tolerance. Ensemble validation checks that oceanic cooling tends toward deeper old seafloor and that collision, ridge, rift, trench/arc polarity, basin tendency and mantle support produce the expected signed statistical responses without requiring any generated seed to reproduce Earth exactly.

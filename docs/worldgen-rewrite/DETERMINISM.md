@@ -64,3 +64,7 @@ The WG-3.75 inherited physical-state hash combines the refinement stage identity
 - changing water inventory or another explicit physical profile parameter does not silently mutate WG-2/WG-3/WG-3.5 hashes.
 
 Floating-point determinism requirements are documented per physical stage as those stages are introduced. WG-0's synthetic proof uses integer field generation specifically so infrastructure determinism can be tested independently from numerical-model choices; WG-1 topology, WG-2 kinematics, WG-3 geology, WG-3.5 lithosphere, and WG-3.75 inheritance regression-test deterministic floating-point output identities on the supported toolchain.
+
+## WG-4 topography identity
+
+WG-4 uses `terrain:structure:v1`. Its ordered topography hash binds the WG-4 stage/model parameter identity to the accepted WG-3.75 inherited-state hash, fine boundary hash, explicit planetary-parameter hash, solid-surface elevation, sea-level state, and water depth. Topography changes must not mutate accepted WG-2, WG-3, WG-3.5, or WG-3.75 identities.
