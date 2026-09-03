@@ -1525,8 +1525,24 @@ fn correct_ocean_currents(
     }
 }
 
+#[derive(Clone, Debug)]
+struct OceanHeatWorkspace {
+    outgoing_transport_m2_s: Vec<f64>,
+    donor_scale: Vec<f64>,
+}
+
+impl OceanHeatWorkspace {
+    fn new(sample_count: usize) -> Self {
+        Self {
+            outgoing_transport_m2_s: vec![0.0; sample_count],
+            donor_scale: vec![1.0; sample_count],
+        }
+    }
+}
+
 fn conservative_ocean_heat_tendency(
     geometry: &OceanProjectionGeometry,
+    workspace: &mut OceanHeatWorkspace,
     edge_transport_m2_s: &[f64],
     temperature_k: &[f64],
     cell_area_m2: &[f64],
@@ -1545,7 +1561,12 @@ fn conservative_ocean_heat_tendency(
     // spans many physical advection times at L7. Limit aggregate donor outflow
     // rather than clamping cell tendencies independently so the explicit
     // donor-cell heat step remains both stable and conservative.
-    let mut outgoing_transport_m2_s = vec![0.0; temperature_k.len()];
+    let OceanHeatWorkspace {
+        outgoing_transport_m2_s,
+        donor_scale,
+    } = workspace;
+    debug_assert_eq!(outgoing_transport_m2_s.len(), temperature_k.len());
+    outgoing_transport_m2_s.fill(0.0);
     for (edge_index, edge) in geometry.edges.iter().enumerate() {
         let transport = edge_transport_m2_s[edge_index];
         if transport > 0.0 {
@@ -1554,7 +1575,7 @@ fn conservative_ocean_heat_tendency(
             outgoing_transport_m2_s[edge.b] += -transport;
         }
     }
-    let mut donor_scale = vec![1.0; temperature_k.len()];
+    donor_scale.fill(1.0);
     for sample in 0..temperature_k.len() {
         let outgoing = outgoing_transport_m2_s[sample];
         if outgoing <= 0.0 {
@@ -1790,6 +1811,7 @@ fn generate_coupled_climate_internal(
     );
     let mut ocean_projection_workspace = OceanProjectionWorkspace::new(sample_count);
     let mut ocean_edge_transport_m2_s = vec![0.0; ocean_projection_geometry.edges.len()];
+    let mut ocean_heat_workspace = OceanHeatWorkspace::new(sample_count);
     let mut ocean_heat_tendency_k_s = vec![0.0; sample_count];
 
     let axial_tilt_sin = planet.axial_tilt_rad.sin();
@@ -2110,6 +2132,7 @@ fn generate_coupled_climate_internal(
             previous_sst.copy_from_slice(&sea_surface_temperature);
             conservative_ocean_heat_tendency(
                 &ocean_projection_geometry,
+                &mut ocean_heat_workspace,
                 &ocean_edge_transport_m2_s,
                 &previous_sst,
                 &cell_area_m2,
@@ -2749,8 +2772,10 @@ mod tests {
             matrix_nn: vec![0.0, 0.0],
         };
         let mut tendency = vec![0.0; 2];
+        let mut workspace = OceanHeatWorkspace::new(2);
         conservative_ocean_heat_tendency(
             &geometry,
+            &mut workspace,
             &[20.0],
             &[300.0, 280.0],
             &[100.0, 200.0],
@@ -2807,8 +2832,10 @@ mod tests {
         let temperature = [300.0, 280.0];
         let area = [100.0, 100.0];
         let mut tendency = [0.0, 0.0];
+        let mut workspace = OceanHeatWorkspace::new(2);
         conservative_ocean_heat_tendency(
             &geometry,
+            &mut workspace,
             &[100.0],
             &temperature,
             &area,
@@ -2824,6 +2851,7 @@ mod tests {
 
         conservative_ocean_heat_tendency(
             &geometry,
+            &mut workspace,
             &[100.0],
             &temperature,
             &area,
