@@ -146,7 +146,7 @@ impl Default for ClimateParameters {
             ocean_current_correction_iterations: 6,
             maximum_surface_current_m_s: 2.8,
             ocean_temperature_diffusion: 0.08,
-            ocean_advection_relaxation: 0.025,
+            ocean_advection_relaxation: 0.010,
             ocean_advection_cfl_limit: 0.45,
             evaporation_relaxation: 0.055,
             moisture_transport_cfl: 0.025,

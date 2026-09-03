@@ -33,6 +33,8 @@ WG-5 intentionally includes a reduced B+ surface-ocean circulation model. Wind s
 
 Projected ocean-edge transports drive SST advection through a conservative donor-cell update. Aggregate donor outflow is CFL-limited per orbital phase, so the explicit heat step remains stable as mesh spacing shrinks through the L7 quality target without weakening circulation at coarser levels. Atmospheric moisture transport likewise scales aggregate outgoing graph transfers to the donor water mass before applying paired transfers, preserving moisture mass instead of relying on post-transport zero clamps.
 
+The reduced ocean-advection coupling is calibrated separately from the CFL safety cap. The default coupling is `0.010`, which retains causal current-driven SST transport while meeting the WG-5 L7 annual convergence target; the donor CFL cap remains an independent resolution-safety bound.
+
 Rotation is a physical input rather than an Earth-fixed display assumption. Slower rotation broadens the reduced overturning/Hadley regime and weakens zonal/Coriolis control, while faster rotation narrows the overturning regime and increases rotational control. Coriolis deflection varies continuously with latitude and is exactly zero at the equator.
 
 ## Physical parameter boundary
