@@ -1,4 +1,4 @@
-name: WG-4 Integration Harness
+name: WG-4 Validation and Packaging
 
 on:
   push:
@@ -8,7 +8,7 @@ permissions:
   contents: write
 
 jobs:
-  integrate:
+  validate-package:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
@@ -23,37 +23,37 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
-      - name: Apply and validate WG-4 integration
+      - name: Validate source integration
         run: |
           set +e
-          : > wg4-integration.log
+          : > wg4-validation.log
           run_step() {
-            echo "===== $1 =====" >> wg4-integration.log
+            echo "===== $1 =====" >> wg4-validation.log
             shift
-            "$@" >> wg4-integration.log 2>&1
+            "$@" >> wg4-validation.log 2>&1
             rc=$?
-            echo "exit_status=$rc" >> wg4-integration.log
+            echo "exit_status=$rc" >> wg4-validation.log
             return $rc
           }
-          run_step integration python scripts/wg4_integration.py || true
           run_step rustfmt cargo fmt --all || true
           run_step npm-install npm ci || true
           run_step browser-build npm run build || true
           run_step browser-tests npm run test:ts || true
           run_step rust-tests cargo test --workspace || true
+          run_step topography-cli cargo run -p interlink-worldgen-cli -- topography --seed ci-wg4 --coarse-level 4 --level 6 --plates 18 || true
           run_step wasm-check cargo check -p interlink-worldgen-wasm --target wasm32-unknown-unknown || true
-          if grep -q 'exit_status=[1-9]' wg4-integration.log; then
-            echo 'validation_failed=1' >> wg4-integration.log
+          if grep -q 'exit_status=[1-9]' wg4-validation.log; then
+            echo 'validation_failed=1' >> wg4-validation.log
             exit 0
           fi
           run_step wasm-bindgen-install cargo install wasm-bindgen-cli --version 0.2.127 --locked || true
           run_step wasm-package npm run build:worldgen-wasm || true
-          if grep -q 'exit_status=[1-9]' wg4-integration.log; then
-            echo 'validation_failed=1' >> wg4-integration.log
+          if grep -q 'exit_status=[1-9]' wg4-validation.log; then
+            echo 'validation_failed=1' >> wg4-validation.log
           else
-            echo 'validation_failed=0' >> wg4-integration.log
+            echo 'validation_failed=0' >> wg4-validation.log
           fi
-      - name: Commit integration result
+      - name: Commit generated and formatted outputs
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -61,13 +61,12 @@ jobs:
             rust/interlink-worldgen/src \
             rust/interlink-worldgen-cli/src \
             rust/interlink-worldgen-wasm/src \
+            rust/interlink-worldgen-wasm/tests \
             src/worldgen \
             src/wasm-worldgen \
             dist/worldgen \
             tests \
-            docs/worldgen-rewrite \
-            README.md package.json index.html worldgen-lab.html \
-            wg4-integration.log
+            wg4-validation.log
           if git diff --cached --quiet; then exit 0; fi
-          git commit -m "WG-4: integrate topography transport and diagnostics"
+          git commit -m "WG-4: validate and package topography integration"
           git push origin HEAD:worldgen-wg4-initial-topography
