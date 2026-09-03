@@ -133,3 +133,33 @@ The measured baseline changes the priority order for subsequent tuning work:
 5. Re-evaluate PET, aridity, snow, and sea-ice potentials against the corrected thermal/hydrological state.
 
 No WG-5 default should be tuned merely to make a screenshot look better; subsequent changes should be evaluated against these fixed measurements and the existing determinism, conservation, convergence, and L7 acceptance contracts.
+
+
+## Stage-3 thermal recalibration
+
+The post-hypsometry thermal pass promotes WG-5 to `climate:coupled-surface@3`. The selected Earth-like reduced thermal parameters are:
+
+- atmospheric shortwave reflectivity: `0.25`;
+- surface-albedo shortwave coupling: `0.25`;
+- reduced longwave optical depth: `1.20`;
+- atmospheric heat diffusivity: `2.0e6 m^2/s`;
+- air-sea exchange coefficient: `8 W/m^2/K`;
+- effective ocean mixed-layer depth: `14 m`;
+- deterministic atmospheric heat solver iterations: `20`.
+
+The shortwave budget now uses an effective albedo composed of background atmospheric reflection plus an attenuated surface contribution. For the default clear land and ocean surface albedos this gives effective values of about `0.295` and `0.263`, respectively, while snow and ice retain stronger causal reflection. The calibration report therefore renames the old `clear_surface_absorbed_shortwave_*` diagnostics to `effective_absorbed_shortwave_*`.
+
+The old neighbor-temperature relaxation is replaced by conservative, geometry-aware implicit atmospheric diffusion. Air-sea exchange now conserves combined atmospheric-column and mixed-layer heat and is parameterized in `W/m^2/K` instead of arbitrary temperature relaxation.
+
+Two strict production-gate acceptance cases established the selected mixed-layer depth without changing the `0.08 K` convergence tolerance or the 10-year maximum spin-up bound:
+
+| case | spin-up | final RMS | mean T | land T | ocean T | mean SST | moisture error |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| L6 `interlink-wg5`, 16 plates | 8 y | 0.073538 K | 283.293 K | 270.864 K | 289.916 K | 290.125 K | 3.74e-13 |
+| L7 `ci-wg5-l7`, 24 plates | 10 y | 0.065438 K | 290.472 K | 281.933 K | 292.995 K | 293.308 K | 5.73e-13 |
+
+These are different deterministic acceptance seeds and are not presented as a resolution-convergence pair. Their purpose is to prove the stage-3 thermal solve clears the existing L6/L7 acceptance gate across the intended quality range. The earlier stage-2 measurements in this document remain the historical baseline that motivated the thermal rebuild.
+
+The reported TOA energy imbalance remains a reduced diagnostic proxy rather than a strict closed radiative-energy budget because WG-5 still uses a reduced gray-atmosphere target-temperature formulation and does not model explicit clouds, vertical atmospheric layers, or a full radiative-transfer column.
+
+Moisture-routing cap saturation remains a separate calibration problem and is intentionally not redesigned by this thermal PR.

@@ -15,6 +15,7 @@ export const wasmworldgenclimate_arc_elevation_m: (a: number) => [number, number
 export const wasmworldgenclimate_aridity_index: (a: number) => [number, number];
 export const wasmworldgenclimate_atmospheric_longwave_optical_depth: (a: number) => number;
 export const wasmworldgenclimate_atmospheric_mean_molar_mass_kg_per_mol: (a: number) => number;
+export const wasmworldgenclimate_atmospheric_shortwave_reflectivity: (a: number) => number;
 export const wasmworldgenclimate_atmospheric_specific_heat_j_per_kg_k: (a: number) => number;
 export const wasmworldgenclimate_axial_tilt_rad: (a: number) => number;
 export const wasmworldgenclimate_boundary_coarse_source_indices: (a: number) => [number, number];
