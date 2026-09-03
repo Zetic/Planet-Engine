@@ -1,22 +1,57 @@
-name: WG-4 Manual Physical Validation
+name: Temporary cumulative Lab sync
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [lab-cumulative-views-followup]
+    paths:
+      - '.github/workflows/wg4-debug.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  validate:
+  sync:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
         with:
-          targets: wasm32-unknown-unknown
-      - name: Run WG-4 physical validation
+          node-version: 22
+          cache: npm
+      - name: Install Rust stable and browser target
         run: |
-          cargo test -p interlink-worldgen --test topography_ensemble
-          cargo run -p interlink-worldgen-cli -- topography --seed manual-wg4-a --coarse-level 4 --level 6 --plates 18
-          cargo run -p interlink-worldgen-cli -- topography --seed manual-wg4-b --coarse-level 4 --level 6 --plates 18
+          rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown
+          rustup default stable
+      - name: Restore wasm-bindgen CLI cache
+        id: wasm-bindgen-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/wasm-bindgen*
+          key: ${{ runner.os }}-wasm-bindgen-cli-0.2.127
+      - name: Install pinned wasm-bindgen CLI
+        if: steps.wasm-bindgen-cache.outputs.cache-hit != 'true'
+        run: cargo install wasm-bindgen-cli --version 0.2.127 --locked
+      - name: Apply narrow Lab follow-up
+        run: |
+          python scripts/apply-lab-cumulative-followup.py
+          sed -i 's/WORLDGEN_STRUCTURE_CONTINENT_MARGIN/WORLDGEN_STRUCTURE_CONTINENTAL_MARGIN/g' src/worldgen/diagnostics/worldgenTopographyLabStandalone.ts
+          cargo fmt --all
+      - name: Build and test browser surface
+        run: |
+          npm ci
+          npm run build
+          npm run test:ts
+      - name: Test Rust and browser bridge
+        run: |
+          cargo test --workspace
           cargo check -p interlink-worldgen-wasm --target wasm32-unknown-unknown
+      - name: Rebuild committed WASM package
+        run: npm run build:worldgen-wasm
+      - name: Commit clean follow-up
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m 'Restore cumulative Planet Engine Lab diagnostics'
+          git push
