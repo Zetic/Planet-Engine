@@ -598,14 +598,9 @@ fn climate(options: &Options) -> Result<(), String> {
         planet,
     )
     .map_err(|error| error.to_string())?;
-    let boundaries = inherit_boundary_interfaces(
-        &coarse,
-        &fine,
-        &tectonics,
-        &geology,
-        &inherited.plate_ids,
-    )
-    .map_err(|error| error.to_string())?;
+    let boundaries =
+        inherit_boundary_interfaces(&coarse, &fine, &tectonics, &geology, &inherited.plate_ids)
+            .map_err(|error| error.to_string())?;
     let terrain = generate_initial_topography(
         &fine,
         &inherited,
@@ -614,19 +609,18 @@ fn climate(options: &Options) -> Result<(), String> {
         &TopographyRequest::new(options.seed.as_str()),
     )
     .map_err(|error| error.to_string())?;
-    let climate = generate_coupled_climate(
-        &fine,
-        &terrain,
-        planet,
-        &ClimateRequest::new(options.seed.as_str()),
-    )
-    .map_err(|error| error.to_string())?;
+    let climate_request = ClimateRequest::new(options.seed.as_str());
+    let climate = generate_coupled_climate(&fine, &terrain, planet, &climate_request)
+        .map_err(|error| error.to_string())?;
     let metrics = &climate.metrics;
     println!("Project Interlink Planet Engine WG-5 Coupled Planetary Climate");
     println!("engine_version={}", WORLDGEN_ENGINE_VERSION);
     println!("stage={}@{}", climate.stage.id, climate.stage.version);
     println!("seed={} macro_plates={}", options.seed, options.plates);
-    println!("levels coarse={} fine={}", options.coarse_level, options.level);
+    println!(
+        "levels coarse={} fine={}",
+        options.coarse_level, options.level
+    );
     println!(
         "samples={} phases={} spinup_years={}",
         metrics.sample_count, metrics.orbital_phase_count, metrics.spinup_years
@@ -676,7 +670,26 @@ fn climate(options: &Options) -> Result<(), String> {
         "cryosphere_potential persistent_snow_area_fraction={:.6} sea_ice_area_fraction={:.6}",
         metrics.persistent_snow_area_fraction, metrics.sea_ice_area_fraction
     );
-    println!("elapsed_ms={:.3}", started.elapsed().as_secs_f64() * 1_000.0);
+    println!(
+        "elapsed_ms={:.3}",
+        started.elapsed().as_secs_f64() * 1_000.0
+    );
+    if metrics.final_temperature_rms_change_k
+        > climate_request.parameters.convergence_temperature_rms_k
+    {
+        return Err(format!(
+            "WG-5 climate did not converge: final RMS change {:.6} K exceeds target {:.6} K after {} model years",
+            metrics.final_temperature_rms_change_k,
+            climate_request.parameters.convergence_temperature_rms_k,
+            metrics.spinup_years
+        ));
+    }
+    if metrics.moisture_budget_relative_error > 1.0e-8 {
+        return Err(format!(
+            "WG-5 moisture budget did not close: relative error {:.6e} exceeds diagnostic tolerance 1e-8",
+            metrics.moisture_budget_relative_error
+        ));
+    }
     Ok(())
 }
 
