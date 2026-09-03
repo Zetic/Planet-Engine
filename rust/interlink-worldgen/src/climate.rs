@@ -917,6 +917,39 @@ struct OceanProjectionEdge {
 struct OceanProjectionGeometry {
     edges: Vec<OceanProjectionEdge>,
     diagonal: Vec<f64>,
+    perimeter: Vec<f64>,
+    matrix_ee: Vec<f64>,
+    matrix_en: Vec<f64>,
+    matrix_nn: Vec<f64>,
+}
+
+#[derive(Clone, Debug)]
+struct OceanProjectionWorkspace {
+    divergence: Vec<f64>,
+    pressure: Vec<f64>,
+    residual: Vec<f64>,
+    preconditioned: Vec<f64>,
+    direction: Vec<f64>,
+    laplacian_direction: Vec<f64>,
+    projected_divergence: Vec<f64>,
+    rhs_e: Vec<f64>,
+    rhs_n: Vec<f64>,
+}
+
+impl OceanProjectionWorkspace {
+    fn new(sample_count: usize) -> Self {
+        Self {
+            divergence: vec![0.0; sample_count],
+            pressure: vec![0.0; sample_count],
+            residual: vec![0.0; sample_count],
+            preconditioned: vec![0.0; sample_count],
+            direction: vec![0.0; sample_count],
+            laplacian_direction: vec![0.0; sample_count],
+            projected_divergence: vec![0.0; sample_count],
+            rhs_e: vec![0.0; sample_count],
+            rhs_n: vec![0.0; sample_count],
+        }
+    }
 }
 
 fn edge_direction_components(
@@ -1191,7 +1224,31 @@ fn build_ocean_projection_geometry(
             diagonal[b] += conductance;
         }
     }
-    OceanProjectionGeometry { edges, diagonal }
+    let mut perimeter = vec![0.0; ocean.len()];
+    let mut matrix_ee = vec![0.0; ocean.len()];
+    let mut matrix_en = vec![0.0; ocean.len()];
+    let mut matrix_nn = vec![0.0; ocean.len()];
+    for edge in &edges {
+        perimeter[edge.a] += edge.interface_length_m;
+        perimeter[edge.b] += edge.interface_length_m;
+        for (sample, east, north) in [
+            (edge.a, edge.a_east, edge.a_north),
+            (edge.b, edge.b_east, edge.b_north),
+        ] {
+            let weight = edge.interface_length_m;
+            matrix_ee[sample] += weight * east * east;
+            matrix_en[sample] += weight * east * north;
+            matrix_nn[sample] += weight * north * north;
+        }
+    }
+    OceanProjectionGeometry {
+        edges,
+        diagonal,
+        perimeter,
+        matrix_ee,
+        matrix_en,
+        matrix_nn,
+    }
 }
 
 fn apply_ocean_laplacian(geometry: &OceanProjectionGeometry, values: &[f64], output: &mut [f64]) {
@@ -1209,6 +1266,7 @@ fn correct_ocean_currents(
     current_east: &mut [f64],
     current_north: &mut [f64],
     projected_edge_transport_m2_s: &mut [f64],
+    workspace: &mut OceanProjectionWorkspace,
     parameters: &ClimateParameters,
 ) -> f64 {
     debug_assert_eq!(projected_edge_transport_m2_s.len(), geometry.edges.len());
@@ -1219,9 +1277,21 @@ fn correct_ocean_currents(
         return 0.0;
     }
 
+    let OceanProjectionWorkspace {
+        divergence,
+        pressure,
+        residual,
+        preconditioned,
+        direction,
+        laplacian_direction,
+        projected_divergence,
+        rhs_e,
+        rhs_n,
+    } = workspace;
+    divergence.fill(0.0);
+
     // Convert endpoint ENU vectors into one antisymmetric transport value per
     // ocean-ocean interface. Land interfaces never enter this graph.
-    let mut divergence = vec![0.0; ocean.len()];
     for (edge_index, edge) in geometry.edges.iter().enumerate() {
         let outward_a = current_east[edge.a] * edge.a_east + current_north[edge.a] * edge.a_north;
         let outward_b = current_east[edge.b] * edge.b_east + current_north[edge.b] * edge.b_north;
@@ -1236,11 +1306,11 @@ fn correct_ocean_currents(
     // projection. Because edge flux is antisymmetric, each connected ocean
     // component has zero net right-hand side and the constant pressure null
     // mode does not affect the corrected transport.
-    let mut pressure = vec![0.0; ocean.len()];
-    let mut residual = divergence.clone();
-    let mut preconditioned = vec![0.0; ocean.len()];
-    let mut direction = vec![0.0; ocean.len()];
-    let mut laplacian_direction = vec![0.0; ocean.len()];
+    pressure.fill(0.0);
+    residual.copy_from_slice(divergence);
+    preconditioned.fill(0.0);
+    direction.fill(0.0);
+    laplacian_direction.fill(0.0);
     for i in 0..ocean.len() {
         if ocean[i] && geometry.diagonal[i] > 0.0 {
             preconditioned[i] = residual[i] / geometry.diagonal[i];
@@ -1256,7 +1326,7 @@ fn correct_ocean_currents(
         if !rho.is_finite() || rho <= 1.0e-24 {
             break;
         }
-        apply_ocean_laplacian(geometry, &direction, &mut laplacian_direction);
+        apply_ocean_laplacian(geometry, direction, laplacian_direction);
         let denominator = direction
             .iter()
             .zip(laplacian_direction.iter())
@@ -1290,25 +1360,19 @@ fn correct_ocean_currents(
         rho = next_rho;
     }
 
-    let mut projected_divergence = vec![0.0; ocean.len()];
-    let mut perimeter = vec![0.0; ocean.len()];
+    projected_divergence.fill(0.0);
     for (edge_index, edge) in geometry.edges.iter().enumerate() {
         let correction = edge.conductance * (pressure[edge.a] - pressure[edge.b]);
         projected_edge_transport_m2_s[edge_index] -= correction;
         projected_divergence[edge.a] += projected_edge_transport_m2_s[edge_index];
         projected_divergence[edge.b] -= projected_edge_transport_m2_s[edge_index];
-        perimeter[edge.a] += edge.interface_length_m;
-        perimeter[edge.b] += edge.interface_length_m;
     }
 
     // Reconstruct the best-fit local ENU display/diagnostic vector from the
     // conservative edge-normal transports. This also naturally turns flow
     // along coastlines because blocked land edges are absent from the solve.
-    let mut matrix_ee = vec![0.0; ocean.len()];
-    let mut matrix_en = vec![0.0; ocean.len()];
-    let mut matrix_nn = vec![0.0; ocean.len()];
-    let mut rhs_e = vec![0.0; ocean.len()];
-    let mut rhs_n = vec![0.0; ocean.len()];
+    rhs_e.fill(0.0);
+    rhs_n.fill(0.0);
     for (edge_index, edge) in geometry.edges.iter().enumerate() {
         let normal_speed = projected_edge_transport_m2_s[edge_index] / edge.interface_length_m;
         for (sample, east, north, speed) in [
@@ -1316,9 +1380,6 @@ fn correct_ocean_currents(
             (edge.b, edge.b_east, edge.b_north, -normal_speed),
         ] {
             let weight = edge.interface_length_m;
-            matrix_ee[sample] += weight * east * east;
-            matrix_en[sample] += weight * east * north;
-            matrix_nn[sample] += weight * north * north;
             rhs_e[sample] += weight * speed * east;
             rhs_n[sample] += weight * speed * north;
         }
@@ -1326,14 +1387,14 @@ fn correct_ocean_currents(
     current_east.fill(0.0);
     current_north.fill(0.0);
     for i in 0..ocean.len() {
-        if !ocean[i] || perimeter[i] <= 0.0 {
+        if !ocean[i] || geometry.perimeter[i] <= 0.0 {
             continue;
         }
-        let trace = matrix_ee[i] + matrix_nn[i];
+        let trace = geometry.matrix_ee[i] + geometry.matrix_nn[i];
         let regularization = (trace * 1.0e-10).max(1.0e-12);
-        let a = matrix_ee[i] + regularization;
-        let b = matrix_en[i];
-        let d = matrix_nn[i] + regularization;
+        let a = geometry.matrix_ee[i] + regularization;
+        let b = geometry.matrix_en[i];
+        let d = geometry.matrix_nn[i] + regularization;
         let determinant = a * d - b * b;
         if determinant.abs() <= 1.0e-18 {
             continue;
@@ -1347,8 +1408,8 @@ fn correct_ocean_currents(
     let mut residual_speed = 0.0;
     let mut residual_samples = 0.0;
     for i in 0..ocean.len() {
-        if ocean[i] && perimeter[i] > 0.0 {
-            residual_speed += projected_divergence[i].abs() / perimeter[i];
+        if ocean[i] && geometry.perimeter[i] > 0.0 {
+            residual_speed += projected_divergence[i].abs() / geometry.perimeter[i];
             residual_samples += 1.0;
         }
     }
@@ -1581,6 +1642,7 @@ fn generate_coupled_climate_internal(
         &north_bases,
         planet.radius_m,
     );
+    let mut ocean_projection_workspace = OceanProjectionWorkspace::new(sample_count);
     let mut ocean_edge_transport_m2_s = vec![0.0; ocean_projection_geometry.edges.len()];
     let mut ocean_heat_tendency_k_s = vec![0.0; sample_count];
 
@@ -1897,6 +1959,7 @@ fn generate_coupled_climate_internal(
                     &mut current_east,
                     &mut current_north,
                     &mut ocean_edge_transport_m2_s,
+                    &mut ocean_projection_workspace,
                     &parameters,
                 );
                 maximum_ocean_divergence_residual =
@@ -2537,6 +2600,10 @@ mod tests {
                 conductance: 1.0,
             }],
             diagonal: vec![1.0, 1.0],
+            perimeter: vec![10.0, 10.0],
+            matrix_ee: vec![10.0, 10.0],
+            matrix_en: vec![0.0, 0.0],
+            matrix_nn: vec![0.0, 0.0],
         };
         let mut tendency = vec![0.0; 2];
         conservative_ocean_heat_tendency(
@@ -2589,6 +2656,10 @@ mod tests {
                 conductance: 1.0,
             }],
             diagonal: vec![1.0, 1.0],
+            perimeter: vec![1.0, 1.0],
+            matrix_ee: vec![1.0, 1.0],
+            matrix_en: vec![0.0, 0.0],
+            matrix_nn: vec![0.0, 0.0],
         };
         let temperature = [300.0, 280.0];
         let area = [100.0, 100.0];
