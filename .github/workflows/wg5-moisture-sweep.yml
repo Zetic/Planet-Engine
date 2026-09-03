@@ -1,16 +1,11 @@
-name: Temporary WG-5 Moisture Sweep
+name: Temporary WG-5 Moisture Acceptance
 
 on:
   push:
     branches: [wg5-moisture-transport-rebuild]
 
 jobs:
-  sweep:
-    strategy:
-      fail-fast: false
-      matrix:
-        speed_cap: ['0.5', '0.75', '1.0']
-    name: speed-${{ matrix.speed_cap }}
+  acceptance:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,7 +22,7 @@ jobs:
           MOISTURE_CFL: '0.90'
           CONVERGENCE_RH: '0.60'
           CONVERGENCE_EFF: '0.35'
-          MOISTURE_SPEED_CAP: ${{ matrix.speed_cap }}
+          MOISTURE_SPEED_CAP: '1.0'
         run: |
           set -euo pipefail
           python scripts/wg5_moisture_patch.py
@@ -35,10 +30,17 @@ jobs:
           python scripts/wg5_moisture_adaptive_fix.py
           python scripts/wg5_moisture_speedcap_patch.py
           python scripts/wg5_moisture_speedcap_fix.py
+          python scripts/wg5_moisture_substeps64_patch.py
           cargo fmt --all
           cargo check -p interlink-worldgen
           cargo check -p interlink-worldgen-cli --examples
-      - name: Run reference L6 calibration
+      - name: Run L6 ensemble
         run: |
           set -euo pipefail
-          cargo run --release -p interlink-worldgen-cli --example climate_calibration -- --seed interlink-wg5 --coarse-level 4 --level 6 --plates 16 --skip-orography-intervention
+          for seed in wg5-cal-a wg5-cal-b wg5-cal-c; do
+            cargo run --release -p interlink-worldgen-cli --example climate_calibration -- --seed "$seed" --coarse-level 4 --level 6 --plates 16 --skip-orography-intervention
+          done
+      - name: Run L7 quality case
+        run: |
+          set -euo pipefail
+          cargo run --release -p interlink-worldgen-cli --example climate_calibration -- --seed ci-wg5-l7 --coarse-level 5 --level 7 --plates 24 --skip-orography-intervention
