@@ -33,6 +33,7 @@ jobs:
         run: |
           python scripts/lab_observability_patch.py
           python scripts/lab_observability_interface_fix.py
+          python scripts/lab_observability_regression_fix.py
           cargo fmt --all
       - name: Full Rust regression suite
         run: cargo test --workspace
