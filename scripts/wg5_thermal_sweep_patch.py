@@ -2,6 +2,7 @@ from pathlib import Path
 import os
 
 sw = os.environ.get('SW_REFLECTIVITY', '0.22')
+lw = os.environ.get('LW_OPTICAL_DEPTH', '0.90')
 diff = os.environ.get('HEAT_DIFFUSIVITY', '100000.0')
 exchange = os.environ.get('AIR_SEA_EXCHANGE', '8.0')
 depth = os.environ.get('MIXED_LAYER_DEPTH', '50.0')
@@ -13,7 +14,7 @@ s = p.read_text()
 repls = {
     'pub const CLIMATE_STAGE_VERSION: u32 = 2;': 'pub const CLIMATE_STAGE_VERSION: u32 = 3;',
     '    pub atmospheric_specific_heat_j_per_kg_k: f64,\n    pub atmospheric_longwave_optical_depth: f64,': '    pub atmospheric_specific_heat_j_per_kg_k: f64,\n    pub atmospheric_shortwave_reflectivity: f64,\n    pub atmospheric_longwave_optical_depth: f64,',
-    '            atmospheric_specific_heat_j_per_kg_k: 1_004.0,\n            atmospheric_longwave_optical_depth: 0.90,': f'            atmospheric_specific_heat_j_per_kg_k: 1_004.0,\n            atmospheric_shortwave_reflectivity: {sw},\n            atmospheric_longwave_optical_depth: 0.90,',
+    '            atmospheric_specific_heat_j_per_kg_k: 1_004.0,\n            atmospheric_longwave_optical_depth: 0.90,': f'            atmospheric_specific_heat_j_per_kg_k: 1_004.0,\n            atmospheric_shortwave_reflectivity: {sw},\n            atmospheric_longwave_optical_depth: {lw},',
     '        if !self.atmospheric_longwave_optical_depth.is_finite()\n            || self.atmospheric_longwave_optical_depth < 0.0': '        if !self.atmospheric_shortwave_reflectivity.is_finite()\n            || !(0.0..1.0).contains(&self.atmospheric_shortwave_reflectivity)\n        {\n            return Err("atmospheric shortwave reflectivity must be finite and within [0, 1)");\n        }\n        if !self.atmospheric_longwave_optical_depth.is_finite()\n            || self.atmospheric_longwave_optical_depth < 0.0',
     '            self.atmospheric_specific_heat_j_per_kg_k,\n            self.atmospheric_longwave_optical_depth,': '            self.atmospheric_specific_heat_j_per_kg_k,\n            self.atmospheric_shortwave_reflectivity,\n            self.atmospheric_longwave_optical_depth,',
     '    pub atmospheric_heat_relaxation: f64,\n    pub air_sea_exchange_relaxation: f64,': '    pub atmospheric_heat_diffusivity_m2_s: f64,\n    pub atmospheric_heat_solver_iterations: u8,\n    pub air_sea_exchange_coefficient_w_m2_k: f64,\n    pub ocean_mixed_layer_depth_m: f64,',
@@ -241,7 +242,6 @@ if insert_anchor not in s:
     raise SystemExit('missing atmospheric helper insertion anchor')
 s = s.replace(insert_anchor, helper + insert_anchor, 1)
 
-# Remove old cp response and build heat geometry.
 old = '''    let atmospheric_heat_capacity_response =
         (1_004.0 / physical.atmospheric_specific_heat_j_per_kg_k).clamp(0.25, 4.0);
     let phase_seconds = planet.orbital_period_s / phase_count as f64;
@@ -393,7 +393,6 @@ s = s.replace(old, new, 1)
 
 p.write_text(s)
 
-# Update calibration ASR proxy so it matches the new reduced shortwave budget.
 p = Path('rust/interlink-worldgen/src/climate_calibration.rs')
 s = p.read_text()
 old = '''        f64::from(climate.annual_mean_insolation_w_m2[index]) * (1.0 - albedo)
