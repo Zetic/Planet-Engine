@@ -1,0 +1,249 @@
+from pathlib import Path
+import re
+
+path = Path('rust/interlink-worldgen/src/climate.rs')
+text = path.read_text()
+
+pattern = re.compile(
+    r"fn moisture_transport_substeps_for_phase\(.*?\n}\n\nfn advect_moisture_substep\(.*?\n}\n\nfn build_ocean_projection_geometry",
+    re.S,
+)
+replacement = r'''#[derive(Clone, Copy, Debug)]
+struct PhaseAtmosphericMoistureEdge {
+    donor: usize,
+    receiver: usize,
+    normal_speed_abs_m_s: f64,
+    interface_length_m: f64,
+}
+
+fn prepare_phase_moisture_transport(
+    edges: &[AtmosphericMoistureEdge],
+    wind_east: &[f64],
+    wind_north: &[f64],
+    maximum_speed_m_s: f64,
+    phase_edges: &mut Vec<PhaseAtmosphericMoistureEdge>,
+    outgoing_rate: &mut [f64],
+) {
+    phase_edges.clear();
+    outgoing_rate.fill(0.0);
+    for edge in edges {
+        let outward_a = wind_east[edge.a] * edge.a_east + wind_north[edge.a] * edge.a_north;
+        let outward_b = wind_east[edge.b] * edge.b_east + wind_north[edge.b] * edge.b_north;
+        let normal_speed =
+            (0.5 * (outward_a - outward_b)).clamp(-maximum_speed_m_s, maximum_speed_m_s);
+        if normal_speed.abs() <= 1.0e-12 {
+            continue;
+        }
+        let (donor, receiver) = if normal_speed >= 0.0 {
+            (edge.a, edge.b)
+        } else {
+            (edge.b, edge.a)
+        };
+        let normal_speed_abs_m_s = normal_speed.abs();
+        outgoing_rate[donor] += normal_speed_abs_m_s * edge.interface_length_m;
+        phase_edges.push(PhaseAtmosphericMoistureEdge {
+            donor,
+            receiver,
+            normal_speed_abs_m_s,
+            interface_length_m: edge.interface_length_m,
+        });
+    }
+}
+
+fn moisture_transport_substeps_for_phase(
+    outgoing_rate: &[f64],
+    cell_area_m2: &[f64],
+    phase_seconds: f64,
+    parameters: ClimateParameters,
+) -> u8 {
+    let maximum_phase_courant = outgoing_rate
+        .iter()
+        .enumerate()
+        .map(|(i, rate)| rate * phase_seconds / cell_area_m2[i].max(1.0))
+        .fold(0.0_f64, f64::max);
+    let required = (maximum_phase_courant / parameters.moisture_transport_cfl_limit)
+        .ceil()
+        .max(1.0) as u32;
+    required.clamp(
+        u32::from(parameters.moisture_transport_minimum_substeps),
+        u32::from(parameters.moisture_transport_maximum_substeps),
+    ) as u8
+}
+
+fn advect_moisture_substep(
+    edges: &[PhaseAtmosphericMoistureEdge],
+    moisture_mass: &mut [f64],
+    cell_area_m2: &[f64],
+    substep_seconds: f64,
+    cfl_limit: f64,
+    requested_outflow: &mut [f64],
+    donor_scale: &mut [f64],
+    delta: &mut [f64],
+) -> (usize, usize) {
+    requested_outflow.fill(0.0);
+    donor_scale.fill(1.0);
+    delta.fill(0.0);
+
+    for edge in edges {
+        let donor_column_moisture =
+            moisture_mass[edge.donor] / cell_area_m2[edge.donor].max(1.0);
+        let mass = donor_column_moisture
+            * edge.normal_speed_abs_m_s
+            * edge.interface_length_m
+            * substep_seconds;
+        if mass > 0.0 {
+            requested_outflow[edge.donor] += mass;
+        }
+    }
+
+    let mut active_donors = 0usize;
+    let mut limited_donors = 0usize;
+    for i in 0..moisture_mass.len() {
+        if requested_outflow[i] <= 0.0 {
+            continue;
+        }
+        active_donors += 1;
+        let allowed = moisture_mass[i] * cfl_limit;
+        if requested_outflow[i] > allowed {
+            donor_scale[i] = allowed / requested_outflow[i];
+            limited_donors += 1;
+        }
+    }
+
+    for edge in edges {
+        let donor_column_moisture =
+            moisture_mass[edge.donor] / cell_area_m2[edge.donor].max(1.0);
+        let mass = donor_column_moisture
+            * edge.normal_speed_abs_m_s
+            * edge.interface_length_m
+            * substep_seconds;
+        let transfer = mass * donor_scale[edge.donor];
+        delta[edge.donor] -= transfer;
+        delta[edge.receiver] += transfer;
+    }
+    for i in 0..moisture_mass.len() {
+        moisture_mass[i] = (moisture_mass[i] + delta[i]).max(0.0);
+    }
+    (limited_donors, active_donors)
+}
+
+fn build_ocean_projection_geometry'''
+text, count = pattern.subn(replacement, text, count=1)
+if count != 1:
+    raise SystemExit(f'moisture function block replacement count={count}')
+
+anchor = '''    let atmospheric_moisture_edges =
+        build_atmospheric_moisture_edges(topology, &east_bases, &north_bases, planet.radius_m);
+    let ocean_projection_geometry = build_ocean_projection_geometry('''
+insert = '''    let atmospheric_moisture_edges =
+        build_atmospheric_moisture_edges(topology, &east_bases, &north_bases, planet.radius_m);
+    let mut phase_moisture_edges = Vec::with_capacity(atmospheric_moisture_edges.len());
+    let mut moisture_outgoing_rate = vec![0.0; sample_count];
+    let mut moisture_requested_outflow = vec![0.0; sample_count];
+    let mut moisture_donor_scale = vec![1.0; sample_count];
+    let mut moisture_transport_delta = vec![0.0; sample_count];
+    let ocean_projection_geometry = build_ocean_projection_geometry('''
+if anchor not in text:
+    raise SystemExit('moisture workspace insertion anchor not found')
+text = text.replace(anchor, insert, 1)
+
+old_call = '''                let moisture_substeps = moisture_transport_substeps_for_phase(
+                    &atmospheric_moisture_edges,
+                    &cell_area_m2,
+                    &wind_east,
+                    &wind_north,
+                    phase_seconds,
+                    parameters,
+                );
+                maximum_moisture_transport_substeps_used =
+                    maximum_moisture_transport_substeps_used.max(moisture_substeps);
+                let substep_seconds = phase_seconds / f64::from(moisture_substeps);
+                for _ in 0..usize::from(moisture_substeps) {
+                    let (transport_delta, limited_donors, active_donors) = advect_moisture_substep(
+                        &atmospheric_moisture_edges,
+                        &mut moisture_mass,
+                        &cell_area_m2,
+                        &wind_east,
+                        &wind_north,
+                        substep_seconds,
+                        parameters.moisture_transport_cfl_limit,
+                        parameters.maximum_climatological_moisture_transport_speed_m_s,
+                    );
+                    moisture_transport_limited_donor_steps += limited_donors;
+                    moisture_transport_active_donor_steps += active_donors;
+                    for i in 0..sample_count {
+                        if transport_delta[i] <= 0.0 || air_mass[i] <= 0.0 {
+                            continue;
+                        }
+                        let saturation_air =
+                            saturation_specific_humidity(temperature[i], pressure[i]);
+                        if saturation_air <= 1.0e-12 {
+                            continue;
+                        }
+                        let relative_humidity =
+                            (moisture_mass[i] / air_mass[i] / saturation_air).max(0.0);
+                        let threshold = parameters.convergence_precipitation_relative_humidity;
+                        let activation = if threshold < 1.0 {
+                            ((relative_humidity - threshold) / (1.0 - threshold)).clamp(0.0, 1.0)
+                        } else {
+                            0.0
+                        };
+                        let convergence_mass = transport_delta[i]
+                            * parameters.convergence_precipitation_efficiency
+                            * activation;
+'''
+new_call = '''                prepare_phase_moisture_transport(
+                    &atmospheric_moisture_edges,
+                    &wind_east,
+                    &wind_north,
+                    parameters.maximum_climatological_moisture_transport_speed_m_s,
+                    &mut phase_moisture_edges,
+                    &mut moisture_outgoing_rate,
+                );
+                let moisture_substeps = moisture_transport_substeps_for_phase(
+                    &moisture_outgoing_rate,
+                    &cell_area_m2,
+                    phase_seconds,
+                    parameters,
+                );
+                maximum_moisture_transport_substeps_used =
+                    maximum_moisture_transport_substeps_used.max(moisture_substeps);
+                let substep_seconds = phase_seconds / f64::from(moisture_substeps);
+                for _ in 0..usize::from(moisture_substeps) {
+                    let (limited_donors, active_donors) = advect_moisture_substep(
+                        &phase_moisture_edges,
+                        &mut moisture_mass,
+                        &cell_area_m2,
+                        substep_seconds,
+                        parameters.moisture_transport_cfl_limit,
+                        &mut moisture_requested_outflow,
+                        &mut moisture_donor_scale,
+                        &mut moisture_transport_delta,
+                    );
+                    moisture_transport_limited_donor_steps += limited_donors;
+                    moisture_transport_active_donor_steps += active_donors;
+                    for i in 0..sample_count {
+                        if moisture_transport_delta[i] <= 0.0 || air_mass[i] <= 0.0 {
+                            continue;
+                        }
+                        let saturation_air =
+                            saturation_specific_humidity(temperature[i], pressure[i]);
+                        if saturation_air <= 1.0e-12 {
+                            continue;
+                        }
+                        let relative_humidity =
+                            (moisture_mass[i] / air_mass[i] / saturation_air).max(0.0);
+                        let threshold = parameters.convergence_precipitation_relative_humidity;
+                        let activation = if threshold < 1.0 {
+                            ((relative_humidity - threshold) / (1.0 - threshold)).clamp(0.0, 1.0)
+                        } else {
+                            0.0
+                        };
+                        let convergence_mass = moisture_transport_delta[i]
+                            * parameters.convergence_precipitation_efficiency
+                            * activation;
+'''
+if old_call not in text:
+    raise SystemExit('moisture call-site replacement anchor not found')
+text = text.replace(old_call, new_call, 1)
+path.write_text(text)
