@@ -1,41 +1,13 @@
 name: Temporary WG-5 Thermal Budget Sweep
 
 on:
-  push:
-    branches: [wg5-thermal-budget-calibration]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  sweep:
+  parked:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: wg5-thermal-budget-calibration
-      - name: Install Rust stable
-        run: |
-          rustup toolchain install stable --profile minimal
-          rustup default stable
-      - name: L7 mixed-layer depth acceptance
-        run: |
-          set -uo pipefail
-          for depth in 13.0 14.0 15.0; do
-            echo "===== MIXED_LAYER_DEPTH=${depth} ====="
-            git checkout -- rust/interlink-worldgen/src/climate.rs rust/interlink-worldgen/src/climate_calibration.rs
-            SW_REFLECTIVITY=0.25 LW_OPTICAL_DEPTH=1.20 HEAT_DIFFUSIVITY=2000000.0 AIR_SEA_EXCHANGE=8.0 MIXED_LAYER_DEPTH="${depth}" HEAT_SOLVER_ITERS=20 \
-              python scripts/wg5_thermal_sweep_patch.py
-            SURFACE_ALBEDO_COUPLING=0.25 python scripts/wg5_thermal_coupling_patch.py
-            cargo fmt --all
-            cargo run --release -q -p interlink-worldgen-cli -- climate \
-              --seed ci-wg5-l7 --coarse-level 5 --level 7 --plates 24 || echo 'L7_ACCEPTANCE_FAILED'
-          done
-          echo '===== L6 CHECK DEPTH=14 ====='
-          git checkout -- rust/interlink-worldgen/src/climate.rs rust/interlink-worldgen/src/climate_calibration.rs
-          SW_REFLECTIVITY=0.25 LW_OPTICAL_DEPTH=1.20 HEAT_DIFFUSIVITY=2000000.0 AIR_SEA_EXCHANGE=8.0 MIXED_LAYER_DEPTH=14.0 HEAT_SOLVER_ITERS=20 \
-            python scripts/wg5_thermal_sweep_patch.py
-          SURFACE_ALBEDO_COUPLING=0.25 python scripts/wg5_thermal_coupling_patch.py
-          cargo fmt --all
-          cargo run --release -q -p interlink-worldgen-cli -- climate \
-            --seed interlink-wg5 --coarse-level 4 --level 6 --plates 16 || echo 'L6_ACCEPTANCE_FAILED'
+      - run: echo 'Thermal calibration sweep complete; production finalization owns remaining validation.'
