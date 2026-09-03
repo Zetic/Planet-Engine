@@ -1199,9 +1199,6 @@ fn advect_moisture_substep(
         delta[edge.donor] -= transfer;
         delta[edge.receiver] += transfer;
     }
-    for i in 0..moisture_mass.len() {
-        moisture_mass[i] = (moisture_mass[i] + delta[i]).max(0.0);
-    }
     (limited_donors, active_donors)
 }
 
@@ -2167,6 +2164,8 @@ fn generate_coupled_climate_internal(
                     moisture_transport_limited_donor_steps += limited_donors;
                     moisture_transport_active_donor_steps += active_donors;
                     for i in 0..sample_count {
+                        moisture_mass[i] =
+                            (moisture_mass[i] + moisture_transport_delta[i]).max(0.0);
                         if moisture_transport_delta[i] <= 0.0 || air_mass[i] <= 0.0 {
                             continue;
                         }
