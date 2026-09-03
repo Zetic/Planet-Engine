@@ -1,4 +1,4 @@
-name: WG-4 Rust Diagnostic
+name: WG-4 Integration Harness
 
 on:
   push:
@@ -8,7 +8,7 @@ permissions:
   contents: write
 
 jobs:
-  capture:
+  integrate:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
@@ -16,28 +16,58 @@ jobs:
         with:
           ref: worldgen-wg4-initial-topography
           fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
       - uses: dtolnay/rust-toolchain@stable
-      - name: Apply narrow WG-4 compile fix
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('rust/interlink-worldgen/src/topography.rs')
-          text = path.read_text()
-          for name in ['collision', 'ridge', 'rift', 'trench', 'arc']:
-              text = text.replace(f'let mut {name} = vec![0.0; count];', f'let mut {name} = vec![0.0_f64; count];')
-          path.write_text(text)
-          PY
-      - name: Capture Rust workspace result
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Apply and validate WG-4 integration
         run: |
           set +e
-          cargo test --workspace > wg4-rust.log 2>&1
-          status=$?
-          echo "exit_status=$status" >> wg4-rust.log
-          exit 0
-      - name: Commit fix and diagnostic log
+          : > wg4-integration.log
+          run_step() {
+            echo "===== $1 =====" >> wg4-integration.log
+            shift
+            "$@" >> wg4-integration.log 2>&1
+            rc=$?
+            echo "exit_status=$rc" >> wg4-integration.log
+            return $rc
+          }
+          run_step integration python scripts/wg4_integration.py || true
+          run_step rustfmt cargo fmt --all || true
+          run_step npm-install npm ci || true
+          run_step browser-build npm run build || true
+          run_step browser-tests npm run test:ts || true
+          run_step rust-tests cargo test --workspace || true
+          run_step wasm-check cargo check -p interlink-worldgen-wasm --target wasm32-unknown-unknown || true
+          if grep -q 'exit_status=[1-9]' wg4-integration.log; then
+            echo 'validation_failed=1' >> wg4-integration.log
+            exit 0
+          fi
+          run_step wasm-bindgen-install cargo install wasm-bindgen-cli --version 0.2.127 --locked || true
+          run_step wasm-package npm run build:worldgen-wasm || true
+          if grep -q 'exit_status=[1-9]' wg4-integration.log; then
+            echo 'validation_failed=1' >> wg4-integration.log
+          else
+            echo 'validation_failed=0' >> wg4-integration.log
+          fi
+      - name: Commit integration result
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add rust/interlink-worldgen/src/topography.rs wg4-rust.log
-          git commit -m "WG-4: fix source field scalar types" || exit 0
+          git add -- \
+            rust/interlink-worldgen/src \
+            rust/interlink-worldgen-cli/src \
+            rust/interlink-worldgen-wasm/src \
+            src/worldgen \
+            src/wasm-worldgen \
+            dist/worldgen \
+            tests \
+            docs/worldgen-rewrite \
+            README.md package.json index.html worldgen-lab.html \
+            wg4-integration.log
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "WG-4: integrate topography transport and diagnostics"
           git push origin HEAD:worldgen-wg4-initial-topography
