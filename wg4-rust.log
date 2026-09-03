@@ -1,0 +1,88 @@
+[1m[92m    Updating[0m crates.io index
+[1m[92m Downloading[0m crates ...
+[1m[92m  Downloaded[0m quote v1.0.47
+[1m[92m  Downloaded[0m proc-macro2 v1.0.107
+[1m[92m  Downloaded[0m cfg-if v1.0.4
+[1m[92m  Downloaded[0m wasm-bindgen-shared v0.2.127
+[1m[92m  Downloaded[0m once_cell v1.21.4
+[1m[92m  Downloaded[0m wasm-bindgen-macro v0.2.127
+[1m[92m  Downloaded[0m rustversion v1.0.23
+[1m[92m  Downloaded[0m unicode-ident v1.0.24
+[1m[92m  Downloaded[0m bumpalo v3.20.3
+[1m[92m  Downloaded[0m wasm-bindgen v0.2.127
+[1m[92m  Downloaded[0m wasm-bindgen-macro-support v0.2.127
+[1m[92m  Downloaded[0m syn v2.0.119
+[1m[92m   Compiling[0m unicode-ident v1.0.24
+[1m[92m   Compiling[0m proc-macro2 v1.0.107
+[1m[92m   Compiling[0m quote v1.0.47
+[1m[92m   Compiling[0m wasm-bindgen-shared v0.2.127
+[1m[92m   Compiling[0m interlink-worldgen v0.1.0 (/home/runner/work/Planet-Engine/Planet-Engine/rust/interlink-worldgen)
+[1m[92m   Compiling[0m rustversion v1.0.23
+[1m[92m   Compiling[0m bumpalo v3.20.3
+[1m[91merror[E0689][0m[1m: can't call method `max` on ambiguous numeric type `{float}`[0m
+   [1m[94m--> [0mrust/interlink-worldgen/src/topography.rs:392:45
+    [1m[94m|[0m
+[1m[94m392[0m [1m[94m|[0m                 collision[a] = collision[a].max(0.35 + 0.65 * convergence);
+    [1m[94m|[0m                                             [1m[91m^^^[0m
+
+[1m[91merror[E0689][0m[1m: can't call method `max` on ambiguous numeric type `{float}`[0m
+   [1m[94m--> [0mrust/interlink-worldgen/src/topography.rs:393:45
+    [1m[94m|[0m
+[1m[94m393[0m [1m[94m|[0m                 collision[b] = collision[b].max(0.35 + 0.65 * convergence);
+    [1m[94m|[0m                                             [1m[91m^^^[0m
+
+[1m[91merror[E0689][0m[1m: can't call method `max` on ambiguous numeric type `{float}`[0m
+   [1m[94m--> [0mrust/interlink-worldgen/src/topography.rs:397:37
+    [1m[94m|[0m
+[1m[94m397[0m [1m[94m|[0m                 ridge[a] = ridge[a].max(0.35 + 0.65 * divergence);
+    [1m[94m|[0m                                     [1m[91m^^^[0m
+
+[1m[91merror[E0689][0m[1m: can't call method `max` on ambiguous numeric type `{float}`[0m
+   [1m[94m--> [0mrust/interlink-worldgen/src/topography.rs:398:37
+    [1m[94m|[0m
+[1m[94m398[0m [1m[94m|[0m                 ridge[b] = ridge[b].max(0.35 + 0.65 * divergence);
+    [1m[94m|[0m                                     [1m[91m^^^[0m
+
+[1m[91merror[E0689][0m[1m: can't call method `max` on ambiguous numeric type `{float}`[0m
+   [1m[94m--> [0mrust/interlink-worldgen/src/topography.rs:401:35
+    [1m[94m|[0m
+[1m[94m401[0m [1m[94m|[0m                 rift[a] = rift[a].max(0.35 + 0.65 * divergence);
+    [1m[94m|[0m                                   [1m[91m^^^[0m
+
+[1m[91merror[E0689][0m[1m: can't call method `max` on ambiguous numeric type `{float}`[0m
+   [1m[94m--> [0mrust/interlink-worldgen/src/topography.rs:402:35
+    [1m[94m|[0m
+[1m[94m402[0m [1m[94m|[0m                 rift[b] = rift[b].max(0.35 + 0.65 * divergence);
+    [1m[94m|[0m                                   [1m[91m^^^[0m
+
+[1m[91merror[E0689][0m[1m: can't call method `max` on ambiguous numeric type `{float}`[0m
+   [1m[94m--> [0mrust/interlink-worldgen/src/topography.rs:409:47
+    [1m[94m|[0m
+[1m[94m409[0m [1m[94m|[0m                         trench[a] = trench[a].max(strength);
+    [1m[94m|[0m                                               [1m[91m^^^[0m
+
+[1m[91merror[E0689][0m[1m: can't call method `max` on ambiguous numeric type `{float}`[0m
+   [1m[94m--> [0mrust/interlink-worldgen/src/topography.rs:410:41
+    [1m[94m|[0m
+[1m[94m410[0m [1m[94m|[0m                         arc[b] = arc[b].max(strength);
+    [1m[94m|[0m                                         [1m[91m^^^[0m
+
+[1m[91merror[E0689][0m[1m: can't call method `max` on ambiguous numeric type `{float}`[0m
+   [1m[94m--> [0mrust/interlink-worldgen/src/topography.rs:413:47
+    [1m[94m|[0m
+[1m[94m413[0m [1m[94m|[0m                         trench[b] = trench[b].max(strength);
+    [1m[94m|[0m                                               [1m[91m^^^[0m
+
+[1m[91merror[E0689][0m[1m: can't call method `max` on ambiguous numeric type `{float}`[0m
+   [1m[94m--> [0mrust/interlink-worldgen/src/topography.rs:414:41
+    [1m[94m|[0m
+[1m[94m414[0m [1m[94m|[0m                         arc[a] = arc[a].max(strength);
+    [1m[94m|[0m                                         [1m[91m^^^[0m
+
+[1m[92m   Compiling[0m wasm-bindgen v0.2.127
+[1m[92m   Compiling[0m syn v2.0.119
+[1m[92m   Compiling[0m once_cell v1.21.4
+[1mFor more information about this error, try `rustc --explain E0689`.[0m
+[1m[91merror[0m: could not compile `interlink-worldgen` (lib) due to 10 previous errors
+[1m[33mwarning[0m: build failed, waiting for other jobs to finish...
+exit_status=101
