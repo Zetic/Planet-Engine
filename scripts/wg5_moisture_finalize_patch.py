@@ -54,17 +54,8 @@ s = s.replace(
 )
 p.write_text(s)
 
-# Remove the superseded core helper if it is dead after the finite-volume edge implementation.
-p = Path("rust/interlink-worldgen/src/climate.rs")
-s = p.read_text()
-s, _ = re.subn(
-    r"\nfn symmetric_edge_normal_wind_m_s\(.*?\n\}\n(?=\nfn )",
-    "\n",
-    s,
-    count=1,
-    flags=re.S,
-)
-p.write_text(s)
+# Keep the core symmetric edge helper: the finite-volume moisture geometry and the existing
+# index-order regression both share its endpoint-symmetric semantics.
 
 # Permanent WASM surface and stage identity.
 replace_once(
