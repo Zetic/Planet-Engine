@@ -30,12 +30,15 @@ case "${MODE}" in
     run_case "wg5-cal-b" 4 6 16
     run_case "wg5-cal-c" 4 6 16
     ;;
+  resolution)
+    bash scripts/check-wg5-moisture-resolution.sh
+    ;;
   quality)
     bash "$0" standard
-    run_case "ci-wg5-l7" 5 7 24
+    bash scripts/check-wg5-moisture-resolution.sh
     ;;
   *)
-    echo "usage: $0 [smoke|standard|quality]" >&2
+    echo "usage: $0 [smoke|standard|resolution|quality]" >&2
     exit 2
     ;;
 esac

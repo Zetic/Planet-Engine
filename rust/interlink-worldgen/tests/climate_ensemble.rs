@@ -121,6 +121,26 @@ fn stronger_stellar_flux_warms_the_same_solid_planet_without_mutating_wg4() {
 }
 
 #[test]
+fn latent_energy_availability_limits_ocean_evaporation_on_fixed_wg4_surface() {
+    let planet = PlanetPhysicalParameters::earthlike_reference();
+    let (topology, terrain) = generated_surface("wg5-latent-energy", planet);
+    let normal_request = ClimateRequest::new("wg5-latent-energy");
+    let normal = generate_coupled_climate(&topology, &terrain, planet, &normal_request).unwrap();
+
+    let mut constrained_request = normal_request.clone();
+    constrained_request.parameters.evaporation_energy_fraction = 0.05;
+    let constrained =
+        generate_coupled_climate(&topology, &terrain, planet, &constrained_request).unwrap();
+
+    assert!(constrained.metrics.global_evaporation_kg < normal.metrics.global_evaporation_kg);
+    assert!(constrained.metrics.moisture_budget_relative_error < 1.0e-8);
+    assert_ne!(
+        constrained.metrics.climate_hash,
+        normal.metrics.climate_hash
+    );
+}
+
+#[test]
 fn dry_planet_has_no_ocean_current_or_ocean_evaporation() {
     let mut dry = PlanetPhysicalParameters::earthlike_reference();
     dry.surface_water_mass_kg = 0.0;

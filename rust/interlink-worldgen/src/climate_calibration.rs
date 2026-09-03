@@ -1,7 +1,7 @@
 use crate::climate::effective_shortwave_albedo;
 use crate::{
-    tangent_basis, ClimateRequest, ClimateState, GeodesicTopology, PlanetPhysicalParameters,
-    TopographyState, WorldgenError,
+    ClimateRequest, ClimateState, GeodesicTopology, PlanetPhysicalParameters, TopographyState,
+    WorldgenError,
 };
 
 const STEFAN_BOLTZMANN: f64 = 5.670_374_419e-8;
@@ -44,7 +44,8 @@ pub struct ClimateCalibrationReport {
     pub outgoing_longwave_ocean_proxy_w_m2: f64,
     pub toa_energy_imbalance_proxy_w_m2: f64,
     pub reconstructed_wind_cap_fraction: f64,
-    pub reconstructed_moisture_edge_cap_fraction: f64,
+    pub moisture_transport_limiter_fraction: f64,
+    pub maximum_moisture_transport_substeps: u8,
     pub mean_state_relative_humidity_p05: f64,
     pub mean_state_relative_humidity_p50: f64,
     pub mean_state_relative_humidity_p95: f64,
@@ -139,49 +140,6 @@ fn weighted_percentile(mut values: Vec<(f64, f64)>, fraction: f64) -> f64 {
         }
     }
     values.last().map(|(value, _)| *value).unwrap_or(0.0)
-}
-
-fn edge_direction(
-    topology: &GeodesicTopology,
-    from: usize,
-    to: usize,
-    east: [f64; 3],
-    north: [f64; 3],
-) -> Option<(f64, f64)> {
-    let origin = topology.positions()[from];
-    let target = topology.positions()[to];
-    let radial = dot(target, origin);
-    let tangent = [
-        target[0] - origin[0] * radial,
-        target[1] - origin[1] * radial,
-        target[2] - origin[2] * radial,
-    ];
-    let magnitude = dot(tangent, tangent).sqrt();
-    if magnitude <= 1.0e-15 {
-        return None;
-    }
-    let direction = [
-        tangent[0] / magnitude,
-        tangent[1] / magnitude,
-        tangent[2] / magnitude,
-    ];
-    Some((dot(direction, east), dot(direction, north)))
-}
-
-fn symmetric_edge_normal_wind(
-    topology: &GeodesicTopology,
-    a: usize,
-    b: usize,
-    east_bases: &[[f64; 3]],
-    north_bases: &[[f64; 3]],
-    wind_east: &[f64],
-    wind_north: &[f64],
-) -> Option<f64> {
-    let (ae, an) = edge_direction(topology, a, b, east_bases[a], north_bases[a])?;
-    let (be, bn) = edge_direction(topology, b, a, east_bases[b], north_bases[b])?;
-    let outward_a = wind_east[a] * ae + wind_north[a] * an;
-    let outward_b = wind_east[b] * be + wind_north[b] * bn;
-    Some(0.5 * (outward_a - outward_b))
 }
 
 fn latitude_bands(
@@ -404,21 +362,11 @@ pub fn build_climate_calibration_report(
         + planet.internal_heat_flux_w_per_m2
         - outgoing_longwave_proxy_w_m2;
 
-    let mut east_bases = Vec::with_capacity(count);
-    let mut north_bases = Vec::with_capacity(count);
-    for position in topology.positions() {
-        let basis = tangent_basis(*position)?;
-        east_bases.push(basis.east);
-        north_bases.push(basis.north);
-    }
     let phase_count = usize::from(climate.metrics.orbital_phase_count);
-    let phase_seconds = planet.orbital_period_s / phase_count as f64;
     let mut wind_east = vec![0.0; count];
     let mut wind_north = vec![0.0; count];
     let mut wind_cap_samples = 0_u64;
     let mut wind_samples = 0_u64;
-    let mut moisture_cap_edges = 0_u64;
-    let mut moisture_edges = 0_u64;
     for phase in 0..phase_count {
         let angle = TWO_PI * phase as f64 / phase_count as f64;
         let phase_cos = angle.cos();
@@ -445,36 +393,6 @@ pub fn build_climate_calibration_report(
                 wind_cap_samples += 1;
             }
             wind_samples += 1;
-        }
-        for a in 0..count {
-            for (neighbor, arc) in topology
-                .neighbors_of(a as u32)
-                .iter()
-                .zip(topology.neighbor_arc_lengths_of(a as u32).iter())
-            {
-                let b = *neighbor as usize;
-                if b <= a {
-                    continue;
-                }
-                let Some(projected) = symmetric_edge_normal_wind(
-                    topology,
-                    a,
-                    b,
-                    &east_bases,
-                    &north_bases,
-                    &wind_east,
-                    &wind_north,
-                ) else {
-                    continue;
-                };
-                let distance_m = (*arc * planet.radius_m).max(1.0);
-                let requested_fraction = projected.abs() * phase_seconds / distance_m
-                    * request.parameters.moisture_transport_cfl;
-                if requested_fraction >= 0.22 {
-                    moisture_cap_edges += 1;
-                }
-                moisture_edges += 1;
-            }
         }
     }
 
@@ -562,11 +480,8 @@ pub fn build_climate_calibration_report(
         } else {
             0.0
         },
-        reconstructed_moisture_edge_cap_fraction: if moisture_edges > 0 {
-            moisture_cap_edges as f64 / moisture_edges as f64
-        } else {
-            0.0
-        },
+        moisture_transport_limiter_fraction: climate.metrics.moisture_transport_limiter_fraction,
+        maximum_moisture_transport_substeps: climate.metrics.maximum_moisture_transport_substeps,
         mean_state_relative_humidity_p05: weighted_percentile(rh_values.clone(), 0.05),
         mean_state_relative_humidity_p50: weighted_percentile(rh_values.clone(), 0.50),
         mean_state_relative_humidity_p95: weighted_percentile(rh_values, 0.95),
