@@ -1,3 +1,5 @@
+mod climate_bridge;
+pub use climate_bridge::WasmWorldgenClimate;
 mod inheritance_bridge;
 pub use inheritance_bridge::WasmWorldgenInheritance;
 mod topography_bridge;
