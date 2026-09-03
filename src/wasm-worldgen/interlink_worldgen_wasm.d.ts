@@ -986,6 +986,7 @@ export interface InitOutput {
     readonly wasmworldgentopology_topology_hash_hex: (a: number) => [number, number];
     readonly wasmworldgentopology_total_area_steradians: (a: number) => number;
     readonly worldgen_engine_version: () => number;
+    readonly worldgen_protocol_version: () => number;
     readonly wasmworldgentopography_fine_boundary_edge_count: (a: number) => number;
     readonly wasmworldgentopography_sea_level_m: (a: number) => number;
     readonly wasmworldgeninheritance_fine_sample_count: (a: number) => number;
@@ -1033,7 +1034,6 @@ export interface InitOutput {
     readonly wasmworldgentopography_generator_version: (a: number) => number;
     readonly wasmworldgentopology_generator_version: (a: number) => number;
     readonly wasmworldgentopography_has_sea_level: (a: number) => number;
-    readonly worldgen_protocol_version: () => number;
     readonly wasmworldgenlithosphere_level: (a: number) => number;
     readonly wasmworldgenlithosphere_plate_count: (a: number) => number;
     readonly wasmworldgentectonics_level: (a: number) => number;
