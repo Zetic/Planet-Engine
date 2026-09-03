@@ -5,7 +5,7 @@ use crate::{
 
 const CLIMATE_NAMESPACE: &str = "climate:v1";
 pub const CLIMATE_STAGE_ID: &str = "climate:coupled-surface";
-pub const CLIMATE_STAGE_VERSION: u32 = 4;
+pub const CLIMATE_STAGE_VERSION: u32 = 5;
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 const STEFAN_BOLTZMANN: f64 = 5.670_374_419e-8;
@@ -308,6 +308,7 @@ impl ClimateParameters {
             self.ocean_advection_relaxation,
             self.ocean_advection_cfl_limit,
             self.evaporation_bulk_transfer_coefficient,
+            self.evaporation_energy_fraction,
             self.moisture_transport_cfl_limit,
             self.maximum_climatological_moisture_transport_speed_m_s,
             self.convergence_precipitation_relative_humidity,
@@ -1943,7 +1944,24 @@ fn generate_coupled_climate_internal(
                         * wind_speed
                         * (saturation_surface - q).max(0.0);
                     let potential_mass = evaporation_flux * cell_area_m2[i] * phase_seconds;
-                    potential_evaporation_mass_year[i] += potential_mass;
+                    // PET is a reduced potential surface-water demand, not an
+                    // unlimited aerodynamic saturation-deficit integral. Bound
+                    // land demand by the same latent-energy availability used
+                    // for ocean evaporation so exported aridity remains causal
+                    // to the accepted surface energy budget. Ocean PET remains
+                    // the raw requested flux because actual ocean evaporation
+                    // is energy-limited globally below.
+                    let diagnostic_potential_mass = if ocean[i] {
+                        potential_mass
+                    } else {
+                        let energy_limited_mass = parameters.evaporation_energy_fraction
+                            * absorbed_surface_energy_w_m2[i]
+                            * cell_area_m2[i]
+                            * phase_seconds
+                            / LATENT_HEAT_VAPORIZATION_J_PER_KG;
+                        potential_mass.min(energy_limited_mass.max(0.0))
+                    };
+                    potential_evaporation_mass_year[i] += diagnostic_potential_mass;
                     if ocean[i] {
                         requested_ocean_evaporation_mass[i] = potential_mass;
                         requested_ocean_evaporation_total += potential_mass;

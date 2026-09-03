@@ -5,6 +5,7 @@ mod coordinates;
 mod diagnostics;
 mod fields;
 mod geology;
+mod hydroclimate;
 mod lithosphere;
 mod parameters;
 mod random;
@@ -37,6 +38,9 @@ pub use geology::{
     generate_crust_and_history, CrustKind, CrustalModel, GeologicalBoundary,
     GeologicalBoundaryRegime, GeologyMetrics, GeologyRequest, PlateScaleClass, PlateSummary,
     SubductionPolarity, GEOLOGY_STAGE_ID, GEOLOGY_STAGE_VERSION,
+};
+pub use hydroclimate::{
+    build_hydroclimate_closure_report, HydroclimateClosureReport, HydroclimateLatitudeBand,
 };
 pub use lithosphere::{
     generate_lithosphere, LithosphereMetrics, LithosphereRequest, LithosphericModel,
