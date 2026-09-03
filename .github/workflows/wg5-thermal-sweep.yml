@@ -1,0 +1,41 @@
+name: Temporary WG-5 Thermal Budget Sweep
+
+on:
+  push:
+    branches: [wg5-thermal-budget-calibration]
+
+permissions:
+  contents: read
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: wg5-thermal-budget-calibration
+      - name: Install Rust stable
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - name: Compile candidate architecture
+        env:
+          SW_REFLECTIVITY: '0.22'
+          HEAT_DIFFUSIVITY: '100000.0'
+          AIR_SEA_EXCHANGE: '8.0'
+          MIXED_LAYER_DEPTH: '50.0'
+          HEAT_SOLVER_ITERS: '10'
+        run: |
+          python scripts/wg5_thermal_sweep_patch.py
+          cargo check --workspace
+      - name: Shortwave sweep at L6
+        run: |
+          set -euo pipefail
+          for sw in 0.18 0.20 0.22 0.24; do
+            echo "===== SW_REFLECTIVITY=${sw} ====="
+            git checkout -- rust/interlink-worldgen/src/climate.rs rust/interlink-worldgen/src/climate_calibration.rs
+            SW_REFLECTIVITY="${sw}" HEAT_DIFFUSIVITY=100000.0 AIR_SEA_EXCHANGE=8.0 MIXED_LAYER_DEPTH=50.0 HEAT_SOLVER_ITERS=10 \
+              python scripts/wg5_thermal_sweep_patch.py
+            cargo run --release -q -p interlink-worldgen-cli --example climate_calibration -- \
+              --seed interlink-wg5 --coarse-level 4 --level 6 --plates 16 --skip-orography-intervention
+          done
