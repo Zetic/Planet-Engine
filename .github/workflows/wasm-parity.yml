@@ -17,6 +17,10 @@ on:
       - 'scripts/build-worldgen-wasm.sh'
       - 'src/wasm-worldgen/**'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   package:
     name: Packaged WASM parity
