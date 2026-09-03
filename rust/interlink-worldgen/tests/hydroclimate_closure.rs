@@ -1,10 +1,19 @@
 use interlink_worldgen::{
     build_hydroclimate_closure_report, build_icosphere, generate_coupled_climate,
     generate_crust_and_history, generate_initial_topography, generate_lithosphere,
-    generate_tectonics, inherit_boundary_interfaces, inherit_physical_state, ClimateRequest,
-    GeologyRequest, LithosphereRequest, PlanetPhysicalParameters, TectonicsRequest,
-    TopographyRequest,
+    generate_tectonics, inherit_boundary_interfaces, inherit_physical_state, ClimateParameters,
+    ClimateRequest, GeologyRequest, LithosphereRequest, PlanetPhysicalParameters, TectonicsRequest,
+    TopographyRequest, CLIMATE_STAGE_VERSION,
 };
+
+#[test]
+fn hydroclimate_stage_and_latent_energy_parameter_are_explicit() {
+    assert_eq!(CLIMATE_STAGE_VERSION, 5);
+    let baseline = ClimateParameters::default();
+    let mut changed = baseline;
+    changed.evaporation_energy_fraction *= 0.8;
+    assert_ne!(baseline.parameter_hash(), changed.parameter_hash());
+}
 
 #[test]
 fn hydroclimate_closure_report_is_deterministic_finite_and_diagnostic_only() {
