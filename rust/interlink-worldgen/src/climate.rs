@@ -347,6 +347,14 @@ impl ClimateRequest {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct ClimateGenerationDiagnostics {
+    /// Final spin-up-year precipitation rate for each retained orbital phase.
+    /// Layout is phase-major: phase * sample_count + sample. Values are
+    /// annualized mm/year-equivalent rates for direct phase-to-phase comparison.
+    pub precipitation_phase_rate_mm_year: Vec<f32>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct ClimateMetrics {
     pub sample_count: u32,
     pub orbital_phase_count: u8,
@@ -1434,11 +1442,46 @@ pub fn generate_coupled_climate(
     planet: PlanetPhysicalParameters,
     request: &ClimateRequest,
 ) -> Result<ClimateState, WorldgenError> {
+    let mut progress = |_completed_years: u8, _maximum_years: u8| {};
+    let (climate, _) = generate_coupled_climate_internal(
+        topology,
+        terrain,
+        planet,
+        request,
+        false,
+        &mut progress,
+    )?;
+    Ok(climate)
+}
+
+pub fn generate_coupled_climate_with_diagnostics(
+    topology: &GeodesicTopology,
+    terrain: &TopographyState,
+    planet: PlanetPhysicalParameters,
+    request: &ClimateRequest,
+    progress: &mut dyn FnMut(u8, u8),
+) -> Result<(ClimateState, ClimateGenerationDiagnostics), WorldgenError> {
+    generate_coupled_climate_internal(topology, terrain, planet, request, true, progress)
+}
+
+fn generate_coupled_climate_internal(
+    topology: &GeodesicTopology,
+    terrain: &TopographyState,
+    planet: PlanetPhysicalParameters,
+    request: &ClimateRequest,
+    capture_precipitation_phases: bool,
+    progress: &mut dyn FnMut(u8, u8),
+) -> Result<(ClimateState, ClimateGenerationDiagnostics), WorldgenError> {
     validate_inputs(topology, terrain, planet, request)?;
     let parameters = request.parameters;
     let physical = request.physical;
     let sample_count = topology.metrics().sample_count as usize;
     let phase_count = usize::from(parameters.orbital_phase_count);
+    let mut precipitation_phase_rate_mm_year = if capture_precipitation_phases {
+        vec![0.0_f32; phase_count * sample_count]
+    } else {
+        Vec::new()
+    };
     let stage_seed = derive_stage_seed(request.seed.as_str(), CLIMATE_NAMESPACE);
     let omega = if planet.rotation_period_s > 0.0 {
         TWO_PI / planet.rotation_period_s
@@ -1579,6 +1622,7 @@ pub fn generate_coupled_climate(
     let mut maximum_ocean_divergence_residual = 0.0_f64;
 
     for year in 0..parameters.maximum_spinup_years {
+        progress(year, parameters.maximum_spinup_years);
         let start_temperature = temperature.clone();
         let start_sst = sea_surface_temperature.clone();
 
@@ -2021,6 +2065,16 @@ pub fn generate_coupled_climate(
                     phase_precipitation += phase_cell_precipitation;
                     humidity[i] = (moisture_mass[i] / air_mass[i]).clamp(0.0, 0.2);
                 }
+                if capture_precipitation_phases {
+                    let offset = phase * sample_count;
+                    let annualization = phase_count as f64;
+                    for i in 0..sample_count {
+                        precipitation_phase_rate_mm_year[offset + i] = (precipitation_mass_phase[i]
+                            / cell_area_m2[i].max(1.0)
+                            * annualization)
+                            as f32;
+                    }
+                }
                 let moisture_after = moisture_mass.iter().sum::<f64>();
                 let expected_change = phase_evaporation - phase_precipitation;
                 moisture_budget_error_year +=
@@ -2074,6 +2128,7 @@ pub fn generate_coupled_climate(
         }
         final_temperature_rms_change = (squared_change / (sample_count as f64 * 1.5)).sqrt();
         spinup_years = year + 1;
+        progress(spinup_years, parameters.maximum_spinup_years);
         if spinup_years >= parameters.minimum_spinup_years
             && final_temperature_rms_change <= parameters.convergence_temperature_rms_k
         {
@@ -2313,7 +2368,7 @@ pub fn generate_coupled_climate(
         climate_hash,
     };
 
-    Ok(ClimateState {
+    let climate_state = ClimateState {
         stage: StageIdentity {
             id: CLIMATE_STAGE_ID,
             version: CLIMATE_STAGE_VERSION,
@@ -2354,7 +2409,14 @@ pub fn generate_coupled_climate(
         snowfall_fraction,
         persistent_snow_potential,
         sea_ice_potential,
-    })
+    };
+
+    Ok((
+        climate_state,
+        ClimateGenerationDiagnostics {
+            precipitation_phase_rate_mm_year,
+        },
+    ))
 }
 
 #[cfg(test)]

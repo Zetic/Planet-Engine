@@ -19,6 +19,7 @@ import {
   type WorldgenClimateRequest,
   type WorldgenClimateResult,
   type WorldgenEvent,
+  type WorldgenGenerationProgress,
   type WorldgenGeologyRequest,
   type WorldgenGeologyResult,
   type WorldgenInheritanceRequest,
@@ -37,7 +38,7 @@ import {
 
 type WorldgenResult = WorldgenSyntheticResult | WorldgenTopologyResult | WorldgenTectonicsResult | WorldgenGeologyResult | WorldgenLithosphereResult | WorldgenInheritanceResult | WorldgenTopographyResult | WorldgenClimateResult;
 type WorldgenRequestCommand = ReturnType<typeof worldgenSyntheticCommand> | ReturnType<typeof worldgenTopologyCommand> | ReturnType<typeof worldgenTectonicsCommand> | ReturnType<typeof worldgenGeologyCommand> | ReturnType<typeof worldgenLithosphereCommand> | ReturnType<typeof worldgenInheritanceCommand> | ReturnType<typeof worldgenTopographyCommand> | ReturnType<typeof worldgenClimateCommand>;
-interface PendingRequest { resolve: (result: WorldgenResult) => void; reject: (error: Error) => void; }
+interface PendingRequest { resolve: (result: WorldgenResult) => void; reject: (error: Error) => void; progress?: (progress: WorldgenGenerationProgress) => void; }
 
 export interface WorldgenClient {
   generateSynthetic(request: WorldgenSyntheticRequest): Promise<WorldgenSyntheticResult>;
@@ -47,7 +48,7 @@ export interface WorldgenClient {
   generateLithosphere(request: WorldgenLithosphereRequest): Promise<WorldgenLithosphereResult>;
   generateInheritance(request: WorldgenInheritanceRequest): Promise<WorldgenInheritanceResult>;
   generateTopography(request: WorldgenTopographyRequest): Promise<WorldgenTopographyResult>;
-  generateClimate(request: WorldgenClimateRequest): Promise<WorldgenClimateResult>;
+  generateClimate(request: WorldgenClimateRequest, onProgress?: (progress: WorldgenGenerationProgress) => void): Promise<WorldgenClimateResult>;
   dispose(): void;
 }
 
@@ -65,14 +66,18 @@ export function createWorldgenClient(): WorldgenClient {
     if (!message || message.protocolVersion !== WORLDGEN_PROTOCOL_VERSION) return;
     const request = pending.get(message.requestId);
     if (!request) return;
+    if (message.type === 'progress') {
+      request.progress?.(message.payload);
+      return;
+    }
     pending.delete(message.requestId);
     if (message.type === 'error') request.reject(new Error(message.payload.message)); else request.resolve(message.payload);
   });
   worker.addEventListener('error', event => rejectAll(event.message || 'Planet Engine Worker failed.'));
 
-  function request<T extends WorldgenResult>(command: WorldgenRequestCommand): Promise<T> {
+  function request<T extends WorldgenResult>(command: WorldgenRequestCommand, progress?: (progress: WorldgenGenerationProgress) => void): Promise<T> {
     if (disposed) return Promise.reject(new Error('Planet Engine client is disposed.'));
-    return new Promise((resolve, reject) => { pending.set(command.requestId, { resolve: result => resolve(result as T), reject }); worker.postMessage(command); });
+    return new Promise((resolve, reject) => { pending.set(command.requestId, { resolve: result => resolve(result as T), reject, progress }); worker.postMessage(command); });
   }
 
   return {
@@ -83,7 +88,7 @@ export function createWorldgenClient(): WorldgenClient {
     generateLithosphere(input) { validateLithosphereRequest(input); return request<WorldgenLithosphereResult>(worldgenLithosphereCommand(nextRequestId++, input)); },
     generateInheritance(input) { validateInheritanceRequest(input); return request<WorldgenInheritanceResult>(worldgenInheritanceCommand(nextRequestId++, input)); },
     generateTopography(input) { validateTopographyRequest(input); return request<WorldgenTopographyResult>(worldgenTopographyCommand(nextRequestId++, input)); },
-    generateClimate(input) { validateClimateRequest(input); return request<WorldgenClimateResult>(worldgenClimateCommand(nextRequestId++, input)); },
+    generateClimate(input, onProgress) { validateClimateRequest(input); return request<WorldgenClimateResult>(worldgenClimateCommand(nextRequestId++, input), onProgress); },
     dispose() { if (disposed) return; disposed = true; worker.terminate(); rejectAll('Planet Engine client was disposed.'); },
   };
 }

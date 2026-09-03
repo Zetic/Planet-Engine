@@ -1,5 +1,5 @@
 use interlink_worldgen::{
-    build_icosphere, generate_coupled_climate, generate_crust_and_history,
+    build_icosphere, generate_coupled_climate_with_diagnostics, generate_crust_and_history,
     generate_initial_topography, generate_lithosphere, generate_tectonics,
     inherit_boundary_interfaces, inherit_physical_state, ClimatePhysicalParameters, ClimateRequest,
     ClimateState, GeodesicTopology, GeologyRequest, InheritedBoundarySet, InheritedPhysicalState,
@@ -7,6 +7,28 @@ use interlink_worldgen::{
     TopographyState, WORLDGEN_ENGINE_VERSION,
 };
 use wasm_bindgen::prelude::*;
+
+const GENERATION_STAGE_COUNT: u32 = 10;
+
+fn report_generation_progress(
+    callback: Option<&js_sys::Function>,
+    stage: &str,
+    stage_index: u32,
+    completed: u32,
+    total: u32,
+) {
+    let Some(callback) = callback else {
+        return;
+    };
+    let _ = callback.call5(
+        &JsValue::NULL,
+        &JsValue::from_str(stage),
+        &JsValue::from_f64(stage_index as f64),
+        &JsValue::from_f64(GENERATION_STAGE_COUNT as f64),
+        &JsValue::from_f64(completed as f64),
+        &JsValue::from_f64(total.max(1) as f64),
+    );
+}
 
 #[wasm_bindgen]
 pub struct WasmWorldgenClimate {
@@ -17,6 +39,7 @@ pub struct WasmWorldgenClimate {
     climate: ClimateState,
     planet: PlanetPhysicalParameters,
     climate_physical: ClimatePhysicalParameters,
+    precipitation_phase_rate_mm_year: Vec<f32>,
     coarse_topology_hash: String,
     tectonic_hash: String,
     geology_hash: String,
@@ -32,6 +55,7 @@ impl WasmWorldgenClimate {
         coarse_level: u8,
         fine_level: u8,
         plate_count: u16,
+        progress: Option<js_sys::Function>,
     ) -> Result<WasmWorldgenClimate, JsValue> {
         if coarse_level > fine_level {
             return Err(JsValue::from_str(
@@ -39,16 +63,24 @@ impl WasmWorldgenClimate {
             ));
         }
         let planet = PlanetPhysicalParameters::earthlike_reference();
+        let progress = progress.as_ref();
+        report_generation_progress(progress, "coarse-topology", 0, 0, 1);
         let coarse_topology =
             build_icosphere(coarse_level).map_err(|error| JsValue::from_str(&error.to_string()))?;
+        report_generation_progress(progress, "coarse-topology", 0, 1, 1);
+        report_generation_progress(progress, "fine-topology", 1, 0, 1);
         let fine_topology =
             build_icosphere(fine_level).map_err(|error| JsValue::from_str(&error.to_string()))?;
+        report_generation_progress(progress, "fine-topology", 1, 1, 1);
+        report_generation_progress(progress, "tectonics", 2, 0, 1);
         let tectonics = generate_tectonics(
             &coarse_topology,
             &TectonicsRequest::new(seed.as_str(), plate_count),
             planet,
         )
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        report_generation_progress(progress, "tectonics", 2, 1, 1);
+        report_generation_progress(progress, "geology", 3, 0, 1);
         let geology = generate_crust_and_history(
             &coarse_topology,
             &tectonics,
@@ -56,6 +88,8 @@ impl WasmWorldgenClimate {
             planet,
         )
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        report_generation_progress(progress, "geology", 3, 1, 1);
+        report_generation_progress(progress, "lithosphere", 4, 0, 1);
         let lithosphere = generate_lithosphere(
             &coarse_topology,
             &tectonics,
@@ -63,6 +97,8 @@ impl WasmWorldgenClimate {
             &LithosphereRequest::new(seed.as_str()),
         )
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        report_generation_progress(progress, "lithosphere", 4, 1, 1);
+        report_generation_progress(progress, "inheritance", 5, 0, 1);
         let inherited = inherit_physical_state(
             &fine_topology,
             coarse_level,
@@ -72,6 +108,8 @@ impl WasmWorldgenClimate {
             planet,
         )
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        report_generation_progress(progress, "inheritance", 5, 1, 1);
+        report_generation_progress(progress, "boundary-refinement", 6, 0, 1);
         let boundaries = inherit_boundary_interfaces(
             &coarse_topology,
             &fine_topology,
@@ -80,6 +118,8 @@ impl WasmWorldgenClimate {
             &inherited.plate_ids,
         )
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        report_generation_progress(progress, "boundary-refinement", 6, 1, 1);
+        report_generation_progress(progress, "topography", 7, 0, 1);
         let terrain = generate_initial_topography(
             &fine_topology,
             &inherited,
@@ -88,10 +128,34 @@ impl WasmWorldgenClimate {
             &TopographyRequest::new(seed.as_str()),
         )
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        report_generation_progress(progress, "topography", 7, 1, 1);
         let climate_request = ClimateRequest::new(seed);
         let climate_physical = climate_request.physical;
-        let climate = generate_coupled_climate(&fine_topology, &terrain, planet, &climate_request)
-            .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        report_generation_progress(
+            progress,
+            "climate-spinup",
+            8,
+            0,
+            climate_request.parameters.maximum_spinup_years as u32,
+        );
+        let mut climate_progress = |completed_years: u8, maximum_years: u8| {
+            report_generation_progress(
+                progress,
+                "climate-spinup",
+                8,
+                completed_years as u32,
+                maximum_years as u32,
+            );
+        };
+        let (climate, diagnostics) = generate_coupled_climate_with_diagnostics(
+            &fine_topology,
+            &terrain,
+            planet,
+            &climate_request,
+            &mut climate_progress,
+        )
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        let precipitation_phase_rate_mm_year = diagnostics.precipitation_phase_rate_mm_year;
 
         Ok(Self {
             fine_topology,
@@ -101,6 +165,7 @@ impl WasmWorldgenClimate {
             climate,
             planet,
             climate_physical,
+            precipitation_phase_rate_mm_year,
             coarse_topology_hash: coarse_topology.metrics().topology_hash_hex(),
             tectonic_hash: tectonics.metrics.tectonic_hash_hex(),
             geology_hash: geology.metrics.geology_hash_hex(),
@@ -504,6 +569,9 @@ impl WasmWorldgenClimate {
     }
     pub fn annual_precipitation_mm(&self) -> Vec<f32> {
         self.climate.annual_precipitation_mm.clone()
+    }
+    pub fn precipitation_phase_rate_mm_year(&self) -> Vec<f32> {
+        self.precipitation_phase_rate_mm_year.clone()
     }
     pub fn precipitation_seasonality(&self) -> Vec<f32> {
         self.climate.precipitation_seasonality.clone()

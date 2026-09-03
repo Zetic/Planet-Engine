@@ -79,7 +79,7 @@ export class WasmWorldgenClimate {
     nearest_coarse_source(): Uint32Array;
     neighbor_offsets(): Uint32Array;
     neighbors(): Uint32Array;
-    constructor(seed: string, coarse_level: number, fine_level: number, plate_count: number);
+    constructor(seed: string, coarse_level: number, fine_level: number, plate_count: number, progress?: Function | null);
     ocean_area_fraction(): number;
     ocean_divergence_residual_m_s(): number;
     ocean_heat_transport_index(): Float32Array;
@@ -96,6 +96,7 @@ export class WasmWorldgenClimate {
     plate_ids(): Uint16Array;
     positions(): Float64Array;
     potential_evaporation_mm(): Float32Array;
+    precipitation_phase_rate_mm_year(): Float32Array;
     precipitation_seasonality(): Float32Array;
     radius_m(): number;
     reference_surface_pressure_pa(): number;
@@ -622,7 +623,7 @@ export interface InitOutput {
     readonly wasmworldgenclimate_nearest_coarse_source: (a: number) => [number, number];
     readonly wasmworldgenclimate_neighbor_offsets: (a: number) => [number, number];
     readonly wasmworldgenclimate_neighbors: (a: number) => [number, number];
-    readonly wasmworldgenclimate_new: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
+    readonly wasmworldgenclimate_new: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number];
     readonly wasmworldgenclimate_ocean_area_fraction: (a: number) => number;
     readonly wasmworldgenclimate_ocean_divergence_residual_m_s: (a: number) => number;
     readonly wasmworldgenclimate_ocean_heat_transport_index: (a: number) => [number, number];
@@ -639,6 +640,7 @@ export interface InitOutput {
     readonly wasmworldgenclimate_plate_ids: (a: number) => [number, number];
     readonly wasmworldgenclimate_positions: (a: number) => [number, number];
     readonly wasmworldgenclimate_potential_evaporation_mm: (a: number) => [number, number];
+    readonly wasmworldgenclimate_precipitation_phase_rate_mm_year: (a: number) => [number, number];
     readonly wasmworldgenclimate_precipitation_seasonality: (a: number) => [number, number];
     readonly wasmworldgenclimate_radius_m: (a: number) => number;
     readonly wasmworldgenclimate_reference_surface_pressure_pa: (a: number) => number;
@@ -1039,6 +1041,8 @@ export interface InitOutput {
     readonly wasmworldgentopography_coarse_level: (a: number) => number;
     readonly wasmworldgentopography_fine_level: (a: number) => number;
     readonly wasmworldgentopology_level: (a: number) => number;
+    readonly __wbindgen_exn_store: (a: number) => void;
+    readonly __externref_table_alloc: () => number;
     readonly __wbindgen_externrefs: WebAssembly.Table;
     readonly __wbindgen_free: (a: number, b: number, c: number) => void;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
