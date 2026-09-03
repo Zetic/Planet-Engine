@@ -1,4 +1,4 @@
-name: Temporary WG-5 calibrated transport finalization
+name: Temporary WG-5 CLI acceptance hardening
 
 on:
   push:
@@ -9,53 +9,27 @@ permissions:
   contents: write
 
 jobs:
-  finalize:
+  harden:
     if: ${{ github.actor != 'github-actions[bot]' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
         with:
           ref: worldgen-wg5-coupled-climate
-      - name: Calibrate default ocean heat coupling
-        run: |
-          sed -i 's/ocean_advection_relaxation: 0.025/ocean_advection_relaxation: 0.010/' rust/interlink-worldgen/src/climate.rs
-          python - <<'PY'
-          from pathlib import Path
-          p = Path('docs/worldgen-rewrite/WG5_CLIMATE.md')
-          s = p.read_text()
-          needle = 'Projected ocean-edge transports drive SST advection through a conservative donor-cell update. Aggregate donor outflow is CFL-limited per orbital phase, so the explicit heat step remains stable as mesh spacing shrinks through the L7 quality target without weakening circulation at coarser levels. Atmospheric moisture transport likewise scales aggregate outgoing graph transfers to the donor water mass before applying paired transfers, preserving moisture mass instead of relying on post-transport zero clamps.\n'
-          assert needle in s
-          replacement = needle + '\nThe reduced ocean-advection coupling is calibrated separately from the CFL safety cap. The default coupling is `0.010`, which retains causal current-driven SST transport while meeting the WG-5 L7 annual convergence target; the donor CFL cap remains an independent resolution-safety bound.\n'
-          p.write_text(s.replace(needle, replacement, 1))
-          PY
+      - name: Make climate diagnostic enforce acceptance
+        run: python scripts/wg5_cli_acceptance_patch.py
       - name: Format Rust
         run: cargo fmt --all
       - name: Validate Rust workspace
         run: cargo test --workspace
-      - name: Validate L6 acceptance
+      - name: Validate native climate diagnostic
         run: |
-          cargo run --release -p interlink-worldgen-cli -- climate --seed wg5-accept-l6 --coarse-level 4 --level 6 --plates 18 | tee /tmp/wg5-l6.txt
-          python scripts/wg5_assert_acceptance.py /tmp/wg5-l6.txt
-      - name: Validate L7 acceptance
-        run: |
-          cargo run --release -p interlink-worldgen-cli -- climate --seed wg5-accept-l7 --coarse-level 5 --level 7 --plates 24 | tee /tmp/wg5-l7.txt
-          python scripts/wg5_assert_acceptance.py /tmp/wg5-l7.txt
-      - name: Prepare pinned browser WASM toolchain
-        run: |
-          rustup target add wasm32-unknown-unknown
-          cargo install wasm-bindgen-cli --version 0.2.127 --locked
-      - name: Rebuild browser WASM package
-        run: npm run build:worldgen-wasm
-      - name: Validate browser surface
-        run: |
-          npm ci
-          npm run build
-          npm run test:ts
-      - name: Commit calibrated WG-5 transport defaults
+          cargo run --release -p interlink-worldgen-cli -- climate --seed wg5-cli-accept --coarse-level 3 --level 4 --plates 12
+      - name: Commit CLI acceptance contract
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add rust/interlink-worldgen/src/climate.rs docs/worldgen-rewrite/WG5_CLIMATE.md src/wasm-worldgen
-          git commit -m 'Calibrate WG-5 ocean heat coupling for L7 convergence'
+          git add rust/interlink-worldgen-cli/src/main.rs
+          git commit -m 'Make WG-5 CLI fail non-converged climate diagnostics'
           git push origin HEAD:worldgen-wg5-coupled-climate
