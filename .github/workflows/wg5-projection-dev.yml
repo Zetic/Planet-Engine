@@ -1,4 +1,4 @@
-name: Temporary WG-5 rotation-response hardening
+name: Temporary WG-5 conservative ocean heat transport
 
 on:
   push:
@@ -16,20 +16,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: worldgen-wg5-coupled-climate
-      - name: Apply rotation-rate climate response
-        run: python scripts/wg5_rotation_response.py
+      - name: Couple SST to projected ocean-edge transport
+        run: python scripts/wg5_ocean_heat_flux.py
       - name: Validate Rust climate core
         run: cargo test --workspace
-      - name: Prepare pinned browser WASM toolchain
-        run: |
-          rustup target add wasm32-unknown-unknown
-          cargo install wasm-bindgen-cli --version 0.2.127 --locked
-      - name: Rebuild browser WASM package
-        run: npm run build:worldgen-wasm
-      - name: Commit rotation-response hardening
+      - name: Commit conservative ocean heat transport
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add rust/interlink-worldgen/src/climate.rs rust/interlink-worldgen/tests/climate_ensemble.rs src/wasm-worldgen
-          git commit -m 'Make WG-5 circulation respond to rotation rate'
+          git add rust/interlink-worldgen/src/climate.rs
+          git commit -m 'Use projected ocean transports for WG-5 heat advection'
           git push origin HEAD:worldgen-wg5-coupled-climate
