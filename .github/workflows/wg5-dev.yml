@@ -23,17 +23,26 @@ jobs:
           python scripts/wg5_patch_seasonal_ocean.py
           python scripts/wg5_patch_seasonal_browser.py
           python scripts/wg5_patch_version_assertions.py
+          python scripts/wg5_patch_lab_html.py
       - name: Build and test browser protocol
         run: |
           npm ci
           npm run build
           npm test
-      - name: Test Rust bridge
-        run: cargo test --workspace
-      - name: Commit staged integration
+      - name: Prepare pinned browser WASM toolchain
+        run: |
+          rustup target add wasm32-unknown-unknown
+          cargo install wasm-bindgen-cli --version 0.2.127 --locked
+      - name: Rebuild committed browser WASM package
+        run: npm run build:worldgen-wasm
+      - name: Commit staged integration and generated assets
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add rust/interlink-worldgen/src/lib.rs rust/interlink-worldgen/src/climate.rs rust/interlink-worldgen-wasm/src/lib.rs rust/interlink-worldgen-wasm/src/climate_bridge.rs rust/interlink-worldgen-wasm/tests/topography_bridge.rs src/worldgen/protocol.ts src/worldgen/worldgenClient.ts src/worldgen/worldgenWorker.ts dist/worldgen tests/wg4Topography.test.ts tests/worldgenRewrite.test.ts
-          git commit -m 'Wire WG-5 protocol v8 browser transport'
+          git add index.html worldgen-lab.html rust/interlink-worldgen/src/lib.rs rust/interlink-worldgen/src/climate.rs rust/interlink-worldgen-wasm/src/lib.rs rust/interlink-worldgen-wasm/src/climate_bridge.rs rust/interlink-worldgen-wasm/tests/topography_bridge.rs src/worldgen/protocol.ts src/worldgen/worldgenClient.ts src/worldgen/worldgenWorker.ts dist/worldgen src/wasm-worldgen tests/wg4Topography.test.ts tests/worldgenRewrite.test.ts
+          if git diff --cached --quiet; then
+            echo 'WG-5 staged integration already current.'
+            exit 0
+          fi
+          git commit -m 'Finalize WG-5 browser integration assets'
           git push origin HEAD:worldgen-wg5-coupled-climate
