@@ -1,0 +1,59 @@
+name: Temporary Planet Lab Observability Finalization
+
+on:
+  push:
+    branches:
+      - lab-generation-telemetry-diagnostic-overlays
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: ${{ !contains(github.event.head_commit.message, 'Finalize Planet Lab observability') }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: lab-generation-telemetry-diagnostic-overlays
+          fetch-depth: 0
+      - name: Install Rust and wasm target
+        run: |
+          rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown
+          rustup default stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install browser dependencies and pinned wasm-bindgen
+        run: |
+          npm ci
+          cargo install wasm-bindgen-cli --version 0.2.127 --locked
+      - name: Apply observability patch
+        run: |
+          python scripts/lab_observability_patch.py
+          cargo fmt --all
+      - name: Full Rust regression suite
+        run: cargo test --workspace
+      - name: Compile WASM bridge
+        run: cargo check -p interlink-worldgen-wasm --target wasm32-unknown-unknown
+      - name: Rebuild committed WASM
+        run: bash scripts/build-worldgen-wasm.sh
+      - name: Browser build and regressions
+        run: |
+          npm run build
+          npm run test:ts
+      - name: Verify no physical climate stage bump
+        run: |
+          grep -q 'CLIMATE_STAGE_VERSION: u32 = 4' rust/interlink-worldgen/src/climate.rs
+      - name: Commit validated production files
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add Cargo.lock rust src dist styles index.html worldgen-lab.html tests package-lock.json
+          if git diff --cached --quiet; then
+            echo 'No production changes to commit.'
+            exit 0
+          fi
+          git commit -m 'Finalize Planet Lab observability'
+          git push origin HEAD:lab-generation-telemetry-diagnostic-overlays
