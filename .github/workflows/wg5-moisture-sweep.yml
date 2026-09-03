@@ -1,26 +1,34 @@
-name: Temporary WG-5 Evaporation Energy Sweep
+name: Temporary WG-5 Moisture Production Finalization
 
 on:
   push:
     branches: [wg5-moisture-transport-rebuild]
 
+permissions:
+  contents: write
+
 jobs:
-  sweep:
-    strategy:
-      fail-fast: false
-      matrix:
-        energy_fraction: ['0.35', '0.45', '0.55']
-    name: energy-${{ matrix.energy_fraction }}
+  finalize:
+    if: github.event.head_commit.message != 'WG-5: Rebuild moisture transport and precipitation'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: wg5-moisture-transport-rebuild
-      - name: Install Rust stable
+          fetch-depth: 0
+      - name: Install Rust and wasm target
         run: |
-          rustup toolchain install stable --profile minimal
+          rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown
           rustup default stable
-      - name: Apply moisture prototype
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install browser dependencies and pinned wasm-bindgen
+        run: |
+          npm ci
+          cargo install wasm-bindgen-cli --version 0.2.127 --locked
+      - name: Apply selected stage-4 moisture model
         env:
           EVAP_BULK: '0.0015'
           MOISTURE_SUBSTEPS: '4'
@@ -28,7 +36,7 @@ jobs:
           CONVERGENCE_RH: '0.60'
           CONVERGENCE_EFF: '0.35'
           MOISTURE_SPEED_CAP: '1.0'
-          EVAP_ENERGY_FRACTION: ${{ matrix.energy_fraction }}
+          EVAP_ENERGY_FRACTION: '0.45'
         run: |
           set -euo pipefail
           python scripts/wg5_moisture_patch.py
@@ -39,14 +47,42 @@ jobs:
           python scripts/wg5_moisture_substeps64_patch.py
           python scripts/wg5_evap_energy_budget_patch.py
           python scripts/wg5_moisture_evap_diagnostics_patch.py
+          python scripts/wg5_moisture_finalize_patch.py
+          chmod +x scripts/check-wg5-moisture-resolution.sh
           cargo fmt --all
-          cargo check -p interlink-worldgen
-          cargo check -p interlink-worldgen-cli --examples
-      - name: Run fixed-coarse L6
+      - name: Full Rust regression suite
+        run: cargo test --workspace
+      - name: Standard WG-5 calibration ensemble
+        run: bash scripts/run-wg5-calibration.sh standard
+      - name: Fixed-coarse moisture resolution acceptance
+        run: bash scripts/check-wg5-moisture-resolution.sh
+      - name: Compile WASM bridge
+        run: cargo check -p interlink-worldgen-wasm --target wasm32-unknown-unknown
+      - name: Rebuild committed WASM
+        run: npm run build:worldgen-wasm
+      - name: Browser build and regressions
+        run: |
+          npm run build
+          npm run test:ts
+      - name: Commit validated production files
         run: |
           set -euo pipefail
-          cargo run --release -p interlink-worldgen-cli --example climate_calibration -- --seed ci-wg5-l7 --coarse-level 5 --level 6 --plates 24 --skip-orography-intervention
-      - name: Run fixed-coarse L7
-        run: |
-          set -euo pipefail
-          cargo run --release -p interlink-worldgen-cli --example climate_calibration -- --seed ci-wg5-l7 --coarse-level 5 --level 7 --plates 24 --skip-orography-intervention
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            rust/interlink-worldgen/src/climate.rs \
+            rust/interlink-worldgen/src/climate_calibration.rs \
+            rust/interlink-worldgen/tests/climate_ensemble.rs \
+            rust/interlink-worldgen/tests/climate_calibration.rs \
+            rust/interlink-worldgen-cli/examples/climate_calibration.rs \
+            rust/interlink-worldgen-wasm/src/climate_bridge.rs \
+            rust/interlink-worldgen-wasm/tests/climate_bridge.rs \
+            docs/worldgen-rewrite/WG5_CLIMATE.md \
+            docs/worldgen-rewrite/WG5_CALIBRATION.md \
+            docs/worldgen-rewrite/VALIDATION.md \
+            scripts/check-wg5-moisture-resolution.sh \
+            scripts/run-wg5-calibration.sh \
+            src/wasm-worldgen
+          git diff --cached --stat
+          git commit -m 'WG-5: Rebuild moisture transport and precipitation'
+          git push origin HEAD:wg5-moisture-transport-rebuild
