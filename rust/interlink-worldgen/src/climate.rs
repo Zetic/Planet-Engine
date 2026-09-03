@@ -1540,13 +1540,12 @@ fn generate_coupled_climate_internal(
         water_depth_m[i] = f64::from(terrain.water_depth_m[i]).max(0.0);
     }
 
-    let terrain_values = terrain_height_m.clone();
     let mut terrain_gradient_east = vec![0.0; sample_count];
     let mut terrain_gradient_north = vec![0.0; sample_count];
     for i in 0..sample_count {
         let (east, north) = scalar_gradient(
             topology,
-            &terrain_values,
+            &terrain_height_m,
             planet.radius_m,
             i,
             east_bases[i],
@@ -1645,10 +1644,25 @@ fn generate_coupled_climate_internal(
     let mut spinup_years = parameters.maximum_spinup_years;
     let mut maximum_ocean_divergence_residual = 0.0_f64;
 
+    // Phase/year workspaces are allocated once and reused. WG-5 executes these
+    // paths hundreds of times during spin-up, so per-phase Vec allocation and
+    // cloning are pure overhead rather than part of the physical model.
+    let mut start_temperature = vec![0.0; sample_count];
+    let mut start_sst = vec![0.0; sample_count];
+    let mut previous_temperature = vec![0.0; sample_count];
+    let mut previous_sst = vec![0.0; sample_count];
+    let mut next_sst = vec![0.0; sample_count];
+    let mut absorbed_surface_energy_w_m2 = vec![0.0; sample_count];
+    let mut radiative_target = vec![0.0; sample_count];
+    let mut air_mass = vec![0.0; sample_count];
+    let mut moisture_mass = vec![0.0; sample_count];
+    let mut precipitation_mass_phase = vec![0.0; sample_count];
+    let mut requested_ocean_evaporation_mass = vec![0.0; sample_count];
+
     for year in 0..parameters.maximum_spinup_years {
         progress(year, parameters.maximum_spinup_years);
-        let start_temperature = temperature.clone();
-        let start_sst = sea_surface_temperature.clone();
+        start_temperature.copy_from_slice(&temperature);
+        start_sst.copy_from_slice(&sea_surface_temperature);
 
         annual_mean_insolation.fill(0.0);
         insolation_min.fill(f64::INFINITY);
@@ -1704,16 +1718,12 @@ fn generate_coupled_climate_internal(
             let phase_cos = phase_angle.cos();
             let phase_sin = phase_angle.sin();
 
-            let mut insolation = vec![0.0; sample_count];
-            let mut absorbed_surface_energy_w_m2 = vec![0.0; sample_count];
-            let mut radiative_target = vec![0.0; sample_count];
             for i in 0..sample_count {
                 let solar = daily_mean_insolation(
                     latitude[i],
                     declination,
                     planet.stellar_flux_w_m2 * distance_factor,
                 );
-                insolation[i] = solar;
                 annual_mean_insolation[i] += solar / phase_count as f64;
                 insolation_min[i] = insolation_min[i].min(solar);
                 insolation_max[i] = insolation_max[i].max(solar);
@@ -1768,7 +1778,7 @@ fn generate_coupled_climate_internal(
                     .clamp(120.0, 355.0);
             }
 
-            let previous_temperature = temperature.clone();
+            previous_temperature.copy_from_slice(&temperature);
             for i in 0..sample_count {
                 let relaxation = if ocean[i] {
                     parameters.ocean_thermal_relaxation
@@ -1802,11 +1812,10 @@ fn generate_coupled_climate_internal(
             }
 
             if atmosphere_exists {
-                let temperature_for_gradient = temperature.clone();
                 for i in 0..sample_count {
                     let (gradient_east, gradient_north) = scalar_gradient(
                         topology,
-                        &temperature_for_gradient,
+                        &temperature,
                         planet.radius_m,
                         i,
                         east_bases[i],
@@ -1883,7 +1892,7 @@ fn generate_coupled_climate_internal(
                     maximum_ocean_divergence_residual.max(phase_divergence_residual);
             }
 
-            let previous_sst = sea_surface_temperature.clone();
+            previous_sst.copy_from_slice(&sea_surface_temperature);
             conservative_ocean_heat_tendency(
                 &ocean_projection_geometry,
                 &ocean_edge_transport_m2_s,
@@ -1894,7 +1903,7 @@ fn generate_coupled_climate_internal(
                 parameters.ocean_advection_cfl_limit,
                 &mut ocean_heat_tendency_k_s,
             );
-            let mut next_sst = previous_sst.clone();
+            next_sst.copy_from_slice(&previous_sst);
             for i in 0..sample_count {
                 if !ocean[i] {
                     next_sst[i] = temperature[i];
@@ -1907,7 +1916,7 @@ fn generate_coupled_climate_internal(
                     + parameters.ocean_temperature_diffusion * (neighbor_sst - previous_sst[i]))
                     .clamp(250.0, 330.0);
             }
-            sea_surface_temperature = next_sst;
+            sea_surface_temperature.copy_from_slice(&next_sst);
             for i in 0..sample_count {
                 if !ocean[i] {
                     continue;
@@ -1930,8 +1939,6 @@ fn generate_coupled_climate_internal(
             }
 
             if atmosphere_exists {
-                let mut air_mass = vec![0.0; sample_count];
-                let mut moisture_mass = vec![0.0; sample_count];
                 for i in 0..sample_count {
                     air_mass[i] = pressure[i] / planet.surface_gravity_m_s2 * cell_area_m2[i];
                     moisture_mass[i] = humidity[i] * air_mass[i];
@@ -1939,12 +1946,12 @@ fn generate_coupled_climate_internal(
                 let moisture_before = moisture_mass.iter().sum::<f64>();
                 let mut phase_evaporation = 0.0;
                 let mut phase_precipitation = 0.0;
-                let mut precipitation_mass_phase = vec![0.0; sample_count];
+                precipitation_mass_phase.fill(0.0);
 
                 // Bulk-aerodynamic evaporation is expressed as a surface mass flux
                 // rather than a per-phase humidity relaxation, making the source
                 // independent of mesh resolution and orbital phase count.
-                let mut requested_ocean_evaporation_mass = vec![0.0; sample_count];
+                requested_ocean_evaporation_mass.fill(0.0);
                 let mut requested_ocean_evaporation_total = 0.0;
                 let mut ocean_absorbed_power_w = 0.0;
                 for i in 0..sample_count {
