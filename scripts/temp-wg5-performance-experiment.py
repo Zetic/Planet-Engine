@@ -29,7 +29,7 @@ replace_once(
     let mut terms = Vec::with_capacity(sample_count.saturating_mul(6));
 ''',
     '''    let mut offsets = Vec::with_capacity(sample_count + 1);
-    let mut neighbors = Vec::with_capacity(sample_count.saturating_mul(6));
+    let mut cached_neighbors = Vec::with_capacity(sample_count.saturating_mul(6));
     let mut terms = Vec::with_capacity(sample_count.saturating_mul(6));
 ''',
     'allocate scalar gradient neighbor cache',
@@ -41,7 +41,7 @@ replace_once(
 ''',
     '''        for (neighbor, arc) in neighbors.iter().zip(lengths.iter()) {
             let neighbor_index = *neighbor as usize;
-            neighbors.push(*neighbor);
+            cached_neighbors.push(*neighbor);
 ''',
     'populate scalar gradient neighbor cache',
 )
@@ -51,7 +51,7 @@ replace_once(
 ''',
     '''    ScalarGradientGeometry {
         offsets,
-        neighbors,
+        neighbors: cached_neighbors,
         terms,
     }
 ''',
