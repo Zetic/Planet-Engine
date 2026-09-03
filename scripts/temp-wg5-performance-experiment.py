@@ -9,37 +9,66 @@ def replace_once(old: str, new: str, label: str) -> None:
         raise SystemExit(f'{label} anchor not found')
     text = text.replace(old, new, 1)
 
-# The caller immediately scans every cell again for convergence precipitation.
-# Keep the exact per-cell moisture update expression, but perform it at the
-# start of that caller pass so one full-grid traversal disappears per moisture
-# substep.
 replace_once(
-    '''    for i in 0..moisture_mass.len() {
-        moisture_mass[i] = (moisture_mass[i] + delta[i]).max(0.0);
-    }
-    (limited_donors, active_donors)
-}
+    '''                precipitation_mass_phase.fill(0.0);
+
+                // Bulk-aerodynamic evaporation is expressed as a surface mass flux
 ''',
-    '''    (limited_donors, active_donors)
-}
+    '''                precipitation_mass_phase.fill(0.0);
+
+                // Temperature and pressure remain fixed throughout the moisture
+                // calculations in this orbital phase. Cache atmospheric saturation
+                // humidity once and reuse it for land evaporation, convergence
+                // precipitation, and final condensation.
+                for i in 0..sample_count {
+                    phase_saturation_air[i] =
+                        saturation_specific_humidity(temperature[i], pressure[i]);
+                }
+
+                // Bulk-aerodynamic evaporation is expressed as a surface mass flux
 ''',
-    'remove standalone moisture delta application pass',
+    'move phase saturation cache before evaporation',
 )
 
 replace_once(
-    '''                    moisture_transport_limited_donor_steps += limited_donors;
-                    moisture_transport_active_donor_steps += active_donors;
-                    for i in 0..sample_count {
-                        if moisture_transport_delta[i] <= 0.0 || air_mass[i] <= 0.0 {
+    '''                    let surface_temperature = if ocean[i] {
+                        sea_surface_temperature[i]
+                    } else {
+                        temperature[i]
+                    };
+                    let saturation_surface =
+                        saturation_specific_humidity(surface_temperature, pressure[i]);
 ''',
-    '''                    moisture_transport_limited_donor_steps += limited_donors;
-                    moisture_transport_active_donor_steps += active_donors;
-                    for i in 0..sample_count {
-                        moisture_mass[i] =
-                            (moisture_mass[i] + moisture_transport_delta[i]).max(0.0);
-                        if moisture_transport_delta[i] <= 0.0 || air_mass[i] <= 0.0 {
+    '''                    let saturation_surface = if ocean[i] {
+                        saturation_specific_humidity(sea_surface_temperature[i], pressure[i])
+                    } else {
+                        phase_saturation_air[i]
+                    };
 ''',
-    'fuse moisture delta application with convergence precipitation pass',
+    'reuse atmospheric saturation for land evaporation',
+)
+
+replace_once(
+    '''                // Temperature and pressure remain fixed throughout all moisture
+                // substeps in this orbital phase. Saturation humidity therefore
+                // only needs to be evaluated once per cell per phase.
+                for i in 0..sample_count {
+                    phase_saturation_air[i] =
+                        saturation_specific_humidity(temperature[i], pressure[i]);
+                }
+''',
+    '''''',
+    'remove old phase saturation cache location',
+)
+
+replace_once(
+    '''                    let saturation_air = saturation_specific_humidity(temperature[i], pressure[i]);
+                    let threshold = saturation_air * parameters.condensation_relative_humidity;
+''',
+    '''                    let saturation_air = phase_saturation_air[i];
+                    let threshold = saturation_air * parameters.condensation_relative_humidity;
+''',
+    'reuse atmospheric saturation for final condensation',
 )
 
 path.write_text(text)
