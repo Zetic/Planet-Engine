@@ -639,6 +639,36 @@ fn daily_mean_insolation(latitude: f64, declination: f64, stellar_flux: f64) -> 
     value.max(0.0)
 }
 
+#[derive(Clone, Copy, Debug)]
+struct InsolationPhaseGeometry {
+    declination_sin: f64,
+    declination_cos: f64,
+    declination_tan: f64,
+    stellar_flux_w_m2: f64,
+    phase_cos: f64,
+    phase_sin: f64,
+}
+
+fn daily_mean_insolation_cached(
+    latitude_sin: f64,
+    latitude_cos: f64,
+    latitude_tan: f64,
+    phase: InsolationPhaseGeometry,
+) -> f64 {
+    let x = -latitude_tan * phase.declination_tan;
+    let hour_angle = if x >= 1.0 {
+        0.0
+    } else if x <= -1.0 {
+        std::f64::consts::PI
+    } else {
+        x.acos()
+    };
+    let value = phase.stellar_flux_w_m2 / std::f64::consts::PI
+        * (hour_angle * latitude_sin * phase.declination_sin
+            + latitude_cos * phase.declination_cos * hour_angle.sin());
+    value.max(0.0)
+}
+
 pub(crate) fn effective_shortwave_albedo(
     atmospheric_reflectivity: f64,
     surface_coupling: f64,
@@ -1663,6 +1693,9 @@ fn generate_coupled_climate_internal(
     let phase_seconds = planet.orbital_period_s / phase_count as f64;
 
     let mut latitude = vec![0.0; sample_count];
+    let mut latitude_sin = vec![0.0; sample_count];
+    let mut latitude_cos = vec![0.0; sample_count];
+    let mut latitude_tan = vec![0.0; sample_count];
     let mut east_bases = vec![[0.0; 3]; sample_count];
     let mut north_bases = vec![[0.0; 3]; sample_count];
     let mut cell_area_m2 = vec![0.0; sample_count];
@@ -1672,6 +1705,9 @@ fn generate_coupled_climate_internal(
     for i in 0..sample_count {
         let position = topology.positions()[i];
         latitude[i] = position[2].clamp(-1.0, 1.0).asin();
+        latitude_sin[i] = latitude[i].sin();
+        latitude_cos[i] = latitude[i].cos();
+        latitude_tan[i] = latitude[i].tan();
         let basis = tangent_basis(position)?;
         east_bases[i] = basis.east;
         north_bases[i] = basis.north;
@@ -1756,6 +1792,26 @@ fn generate_coupled_climate_internal(
     let mut ocean_edge_transport_m2_s = vec![0.0; ocean_projection_geometry.edges.len()];
     let mut ocean_heat_tendency_k_s = vec![0.0; sample_count];
 
+    let axial_tilt_sin = planet.axial_tilt_rad.sin();
+    let mut insolation_phases = Vec::with_capacity(phase_count);
+    for phase in 0..phase_count {
+        let mean_longitude = TWO_PI * phase as f64 / phase_count as f64;
+        let (solar_longitude, distance_factor) = solve_orbital_forcing(
+            mean_longitude,
+            physical.orbital_eccentricity,
+            physical.longitude_of_periapsis_rad,
+        );
+        let declination = (axial_tilt_sin * solar_longitude.sin()).asin();
+        insolation_phases.push(InsolationPhaseGeometry {
+            declination_sin: declination.sin(),
+            declination_cos: declination.cos(),
+            declination_tan: declination.tan(),
+            stellar_flux_w_m2: planet.stellar_flux_w_m2 * distance_factor,
+            phase_cos: mean_longitude.cos(),
+            phase_sin: mean_longitude.sin(),
+        });
+    }
+
     let mut temperature = vec![0.0; sample_count];
     let mut sea_surface_temperature = vec![0.0; sample_count];
     let mut pressure = vec![0.0; sample_count];
@@ -1765,7 +1821,7 @@ fn generate_coupled_climate_internal(
     let mut current_east = vec![0.0; sample_count];
     let mut current_north = vec![0.0; sample_count];
     for i in 0..sample_count {
-        let lat_factor = latitude[i].sin().abs().powf(1.45);
+        let lat_factor = latitude_sin[i].abs().powf(1.45);
         temperature[i] =
             (289.0 - 48.0 * lat_factor - parameters.lapse_rate_k_per_m * terrain_height_m[i])
                 .clamp(170.0, 335.0);
@@ -1890,22 +1946,16 @@ fn generate_coupled_climate_internal(
         maximum_ocean_divergence_residual = 0.0;
 
         for phase in 0..phase_count {
-            let mean_longitude = TWO_PI * phase as f64 / phase_count as f64;
-            let (solar_longitude, distance_factor) = solve_orbital_forcing(
-                mean_longitude,
-                physical.orbital_eccentricity,
-                physical.longitude_of_periapsis_rad,
-            );
-            let declination = (planet.axial_tilt_rad.sin() * solar_longitude.sin()).asin();
-            let phase_angle = mean_longitude;
-            let phase_cos = phase_angle.cos();
-            let phase_sin = phase_angle.sin();
+            let insolation_phase = insolation_phases[phase];
+            let phase_cos = insolation_phase.phase_cos;
+            let phase_sin = insolation_phase.phase_sin;
 
             for i in 0..sample_count {
-                let solar = daily_mean_insolation(
-                    latitude[i],
-                    declination,
-                    planet.stellar_flux_w_m2 * distance_factor,
+                let solar = daily_mean_insolation_cached(
+                    latitude_sin[i],
+                    latitude_cos[i],
+                    latitude_tan[i],
+                    insolation_phase,
                 );
                 annual_mean_insolation[i] += solar / phase_count as f64;
                 insolation_min[i] = insolation_min[i].min(solar);
