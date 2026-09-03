@@ -237,8 +237,14 @@ impl WasmWorldgenClimate {
     pub fn wind_north_annual_cos_m_s(&self) -> Vec<f32> { self.climate.wind_north_annual_cos_m_s.clone() }
     pub fn wind_north_annual_sin_m_s(&self) -> Vec<f32> { self.climate.wind_north_annual_sin_m_s.clone() }
     pub fn sea_surface_temperature_mean_k(&self) -> Vec<f32> { self.climate.sea_surface_temperature_mean_k.clone() }
+    pub fn sea_surface_temperature_annual_cos_k(&self) -> Vec<f32> { self.climate.sea_surface_temperature_annual_cos_k.clone() }
+    pub fn sea_surface_temperature_annual_sin_k(&self) -> Vec<f32> { self.climate.sea_surface_temperature_annual_sin_k.clone() }
     pub fn current_east_mean_m_s(&self) -> Vec<f32> { self.climate.current_east_mean_m_s.clone() }
     pub fn current_north_mean_m_s(&self) -> Vec<f32> { self.climate.current_north_mean_m_s.clone() }
+    pub fn current_east_annual_cos_m_s(&self) -> Vec<f32> { self.climate.current_east_annual_cos_m_s.clone() }
+    pub fn current_east_annual_sin_m_s(&self) -> Vec<f32> { self.climate.current_east_annual_sin_m_s.clone() }
+    pub fn current_north_annual_cos_m_s(&self) -> Vec<f32> { self.climate.current_north_annual_cos_m_s.clone() }
+    pub fn current_north_annual_sin_m_s(&self) -> Vec<f32> { self.climate.current_north_annual_sin_m_s.clone() }
     pub fn current_speed_mean_m_s(&self) -> Vec<f32> { self.climate.current_speed_mean_m_s.clone() }
     pub fn ocean_heat_transport_index(&self) -> Vec<f32> { self.climate.ocean_heat_transport_index.clone() }
     pub fn specific_humidity_mean(&self) -> Vec<f32> { self.climate.specific_humidity_mean.clone() }

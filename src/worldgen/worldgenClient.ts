@@ -1,5 +1,6 @@
 import {
   WORLDGEN_PROTOCOL_VERSION,
+  validateClimateRequest,
   validateGeologyRequest,
   validateInheritanceRequest,
   validateLithosphereRequest,
@@ -7,6 +8,7 @@ import {
   validateTopographyRequest,
   validateTectonicsRequest,
   validateTopologyRequest,
+  worldgenClimateCommand,
   worldgenGeologyCommand,
   worldgenInheritanceCommand,
   worldgenLithosphereCommand,
@@ -14,6 +16,8 @@ import {
   worldgenTopographyCommand,
   worldgenTectonicsCommand,
   worldgenTopologyCommand,
+  type WorldgenClimateRequest,
+  type WorldgenClimateResult,
   type WorldgenEvent,
   type WorldgenGeologyRequest,
   type WorldgenGeologyResult,
@@ -31,8 +35,8 @@ import {
   type WorldgenTopologyResult,
 } from './protocol.js';
 
-type WorldgenResult = WorldgenSyntheticResult | WorldgenTopologyResult | WorldgenTectonicsResult | WorldgenGeologyResult | WorldgenLithosphereResult | WorldgenInheritanceResult | WorldgenTopographyResult;
-type WorldgenRequestCommand = ReturnType<typeof worldgenSyntheticCommand> | ReturnType<typeof worldgenTopologyCommand> | ReturnType<typeof worldgenTectonicsCommand> | ReturnType<typeof worldgenGeologyCommand> | ReturnType<typeof worldgenLithosphereCommand> | ReturnType<typeof worldgenInheritanceCommand> | ReturnType<typeof worldgenTopographyCommand>;
+type WorldgenResult = WorldgenSyntheticResult | WorldgenTopologyResult | WorldgenTectonicsResult | WorldgenGeologyResult | WorldgenLithosphereResult | WorldgenInheritanceResult | WorldgenTopographyResult | WorldgenClimateResult;
+type WorldgenRequestCommand = ReturnType<typeof worldgenSyntheticCommand> | ReturnType<typeof worldgenTopologyCommand> | ReturnType<typeof worldgenTectonicsCommand> | ReturnType<typeof worldgenGeologyCommand> | ReturnType<typeof worldgenLithosphereCommand> | ReturnType<typeof worldgenInheritanceCommand> | ReturnType<typeof worldgenTopographyCommand> | ReturnType<typeof worldgenClimateCommand>;
 interface PendingRequest { resolve: (result: WorldgenResult) => void; reject: (error: Error) => void; }
 
 export interface WorldgenClient {
@@ -43,6 +47,7 @@ export interface WorldgenClient {
   generateLithosphere(request: WorldgenLithosphereRequest): Promise<WorldgenLithosphereResult>;
   generateInheritance(request: WorldgenInheritanceRequest): Promise<WorldgenInheritanceResult>;
   generateTopography(request: WorldgenTopographyRequest): Promise<WorldgenTopographyResult>;
+  generateClimate(request: WorldgenClimateRequest): Promise<WorldgenClimateResult>;
   dispose(): void;
 }
 
@@ -78,6 +83,7 @@ export function createWorldgenClient(): WorldgenClient {
     generateLithosphere(input) { validateLithosphereRequest(input); return request<WorldgenLithosphereResult>(worldgenLithosphereCommand(nextRequestId++, input)); },
     generateInheritance(input) { validateInheritanceRequest(input); return request<WorldgenInheritanceResult>(worldgenInheritanceCommand(nextRequestId++, input)); },
     generateTopography(input) { validateTopographyRequest(input); return request<WorldgenTopographyResult>(worldgenTopographyCommand(nextRequestId++, input)); },
+    generateClimate(input) { validateClimateRequest(input); return request<WorldgenClimateResult>(worldgenClimateCommand(nextRequestId++, input)); },
     dispose() { if (disposed) return; disposed = true; worker.terminate(); rejectAll('Planet Engine client was disposed.'); },
   };
 }
