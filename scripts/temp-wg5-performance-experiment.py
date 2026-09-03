@@ -10,131 +10,97 @@ def replace_once(old: str, new: str, label: str) -> None:
     text = text.replace(old, new, 1)
 
 replace_once(
-    '''fn conservative_ocean_heat_tendency(
-    geometry: &OceanProjectionGeometry,
-''',
-    '''#[derive(Clone, Debug)]
-struct OceanHeatWorkspace {
-    outgoing_transport_m2_s: Vec<f64>,
-    donor_scale: Vec<f64>,
-}
-
-impl OceanHeatWorkspace {
-    fn new(sample_count: usize) -> Self {
-        Self {
-            outgoing_transport_m2_s: vec![0.0; sample_count],
-            donor_scale: vec![1.0; sample_count],
+    '''fn mean_ocean_neighbor(
+    topology: &GeodesicTopology,
+    ocean: &[bool],
+    values: &[f64],
+    sample: usize,
+) -> f64 {
+    let mut sum = 0.0;
+    let mut count = 0usize;
+    for neighbor in topology.neighbors_of(sample as u32) {
+        let index = *neighbor as usize;
+        if ocean[index] {
+            sum += values[index];
+            count += 1;
         }
     }
+    if count > 0 {
+        sum / count as f64
+    } else {
+        values[sample]
+    }
+}
+''',
+    '''#[derive(Clone, Debug)]
+struct OceanNeighborGeometry {
+    offsets: Vec<usize>,
+    neighbors: Vec<u32>,
 }
 
-fn conservative_ocean_heat_tendency(
-    geometry: &OceanProjectionGeometry,
-    workspace: &mut OceanHeatWorkspace,
+fn build_ocean_neighbor_geometry(
+    topology: &GeodesicTopology,
+    ocean: &[bool],
+) -> OceanNeighborGeometry {
+    let sample_count = topology.metrics().sample_count as usize;
+    let mut offsets = Vec::with_capacity(sample_count + 1);
+    let mut neighbors = Vec::with_capacity(sample_count.saturating_mul(6));
+    offsets.push(0);
+    for sample in 0..sample_count {
+        for neighbor in topology.neighbors_of(sample as u32) {
+            if ocean[*neighbor as usize] {
+                neighbors.push(*neighbor);
+            }
+        }
+        offsets.push(neighbors.len());
+    }
+    OceanNeighborGeometry { offsets, neighbors }
+}
+
+fn mean_ocean_neighbor_cached(
+    geometry: &OceanNeighborGeometry,
+    values: &[f64],
+    sample: usize,
+) -> f64 {
+    let start = geometry.offsets[sample];
+    let end = geometry.offsets[sample + 1];
+    let neighbors = &geometry.neighbors[start..end];
+    let mut sum = 0.0;
+    for neighbor in neighbors {
+        sum += values[*neighbor as usize];
+    }
+    if !neighbors.is_empty() {
+        sum / neighbors.len() as f64
+    } else {
+        values[sample]
+    }
+}
 ''',
-    'add ocean heat workspace',
+    'replace ocean neighbor scan with cached geometry',
 )
 
 replace_once(
-    '''    let mut outgoing_transport_m2_s = vec![0.0; temperature_k.len()];
-    for (edge_index, edge) in geometry.edges.iter().enumerate() {
+    '''        water_depth_m[i] = f64::from(terrain.water_depth_m[i]).max(0.0);
+    }
+
+    let scalar_gradient_geometry =
 ''',
-    '''    let OceanHeatWorkspace {
-        outgoing_transport_m2_s,
-        donor_scale,
-    } = workspace;
-    debug_assert_eq!(outgoing_transport_m2_s.len(), temperature_k.len());
-    outgoing_transport_m2_s.fill(0.0);
-    for (edge_index, edge) in geometry.edges.iter().enumerate() {
+    '''        water_depth_m[i] = f64::from(terrain.water_depth_m[i]).max(0.0);
+    }
+
+    let ocean_neighbor_geometry = build_ocean_neighbor_geometry(topology, &ocean);
+    let scalar_gradient_geometry =
 ''',
-    'reuse outgoing transport scratch',
+    'build ocean neighbor cache once',
 )
 
 replace_once(
-    '''    let mut donor_scale = vec![1.0; temperature_k.len()];
-    for sample in 0..temperature_k.len() {
+    '''                let neighbor_sst = mean_ocean_neighbor(topology, &ocean, &previous_sst, i);
 ''',
-    '''    donor_scale.fill(1.0);
-    for sample in 0..temperature_k.len() {
+    '''                let neighbor_sst =
+                    mean_ocean_neighbor_cached(&ocean_neighbor_geometry, &previous_sst, i);
 ''',
-    'reuse donor scale scratch',
-)
-
-replace_once(
-    '''    let mut ocean_edge_transport_m2_s = vec![0.0; ocean_projection_geometry.edges.len()];
-    let mut ocean_heat_tendency_k_s = vec![0.0; sample_count];
-''',
-    '''    let mut ocean_edge_transport_m2_s = vec![0.0; ocean_projection_geometry.edges.len()];
-    let mut ocean_heat_workspace = OceanHeatWorkspace::new(sample_count);
-    let mut ocean_heat_tendency_k_s = vec![0.0; sample_count];
-''',
-    'allocate ocean heat workspace once',
-)
-
-replace_once(
-    '''            conservative_ocean_heat_tendency(
-                &ocean_projection_geometry,
-                &ocean_edge_transport_m2_s,
-''',
-    '''            conservative_ocean_heat_tendency(
-                &ocean_projection_geometry,
-                &mut ocean_heat_workspace,
-                &ocean_edge_transport_m2_s,
-''',
-    'pass ocean heat workspace',
-)
-
-replace_once(
-    '''        let mut tendency = vec![0.0; 2];
-        conservative_ocean_heat_tendency(
-            &geometry,
-            &[20.0],
-''',
-    '''        let mut tendency = vec![0.0; 2];
-        let mut workspace = OceanHeatWorkspace::new(2);
-        conservative_ocean_heat_tendency(
-            &geometry,
-            &mut workspace,
-            &[20.0],
-''',
-    'update conservative heat test workspace',
-)
-
-replace_once(
-    '''        let mut tendency = [0.0, 0.0];
-        conservative_ocean_heat_tendency(
-            &geometry,
-            &[100.0],
-''',
-    '''        let mut tendency = [0.0, 0.0];
-        let mut workspace = OceanHeatWorkspace::new(2);
-        conservative_ocean_heat_tendency(
-            &geometry,
-            &mut workspace,
-            &[100.0],
-''',
-    'update cfl test first workspace call',
-)
-
-replace_once(
-    '''        conservative_ocean_heat_tendency(
-            &geometry,
-            &[100.0],
-            &temperature,
-            &area,
-            10.0,
-            0.0,
-''',
-    '''        conservative_ocean_heat_tendency(
-            &geometry,
-            &mut workspace,
-            &[100.0],
-            &temperature,
-            &area,
-            10.0,
-            0.0,
-''',
-    'update cfl test second workspace call',
+    'use cached ocean neighbors for sst diffusion',
 )
 
 path.write_text(text)
