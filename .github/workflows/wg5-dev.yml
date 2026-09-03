@@ -17,7 +17,9 @@ jobs:
         with:
           ref: worldgen-wg5-coupled-climate
       - name: Apply staged WG-5 patch
-        run: python scripts/wg5_patch_protocol_browser.py
+        run: |
+          python scripts/wg5_patch_protocol_browser.py
+          python scripts/wg5_patch_protocol_tests.py
       - name: Build and test browser protocol
         run: |
           npm ci
@@ -29,6 +31,6 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add rust/interlink-worldgen/src/lib.rs rust/interlink-worldgen-wasm/src/lib.rs src/worldgen/protocol.ts src/worldgen/worldgenClient.ts src/worldgen/worldgenWorker.ts dist/worldgen
+          git add rust/interlink-worldgen/src/lib.rs rust/interlink-worldgen-wasm/src/lib.rs src/worldgen/protocol.ts src/worldgen/worldgenClient.ts src/worldgen/worldgenWorker.ts dist/worldgen tests/wg4Topography.test.ts tests/worldgenRewrite.test.ts
           git commit -m 'Wire WG-5 protocol v8 browser transport'
           git push origin HEAD:worldgen-wg5-coupled-climate
