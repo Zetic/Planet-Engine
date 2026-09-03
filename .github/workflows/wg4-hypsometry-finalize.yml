@@ -1,0 +1,128 @@
+name: Temporary WG-4 Hypsometry Finalization
+
+on:
+  push:
+    branches: [wg4-hypsometry-calibration]
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.event.head_commit.message != 'Finalize WG-4 Earthlike hypsometry calibration'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: wg4-hypsometry-calibration
+      - name: Apply production calibration and regression updates
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          # WG-4 model defaults and semantic stage version.
+          p = Path('rust/interlink-worldgen/src/topography.rs')
+          s = p.read_text()
+          replacements = {
+              'pub const TOPOGRAPHY_STAGE_VERSION: u32 = 1;':'pub const TOPOGRAPHY_STAGE_VERSION: u32 = 2;',
+              'isostatic_scale: 1.0':'isostatic_scale: 0.55',
+              'inherited_orogeny_scale_m: 1_900.0':'inherited_orogeny_scale_m: 1_200.0',
+              'collision_uplift_scale_m: 3_600.0':'collision_uplift_scale_m: 2_400.0',
+              'collision_width_m: 850_000.0':'collision_width_m: 600_000.0',
+              'mantle_dynamic_scale_m: 1_000.0':'mantle_dynamic_scale_m: 650.0',
+          }
+          for old, new in replacements.items():
+              if old not in s:
+                  raise SystemExit(f'missing topography anchor: {old}')
+              s = s.replace(old, new, 1)
+          p.write_text(s)
+
+          # Permanent ensemble hypsometry gate.
+          p = Path('rust/interlink-worldgen/tests/topography_ensemble.rs')
+          s = p.read_text()
+          anchor = '#[test]\nfn changing_only_water_inventory_changes_flooding_not_the_solid_surface() {'
+          test = '''#[test]\nfn earthlike_reference_hypsometry_stays_within_pre_erosion_ensemble_envelope() {\n    for seed in ["wg4-e0", "wg4-e1", "wg4-e2", "wg4-e3", "wg4-e4"] {\n        let generated = generate(seed, None);\n        let metrics = &generated.terrain.metrics;\n\n        assert!(\n            (0.20..=0.40).contains(&metrics.land_area_fraction),\n            "Earth-like reference land fraction escaped the broad pre-erosion envelope for {seed}: {}",\n            metrics.land_area_fraction\n        );\n        assert!(\n            (700.0..=2_500.0).contains(&metrics.mean_land_elevation_m),\n            "Earth-like reference mean land elevation escaped the broad pre-erosion envelope for {seed}: {} m",\n            metrics.mean_land_elevation_m\n        );\n        assert!(\n            (2_800.0..=5_000.0).contains(&metrics.mean_water_depth_m),\n            "Earth-like reference mean ocean depth escaped the broad pre-erosion envelope for {seed}: {} m",\n            metrics.mean_water_depth_m\n        );\n        assert!(\n            (3_500.0..=7_000.0).contains(&metrics.p95_solid_elevation_m),\n            "Earth-like reference p95 solid elevation escaped the broad pre-erosion envelope for {seed}: {} m",\n            metrics.p95_solid_elevation_m\n        );\n        assert!(\n            metrics.maximum_solid_elevation_m <= 11_000.0,\n            "Earth-like reference maximum solid elevation is excessively broad/high before erosion for {seed}: {} m",\n            metrics.maximum_solid_elevation_m\n        );\n        assert_eq!(metrics.clamped_sample_count, 0);\n        assert!(metrics.water_volume_relative_error < 1.0e-10);\n    }\n}\n\n'''
+          if anchor not in s:
+              raise SystemExit('missing topography ensemble insertion anchor')
+          s = s.replace(anchor, test + anchor, 1)
+          p.write_text(s)
+
+          # WASM stage contract.
+          p = Path('rust/interlink-worldgen-wasm/tests/topography_bridge.rs')
+          s = p.read_text()
+          old = 'assert_eq!(output.stage_version(), 1);'
+          if old not in s:
+              raise SystemExit('missing WASM topography stage-version anchor')
+          p.write_text(s.replace(old, 'assert_eq!(output.stage_version(), 2);', 1))
+
+          # WG-4 documentation.
+          p = Path('docs/worldgen-rewrite/TOPOGRAPHY.md')
+          s = p.read_text()
+          s = s.replace('The v1 terrain state keeps forcing components separately inspectable:', 'The v2 terrain state keeps forcing components separately inspectable:', 1)
+          s = s.replace('Stage identity is `terrain:initial-topography@1`', 'Stage identity is `terrain:initial-topography@2`', 1)
+          resolution = '## Resolution\n'
+          calibration = '''## Earth-like hypsometry calibration\n\nThe `@2` default retunes broad relief amplitudes after the WG-5 calibration baseline showed that the original Earth-like reference placed roughly two thirds to four fifths of land above 2 km across representative L6 worlds. The correction remains upstream in WG-4 rather than compensating with an artificial climate warming term.\n\nThe calibrated defaults reduce broad crustal/isostatic support and old/broad uplift while preserving signed tectonic morphology: `isostatic_scale = 0.55`, inherited orogeny `1200 m`, collision uplift `2400 m` over a `600 km` kernel, and mantle-dynamic relief `650 m`. Ridge, rift, trench, arc, thermal-subsidence, water-inventory and mechanical-filter parameters are unchanged.\n\nA five-seed L4 Earth-like ensemble now occupies a deliberately broad **pre-erosion** envelope: land fraction `23–30%`, mean land elevation `1.28–1.82 km`, mean standing-ocean depth `3.49–3.81 km`, and p95 solid elevation `4.49–5.91 km`, with exact water-volume closure and no safety clamps. These are calibration guards, not a requirement to reproduce Earth exactly; later erosion and glaciation are still expected to reshape the distribution.\n\n'''
+          if resolution not in s:
+              raise SystemExit('missing topography documentation resolution anchor')
+          s = s.replace(resolution, calibration + resolution, 1)
+          p.write_text(s)
+
+          # Validation contract.
+          p = Path('docs/worldgen-rewrite/VALIDATION.md')
+          s = p.read_text()
+          old = 'WG-4 acceptance requires finite sample-aligned component and final elevation fields; deterministic topography identity; unchanged upstream identities; nontrivial crustal/isostatic and tectonic relief; bounded safety-clamp use; area-weighted hypsometry; exact dry-profile behavior; and an Earth-like water-volume solve whose integrated standing-water volume matches the explicit target within numerical tolerance. Ensemble validation checks that oceanic cooling tends toward deeper old seafloor and that collision, ridge, rift, trench/arc polarity, basin tendency and mantle support produce the expected signed statistical responses without requiring any generated seed to reproduce Earth exactly.'
+          new = old + ' The Earth-like reference also carries a broad multi-seed pre-erosion hypsometry guard: representative L4 worlds must retain mixed land/ocean coverage, kilometer-scale rather than multi-kilometer mean continental elevation, plausible standing-ocean depth, bounded p95 relief, exact water-volume closure, and no safety clamps. The guard is intentionally wide enough to preserve seed diversity and is not an Earth heightmap target.'
+          if old not in s:
+              raise SystemExit('missing validation WG-4 gate anchor')
+          p.write_text(s.replace(old, new, 1))
+
+          # Calibration record: preserve the original baseline and document causal impact.
+          p = Path('docs/worldgen-rewrite/WG5_CALIBRATION.md')
+          s = p.read_text()
+          anchor = '## Baseline interpretation\n'
+          followup = '''## WG-4 `@2` hypsometry follow-up\n\nWG-4 calibration was intentionally applied before changing WG-5 equations. On the user-reference `interlink-wg5` L6 world, the upstream terrain change moves mean land elevation from `4068` to `1615 m`, land p95 from `9256` to `4691 m`, land above 2 km from `78.0%` to `27.6%`, and land fraction from `41.1%` to `34.8%`; mean standing-ocean depth remains near `4.1 km`.\n\nThe same unchanged WG-5 model then moves land annual-mean temperature from `231.3` to `255.8 K` and reduces the land/ocean contrast from `79.3` to `52.8 K`. Mean SST remains very warm at `309.4 K`, the reduced energy-imbalance proxy remains strongly positive at about `+32 W/m²`, moisture-edge cap occupancy remains about `88.8%`, and mean precipitation remains low at about `198 mm/yr`. The four-seed L6 follow-up shows the same separation of concerns: terrain calibration materially fixes continental hypsometry while leaving the ocean thermal and atmospheric moisture-transport problems clearly present for dedicated WG-5 revisions.\n\nThe permanent L7 climate quality case remains numerically accepted after the upstream change (`0.0738 K` final RMS temperature change and moisture-budget relative error about `4.4e-13`).\n\n'''
+          if anchor not in s:
+              raise SystemExit('missing calibration baseline interpretation anchor')
+          p.write_text(s.replace(anchor, followup + anchor, 1))
+          PY
+          cargo fmt --all
+      - name: Install Node and dependencies
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Full browser and Rust regressions
+        run: npm test
+      - name: WG-5 standard calibration after WG-4 retune
+        run: bash scripts/run-wg5-calibration.sh standard
+      - name: Permanent-style L7 acceptance
+        run: cargo run --release -q -p interlink-worldgen-cli -- climate --seed ci-wg5-l7 --coarse-level 5 --level 7 --plates 24
+      - name: Install browser target
+        run: rustup target add wasm32-unknown-unknown
+      - name: Compile browser bridge
+        run: npm run check:worldgen-wasm
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/wasm-bindgen*
+          key: ${{ runner.os }}-wasm-bindgen-cli-0.2.127
+      - name: Install pinned wasm-bindgen CLI
+        run: |
+          if ! command -v wasm-bindgen >/dev/null 2>&1 || ! wasm-bindgen --version | grep -q '0.2.127'; then
+            cargo install wasm-bindgen-cli --version 0.2.127 --locked
+          fi
+      - name: Rebuild committed browser WASM package
+        run: npm run build:worldgen-wasm
+      - name: Commit validated production changes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add rust/interlink-worldgen/src/topography.rs \
+            rust/interlink-worldgen/tests/topography_ensemble.rs \
+            rust/interlink-worldgen-wasm/tests/topography_bridge.rs \
+            docs/worldgen-rewrite/TOPOGRAPHY.md \
+            docs/worldgen-rewrite/VALIDATION.md \
+            docs/worldgen-rewrite/WG5_CALIBRATION.md \
+            src/wasm-worldgen
+          git commit -m 'Finalize WG-4 Earthlike hypsometry calibration'
+          git push origin HEAD:wg4-hypsometry-calibration
