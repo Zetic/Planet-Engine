@@ -14,25 +14,24 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: wg5-thermal-budget-calibration
-      - name: Nonzero surface-albedo and diffusivity sweep at L6
+      - name: Shortwave-longwave balance sweep at L6
         run: |
           set -euo pipefail
           rustup toolchain install stable --profile minimal
           rustup default stable
           for spec in \
-            '0.18 0.10 1000000.0' \
-            '0.18 0.10 2000000.0' \
-            '0.18 0.10 5000000.0' \
-            '0.20 0.10 1000000.0' \
-            '0.20 0.10 2000000.0' \
-            '0.20 0.10 5000000.0' \
-            '0.20 0.25 2000000.0' \
-            '0.20 0.25 5000000.0' \
-            '0.22 0.10 2000000.0'; do
-            read -r reflectivity coupling diffusivity <<< "${spec}"
-            echo "===== REFLECTIVITY=${reflectivity} COUPLING=${coupling} DIFF=${diffusivity} ====="
+            '0.22 0.25 1.05' \
+            '0.22 0.25 1.15' \
+            '0.24 0.25 1.10' \
+            '0.24 0.25 1.20' \
+            '0.25 0.25 1.20' \
+            '0.25 0.25 1.30' \
+            '0.26 0.25 1.25' \
+            '0.27 0.25 1.30'; do
+            read -r reflectivity coupling longwave <<< "${spec}"
+            echo "===== REFLECTIVITY=${reflectivity} COUPLING=${coupling} LW=${longwave} ====="
             git checkout -- rust/interlink-worldgen/src/climate.rs rust/interlink-worldgen/src/climate_calibration.rs
-            SW_REFLECTIVITY="${reflectivity}" HEAT_DIFFUSIVITY="${diffusivity}" AIR_SEA_EXCHANGE=8.0 MIXED_LAYER_DEPTH=20.0 HEAT_SOLVER_ITERS=20 \
+            SW_REFLECTIVITY="${reflectivity}" LW_OPTICAL_DEPTH="${longwave}" HEAT_DIFFUSIVITY=2000000.0 AIR_SEA_EXCHANGE=8.0 MIXED_LAYER_DEPTH=20.0 HEAT_SOLVER_ITERS=20 \
               python scripts/wg5_thermal_sweep_patch.py
             SURFACE_ALBEDO_COUPLING="${coupling}" python scripts/wg5_thermal_coupling_patch.py
             sed -i 's/maximum_spinup_years: 10/maximum_spinup_years: 24/' rust/interlink-worldgen/src/climate.rs
