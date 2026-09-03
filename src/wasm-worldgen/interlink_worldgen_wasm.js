@@ -64,6 +64,13 @@ export class WasmWorldgenClimate {
     /**
      * @returns {number}
      */
+    atmospheric_shortwave_reflectivity() {
+        const ret = wasm.wasmworldgenclimate_atmospheric_shortwave_reflectivity(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
     atmospheric_specific_heat_j_per_kg_k() {
         const ret = wasm.wasmworldgenclimate_atmospheric_specific_heat_j_per_kg_k(this.__wbg_ptr);
         return ret;

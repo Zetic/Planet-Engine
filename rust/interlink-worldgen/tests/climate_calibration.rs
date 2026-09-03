@@ -13,13 +13,9 @@ fn calibration_report_is_deterministic_finite_and_diagnostic_only() {
     let coarse = build_icosphere(3).unwrap();
     let fine = build_icosphere(4).unwrap();
     let tectonics = generate_tectonics(&coarse, &TectonicsRequest::new(seed, 12), planet).unwrap();
-    let geology = generate_crust_and_history(
-        &coarse,
-        &tectonics,
-        &GeologyRequest::new(seed),
-        planet,
-    )
-    .unwrap();
+    let geology =
+        generate_crust_and_history(&coarse, &tectonics, &GeologyRequest::new(seed), planet)
+            .unwrap();
     let lithosphere = generate_lithosphere(
         &coarse,
         &tectonics,
@@ -27,23 +23,11 @@ fn calibration_report_is_deterministic_finite_and_diagnostic_only() {
         &LithosphereRequest::new(seed),
     )
     .unwrap();
-    let inherited = inherit_physical_state(
-        &fine,
-        3,
-        &tectonics,
-        &geology,
-        &lithosphere,
-        planet,
-    )
-    .unwrap();
-    let boundaries = inherit_boundary_interfaces(
-        &coarse,
-        &fine,
-        &tectonics,
-        &geology,
-        &inherited.plate_ids,
-    )
-    .unwrap();
+    let inherited =
+        inherit_physical_state(&fine, 3, &tectonics, &geology, &lithosphere, planet).unwrap();
+    let boundaries =
+        inherit_boundary_interfaces(&coarse, &fine, &tectonics, &geology, &inherited.plate_ids)
+            .unwrap();
     let terrain = generate_initial_topography(
         &fine,
         &inherited,
@@ -88,7 +72,7 @@ fn calibration_report_is_deterministic_finite_and_diagnostic_only() {
     assert!((0.0..=1.0).contains(&first.land_area_above_2km_fraction));
     assert!((0.0..=1.0).contains(&first.land_area_above_4km_fraction));
     assert!(first.land_area_above_4km_fraction <= first.land_area_above_2km_fraction);
-    assert!(first.clear_surface_absorbed_shortwave_w_m2.is_finite());
+    assert!(first.effective_absorbed_shortwave_w_m2.is_finite());
     assert!(first.outgoing_longwave_proxy_w_m2.is_finite());
     assert!(first.toa_energy_imbalance_proxy_w_m2.is_finite());
     assert!((0.0..=1.0).contains(&first.reconstructed_wind_cap_fraction));

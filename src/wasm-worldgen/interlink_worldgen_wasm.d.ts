@@ -10,6 +10,7 @@ export class WasmWorldgenClimate {
     aridity_index(): Float32Array;
     atmospheric_longwave_optical_depth(): number;
     atmospheric_mean_molar_mass_kg_per_mol(): number;
+    atmospheric_shortwave_reflectivity(): number;
     atmospheric_specific_heat_j_per_kg_k(): number;
     axial_tilt_rad(): number;
     boundary_coarse_source_indices(): Uint32Array;
@@ -550,6 +551,7 @@ export interface InitOutput {
     readonly wasmworldgenclimate_aridity_index: (a: number) => [number, number];
     readonly wasmworldgenclimate_atmospheric_longwave_optical_depth: (a: number) => number;
     readonly wasmworldgenclimate_atmospheric_mean_molar_mass_kg_per_mol: (a: number) => number;
+    readonly wasmworldgenclimate_atmospheric_shortwave_reflectivity: (a: number) => number;
     readonly wasmworldgenclimate_atmospheric_specific_heat_j_per_kg_k: (a: number) => number;
     readonly wasmworldgenclimate_axial_tilt_rad: (a: number) => number;
     readonly wasmworldgenclimate_boundary_coarse_source_indices: (a: number) => [number, number];
