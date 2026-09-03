@@ -1,20 +1,48 @@
 name: Temporary WG-5 Calibration Measurement
 
 on:
-  pull_request:
+  push:
+    branches: [wg5-calibration-baseline]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   quality:
-    if: github.head_ref == 'wg5-calibration-baseline'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install Rust stable
+        with:
+          ref: wg5-calibration-baseline
+      - name: Install Rust stable and browser target
         run: |
-          rustup toolchain install stable --profile minimal
+          rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown
           rustup default stable
+      - name: Remove calibration-only warning
+        run: sed -i 's/tangent_basis, ClimatePhysicalParameters, ClimateRequest/tangent_basis, ClimateRequest/' rust/interlink-worldgen/src/climate_calibration.rs
+      - name: Validate Rust workspace
+        run: cargo test --workspace
       - name: Run WG-5 calibration quality ensemble
-        run: bash scripts/run-wg5-calibration.sh quality
+        run: bash scripts/run-wg5-calibration.sh quality | tee /tmp/wg5-calibration-quality.txt
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/wasm-bindgen*
+          key: ${{ runner.os }}-wasm-bindgen-cli-0.2.127
+      - name: Install pinned wasm-bindgen CLI
+        run: |
+          if ! command -v wasm-bindgen >/dev/null 2>&1 || ! wasm-bindgen --version | grep -q '0.2.127'; then
+            cargo install wasm-bindgen-cli --version 0.2.127 --locked
+          fi
+      - name: Rebuild committed browser WASM package
+        run: npm run build:worldgen-wasm
+      - name: Commit validated calibration outputs
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add rust/interlink-worldgen/src/climate_calibration.rs src/wasm-worldgen
+          if git diff --cached --quiet; then
+            echo 'No generated changes to commit.'
+          else
+            git commit -m 'Finalize WG-5 calibration baseline outputs'
+            git push origin HEAD:wg5-calibration-baseline
+          fi
