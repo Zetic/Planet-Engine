@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Planet Engine · WG-4 Lab</title>
+  <title>Planet Engine · WG-5 Lab</title>
   <link rel="stylesheet" href="styles/base.css">
   <link rel="stylesheet" href="styles/worldgenLab.css">
 </head>
@@ -11,14 +11,14 @@
   <main class="worldgen-lab">
     <header class="worldgen-lab-header">
       <div>
-        <p class="worldgen-lab-kicker">PLANET ENGINE · THROUGH WG-4</p>
+        <p class="worldgen-lab-kicker">PLANET ENGINE · THROUGH WG-5</p>
         <h1>PLANET ENGINE LAB</h1>
-        <p>Generate one deterministic physical planet, then inspect its topology, inherited tectonic and geological state, lithosphere, and WG-4 pre-erosional topography from the same result.</p>
+        <p>Generate one deterministic physical planet through WG-5, then inspect topology, tectonics, geology, lithosphere, topography, seasonal climate, winds, surface currents, and moisture from the same result.</p>
       </div>
     </header>
 
     <section class="worldgen-lab-controls" aria-label="Planet generation controls">
-      <label>Seed <input id="worldgen-seed" type="text" value="interlink-wg4"></label>
+      <label>Seed <input id="worldgen-seed" type="text" value="interlink-wg5"></label>
       <label>Coarse physical level <input id="worldgen-coarse-level" type="number" min="0" max="6" value="4"></label>
       <label>Fine planet level <input id="worldgen-level" type="number" min="0" max="7" value="6"></label>
       <label>Plate count <input id="worldgen-plates" type="number" min="4" max="48" value="16"></label>
@@ -28,10 +28,43 @@
           <option value="map">Equirectangular map</option>
         </select>
       </label>
+      <label>Season / orbital phase
+        <input id="worldgen-season" type="range" min="0" max="1000" value="0" step="1">
+        <span id="worldgen-season-value">0.0% orbit</span>
+      </label>
       <label>Diagnostic
         <select id="worldgen-visualization">
+          <optgroup label="Climate · Radiation / temperature (WG-5)">
+            <option value="temperature">Annual mean temperature</option>
+            <option value="seasonal-temperature">Seasonal temperature</option>
+            <option value="temperature-range">Annual temperature range</option>
+            <option value="annual-insolation">Annual mean insolation</option>
+            <option value="seasonal-insolation">Seasonal insolation amplitude</option>
+            <option value="sst">Annual mean sea-surface temperature</option>
+            <option value="seasonal-sst">Seasonal sea-surface temperature</option>
+          </optgroup>
+          <optgroup label="Climate · Atmosphere / ocean (WG-5)">
+            <option value="winds">Seasonal prevailing winds</option>
+            <option value="wind-speed">Annual mean wind speed</option>
+            <option value="surface-pressure">Surface atmospheric pressure</option>
+            <option value="currents">Seasonal surface ocean currents</option>
+            <option value="current-speed">Annual mean current speed</option>
+            <option value="ocean-heat">Ocean heat transport</option>
+          </optgroup>
+          <optgroup label="Climate · Moisture / cryosphere (WG-5)">
+            <option value="humidity">Atmospheric specific humidity</option>
+            <option value="precipitation">Annual precipitation</option>
+            <option value="precip-seasonality">Precipitation seasonality</option>
+            <option value="potential-evaporation">Potential evaporation</option>
+            <option value="moisture-balance">Moisture balance</option>
+            <option value="aridity">Aridity index</option>
+            <option value="snowfall">Snowfall fraction</option>
+            <option value="persistent-snow">Persistent snow potential</option>
+            <option value="sea-ice">Sea-ice potential</option>
+          </optgroup>
           <optgroup label="Physical surface (WG-4)">
-            <option value="relative-elevation" selected>Elevation above sea level</option>
+            <option value="physical-elevation" selected>Physical elevation / bathymetry</option>
+            <option value="relative-elevation">Elevation above sea level</option>
             <option value="solid-elevation">Solid elevation / datum</option>
             <option value="land-water">Land / water</option>
             <option value="water-depth">Bathymetry / water depth</option>
@@ -90,14 +123,14 @@
         <h2>Physical diagnostics</h2>
         <div id="worldgen-metrics" class="worldgen-lab-metrics"></div>
         <div class="worldgen-lab-note">
-          <strong>Current physical frontier: WG-4</strong>
-          <p>One generation runs the accepted topology, tectonic, geological, lithospheric, multiresolution inheritance, and initial-topography pipeline. Diagnostic modes inspect that same generated planet rather than regenerating earlier stages.</p>
-          <p>WG-4 adds crustal isostatic support, oceanic age subsidence, collision/ridge/rift/subduction morphology, inherited basin tendency, broad mantle support, lithospheric mechanical filtering, and a water-volume-derived sea-level solution.</p>
-          <p>This remains pre-erosional physical topography. Climate, drainage, river incision, sediment transport, glaciation, detailed lithology, resource deposits, Regions, Features, and gameplay integration remain downstream.</p>
+          <strong>Current physical frontier: WG-5</strong>
+          <p>One generation runs the accepted topology, tectonic, geological, lithospheric, multiresolution inheritance, WG-4 topography, and WG-5 coupled-climate pipeline. Every diagnostic mode inspects that same generated planet.</p>
+          <p>WG-5 adds seasonal orbital forcing, land/ocean thermal response, prevailing winds, wind-driven surface ocean currents, SST heat transport, atmospheric moisture, orographic precipitation, aridity, and snow/sea-ice potential. The season slider reconstructs stored climatology; it does not rerun the solver.</p>
+          <p>The physical surface remains pre-erosional. Drainage, river incision, sediment transport, glacier flow, detailed lithology, resource deposits, Regions, Features, and gameplay integration remain downstream.</p>
         </div>
       </aside>
     </section>
   </main>
-  <script type="module" src="dist/worldgen/diagnostics/worldgenTopographyLabStandalone.js"></script>
+  <script type="module" src="dist/worldgen/diagnostics/worldgenClimateLabStandalone.js"></script>
 </body>
 </html>

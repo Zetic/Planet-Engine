@@ -1,4 +1,4 @@
-import { WORLDGEN_PROTOCOL_VERSION, validateGeologyRequest, validateInheritanceRequest, validateLithosphereRequest, validateSyntheticRequest, validateTopographyRequest, validateTectonicsRequest, validateTopologyRequest, } from './protocol.js';
+import { WORLDGEN_PROTOCOL_VERSION, validateClimateRequest, validateGeologyRequest, validateInheritanceRequest, validateLithosphereRequest, validateSyntheticRequest, validateTopographyRequest, validateTectonicsRequest, validateTopologyRequest, } from './protocol.js';
 const workerScope = self;
 let wasmModulePromise = null;
 function nowMs() { return globalThis.performance?.now?.() ?? Date.now(); }
@@ -298,6 +298,101 @@ async function generateTopography(command) {
         output.free();
     }
 }
+async function generateClimate(command) {
+    validateClimateRequest(command.payload);
+    const module = await loadWorldgenWasm();
+    const startedAt = nowMs();
+    const output = new module.WasmWorldgenClimate(command.payload.seed, command.payload.coarseLevel, command.payload.fineLevel, command.payload.plateCount);
+    try {
+        const positions = output.positions();
+        const faces = output.faces();
+        const neighborOffsets = output.neighbor_offsets();
+        const neighbors = output.neighbors();
+        const plateIds = output.plate_ids();
+        const crustKind = output.crust_kind();
+        const nearestCoarseSource = output.nearest_coarse_source();
+        const inheritedSampleMask = output.inherited_sample_mask();
+        const crustAgeMyr = output.crust_age_myr();
+        const crustThicknessKm = output.crust_thickness_km();
+        const orogenicHistory = output.orogenic_history();
+        const ridgeHistory = output.ridge_history();
+        const trenchHistory = output.trench_history();
+        const strengthIndex = output.strength_index();
+        const weaknessIndex = output.weakness_index();
+        const mantleDynamicSupportIndex = output.mantle_dynamic_support_index();
+        const structuralZoneKind = output.structural_zone_kind();
+        const fragmentationPropensity = output.fragmentation_propensity();
+        const kinematicDomainIds = output.kinematic_domain_ids();
+        const boundarySamples = output.boundary_samples();
+        const boundaryKinds = output.boundary_kinds();
+        const geologicalBoundaryRegimes = output.geological_boundary_regimes();
+        const boundaryCoarseSourceIndices = output.boundary_coarse_source_indices();
+        const isostaticElevationM = output.isostatic_elevation_m();
+        const thermalElevationM = output.thermal_elevation_m();
+        const orogenicElevationM = output.orogenic_elevation_m();
+        const ridgeElevationM = output.ridge_elevation_m();
+        const riftBasinElevationM = output.rift_basin_elevation_m();
+        const trenchElevationM = output.trench_elevation_m();
+        const arcElevationM = output.arc_elevation_m();
+        const mantleDynamicElevationM = output.mantle_dynamic_elevation_m();
+        const solidElevationM = output.solid_elevation_m();
+        const elevationAboveSeaLevelM = output.elevation_above_sea_level_m();
+        const waterDepthM = output.water_depth_m();
+        const submergedMask = output.submerged_mask();
+        const annualMeanInsolationWM2 = output.annual_mean_insolation_w_m2();
+        const seasonalInsolationAmplitudeWM2 = output.seasonal_insolation_amplitude_w_m2();
+        const temperatureMeanK = output.temperature_mean_k();
+        const temperatureAnnualCosK = output.temperature_annual_cos_k();
+        const temperatureAnnualSinK = output.temperature_annual_sin_k();
+        const temperatureMinK = output.temperature_min_k();
+        const temperatureMaxK = output.temperature_max_k();
+        const localPressurePa = output.local_pressure_pa();
+        const windEastMeanMS = output.wind_east_mean_m_s();
+        const windNorthMeanMS = output.wind_north_mean_m_s();
+        const windEastAnnualCosMS = output.wind_east_annual_cos_m_s();
+        const windEastAnnualSinMS = output.wind_east_annual_sin_m_s();
+        const windNorthAnnualCosMS = output.wind_north_annual_cos_m_s();
+        const windNorthAnnualSinMS = output.wind_north_annual_sin_m_s();
+        const seaSurfaceTemperatureMeanK = output.sea_surface_temperature_mean_k();
+        const seaSurfaceTemperatureAnnualCosK = output.sea_surface_temperature_annual_cos_k();
+        const seaSurfaceTemperatureAnnualSinK = output.sea_surface_temperature_annual_sin_k();
+        const currentEastMeanMS = output.current_east_mean_m_s();
+        const currentNorthMeanMS = output.current_north_mean_m_s();
+        const currentEastAnnualCosMS = output.current_east_annual_cos_m_s();
+        const currentEastAnnualSinMS = output.current_east_annual_sin_m_s();
+        const currentNorthAnnualCosMS = output.current_north_annual_cos_m_s();
+        const currentNorthAnnualSinMS = output.current_north_annual_sin_m_s();
+        const currentSpeedMeanMS = output.current_speed_mean_m_s();
+        const oceanHeatTransportIndex = output.ocean_heat_transport_index();
+        const specificHumidityMean = output.specific_humidity_mean();
+        const annualPrecipitationMm = output.annual_precipitation_mm();
+        const precipitationSeasonality = output.precipitation_seasonality();
+        const potentialEvaporationMm = output.potential_evaporation_mm();
+        const moistureBalanceMm = output.moisture_balance_mm();
+        const aridityIndex = output.aridity_index();
+        const snowfallFraction = output.snowfall_fraction();
+        const persistentSnowPotential = output.persistent_snow_potential();
+        const seaIcePotential = output.sea_ice_potential();
+        return {
+            engineVersion: output.generator_version(), coarseLevel: output.coarse_level(), fineLevel: output.fine_level(),
+            stage: { id: output.stage_id(), version: output.stage_version(), stageSeed: output.stage_seed_hex(), durationMs: Math.max(0, nowMs() - startedAt) },
+            metrics: {
+                coarseSampleCount: output.coarse_sample_count(), fineSampleCount: output.fine_sample_count(), plateCount: output.plate_count(), fineBoundaryEdgeCount: output.fine_boundary_edge_count(), orbitalPhaseCount: output.orbital_phase_count(), spinupYears: output.spinup_years(),
+                meanTemperatureK: output.mean_temperature_k(), minimumTemperatureK: output.minimum_temperature_k(), maximumTemperatureK: output.maximum_temperature_k(), meanLandTemperatureK: output.mean_land_temperature_k(), meanOceanTemperatureK: output.mean_ocean_temperature_k(), meanWindSpeedMS: output.mean_wind_speed_m_s(), maximumWindSpeedMS: output.maximum_wind_speed_m_s(), meanSurfaceCurrentMS: output.mean_surface_current_m_s(), maximumSurfaceCurrentMS: output.maximum_surface_current_m_s(), oceanDivergenceResidualMS: output.ocean_divergence_residual_m_s(), meanSeaSurfaceTemperatureK: output.mean_sea_surface_temperature_k(), meanAnnualPrecipitationMm: output.mean_annual_precipitation_mm(), p95AnnualPrecipitationMm: output.p95_annual_precipitation_mm(), globalEvaporationKg: output.global_evaporation_kg(), globalPrecipitationKg: output.global_precipitation_kg(), moistureBudgetRelativeError: output.moisture_budget_relative_error(), persistentSnowAreaFraction: output.persistent_snow_area_fraction(), seaIceAreaFraction: output.sea_ice_area_fraction(), finalTemperatureRmsChangeK: output.final_temperature_rms_change_k(),
+                hasSeaLevel: output.has_sea_level(), seaLevelM: output.sea_level_m(), landAreaFraction: output.land_area_fraction(), oceanAreaFraction: output.ocean_area_fraction(), minimumSolidElevationM: output.minimum_solid_elevation_m(), maximumSolidElevationM: output.maximum_solid_elevation_m(),
+                coarseTopologyHash: output.coarse_topology_hash_hex(), fineTopologyHash: output.fine_topology_hash_hex(), tectonicHash: output.tectonic_hash_hex(), geologyHash: output.geology_hash_hex(), lithosphereHash: output.lithosphere_hash_hex(), inheritanceHash: output.inheritance_hash_hex(), boundaryHash: output.boundary_hash_hex(), planetParameterHash: output.planet_parameter_hash_hex(), topographyHash: output.topography_hash_hex(), climatePhysicalParameterHash: output.climate_physical_parameter_hash_hex(), climateModelParameterHash: output.climate_model_parameter_hash_hex(), climateHash: output.climate_hash_hex(),
+            },
+            planet: { radiusM: output.radius_m(), surfaceGravityMS2: output.surface_gravity_m_s2(), rotationPeriodS: output.rotation_period_s(), axialTiltRad: output.axial_tilt_rad(), orbitalPeriodS: output.orbital_period_s(), stellarFluxWM2: output.stellar_flux_w_m2(), referenceSurfacePressurePa: output.reference_surface_pressure_pa(), surfaceWaterMassKg: output.surface_water_mass_kg(), equivalentGlobalWaterDepthM: output.equivalent_global_water_depth_m(), internalHeatFluxWPerM2: output.internal_heat_flux_w_per_m2() },
+            climatePhysical: { orbitalEccentricity: output.orbital_eccentricity(), longitudeOfPeriapsisRad: output.longitude_of_periapsis_rad(), atmosphericMeanMolarMassKgPerMol: output.atmospheric_mean_molar_mass_kg_per_mol(), atmosphericSpecificHeatJPerKgK: output.atmospheric_specific_heat_j_per_kg_k(), atmosphericLongwaveOpticalDepth: output.atmospheric_longwave_optical_depth() },
+            positions, faces, neighborOffsets, neighbors, plateIds, crustKind, nearestCoarseSource, inheritedSampleMask, crustAgeMyr, crustThicknessKm, orogenicHistory, ridgeHistory, trenchHistory, strengthIndex, weaknessIndex, mantleDynamicSupportIndex, structuralZoneKind, fragmentationPropensity, kinematicDomainIds, boundarySamples, boundaryKinds, geologicalBoundaryRegimes, boundaryCoarseSourceIndices,
+            isostaticElevationM, thermalElevationM, orogenicElevationM, ridgeElevationM, riftBasinElevationM, trenchElevationM, arcElevationM, mantleDynamicElevationM, solidElevationM, elevationAboveSeaLevelM, waterDepthM, submergedMask,
+            annualMeanInsolationWM2, seasonalInsolationAmplitudeWM2, temperatureMeanK, temperatureAnnualCosK, temperatureAnnualSinK, temperatureMinK, temperatureMaxK, localPressurePa, windEastMeanMS, windNorthMeanMS, windEastAnnualCosMS, windEastAnnualSinMS, windNorthAnnualCosMS, windNorthAnnualSinMS, seaSurfaceTemperatureMeanK, seaSurfaceTemperatureAnnualCosK, seaSurfaceTemperatureAnnualSinK, currentEastMeanMS, currentNorthMeanMS, currentEastAnnualCosMS, currentEastAnnualSinMS, currentNorthAnnualCosMS, currentNorthAnnualSinMS, currentSpeedMeanMS, oceanHeatTransportIndex, specificHumidityMean, annualPrecipitationMm, precipitationSeasonality, potentialEvaporationMm, moistureBalanceMm, aridityIndex, snowfallFraction, persistentSnowPotential, seaIcePotential,
+        };
+    }
+    finally {
+        output.free();
+    }
+}
 workerScope.addEventListener('message', async (messageEvent) => {
     const command = messageEvent.data;
     try {
@@ -336,6 +431,11 @@ workerScope.addEventListener('message', async (messageEvent) => {
         if (command.type === 'generate-topography') {
             const result = await generateTopography(command);
             workerScope.postMessage({ protocolVersion: WORLDGEN_PROTOCOL_VERSION, requestId: command.requestId, type: 'generated-topography', payload: result }, [result.positions.buffer, result.faces.buffer, result.neighborOffsets.buffer, result.neighbors.buffer, result.plateIds.buffer, result.crustKind.buffer, result.nearestCoarseSource.buffer, result.inheritedSampleMask.buffer, result.crustAgeMyr.buffer, result.crustThicknessKm.buffer, result.orogenicHistory.buffer, result.ridgeHistory.buffer, result.trenchHistory.buffer, result.strengthIndex.buffer, result.weaknessIndex.buffer, result.mantleDynamicSupportIndex.buffer, result.structuralZoneKind.buffer, result.fragmentationPropensity.buffer, result.kinematicDomainIds.buffer, result.boundarySamples.buffer, result.boundaryKinds.buffer, result.geologicalBoundaryRegimes.buffer, result.boundaryCoarseSourceIndices.buffer, result.isostaticElevationM.buffer, result.thermalElevationM.buffer, result.orogenicElevationM.buffer, result.ridgeElevationM.buffer, result.riftBasinElevationM.buffer, result.trenchElevationM.buffer, result.arcElevationM.buffer, result.mantleDynamicElevationM.buffer, result.solidElevationM.buffer, result.elevationAboveSeaLevelM.buffer, result.waterDepthM.buffer, result.submergedMask.buffer]);
+            return;
+        }
+        if (command.type === 'generate-climate') {
+            const result = await generateClimate(command);
+            workerScope.postMessage({ protocolVersion: WORLDGEN_PROTOCOL_VERSION, requestId: command.requestId, type: 'generated-climate', payload: result }, [result.positions.buffer, result.faces.buffer, result.neighborOffsets.buffer, result.neighbors.buffer, result.plateIds.buffer, result.crustKind.buffer, result.nearestCoarseSource.buffer, result.inheritedSampleMask.buffer, result.crustAgeMyr.buffer, result.crustThicknessKm.buffer, result.orogenicHistory.buffer, result.ridgeHistory.buffer, result.trenchHistory.buffer, result.strengthIndex.buffer, result.weaknessIndex.buffer, result.mantleDynamicSupportIndex.buffer, result.structuralZoneKind.buffer, result.fragmentationPropensity.buffer, result.kinematicDomainIds.buffer, result.boundarySamples.buffer, result.boundaryKinds.buffer, result.geologicalBoundaryRegimes.buffer, result.boundaryCoarseSourceIndices.buffer, result.isostaticElevationM.buffer, result.thermalElevationM.buffer, result.orogenicElevationM.buffer, result.ridgeElevationM.buffer, result.riftBasinElevationM.buffer, result.trenchElevationM.buffer, result.arcElevationM.buffer, result.mantleDynamicElevationM.buffer, result.solidElevationM.buffer, result.elevationAboveSeaLevelM.buffer, result.waterDepthM.buffer, result.submergedMask.buffer, result.annualMeanInsolationWM2.buffer, result.seasonalInsolationAmplitudeWM2.buffer, result.temperatureMeanK.buffer, result.temperatureAnnualCosK.buffer, result.temperatureAnnualSinK.buffer, result.temperatureMinK.buffer, result.temperatureMaxK.buffer, result.localPressurePa.buffer, result.windEastMeanMS.buffer, result.windNorthMeanMS.buffer, result.windEastAnnualCosMS.buffer, result.windEastAnnualSinMS.buffer, result.windNorthAnnualCosMS.buffer, result.windNorthAnnualSinMS.buffer, result.seaSurfaceTemperatureMeanK.buffer, result.seaSurfaceTemperatureAnnualCosK.buffer, result.seaSurfaceTemperatureAnnualSinK.buffer, result.currentEastMeanMS.buffer, result.currentNorthMeanMS.buffer, result.currentEastAnnualCosMS.buffer, result.currentEastAnnualSinMS.buffer, result.currentNorthAnnualCosMS.buffer, result.currentNorthAnnualSinMS.buffer, result.currentSpeedMeanMS.buffer, result.oceanHeatTransportIndex.buffer, result.specificHumidityMean.buffer, result.annualPrecipitationMm.buffer, result.precipitationSeasonality.buffer, result.potentialEvaporationMm.buffer, result.moistureBalanceMm.buffer, result.aridityIndex.buffer, result.snowfallFraction.buffer, result.persistentSnowPotential.buffer, result.seaIcePotential.buffer]);
             return;
         }
         throw new Error(`Unsupported worldgen command '${String(command.type)}'.`);

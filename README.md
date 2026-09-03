@@ -2,7 +2,7 @@
 
 Planet Engine is the standalone deterministic planetary physical-world generator for Project Interlink.
 
-The engine owns canonical spherical topology, macro tectonics, crust and geological history, lithospheric mechanics and tectonic refinement, multiresolution physical inheritance, initial physical topography/bathymetry, planetary physical profiles, native diagnostics, browser/WASM transport, and the standalone Planet Engine Lab.
+The engine owns canonical spherical topology, macro tectonics, crust and geological history, lithospheric mechanics and tectonic refinement, multiresolution physical inheritance, initial physical topography/bathymetry, coupled planetary climate, planetary physical profiles, native diagnostics, browser/WASM transport, and the standalone Planet Engine Lab.
 
 ## Current physical pipeline
 
@@ -21,8 +21,12 @@ WG-3.75 multiresolution physical inheritance
           ↓
 WG-4 initial physical topography
           ↓
-WG-5 climate (next)
+WG-5 coupled planetary climate
+          ↓
+WG-6 hydrology (next)
 ```
+
+WG-5 derives deterministic seasonal insolation, temperature and pressure, rotation-sensitive prevailing winds, mass-projected wind-driven surface-ocean circulation, sea-surface temperature and conservative ocean heat transport, atmospheric moisture, precipitation, aridity, and snow/sea-ice potential from the accepted WG-4 physical planet. Orbital phases are generation-time climatology samples; the Lab season slider reconstructs stored seasonal harmonics and does not run a live climate simulation.
 
 Gameplay Regions, Features, resource nodes, selection, factories, and the industrial runtime are intentionally outside this repository.
 
@@ -33,8 +37,8 @@ Gameplay Regions, Features, resource nodes, selection, factories, and the indust
 - `rust/interlink-worldgen-cli` — native diagnostics and benchmarks.
 - `src/worldgen` — browser protocol, Worker/client transport, and diagnostics.
 - `src/wasm-worldgen` — committed packaged Planet Engine WASM assets.
-- `worldgen-lab.html` — standalone browser diagnostic lab.
-- `docs/worldgen-rewrite` — architecture, determinism, resolution, geology, lithosphere, parameters, and validation contracts.
+- `worldgen-lab.html` — standalone cumulative browser diagnostic lab.
+- `docs/worldgen-rewrite` — architecture, determinism, resolution, geology, lithosphere, topography, climate, parameters, and validation contracts.
 
 ## Development
 
@@ -44,6 +48,8 @@ npm run build
 npm run test:ts
 cargo test --workspace
 npm run worldgen:inheritance
+npm run worldgen:topography
+npm run worldgen:climate
 npm run worldgen:profile
 ```
 

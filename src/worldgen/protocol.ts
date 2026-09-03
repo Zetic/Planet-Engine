@@ -1,4 +1,4 @@
-export const WORLDGEN_PROTOCOL_VERSION = 7;
+export const WORLDGEN_PROTOCOL_VERSION = 8;
 export const WORLDGEN_SYNTHETIC_MAX_SAMPLES = 4_194_304;
 export const WORLDGEN_TOPOLOGY_MAX_LEVEL = 7;
 export const WORLDGEN_TECTONICS_MAX_LEVEL = 6;
@@ -8,6 +8,8 @@ export const WORLDGEN_INHERITANCE_COARSE_MAX_LEVEL = 6;
 export const WORLDGEN_INHERITANCE_FINE_MAX_LEVEL = 7;
 export const WORLDGEN_TOPOGRAPHY_COARSE_MAX_LEVEL = 6;
 export const WORLDGEN_TOPOGRAPHY_FINE_MAX_LEVEL = 7;
+export const WORLDGEN_CLIMATE_COARSE_MAX_LEVEL = 6;
+export const WORLDGEN_CLIMATE_FINE_MAX_LEVEL = 7;
 export const WORLDGEN_TECTONICS_MIN_PLATES = 4;
 export const WORLDGEN_TECTONICS_MAX_PLATES = 48;
 
@@ -18,6 +20,7 @@ export interface WorldgenGeologyRequest { seed: string; level: number; plateCoun
 export interface WorldgenLithosphereRequest { seed: string; level: number; plateCount: number; }
 export interface WorldgenInheritanceRequest { seed: string; coarseLevel: number; fineLevel: number; plateCount: number; }
 export interface WorldgenTopographyRequest { seed: string; coarseLevel: number; fineLevel: number; plateCount: number; }
+export interface WorldgenClimateRequest { seed: string; coarseLevel: number; fineLevel: number; plateCount: number; }
 
 export interface WorldgenFieldStatistics { sampleCount: number; minimum: number; maximum: number; mean: number; fieldHash: string; }
 export interface WorldgenStageMetadata { id: string; version: number; stageSeed: string; durationMs: number; }
@@ -369,6 +372,153 @@ export interface WorldgenTopographyResult {
   submergedMask: Uint8Array;
 }
 
+
+export interface WorldgenClimateMetrics {
+  coarseSampleCount: number;
+  fineSampleCount: number;
+  plateCount: number;
+  fineBoundaryEdgeCount: number;
+  orbitalPhaseCount: number;
+  spinupYears: number;
+  meanTemperatureK: number;
+  minimumTemperatureK: number;
+  maximumTemperatureK: number;
+  meanLandTemperatureK: number;
+  meanOceanTemperatureK: number;
+  meanWindSpeedMS: number;
+  maximumWindSpeedMS: number;
+  meanSurfaceCurrentMS: number;
+  maximumSurfaceCurrentMS: number;
+  oceanDivergenceResidualMS: number;
+  meanSeaSurfaceTemperatureK: number;
+  meanAnnualPrecipitationMm: number;
+  p95AnnualPrecipitationMm: number;
+  globalEvaporationKg: number;
+  globalPrecipitationKg: number;
+  moistureBudgetRelativeError: number;
+  persistentSnowAreaFraction: number;
+  seaIceAreaFraction: number;
+  finalTemperatureRmsChangeK: number;
+  hasSeaLevel: boolean;
+  seaLevelM: number;
+  landAreaFraction: number;
+  oceanAreaFraction: number;
+  minimumSolidElevationM: number;
+  maximumSolidElevationM: number;
+  coarseTopologyHash: string;
+  fineTopologyHash: string;
+  tectonicHash: string;
+  geologyHash: string;
+  lithosphereHash: string;
+  inheritanceHash: string;
+  boundaryHash: string;
+  planetParameterHash: string;
+  topographyHash: string;
+  climatePhysicalParameterHash: string;
+  climateModelParameterHash: string;
+  climateHash: string;
+}
+
+export interface WorldgenClimatePlanetProfile {
+  radiusM: number;
+  surfaceGravityMS2: number;
+  rotationPeriodS: number;
+  axialTiltRad: number;
+  orbitalPeriodS: number;
+  stellarFluxWM2: number;
+  referenceSurfacePressurePa: number;
+  surfaceWaterMassKg: number;
+  equivalentGlobalWaterDepthM: number;
+  internalHeatFluxWPerM2: number;
+}
+
+export interface WorldgenClimatePhysicalProfile {
+  orbitalEccentricity: number;
+  longitudeOfPeriapsisRad: number;
+  atmosphericMeanMolarMassKgPerMol: number;
+  atmosphericSpecificHeatJPerKgK: number;
+  atmosphericLongwaveOpticalDepth: number;
+}
+
+export interface WorldgenClimateResult {
+  engineVersion: number;
+  coarseLevel: number;
+  fineLevel: number;
+  stage: WorldgenStageMetadata;
+  metrics: WorldgenClimateMetrics;
+  planet: WorldgenClimatePlanetProfile;
+  climatePhysical: WorldgenClimatePhysicalProfile;
+  positions: Float64Array;
+  faces: Uint32Array;
+  neighborOffsets: Uint32Array;
+  neighbors: Uint32Array;
+  plateIds: Uint16Array;
+  crustKind: Uint8Array;
+  nearestCoarseSource: Uint32Array;
+  inheritedSampleMask: Uint8Array;
+  crustAgeMyr: Float32Array;
+  crustThicknessKm: Float32Array;
+  orogenicHistory: Float32Array;
+  ridgeHistory: Float32Array;
+  trenchHistory: Float32Array;
+  strengthIndex: Float32Array;
+  weaknessIndex: Float32Array;
+  mantleDynamicSupportIndex: Float32Array;
+  structuralZoneKind: Uint8Array;
+  fragmentationPropensity: Float32Array;
+  kinematicDomainIds: Uint16Array;
+  boundarySamples: Uint32Array;
+  boundaryKinds: Uint8Array;
+  geologicalBoundaryRegimes: Uint8Array;
+  boundaryCoarseSourceIndices: Uint32Array;
+  isostaticElevationM: Float32Array;
+  thermalElevationM: Float32Array;
+  orogenicElevationM: Float32Array;
+  ridgeElevationM: Float32Array;
+  riftBasinElevationM: Float32Array;
+  trenchElevationM: Float32Array;
+  arcElevationM: Float32Array;
+  mantleDynamicElevationM: Float32Array;
+  solidElevationM: Float32Array;
+  elevationAboveSeaLevelM: Float32Array;
+  waterDepthM: Float32Array;
+  submergedMask: Uint8Array;
+  annualMeanInsolationWM2: Float32Array;
+  seasonalInsolationAmplitudeWM2: Float32Array;
+  temperatureMeanK: Float32Array;
+  temperatureAnnualCosK: Float32Array;
+  temperatureAnnualSinK: Float32Array;
+  temperatureMinK: Float32Array;
+  temperatureMaxK: Float32Array;
+  localPressurePa: Float32Array;
+  windEastMeanMS: Float32Array;
+  windNorthMeanMS: Float32Array;
+  windEastAnnualCosMS: Float32Array;
+  windEastAnnualSinMS: Float32Array;
+  windNorthAnnualCosMS: Float32Array;
+  windNorthAnnualSinMS: Float32Array;
+  seaSurfaceTemperatureMeanK: Float32Array;
+  seaSurfaceTemperatureAnnualCosK: Float32Array;
+  seaSurfaceTemperatureAnnualSinK: Float32Array;
+  currentEastMeanMS: Float32Array;
+  currentNorthMeanMS: Float32Array;
+  currentEastAnnualCosMS: Float32Array;
+  currentEastAnnualSinMS: Float32Array;
+  currentNorthAnnualCosMS: Float32Array;
+  currentNorthAnnualSinMS: Float32Array;
+  currentSpeedMeanMS: Float32Array;
+  oceanHeatTransportIndex: Float32Array;
+  specificHumidityMean: Float32Array;
+  annualPrecipitationMm: Float32Array;
+  precipitationSeasonality: Float32Array;
+  potentialEvaporationMm: Float32Array;
+  moistureBalanceMm: Float32Array;
+  aridityIndex: Float32Array;
+  snowfallFraction: Float32Array;
+  persistentSnowPotential: Float32Array;
+  seaIcePotential: Float32Array;
+}
+
 export interface WorldgenSyntheticCommand { protocolVersion: number; requestId: number; type: 'generate-synthetic'; payload: WorldgenSyntheticRequest; }
 export interface WorldgenTopologyCommand { protocolVersion: number; requestId: number; type: 'generate-topology'; payload: WorldgenTopologyRequest; }
 export interface WorldgenTectonicsCommand { protocolVersion: number; requestId: number; type: 'generate-tectonics'; payload: WorldgenTectonicsRequest; }
@@ -376,7 +526,8 @@ export interface WorldgenGeologyCommand { protocolVersion: number; requestId: nu
 export interface WorldgenLithosphereCommand { protocolVersion: number; requestId: number; type: 'generate-lithosphere'; payload: WorldgenLithosphereRequest; }
 export interface WorldgenInheritanceCommand { protocolVersion: number; requestId: number; type: 'generate-inheritance'; payload: WorldgenInheritanceRequest; }
 export interface WorldgenTopographyCommand { protocolVersion: number; requestId: number; type: 'generate-topography'; payload: WorldgenTopographyRequest; }
-export type WorldgenCommand = WorldgenSyntheticCommand | WorldgenTopologyCommand | WorldgenTectonicsCommand | WorldgenGeologyCommand | WorldgenLithosphereCommand | WorldgenInheritanceCommand | WorldgenTopographyCommand;
+export interface WorldgenClimateCommand { protocolVersion: number; requestId: number; type: 'generate-climate'; payload: WorldgenClimateRequest; }
+export type WorldgenCommand = WorldgenSyntheticCommand | WorldgenTopologyCommand | WorldgenTectonicsCommand | WorldgenGeologyCommand | WorldgenLithosphereCommand | WorldgenInheritanceCommand | WorldgenTopographyCommand | WorldgenClimateCommand;
 
 export interface WorldgenGeneratedSyntheticEvent { protocolVersion: number; requestId: number; type: 'generated-synthetic'; payload: WorldgenSyntheticResult; }
 export interface WorldgenGeneratedTopologyEvent { protocolVersion: number; requestId: number; type: 'generated-topology'; payload: WorldgenTopologyResult; }
@@ -385,8 +536,9 @@ export interface WorldgenGeneratedGeologyEvent { protocolVersion: number; reques
 export interface WorldgenGeneratedLithosphereEvent { protocolVersion: number; requestId: number; type: 'generated-lithosphere'; payload: WorldgenLithosphereResult; }
 export interface WorldgenGeneratedInheritanceEvent { protocolVersion: number; requestId: number; type: 'generated-inheritance'; payload: WorldgenInheritanceResult; }
 export interface WorldgenGeneratedTopographyEvent { protocolVersion: number; requestId: number; type: 'generated-topography'; payload: WorldgenTopographyResult; }
+export interface WorldgenGeneratedClimateEvent { protocolVersion: number; requestId: number; type: 'generated-climate'; payload: WorldgenClimateResult; }
 export interface WorldgenErrorEvent { protocolVersion: number; requestId: number; type: 'error'; payload: { message: string }; }
-export type WorldgenEvent = WorldgenGeneratedSyntheticEvent | WorldgenGeneratedTopologyEvent | WorldgenGeneratedTectonicsEvent | WorldgenGeneratedGeologyEvent | WorldgenGeneratedLithosphereEvent | WorldgenGeneratedInheritanceEvent | WorldgenGeneratedTopographyEvent | WorldgenErrorEvent;
+export type WorldgenEvent = WorldgenGeneratedSyntheticEvent | WorldgenGeneratedTopologyEvent | WorldgenGeneratedTectonicsEvent | WorldgenGeneratedGeologyEvent | WorldgenGeneratedLithosphereEvent | WorldgenGeneratedInheritanceEvent | WorldgenGeneratedTopographyEvent | WorldgenGeneratedClimateEvent | WorldgenErrorEvent;
 
 export function validateSyntheticRequest(request: WorldgenSyntheticRequest): void {
   if (!request.seed.trim()) throw new Error('Worldgen seed must not be empty.');
@@ -442,6 +594,16 @@ export function validateTopographyRequest(request: WorldgenTopographyRequest): v
   if (request.plateCount > coarseSamples) throw new Error('WG-4 plate count cannot exceed coarse topology sample count.');
 }
 
+
+export function validateClimateRequest(request: WorldgenClimateRequest): void {
+  if (!request.seed.trim()) throw new Error('WG-5 climate seed must not be empty.');
+  if (!Number.isInteger(request.coarseLevel) || request.coarseLevel < 0 || request.coarseLevel > WORLDGEN_CLIMATE_COARSE_MAX_LEVEL) throw new Error(`WG-5 coarse level must be an integer from 0 through ${WORLDGEN_CLIMATE_COARSE_MAX_LEVEL}.`);
+  if (!Number.isInteger(request.fineLevel) || request.fineLevel < request.coarseLevel || request.fineLevel > WORLDGEN_CLIMATE_FINE_MAX_LEVEL) throw new Error(`WG-5 fine level must be an integer from coarse level through ${WORLDGEN_CLIMATE_FINE_MAX_LEVEL}.`);
+  if (!Number.isInteger(request.plateCount) || request.plateCount < WORLDGEN_TECTONICS_MIN_PLATES || request.plateCount > WORLDGEN_TECTONICS_MAX_PLATES) throw new Error(`WG-5 plate count must be an integer from ${WORLDGEN_TECTONICS_MIN_PLATES} through ${WORLDGEN_TECTONICS_MAX_PLATES}.`);
+  const coarseSamples = 10 * (4 ** request.coarseLevel) + 2;
+  if (request.plateCount > coarseSamples) throw new Error('WG-5 plate count cannot exceed coarse topology sample count.');
+}
+
 export function worldgenSyntheticCommand(requestId: number, payload: WorldgenSyntheticRequest): WorldgenSyntheticCommand { validateSyntheticRequest(payload); return { protocolVersion: WORLDGEN_PROTOCOL_VERSION, requestId, type: 'generate-synthetic', payload }; }
 export function worldgenTopologyCommand(requestId: number, payload: WorldgenTopologyRequest): WorldgenTopologyCommand { validateTopologyRequest(payload); return { protocolVersion: WORLDGEN_PROTOCOL_VERSION, requestId, type: 'generate-topology', payload }; }
 export function worldgenTectonicsCommand(requestId: number, payload: WorldgenTectonicsRequest): WorldgenTectonicsCommand { validateTectonicsRequest(payload); return { protocolVersion: WORLDGEN_PROTOCOL_VERSION, requestId, type: 'generate-tectonics', payload }; }
@@ -450,3 +612,5 @@ export function worldgenLithosphereCommand(requestId: number, payload: WorldgenL
 export function worldgenInheritanceCommand(requestId: number, payload: WorldgenInheritanceRequest): WorldgenInheritanceCommand { validateInheritanceRequest(payload); return { protocolVersion: WORLDGEN_PROTOCOL_VERSION, requestId, type: 'generate-inheritance', payload }; }
 
 export function worldgenTopographyCommand(requestId: number, payload: WorldgenTopographyRequest): WorldgenTopographyCommand { validateTopographyRequest(payload); return { protocolVersion: WORLDGEN_PROTOCOL_VERSION, requestId, type: 'generate-topography', payload }; }
+
+export function worldgenClimateCommand(requestId: number, payload: WorldgenClimateRequest): WorldgenClimateCommand { validateClimateRequest(payload); return { protocolVersion: WORLDGEN_PROTOCOL_VERSION, requestId, type: 'generate-climate', payload }; }
