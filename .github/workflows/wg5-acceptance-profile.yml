@@ -21,6 +21,8 @@ jobs:
         run: python scripts/wg5_cfl_prepare.py
       - name: Apply conservative transport CFL hardening
         run: python scripts/wg5_cfl_hardening.py
+      - name: Update conservative transport unit contract
+        run: python scripts/wg5_cfl_test_fix.py
       - name: Format Rust
         run: cargo fmt --all
       - name: Validate Rust workspace
