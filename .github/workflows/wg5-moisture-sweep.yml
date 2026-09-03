@@ -1,4 +1,4 @@
-name: Temporary WG-5 Evaporation Wind-Cap Sweep
+name: Temporary WG-5 Evaporation Energy Sweep
 
 on:
   push:
@@ -9,8 +9,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        evap_wind_cap: ['4.0', '6.0', '8.0']
-    name: evap-cap-${{ matrix.evap_wind_cap }}
+        energy_fraction: ['0.35', '0.45', '0.55']
+    name: energy-${{ matrix.energy_fraction }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,7 +28,7 @@ jobs:
           CONVERGENCE_RH: '0.60'
           CONVERGENCE_EFF: '0.35'
           MOISTURE_SPEED_CAP: '1.0'
-          EVAP_WIND_CAP: ${{ matrix.evap_wind_cap }}
+          EVAP_ENERGY_FRACTION: ${{ matrix.energy_fraction }}
         run: |
           set -euo pipefail
           python scripts/wg5_moisture_patch.py
@@ -37,7 +37,7 @@ jobs:
           python scripts/wg5_moisture_speedcap_patch.py
           python scripts/wg5_moisture_speedcap_fix.py
           python scripts/wg5_moisture_substeps64_patch.py
-          python scripts/wg5_evap_windcap_sweep_patch.py
+          python scripts/wg5_evap_energy_budget_patch.py
           python scripts/wg5_moisture_evap_diagnostics_patch.py
           cargo fmt --all
           cargo check -p interlink-worldgen
