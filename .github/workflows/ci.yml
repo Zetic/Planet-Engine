@@ -37,6 +37,7 @@ jobs:
       - name: Smoke-test physical diagnostics
         run: |
           cargo run -p interlink-worldgen-cli -- inheritance --seed ci-inheritance --coarse-level 4 --level 6 --plates 18
+          cargo run -p interlink-worldgen-cli -- topography --seed ci-wg4 --coarse-level 4 --level 6 --plates 18
           cargo run -p interlink-worldgen-cli -- profile
       - name: Compile browser bridge
         run: cargo check -p interlink-worldgen-wasm --target wasm32-unknown-unknown
