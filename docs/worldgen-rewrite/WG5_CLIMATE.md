@@ -1,0 +1,69 @@
+# WG-5 Coupled Planetary Climate
+
+WG-5 converts the accepted WG-4 physical surface into a deterministic climatology. It is a generation-time physical solve, not a perpetual post-generation weather simulation.
+
+## Causal pipeline
+
+```text
+WG-4 elevation / bathymetry / land-ocean state
+        +
+planet rotation / orbit / stellar forcing / atmosphere
+        ↓
+seasonal insolation
+        ↓
+land-ocean thermal response
+        ↓
+atmospheric heat redistribution
+        ↓
+prevailing winds
+        ↓
+wind-driven surface ocean circulation
+        ↓
+sea-surface-temperature heat transport
+        ↺ atmospheric temperature / winds
+        ↓
+ocean evaporation + conservative atmospheric moisture transport
+        ↓
+orographic lifting / condensation / precipitation
+        ↓
+moisture balance / aridity / snow and sea-ice potential
+```
+
+WG-5 intentionally includes a reduced B+ surface-ocean circulation model: currents are generated from wind stress, Coriolis response, WG-4 ocean connectivity, coastlines, and bathymetric mobility; SST transport feeds back into the atmospheric thermal solution. It does not attempt a full 3-D salinity/thermohaline ocean.
+
+## Physical parameter boundary
+
+The accepted `PlanetPhysicalParameters` remains the WG-3.75/WG-4 profile contract. WG-5 introduces a separate `ClimatePhysicalParameters` identity for properties that should not retroactively change accepted terrain identity:
+
+- orbital eccentricity;
+- longitude of periapsis;
+- atmospheric mean molar mass;
+- atmospheric specific heat;
+- reduced longwave optical depth.
+
+`ClimateParameters` separately owns numerical/model choices such as albedo, thermal response, atmospheric heat transport, wind response, current coupling, ocean diffusion/advection, moisture transport, condensation, and orographic precipitation.
+
+## Seasonal solve
+
+The default solver evaluates 24 orbital phases. Those phases exist only while generating the climatology. The final state stores annual means, extrema, seasonality, and first annual harmonics that can reconstruct seasonal diagnostic views without rerunning WG-5.
+
+## Current scope
+
+WG-5 owns:
+
+- seasonal insolation;
+- surface temperature and local atmospheric pressure;
+- prevailing surface winds;
+- wind-driven surface currents;
+- SST and surface-ocean heat transport;
+- atmospheric humidity and conservative graph moisture advection;
+- evaporation and precipitation;
+- orographic precipitation and resulting rain-shadow depletion;
+- potential evaporation, moisture balance, and aridity;
+- snowfall fraction, persistent-snow potential, and sea-ice potential.
+
+WG-5 does not own weather systems, storms, cloud microphysics, 3-D atmosphere, deep-ocean overturning, salinity circulation, rivers, lakes, glacier flow, erosion, biomes, resources, Regions/Features, or gameplay integration.
+
+## Resolution
+
+The intended quality target remains L7 (~163,842 global samples / ~56 km characteristic Earth-like spacing), with lower levels used for CI and browser diagnostics. L8 remains a later profiling candidate rather than a requirement for WG-5 acceptance.
