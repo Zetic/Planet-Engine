@@ -19,7 +19,8 @@ pub use boundary_refinement::{
     inherit_boundary_interfaces, InheritedBoundaryEdge, InheritedBoundarySet,
 };
 pub use climate::{
-    generate_coupled_climate, ClimateMetrics, ClimateParameters, ClimatePhysicalParameters,
+    generate_coupled_climate, generate_coupled_climate_with_diagnostics,
+    ClimateGenerationDiagnostics, ClimateMetrics, ClimateParameters, ClimatePhysicalParameters,
     ClimateRequest, ClimateState, CLIMATE_STAGE_ID, CLIMATE_STAGE_VERSION,
 };
 pub use climate_calibration::{

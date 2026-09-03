@@ -20,6 +20,7 @@ import {
   WORLDGEN_STRUCTURE_SUTURE,
   WORLDGEN_STRUCTURE_TRANSFORM,
   type WorldgenClimateResult,
+  type WorldgenGenerationProgress,
 } from '../protocol.js';
 
 type ScalarField = { values: Float32Array; minimum: number; maximum: number; lowHue: number; highHue: number };
@@ -131,6 +132,28 @@ function magnitudeField(east: Float32Array, north: Float32Array, scratch: Float3
   for (let index = 0; index < scratch.length; index += 1) scratch[index] = Math.hypot(east[index]!, north[index]!);
   return scratch;
 }
+function seasonalPhaseRate(
+  phases: Float32Array,
+  phaseCount: number,
+  sampleCount: number,
+  phase: number,
+  scratch: Float32Array,
+): Float32Array {
+  if (phaseCount <= 0 || phases.length !== phaseCount * sampleCount) {
+    scratch.fill(0);
+    return scratch;
+  }
+  const scaled = ((phase % 1) + 1) % 1 * phaseCount;
+  const lower = Math.floor(scaled) % phaseCount;
+  const upper = (lower + 1) % phaseCount;
+  const t = scaled - Math.floor(scaled);
+  const lowerOffset = lower * sampleCount;
+  const upperOffset = upper * sampleCount;
+  for (let index = 0; index < sampleCount; index += 1) {
+    scratch[index] = phases[lowerOffset + index]! * (1 - t) + phases[upperOffset + index]! * t;
+  }
+  return scratch;
+}
 
 let seasonalScratch = new Float32Array(0);
 let scalarScratch = new Float32Array(0);
@@ -180,6 +203,7 @@ function scalarField(result: WorldgenClimateResult, mode: string, phase: number)
     case 'ocean-heat': return { values: result.oceanHeatTransportIndex, minimum: -2, maximum: 2, lowHue: 230, highHue: 5 };
     case 'humidity': return { values: result.specificHumidityMean, minimum: 0, maximum: 0.025, lowHue: 35, highHue: 205 };
     case 'precipitation': return { values: result.annualPrecipitationMm, minimum: 0, maximum: 2_500, lowHue: 45, highHue: 205 };
+    case 'seasonal-precipitation': return { values: seasonalPhaseRate(result.precipitationPhaseRateMmYear, result.metrics.orbitalPhaseCount, result.metrics.fineSampleCount, phase, seasonalScratch), minimum: 0, maximum: 5_000, lowHue: 45, highHue: 205 };
     case 'precip-seasonality': return { values: result.precipitationSeasonality, minimum: 0, maximum: 5, lowHue: 205, highHue: 335 };
     case 'potential-evaporation': return { values: result.potentialEvaporationMm, minimum: 0, maximum: 3_000, lowHue: 205, highHue: 20 };
     case 'moisture-balance': return { values: result.moistureBalanceMm, minimum: -2_000, maximum: 2_000, lowHue: 25, highHue: 210 };
@@ -256,7 +280,7 @@ function screenTangentDelta(position: [number, number, number], eastValue: numbe
 let styleCache: StyleCache = { result: null, key: '', sampleBuckets: [], boundaryBuckets: [] };
 function buildStyleCache(result: WorldgenClimateResult, mode: string, phase: number): StyleCache {
   const field = scalarField(result, mode, phase);
-  const phaseKey = ['seasonal-temperature', 'seasonal-sst'].includes(mode) ? phase.toFixed(3) : 'mean';
+  const phaseKey = ['seasonal-temperature', 'seasonal-sst', 'seasonal-precipitation'].includes(mode) ? phase.toFixed(3) : 'mean';
   const key = `${mode}:${phaseKey}`;
   const sampleBuckets = mode === 'mesh' ? [] : bucketize(result.metrics.fineSampleCount, sample => sampleColor(result, mode, sample, field));
   let boundaryBuckets: DrawBucket[] = [];
@@ -306,7 +330,102 @@ function drawVectors(context: CanvasRenderingContext2D, result: WorldgenClimateR
   context.restore();
 }
 
-function renderPlanet(canvas: HTMLCanvasElement, result: WorldgenClimateResult, projection: string, mode: string, phase: number, yaw: number, pitch: number, buffers: ProjectionBuffers, interactive: boolean, animation: number): void {
+
+type EdgeOverlayCache = {
+  result: WorldgenClimateResult | null;
+  coastline: Uint32Array;
+  contours: Array<{ level: number; pairs: Uint32Array }>;
+};
+let edgeOverlayCache: EdgeOverlayCache = { result: null, coastline: new Uint32Array(0), contours: [] };
+const TOPOGRAPHIC_CONTOURS_M = [500, 1_000, 2_000, 3_000, 4_500] as const;
+
+function ensureEdgeOverlayCache(result: WorldgenClimateResult): EdgeOverlayCache {
+  if (edgeOverlayCache.result === result) return edgeOverlayCache;
+  const coastline: number[] = [];
+  const contourPairs = TOPOGRAPHIC_CONTOURS_M.map(() => [] as number[]);
+  for (let a = 0; a < result.metrics.fineSampleCount; a += 1) {
+    const start = result.neighborOffsets[a]!;
+    const end = result.neighborOffsets[a + 1]!;
+    for (let cursor = start; cursor < end; cursor += 1) {
+      const b = result.neighbors[cursor]!;
+      if (b <= a) continue;
+      if (result.submergedMask[a] !== result.submergedMask[b]) coastline.push(a, b);
+      if (result.submergedMask[a] || result.submergedMask[b]) continue;
+      const ea = result.elevationAboveSeaLevelM[a]!;
+      const eb = result.elevationAboveSeaLevelM[b]!;
+      for (let levelIndex = 0; levelIndex < TOPOGRAPHIC_CONTOURS_M.length; levelIndex += 1) {
+        const level = TOPOGRAPHIC_CONTOURS_M[levelIndex]!;
+        if ((ea < level && eb >= level) || (eb < level && ea >= level)) contourPairs[levelIndex]!.push(a, b);
+      }
+    }
+  }
+  edgeOverlayCache = {
+    result,
+    coastline: Uint32Array.from(coastline),
+    contours: TOPOGRAPHIC_CONTOURS_M.map((level, index) => ({ level, pairs: Uint32Array.from(contourPairs[index]!) })),
+  };
+  return edgeOverlayCache;
+}
+
+function strokeSamplePairs(context: CanvasRenderingContext2D, pairs: Uint32Array, buffers: ProjectionBuffers, projection: string, width: number, strokeStyle: string, lineWidth: number): void {
+  context.save();
+  context.strokeStyle = strokeStyle;
+  context.lineWidth = lineWidth;
+  context.lineCap = 'round';
+  context.beginPath();
+  for (let cursor = 0; cursor < pairs.length; cursor += 2) {
+    const a = pairs[cursor]!, b = pairs[cursor + 1]!;
+    if (!buffers.visible[a] || !buffers.visible[b]) continue;
+    const ax = buffers.x[a]!, bx = buffers.x[b]!;
+    if (projection === 'map' && Math.abs(ax - bx) > width * 0.45) continue;
+    context.moveTo(ax, buffers.y[a]!);
+    context.lineTo(bx, buffers.y[b]!);
+  }
+  context.stroke();
+  context.restore();
+}
+
+function drawBoundaryOverlay(context: CanvasRenderingContext2D, result: WorldgenClimateResult, kind: 'tectonic-boundaries' | 'geological-boundaries', projection: string, width: number, buffers: ProjectionBuffers): void {
+  const buckets = bucketize(result.metrics.fineBoundaryEdgeCount, boundary => kind === 'tectonic-boundaries'
+    ? tectonicBoundaryColor(result.boundaryKinds[boundary]!)
+    : geologicalBoundaryColor(result.geologicalBoundaryRegimes[boundary]!));
+  context.save();
+  context.lineCap = 'round';
+  context.lineWidth = 1.8;
+  for (const bucket of buckets) {
+    context.strokeStyle = bucket.color;
+    context.beginPath();
+    for (let cursor = 0; cursor < bucket.indices.length; cursor += 1) {
+      const boundary = bucket.indices[cursor]!;
+      const a = result.boundarySamples[boundary * 2]!, b = result.boundarySamples[boundary * 2 + 1]!;
+      if (!buffers.visible[a] || !buffers.visible[b]) continue;
+      const ax = buffers.x[a]!, bx = buffers.x[b]!;
+      if (projection === 'map' && Math.abs(ax - bx) > width * 0.45) continue;
+      context.moveTo(ax, buffers.y[a]!);
+      context.lineTo(bx, buffers.y[b]!);
+    }
+    context.stroke();
+  }
+  context.restore();
+}
+
+function drawDiagnosticOverlays(context: CanvasRenderingContext2D, result: WorldgenClimateResult, overlays: ReadonlySet<string>, phase: number, projection: string, yaw: number, pitch: number, width: number, height: number, buffers: ProjectionBuffers, animation: number): void {
+  if (overlays.size === 0) return;
+  const edgeCache = ensureEdgeOverlayCache(result);
+  if (overlays.has('topography')) {
+    const alphas = [0.24, 0.32, 0.42, 0.54, 0.68];
+    for (let index = 0; index < edgeCache.contours.length; index += 1) {
+      strokeSamplePairs(context, edgeCache.contours[index]!.pairs, buffers, projection, width, `rgba(245,248,252,${alphas[index]!})`, index >= 3 ? 1.1 : 0.8);
+    }
+  }
+  if (overlays.has('coastline')) strokeSamplePairs(context, edgeCache.coastline, buffers, projection, width, 'rgba(225,236,246,0.78)', 1.15);
+  if (overlays.has('tectonic-boundaries')) drawBoundaryOverlay(context, result, 'tectonic-boundaries', projection, width, buffers);
+  if (overlays.has('geological-boundaries')) drawBoundaryOverlay(context, result, 'geological-boundaries', projection, width, buffers);
+  if (overlays.has('winds')) drawVectors(context, result, 'winds', phase, projection, yaw, pitch, width, height, buffers, animation);
+  if (overlays.has('currents')) drawVectors(context, result, 'currents', phase, projection, yaw, pitch, width, height, buffers, animation);
+}
+
+function renderPlanet(canvas: HTMLCanvasElement, result: WorldgenClimateResult, projection: string, mode: string, overlays: ReadonlySet<string>, phase: number, yaw: number, pitch: number, buffers: ProjectionBuffers, interactive: boolean, animation: number): void {
   const width = 1100;
   const height = projection === 'map' ? 550 : 760;
   if (canvas.width !== width) canvas.width = width;
@@ -334,7 +453,7 @@ function renderPlanet(canvas: HTMLCanvasElement, result: WorldgenClimateResult, 
     }
     context.stroke(); return;
   }
-  const cacheKey = `${mode}:${['seasonal-temperature', 'seasonal-sst'].includes(mode) ? phase.toFixed(3) : 'mean'}`;
+  const cacheKey = `${mode}:${['seasonal-temperature', 'seasonal-sst', 'seasonal-precipitation'].includes(mode) ? phase.toFixed(3) : 'mean'}`;
   if (styleCache.result !== result || styleCache.key !== cacheKey) styleCache = buildStyleCache(result, mode, phase);
   const count = result.metrics.fineSampleCount;
   const pointRadius = count > 100_000 ? 0.8 : count > 30_000 ? 1.15 : count > 5_000 ? 2 : 3;
@@ -370,6 +489,7 @@ function renderPlanet(canvas: HTMLCanvasElement, result: WorldgenClimateResult, 
     }
   }
   if (mode === 'winds' || mode === 'currents') drawVectors(context, result, mode, phase, projection, yaw, pitch, width, height, buffers, animation);
+  drawDiagnosticOverlays(context, result, overlays, phase, projection, yaw, pitch, width, height, buffers, animation);
 }
 
 const seed = element<HTMLInputElement>('worldgen-seed');
@@ -380,8 +500,15 @@ const projection = element<HTMLSelectElement>('worldgen-projection');
 const visualization = element<HTMLSelectElement>('worldgen-visualization');
 const season = element<HTMLInputElement>('worldgen-season');
 const seasonValue = element<HTMLElement>('worldgen-season-value');
+const overlaySummary = element<HTMLElement>('worldgen-overlay-summary');
+const overlayInputs = Array.from(document.querySelectorAll<HTMLInputElement>('input[data-worldgen-overlay]'));
 const generate = element<HTMLButtonElement>('worldgen-generate');
 const status = element<HTMLElement>('worldgen-status');
+const generationProgress = element<HTMLProgressElement>('worldgen-generation-progress');
+const generationStage = element<HTMLElement>('worldgen-generation-stage');
+const generationStep = element<HTMLElement>('worldgen-generation-step');
+const generationTimer = element<HTMLElement>('worldgen-generation-timer');
+const generationProfile = element<HTMLElement>('worldgen-generation-profile');
 const metrics = element<HTMLElement>('worldgen-metrics');
 const canvas = element<HTMLCanvasElement>('worldgen-field');
 const client = createWorldgenClient();
@@ -395,12 +522,82 @@ let animationRequest = 0;
 let animationPhase = 0;
 let lastVectorAnimationMs = Number.NEGATIVE_INFINITY;
 const VECTOR_ANIMATION_INTERVAL_MS = 50;
+const GENERATION_STAGE_LABELS: Record<string, string> = {
+  'coarse-topology': 'Coarse topology',
+  'fine-topology': 'Fine topology',
+  tectonics: 'Tectonics',
+  geology: 'Geological history',
+  lithosphere: 'Lithosphere',
+  inheritance: 'Fine-topology inheritance',
+  'boundary-refinement': 'Boundary refinement',
+  topography: 'Topography + sea level',
+  'climate-spinup': 'Climate spin-up',
+  packaging: 'Packaging / transfer',
+};
+let generationStartedAt = 0;
+let generationTimerHandle: ReturnType<typeof setInterval> | null = null;
+
+function selectedOverlays(): Set<string> {
+  return new Set(overlayInputs.filter(input => input.checked).map(input => input.value));
+}
+function updateOverlaySummary(): void {
+  const selected = overlayInputs.filter(input => input.checked);
+  if (selected.length === 0) overlaySummary.textContent = 'None';
+  else if (selected.length === 1) overlaySummary.textContent = selected[0]!.dataset.label ?? selected[0]!.value;
+  else overlaySummary.textContent = `${selected.length} selected`;
+}
+function formatDuration(ms: number): string {
+  if (ms < 1_000) return `${ms.toFixed(0)} ms`;
+  return `${(ms / 1_000).toFixed(2)} s`;
+}
+function startGenerationTelemetry(): void {
+  generationStartedAt = performance.now();
+  generationProgress.value = 0;
+  generationStage.textContent = 'Starting';
+  generationStep.textContent = '';
+  generationProfile.replaceChildren();
+  if (generationTimerHandle) clearInterval(generationTimerHandle);
+  const updateTimer = (): void => { generationTimer.textContent = formatDuration(performance.now() - generationStartedAt); };
+  updateTimer();
+  generationTimerHandle = setInterval(updateTimer, 100);
+}
+function handleGenerationProgress(progress: WorldgenGenerationProgress): void {
+  const stageFraction = progress.total > 0 ? Math.max(0, Math.min(1, progress.completed / progress.total)) : 0;
+  generationProgress.value = Math.max(0, Math.min(100, (progress.stageIndex + stageFraction) / Math.max(1, progress.stageCount) * 100));
+  generationStage.textContent = GENERATION_STAGE_LABELS[progress.stageId] ?? progress.stageId;
+  generationStep.textContent = progress.stageId === 'climate-spinup'
+    ? `year ${progress.completed} / max ${progress.total}`
+    : progress.completed >= progress.total ? 'complete' : 'running';
+}
+function showGenerationProfile(result: WorldgenClimateResult): void {
+  generationProfile.replaceChildren();
+  const total = result.generationTimings.reduce((sum, timing) => sum + timing.durationMs, 0);
+  for (const timing of result.generationTimings) {
+    const row = document.createElement('div');
+    const label = document.createElement('span');
+    const duration = document.createElement('span');
+    const share = document.createElement('span');
+    label.textContent = GENERATION_STAGE_LABELS[timing.stageId] ?? timing.stageId;
+    duration.textContent = formatDuration(timing.durationMs);
+    share.textContent = total > 0 ? `${(timing.durationMs / total * 100).toFixed(1)}%` : '—';
+    row.append(label, duration, share);
+    generationProfile.append(row);
+  }
+}
+function finishGenerationTelemetry(result: WorldgenClimateResult): void {
+  if (generationTimerHandle) { clearInterval(generationTimerHandle); generationTimerHandle = null; }
+  generationProgress.value = 100;
+  generationStage.textContent = 'Complete';
+  generationStep.textContent = `${result.metrics.spinupYears} climate spin-up years`;
+  generationTimer.textContent = formatDuration(result.stage.durationMs);
+  showGenerationProfile(result);
+}
 
 function orbitalPhase(): number { return Number(season.value) / 1000; }
 function updateSeasonLabel(): void { seasonValue.textContent = `${(orbitalPhase() * 100).toFixed(1)}% orbit`; }
 function redraw(interactive = false): void {
   if (!current || !buffers) return;
-  renderPlanet(canvas, current, projection.value, visualization.value, orbitalPhase(), yaw, pitch, buffers, interactive, animationPhase);
+  renderPlanet(canvas, current, projection.value, visualization.value, selectedOverlays(), orbitalPhase(), yaw, pitch, buffers, interactive, animationPhase);
 }
 function scheduleRedraw(interactive: boolean): void {
   if (frameRequest) return;
@@ -408,7 +605,10 @@ function scheduleRedraw(interactive: boolean): void {
 }
 function vectorAnimationFrame(timestampMs: number): void {
   animationRequest = 0;
-  if (visualization.value === 'winds' || visualization.value === 'currents') {
+  const overlays = selectedOverlays();
+  const vectorsActive = visualization.value === 'winds' || visualization.value === 'currents'
+    || overlays.has('winds') || overlays.has('currents');
+  if (vectorsActive) {
     if (timestampMs - lastVectorAnimationMs >= VECTOR_ANIMATION_INTERVAL_MS) {
       animationPhase = (animationPhase + 0.9) % 1000;
       lastVectorAnimationMs = timestampMs;
@@ -420,7 +620,8 @@ function vectorAnimationFrame(timestampMs: number): void {
 function updateAnimation(): void {
   if (animationRequest) { cancelAnimationFrame(animationRequest); animationRequest = 0; }
   lastVectorAnimationMs = Number.NEGATIVE_INFINITY;
-  if (visualization.value === 'winds' || visualization.value === 'currents') animationRequest = requestAnimationFrame(vectorAnimationFrame);
+  const overlays = selectedOverlays();
+  if (visualization.value === 'winds' || visualization.value === 'currents' || overlays.has('winds') || overlays.has('currents')) animationRequest = requestAnimationFrame(vectorAnimationFrame);
 }
 function showMetrics(result: WorldgenClimateResult): void {
   metrics.replaceChildren();
@@ -436,6 +637,8 @@ function showMetrics(result: WorldgenClimateResult): void {
   metric(metrics, 'Mean SST', `${result.metrics.meanSeaSurfaceTemperatureK.toFixed(1)} K`);
   metric(metrics, 'Precipitation', `${result.metrics.meanAnnualPrecipitationMm.toFixed(0)} mean · P95 ${result.metrics.p95AnnualPrecipitationMm.toFixed(0)} mm/yr`);
   metric(metrics, 'Moisture budget error', result.metrics.moistureBudgetRelativeError.toExponential(2));
+  metric(metrics, 'Moisture limiter', `${(result.metrics.moistureTransportLimiterFraction * 100).toFixed(4)}% donor steps`);
+  metric(metrics, 'Moisture substeps', `${result.metrics.maximumMoistureTransportSubsteps} maximum`);
   metric(metrics, 'Snow / sea ice potential', `${(result.metrics.persistentSnowAreaFraction * 100).toFixed(1)}% / ${(result.metrics.seaIceAreaFraction * 100).toFixed(1)}% area`);
   metric(metrics, 'Spin-up', `${result.metrics.spinupYears} model years · ΔT ${result.metrics.finalTemperatureRmsChangeK.toFixed(3)} K RMS`);
   metric(metrics, 'Planet forcing', `${result.planet.stellarFluxWM2.toFixed(0)} W/m² · tilt ${(result.planet.axialTiltRad * 180 / Math.PI).toFixed(2)}° · e ${result.climatePhysical.orbitalEccentricity.toFixed(4)}`);
@@ -444,15 +647,23 @@ function showMetrics(result: WorldgenClimateResult): void {
 }
 async function generatePlanet(): Promise<void> {
   generate.disabled = true;
+  startGenerationTelemetry();
   status.textContent = 'Generating one physical planet through WG-5 coupled climate in Rust/WASM…';
   try {
-    const loaded = await client.generateClimate({ seed: seed.value, coarseLevel: Number(coarseLevel.value), fineLevel: Number(fineLevel.value), plateCount: Number(plates.value) });
+    const loaded = await client.generateClimate(
+      { seed: seed.value, coarseLevel: Number(coarseLevel.value), fineLevel: Number(fineLevel.value), plateCount: Number(plates.value) },
+      handleGenerationProgress,
+    );
     current = loaded;
     buffers = { x: new Float32Array(loaded.metrics.fineSampleCount), y: new Float32Array(loaded.metrics.fineSampleCount), visible: new Uint8Array(loaded.metrics.fineSampleCount) };
     styleCache = { result: null, key: '', sampleBuckets: [], boundaryBuckets: [] };
-    showMetrics(loaded); redraw(false); updateAnimation();
+    edgeOverlayCache = { result: null, coastline: new Uint32Array(0), contours: [] };
+    showMetrics(loaded); redraw(false); updateAnimation(); finishGenerationTelemetry(loaded);
     status.textContent = `Planet ready through WG-5: ${loaded.metrics.fineSampleCount.toLocaleString()} samples, ${loaded.metrics.spinupYears} climate spin-up years, ${loaded.metrics.meanTemperatureK.toFixed(1)} K global mean.`;
   } catch (error) {
+    if (generationTimerHandle) { clearInterval(generationTimerHandle); generationTimerHandle = null; }
+    generationStage.textContent = 'Generation failed';
+    generationStep.textContent = '';
     status.textContent = error instanceof Error ? error.message : String(error);
   } finally {
     generate.disabled = false;
@@ -462,6 +673,7 @@ async function generatePlanet(): Promise<void> {
 generate.addEventListener('click', () => void generatePlanet());
 projection.addEventListener('change', () => redraw(false));
 visualization.addEventListener('change', () => { styleCache = { result: null, key: '', sampleBuckets: [], boundaryBuckets: [] }; redraw(false); updateAnimation(); });
+overlayInputs.forEach(input => input.addEventListener('change', () => { updateOverlaySummary(); redraw(false); updateAnimation(); }));
 season.addEventListener('input', () => { updateSeasonLabel(); styleCache = { result: null, key: '', sampleBuckets: [], boundaryBuckets: [] }; redraw(false); });
 canvas.addEventListener('pointerdown', event => {
   if (projection.value !== 'globe') return;
@@ -485,4 +697,5 @@ window.addEventListener('beforeunload', () => {
   client.dispose();
 });
 updateSeasonLabel();
+updateOverlaySummary();
 void generatePlanet();

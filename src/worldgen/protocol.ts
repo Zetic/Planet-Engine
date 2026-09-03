@@ -1,4 +1,4 @@
-export const WORLDGEN_PROTOCOL_VERSION = 8;
+export const WORLDGEN_PROTOCOL_VERSION = 9;
 export const WORLDGEN_SYNTHETIC_MAX_SAMPLES = 4_194_304;
 export const WORLDGEN_TOPOLOGY_MAX_LEVEL = 7;
 export const WORLDGEN_TECTONICS_MAX_LEVEL = 6;
@@ -25,6 +25,16 @@ export interface WorldgenClimateRequest { seed: string; coarseLevel: number; fin
 export interface WorldgenFieldStatistics { sampleCount: number; minimum: number; maximum: number; mean: number; fieldHash: string; }
 export interface WorldgenStageMetadata { id: string; version: number; stageSeed: string; durationMs: number; }
 export interface WorldgenUnseededStageMetadata { id: string; version: number; durationMs: number; }
+export interface WorldgenGenerationTiming { stageId: string; durationMs: number; }
+export interface WorldgenGenerationProgress {
+  stageId: string;
+  stageIndex: number;
+  stageCount: number;
+  completed: number;
+  total: number;
+  elapsedMs: number;
+  stageElapsedMs: number;
+}
 export interface WorldgenSyntheticResult { engineVersion: number; width: number; height: number; values: Uint16Array; statistics: WorldgenFieldStatistics; stage: WorldgenStageMetadata; }
 
 export interface WorldgenTopologyMetrics { sampleCount: number; edgeCount: number; faceCount: number; fiveNeighborCount: number; sixNeighborCount: number; totalAreaSteradians: number; minimumAreaSteradians: number; maximumAreaSteradians: number; meanAreaSteradians: number; areaCoefficientOfVariation: number; minimumEdgeArcRadians: number; maximumEdgeArcRadians: number; meanEdgeArcRadians: number; edgeCoefficientOfVariation: number; minimumInterfaceArcRadians: number; maximumInterfaceArcRadians: number; meanInterfaceArcRadians: number; interfaceCoefficientOfVariation: number; topologyHash: string; }
@@ -396,6 +406,8 @@ export interface WorldgenClimateMetrics {
   globalEvaporationKg: number;
   globalPrecipitationKg: number;
   moistureBudgetRelativeError: number;
+  moistureTransportLimiterFraction: number;
+  maximumMoistureTransportSubsteps: number;
   persistentSnowAreaFraction: number;
   seaIceAreaFraction: number;
   finalTemperatureRmsChangeK: number;
@@ -445,6 +457,7 @@ export interface WorldgenClimateResult {
   coarseLevel: number;
   fineLevel: number;
   stage: WorldgenStageMetadata;
+  generationTimings: WorldgenGenerationTiming[];
   metrics: WorldgenClimateMetrics;
   planet: WorldgenClimatePlanetProfile;
   climatePhysical: WorldgenClimatePhysicalProfile;
@@ -510,6 +523,7 @@ export interface WorldgenClimateResult {
   oceanHeatTransportIndex: Float32Array;
   specificHumidityMean: Float32Array;
   annualPrecipitationMm: Float32Array;
+  precipitationPhaseRateMmYear: Float32Array;
   precipitationSeasonality: Float32Array;
   potentialEvaporationMm: Float32Array;
   moistureBalanceMm: Float32Array;
@@ -537,8 +551,9 @@ export interface WorldgenGeneratedLithosphereEvent { protocolVersion: number; re
 export interface WorldgenGeneratedInheritanceEvent { protocolVersion: number; requestId: number; type: 'generated-inheritance'; payload: WorldgenInheritanceResult; }
 export interface WorldgenGeneratedTopographyEvent { protocolVersion: number; requestId: number; type: 'generated-topography'; payload: WorldgenTopographyResult; }
 export interface WorldgenGeneratedClimateEvent { protocolVersion: number; requestId: number; type: 'generated-climate'; payload: WorldgenClimateResult; }
+export interface WorldgenGenerationProgressEvent { protocolVersion: number; requestId: number; type: 'progress'; payload: WorldgenGenerationProgress; }
 export interface WorldgenErrorEvent { protocolVersion: number; requestId: number; type: 'error'; payload: { message: string }; }
-export type WorldgenEvent = WorldgenGeneratedSyntheticEvent | WorldgenGeneratedTopologyEvent | WorldgenGeneratedTectonicsEvent | WorldgenGeneratedGeologyEvent | WorldgenGeneratedLithosphereEvent | WorldgenGeneratedInheritanceEvent | WorldgenGeneratedTopographyEvent | WorldgenGeneratedClimateEvent | WorldgenErrorEvent;
+export type WorldgenEvent = WorldgenGeneratedSyntheticEvent | WorldgenGeneratedTopologyEvent | WorldgenGeneratedTectonicsEvent | WorldgenGeneratedGeologyEvent | WorldgenGeneratedLithosphereEvent | WorldgenGeneratedInheritanceEvent | WorldgenGeneratedTopographyEvent | WorldgenGeneratedClimateEvent | WorldgenGenerationProgressEvent | WorldgenErrorEvent;
 
 export function validateSyntheticRequest(request: WorldgenSyntheticRequest): void {
   if (!request.seed.trim()) throw new Error('Worldgen seed must not be empty.');

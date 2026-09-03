@@ -11,13 +11,13 @@ import {
 import { mapVectorDelta, reconstructAnnualHarmonic } from '../dist/worldgen/diagnostics/worldgenClimateMath.js';
 
 test('WG-5 browser protocol is versioned and bounded', () => {
-  assert.equal(WORLDGEN_PROTOCOL_VERSION, 8);
+  assert.equal(WORLDGEN_PROTOCOL_VERSION, 9);
   assert.equal(WORLDGEN_CLIMATE_COARSE_MAX_LEVEL, 6);
   assert.equal(WORLDGEN_CLIMATE_FINE_MAX_LEVEL, 7);
   const request = { seed: 'wg5-browser', coarseLevel: 3, fineLevel: 4, plateCount: 12 };
   assert.doesNotThrow(() => validateClimateRequest(request));
   assert.deepEqual(worldgenClimateCommand(91, request), {
-    protocolVersion: 8,
+    protocolVersion: 9,
     requestId: 91,
     type: 'generate-climate',
     payload: request,
@@ -32,7 +32,7 @@ test('cumulative WG-5 Lab exposes climate diagnostics and stored seasonal recons
   assert.match(html, /id="worldgen-season"/);
   for (const label of [
     'Annual mean temperature', 'Seasonal temperature', 'Seasonal prevailing winds',
-    'Seasonal surface ocean currents', 'Annual precipitation', 'Aridity index',
+    'Annual precipitation', 'Seasonal precipitation', 'Annual precipitation seasonality', 'Aridity index',
     'Persistent snow potential', 'Sea-ice potential', 'Physical elevation / bathymetry',
   ]) assert.match(html, new RegExp(label, 'i'));
   assert.match(source, /generateClimate/);
@@ -46,6 +46,24 @@ test('cumulative WG-5 Lab exposes climate diagnostics and stored seasonal recons
   assert.match(source, /requestAnimationFrame/);
   assert.match(source, /VECTOR_ANIMATION_INTERVAL_MS\s*=\s*50/);
   assert.match(source, /redraw\(true\)/);
+});
+
+test('WG-5 Lab preserves viewport dimensions while splitting diagnostics, overlays, and details', () => {
+  const html = fs.readFileSync('index.html', 'utf8');
+  const css = fs.readFileSync('styles/worldgenLab.css', 'utf8');
+  const source = fs.readFileSync('src/worldgen/diagnostics/worldgenClimateLabStandalone.ts', 'utf8');
+  assert.match(html, /class="worldgen-lab-diagnostics"/);
+  assert.match(html, /id="worldgen-overlays"/);
+  assert.match(html, /Topographic contours/);
+  assert.match(html, /id="worldgen-projection"/);
+  assert.match(html, /class="worldgen-lab-details"/);
+  assert.match(html, /id="worldgen-generation-progress"/);
+  assert.match(css, /grid-template-columns:\s*minmax\(0, 1fr\) minmax\(260px, 340px\)/);
+  assert.match(source, /const width = 1100;/);
+  assert.match(source, /projection === 'map' \? 550 : 760/);
+  assert.match(source, /precipitationPhaseRateMmYear/);
+  assert.match(source, /drawDiagnosticOverlays/);
+  assert.match(source, /handleGenerationProgress/);
 });
 
 test('WG-5 browser transport preserves seasonal SST and current harmonics', () => {

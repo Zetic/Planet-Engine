@@ -15,6 +15,10 @@ export function createWorldgenClient() {
         const request = pending.get(message.requestId);
         if (!request)
             return;
+        if (message.type === 'progress') {
+            request.progress?.(message.payload);
+            return;
+        }
         pending.delete(message.requestId);
         if (message.type === 'error')
             request.reject(new Error(message.payload.message));
@@ -22,10 +26,10 @@ export function createWorldgenClient() {
             request.resolve(message.payload);
     });
     worker.addEventListener('error', event => rejectAll(event.message || 'Planet Engine Worker failed.'));
-    function request(command) {
+    function request(command, progress) {
         if (disposed)
             return Promise.reject(new Error('Planet Engine client is disposed.'));
-        return new Promise((resolve, reject) => { pending.set(command.requestId, { resolve: result => resolve(result), reject }); worker.postMessage(command); });
+        return new Promise((resolve, reject) => { pending.set(command.requestId, { resolve: result => resolve(result), reject, progress }); worker.postMessage(command); });
     }
     return {
         generateSynthetic(input) { validateSyntheticRequest(input); return request(worldgenSyntheticCommand(nextRequestId++, input)); },
@@ -35,7 +39,7 @@ export function createWorldgenClient() {
         generateLithosphere(input) { validateLithosphereRequest(input); return request(worldgenLithosphereCommand(nextRequestId++, input)); },
         generateInheritance(input) { validateInheritanceRequest(input); return request(worldgenInheritanceCommand(nextRequestId++, input)); },
         generateTopography(input) { validateTopographyRequest(input); return request(worldgenTopographyCommand(nextRequestId++, input)); },
-        generateClimate(input) { validateClimateRequest(input); return request(worldgenClimateCommand(nextRequestId++, input)); },
+        generateClimate(input, onProgress) { validateClimateRequest(input); return request(worldgenClimateCommand(nextRequestId++, input), onProgress); },
         dispose() { if (disposed)
             return; disposed = true; worker.terminate(); rejectAll('Planet Engine client was disposed.'); },
     };

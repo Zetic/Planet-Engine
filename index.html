@@ -22,18 +22,20 @@
       <label>Coarse physical level <input id="worldgen-coarse-level" type="number" min="0" max="6" value="4"></label>
       <label>Fine planet level <input id="worldgen-level" type="number" min="0" max="7" value="6"></label>
       <label>Plate count <input id="worldgen-plates" type="number" min="4" max="48" value="16"></label>
-      <label>Projection
-        <select id="worldgen-projection">
-          <option value="globe">Orthographic globe</option>
-          <option value="map">Equirectangular map</option>
-        </select>
-      </label>
-      <label>Season / orbital phase
-        <input id="worldgen-season" type="range" min="0" max="1000" value="0" step="1">
-        <span id="worldgen-season-value">0.0% orbit</span>
-      </label>
-      <label>Diagnostic
-        <select id="worldgen-visualization">
+      <button id="worldgen-generate" type="button">Generate Planet</button>
+    </section>
+
+    <p id="worldgen-status" class="worldgen-lab-status">Initializing Planet Engine Worker…</p>
+
+    <section class="worldgen-lab-grid">
+      <div class="worldgen-lab-viewport">
+        <canvas id="worldgen-field" aria-label="Planet Engine physical diagnostics"></canvas>
+      </div>
+      <aside class="worldgen-lab-diagnostics">
+        <h2>Diagnostics</h2>
+        <div class="worldgen-lab-diagnostic-controls">
+          <label>Diagnostic
+            <select id="worldgen-visualization">
           <optgroup label="Climate · Radiation / temperature (WG-5)">
             <option value="temperature">Annual mean temperature</option>
             <option value="seasonal-temperature">Seasonal temperature</option>
@@ -44,17 +46,16 @@
             <option value="seasonal-sst">Seasonal sea-surface temperature</option>
           </optgroup>
           <optgroup label="Climate · Atmosphere / ocean (WG-5)">
-            <option value="winds">Seasonal prevailing winds</option>
             <option value="wind-speed">Annual mean wind speed</option>
             <option value="surface-pressure">Surface atmospheric pressure</option>
-            <option value="currents">Seasonal surface ocean currents</option>
             <option value="current-speed">Annual mean current speed</option>
             <option value="ocean-heat">Ocean heat transport</option>
           </optgroup>
           <optgroup label="Climate · Moisture / cryosphere (WG-5)">
             <option value="humidity">Atmospheric specific humidity</option>
             <option value="precipitation">Annual precipitation</option>
-            <option value="precip-seasonality">Precipitation seasonality</option>
+            <option value="seasonal-precipitation">Seasonal precipitation</option>
+            <option value="precip-seasonality">Annual precipitation seasonality</option>
             <option value="potential-evaporation">Potential evaporation</option>
             <option value="moisture-balance">Moisture balance</option>
             <option value="aridity">Aridity index</option>
@@ -87,8 +88,6 @@
           <optgroup label="Tectonics">
             <option value="plates">Macro plate ownership</option>
             <option value="kinematic-domains">Refined kinematic domains</option>
-            <option value="tectonic-boundaries">Fine tectonic boundaries</option>
-            <option value="geological-boundaries">Fine geological regimes</option>
           </optgroup>
           <optgroup label="Crust / history">
             <option value="crust-type">Crust type</option>
@@ -109,26 +108,55 @@
             <option value="mesh">Fine topology mesh</option>
           </optgroup>
         </select>
-      </label>
-      <button id="worldgen-generate" type="button">Generate Planet</button>
-    </section>
-
-    <p id="worldgen-status" class="worldgen-lab-status">Initializing Planet Engine Worker…</p>
-
-    <section class="worldgen-lab-grid">
-      <div class="worldgen-lab-viewport">
-        <canvas id="worldgen-field" aria-label="Planet Engine physical diagnostics"></canvas>
-      </div>
-      <aside>
-        <h2>Physical diagnostics</h2>
-        <div id="worldgen-metrics" class="worldgen-lab-metrics"></div>
-        <div class="worldgen-lab-note">
-          <strong>Current physical frontier: WG-5</strong>
-          <p>One generation runs the accepted topology, tectonic, geological, lithospheric, multiresolution inheritance, WG-4 topography, and WG-5 coupled-climate pipeline. Every diagnostic mode inspects that same generated planet.</p>
-          <p>WG-5 adds seasonal orbital forcing, land/ocean thermal response, prevailing winds, wind-driven surface ocean currents, SST heat transport, atmospheric moisture, orographic precipitation, aridity, and snow/sea-ice potential. The season slider reconstructs stored climatology; it does not rerun the solver.</p>
-          <p>The physical surface remains pre-erosional. Drainage, river incision, sediment transport, glacier flow, detailed lithology, resource deposits, Regions, Features, and gameplay integration remain downstream.</p>
+          </label>
+          <details id="worldgen-overlays" class="worldgen-overlay-menu">
+            <summary>Overlays <strong id="worldgen-overlay-summary">None</strong></summary>
+            <div class="worldgen-overlay-options">
+              <label><input type="checkbox" data-worldgen-overlay value="topography" data-label="Topographic contours"> Topographic contours</label>
+              <label><input type="checkbox" data-worldgen-overlay value="coastline" data-label="Coastline"> Coastline</label>
+              <label><input type="checkbox" data-worldgen-overlay value="winds" data-label="Seasonal prevailing winds"> Seasonal prevailing winds</label>
+              <label><input type="checkbox" data-worldgen-overlay value="currents" data-label="Seasonal surface ocean currents"> Seasonal surface ocean currents</label>
+              <label><input type="checkbox" data-worldgen-overlay value="tectonic-boundaries" data-label="Fine tectonic boundaries"> Fine tectonic boundaries</label>
+              <label><input type="checkbox" data-worldgen-overlay value="geological-boundaries" data-label="Fine geological regimes"> Fine geological regimes</label>
+            </div>
+          </details>
+          <label>Map view
+            <select id="worldgen-projection">
+              <option value="globe">Orthographic globe</option>
+              <option value="map">Equirectangular map</option>
+            </select>
+          </label>
+          <label>Season / orbital phase
+            <input id="worldgen-season" type="range" min="0" max="1000" value="0" step="1">
+            <span id="worldgen-season-value">0.0% orbit</span>
+          </label>
         </div>
       </aside>
+    </section>
+
+    <section class="worldgen-lab-details" aria-label="Planet details and generation telemetry">
+      <div class="worldgen-lab-detail-block">
+        <div class="worldgen-lab-detail-heading">
+          <h2>Generation</h2>
+          <span id="worldgen-generation-timer">Idle</span>
+        </div>
+        <div class="worldgen-generation-current">
+          <strong id="worldgen-generation-stage">Ready</strong>
+          <span id="worldgen-generation-step"></span>
+        </div>
+        <progress id="worldgen-generation-progress" max="100" value="0"></progress>
+        <div id="worldgen-generation-profile" class="worldgen-generation-profile"></div>
+      </div>
+      <div class="worldgen-lab-detail-block">
+        <h2>Physical diagnostics</h2>
+        <div id="worldgen-metrics" class="worldgen-lab-metrics"></div>
+      </div>
+      <div class="worldgen-lab-note">
+        <strong>Current physical frontier: WG-5</strong>
+        <p>One generation runs the accepted topology, tectonic, geological, lithospheric, multiresolution inheritance, WG-4 topography, and WG-5 coupled-climate pipeline. Every diagnostic mode inspects that same generated planet.</p>
+        <p>Overlays are independent of the selected diagnostic, so climate fields can be compared directly against topographic contours, coastlines, boundaries, winds, and currents. Seasonal precipitation displays the retained final spin-up-year orbital phases; annual precipitation seasonality remains an annual summary statistic.</p>
+        <p>The physical surface remains pre-erosional. Drainage, river incision, sediment transport, glacier flow, detailed lithology, resource deposits, Regions, Features, and gameplay integration remain downstream.</p>
+      </div>
     </section>
   </main>
   <script type="module" src="dist/worldgen/diagnostics/worldgenClimateLabStandalone.js"></script>

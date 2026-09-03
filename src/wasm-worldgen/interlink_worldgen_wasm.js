@@ -675,11 +675,12 @@ export class WasmWorldgenClimate {
      * @param {number} coarse_level
      * @param {number} fine_level
      * @param {number} plate_count
+     * @param {Function | null} [progress]
      */
-    constructor(seed, coarse_level, fine_level, plate_count) {
+    constructor(seed, coarse_level, fine_level, plate_count, progress) {
         const ptr0 = passStringToWasm0(seed, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.wasmworldgenclimate_new(ptr0, len0, coarse_level, fine_level, plate_count);
+        const ret = wasm.wasmworldgenclimate_new(ptr0, len0, coarse_level, fine_level, plate_count, isLikeNone(progress) ? 0 : addToExternrefTable0(progress));
         if (ret[2]) {
             throw takeFromExternrefTable0(ret[1]);
         }
@@ -817,6 +818,15 @@ export class WasmWorldgenClimate {
      */
     potential_evaporation_mm() {
         const ret = wasm.wasmworldgenclimate_potential_evaporation_mm(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    precipitation_phase_rate_mm_year() {
+        const ret = wasm.wasmworldgenclimate_precipitation_phase_rate_mm_year(this.__wbg_ptr);
         var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
         return v1;
@@ -4596,7 +4606,16 @@ function __wbg_get_imports() {
         __wbg___wbindgen_throw_bb96b2010945f0bc: function(arg0, arg1) {
             throw new Error(getStringFromWasm0(arg0, arg1));
         },
-        __wbindgen_cast_0000000000000001: function(arg0, arg1) {
+        __wbg_call_fe9a213cc6e4a807: function() { return handleError(function (arg0, arg1, arg2, arg3, arg4, arg5, arg6) {
+            const ret = arg0.call(arg1, arg2, arg3, arg4, arg5, arg6);
+            return ret;
+        }, arguments); },
+        __wbindgen_cast_0000000000000001: function(arg0) {
+            // Cast intrinsic for `F64 -> Externref`.
+            const ret = arg0;
+            return ret;
+        },
+        __wbindgen_cast_0000000000000002: function(arg0, arg1) {
             // Cast intrinsic for `Ref(String) -> Externref`.
             const ret = getStringFromWasm0(arg0, arg1);
             return ret;
@@ -4641,6 +4660,12 @@ const WasmWorldgenTopographyFinalization = (typeof FinalizationRegistry === 'und
 const WasmWorldgenTopologyFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_wasmworldgentopology_free(ptr, 1));
+
+function addToExternrefTable0(obj) {
+    const idx = wasm.__externref_table_alloc();
+    wasm.__wbindgen_externrefs.set(idx, obj);
+    return idx;
+}
 
 function getArrayF32FromWasm0(ptr, len) {
     ptr = ptr >>> 0;
@@ -4709,6 +4734,19 @@ function getUint8ArrayMemory0() {
         cachedUint8ArrayMemory0 = new Uint8Array(wasm.memory.buffer);
     }
     return cachedUint8ArrayMemory0;
+}
+
+function handleError(f, args) {
+    try {
+        return f.apply(this, args);
+    } catch (e) {
+        const idx = addToExternrefTable0(e);
+        wasm.__wbindgen_exn_store(idx);
+    }
+}
+
+function isLikeNone(x) {
+    return x === undefined || x === null;
 }
 
 function passStringToWasm0(arg, malloc, realloc) {
