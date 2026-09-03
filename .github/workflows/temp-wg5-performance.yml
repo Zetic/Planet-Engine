@@ -1,0 +1,13 @@
+name: Temporary WG-5 Performance Experiment
+
+on:
+  push:
+    branches:
+      - wg5-performance
+
+jobs:
+  paused:
+    if: ${{ false }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo paused
