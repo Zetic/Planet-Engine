@@ -7,6 +7,7 @@ use interlink_worldgen::{
 struct Generated {
     inherited: interlink_worldgen::InheritedPhysicalState,
     terrain: interlink_worldgen::TopographyState,
+    terrain_without_inherited_basin: interlink_worldgen::TopographyState,
 }
 
 fn generate(seed: &str, water_mass_kg: Option<f64>) -> Generated {
@@ -48,15 +49,30 @@ fn generate(seed: &str, water_mass_kg: Option<f64>) -> Generated {
         &inherited.plate_ids,
     )
     .unwrap();
-    let terrain = generate_initial_topography(
+    let request = TopographyRequest::new(seed);
+    let terrain = generate_initial_topography(&fine, &inherited, &boundaries, planet, &request).unwrap();
+
+    // Intervene only on the inherited basin driver. Keeping every other
+    // upstream field and every boundary identical makes the comparison a
+    // direct causal check of the weighted basin-potential + subsidence-history
+    // term used by WG-4 rather than a population correlation.
+    let mut inherited_without_basin = inherited.clone();
+    inherited_without_basin.basin_potential.fill(0.0);
+    inherited_without_basin.subsidence_history.fill(0.0);
+    let terrain_without_inherited_basin = generate_initial_topography(
         &fine,
-        &inherited,
+        &inherited_without_basin,
         &boundaries,
         planet,
-        &TopographyRequest::new(seed),
+        &request,
     )
     .unwrap();
-    Generated { inherited, terrain }
+
+    Generated {
+        inherited,
+        terrain,
+        terrain_without_inherited_basin,
+    }
 }
 
 fn conditional_mean(values: &[f32], predicate: impl Fn(usize) -> bool) -> Option<f64> {
@@ -75,7 +91,7 @@ fn conditional_mean(values: &[f32], predicate: impl Fn(usize) -> bool) -> Option
 fn multi_seed_topography_expresses_expected_signed_physical_responses() {
     let mut old_ocean_is_deeper = 0;
     let mut orogenic_high_is_higher = 0;
-    let mut basin_high_is_lower = 0;
+    let mut inherited_basin_deepens_relief = 0;
     let mut subduction_morphology_worlds = 0;
 
     for seed in ["wg4-e0", "wg4-e1", "wg4-e2", "wg4-e3", "wg4-e4"] {
@@ -107,19 +123,22 @@ fn multi_seed_topography_expresses_expected_signed_physical_responses() {
             }
         }
 
-        // Isolate inherited basin response from active-rift depression so the
-        // ensemble assertion measures the intended causal term rather than
-        // whichever population happens to contain more rift-axis samples.
-        let high_basin = conditional_mean(&terrain.rift_basin_elevation_m, |i| {
-            inherited.basin_potential[i] > 0.65 && inherited.rift_history[i] < 0.25
-        });
-        let low_basin = conditional_mean(&terrain.rift_basin_elevation_m, |i| {
-            inherited.basin_potential[i] < 0.20 && inherited.rift_history[i] < 0.25
-        });
-        if let (Some(high), Some(low)) = (high_basin, low_basin) {
-            if high < low {
-                basin_high_is_lower += 1;
-            }
+        let mut minimum_basin_delta_m = 0.0_f32;
+        let mut basin_driver_was_present = false;
+        for i in 0..terrain.rift_basin_elevation_m.len() {
+            let inherited_driver = 0.55 * inherited.basin_potential[i]
+                + 0.45 * inherited.subsidence_history[i];
+            basin_driver_was_present |= inherited_driver > 0.05;
+            let delta = terrain.rift_basin_elevation_m[i]
+                - generated.terrain_without_inherited_basin.rift_basin_elevation_m[i];
+            assert!(
+                delta <= 1.0e-3,
+                "removing inherited basin forcing must never deepen the WG-4 rift/basin component"
+            );
+            minimum_basin_delta_m = minimum_basin_delta_m.min(delta);
+        }
+        if basin_driver_was_present && minimum_basin_delta_m < -50.0 {
+            inherited_basin_deepens_relief += 1;
         }
 
         let deepest_trench = terrain
@@ -149,8 +168,8 @@ fn multi_seed_topography_expresses_expected_signed_physical_responses() {
         "orogenic history must produce positive relief across the ensemble"
     );
     assert!(
-        basin_high_is_lower >= 3,
-        "basin potential must produce negative relief away from active rift axes"
+        inherited_basin_deepens_relief >= 4,
+        "the combined inherited basin-potential and subsidence-history driver must deepen WG-4 relief across the ensemble"
     );
     assert!(
         subduction_morphology_worlds >= 2,
