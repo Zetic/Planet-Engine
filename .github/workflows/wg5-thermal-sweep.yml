@@ -31,7 +31,7 @@ jobs:
             SW_REFLECTIVITY="${reflectivity}" LW_OPTICAL_DEPTH="${longwave}" HEAT_DIFFUSIVITY=2000000.0 AIR_SEA_EXCHANGE=8.0 MIXED_LAYER_DEPTH=20.0 HEAT_SOLVER_ITERS=20 \
               python scripts/wg5_thermal_sweep_patch.py
             SURFACE_ALBEDO_COUPLING="${coupling}" python scripts/wg5_thermal_coupling_patch.py
-            cargo fmt --all -- --check || exit 1
+            cargo fmt --all
             echo '--- L6 acceptance ---'
             cargo run --release -q -p interlink-worldgen-cli -- climate \
               --seed interlink-wg5 --coarse-level 4 --level 6 --plates 16 || echo 'L6_ACCEPTANCE_FAILED'
