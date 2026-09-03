@@ -1,5 +1,5 @@
 use crate::{
-    tangent_basis, ClimatePhysicalParameters, ClimateRequest, ClimateState, GeodesicTopology,
+    tangent_basis, ClimateRequest, ClimateState, GeodesicTopology,
     PlanetPhysicalParameters, TopographyState, WorldgenError,
 };
 
