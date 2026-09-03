@@ -8,9 +8,18 @@ fn topography_bridge_exposes_physical_surface_and_water_solution() {
     assert_eq!(output.stage_version(), 1);
     assert_eq!(output.coarse_level(), 3);
     assert_eq!(output.fine_level(), 4);
-    assert_eq!(output.fine_sample_count() as usize, output.solid_elevation_m().len());
-    assert_eq!(output.fine_sample_count() as usize, output.water_depth_m().len());
-    assert_eq!(output.fine_sample_count() as usize, output.submerged_mask().len());
+    assert_eq!(
+        output.fine_sample_count() as usize,
+        output.solid_elevation_m().len()
+    );
+    assert_eq!(
+        output.fine_sample_count() as usize,
+        output.water_depth_m().len()
+    );
+    assert_eq!(
+        output.fine_sample_count() as usize,
+        output.submerged_mask().len()
+    );
     assert!(output.minimum_solid_elevation_m() < output.maximum_solid_elevation_m());
     assert!(output.has_sea_level());
     assert!(output.land_area_fraction() > 0.0);
