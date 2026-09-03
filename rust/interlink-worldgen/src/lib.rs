@@ -1,5 +1,6 @@
 mod boundary_refinement;
 mod climate;
+mod climate_calibration;
 mod coordinates;
 mod diagnostics;
 mod fields;
@@ -20,6 +21,9 @@ pub use boundary_refinement::{
 pub use climate::{
     generate_coupled_climate, ClimateMetrics, ClimateParameters, ClimatePhysicalParameters,
     ClimateRequest, ClimateState, CLIMATE_STAGE_ID, CLIMATE_STAGE_VERSION,
+};
+pub use climate_calibration::{
+    build_climate_calibration_report, ClimateCalibrationReport, ClimateLatitudeBand,
 };
 pub use coordinates::{
     anchor_origin_cartesian, cartesian_to_local_enu, great_circle_distance_m,
