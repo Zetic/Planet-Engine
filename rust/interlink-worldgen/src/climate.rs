@@ -1016,28 +1016,54 @@ fn build_atmospheric_moisture_edges(
     edges
 }
 
-fn moisture_transport_substeps_for_phase(
+#[derive(Clone, Copy, Debug)]
+struct PhaseAtmosphericMoistureEdge {
+    donor: usize,
+    receiver: usize,
+    normal_speed_abs_m_s: f64,
+    interface_length_m: f64,
+}
+
+fn prepare_phase_moisture_transport(
     edges: &[AtmosphericMoistureEdge],
-    cell_area_m2: &[f64],
     wind_east: &[f64],
     wind_north: &[f64],
-    phase_seconds: f64,
-    parameters: ClimateParameters,
-) -> u8 {
-    let mut outgoing_rate = vec![0.0; cell_area_m2.len()];
+    maximum_speed_m_s: f64,
+    phase_edges: &mut Vec<PhaseAtmosphericMoistureEdge>,
+    outgoing_rate: &mut [f64],
+) {
+    phase_edges.clear();
+    outgoing_rate.fill(0.0);
     for edge in edges {
         let outward_a = wind_east[edge.a] * edge.a_east + wind_north[edge.a] * edge.a_north;
         let outward_b = wind_east[edge.b] * edge.b_east + wind_north[edge.b] * edge.b_north;
-        let normal_speed = (0.5 * (outward_a - outward_b)).clamp(
-            -parameters.maximum_climatological_moisture_transport_speed_m_s,
-            parameters.maximum_climatological_moisture_transport_speed_m_s,
-        );
-        if normal_speed > 0.0 {
-            outgoing_rate[edge.a] += normal_speed * edge.interface_length_m;
-        } else if normal_speed < 0.0 {
-            outgoing_rate[edge.b] += -normal_speed * edge.interface_length_m;
+        let normal_speed =
+            (0.5 * (outward_a - outward_b)).clamp(-maximum_speed_m_s, maximum_speed_m_s);
+        if normal_speed.abs() <= 1.0e-12 {
+            continue;
         }
+        let (donor, receiver) = if normal_speed >= 0.0 {
+            (edge.a, edge.b)
+        } else {
+            (edge.b, edge.a)
+        };
+        let normal_speed_abs_m_s = normal_speed.abs();
+        outgoing_rate[donor] += normal_speed_abs_m_s * edge.interface_length_m;
+        phase_edges.push(PhaseAtmosphericMoistureEdge {
+            donor,
+            receiver,
+            normal_speed_abs_m_s,
+            interface_length_m: edge.interface_length_m,
+        });
     }
+}
+
+fn moisture_transport_substeps_for_phase(
+    outgoing_rate: &[f64],
+    cell_area_m2: &[f64],
+    phase_seconds: f64,
+    parameters: ClimateParameters,
+) -> u8 {
     let maximum_phase_courant = outgoing_rate
         .iter()
         .enumerate()
@@ -1053,39 +1079,30 @@ fn moisture_transport_substeps_for_phase(
 }
 
 fn advect_moisture_substep(
-    edges: &[AtmosphericMoistureEdge],
+    edges: &[PhaseAtmosphericMoistureEdge],
     moisture_mass: &mut [f64],
     cell_area_m2: &[f64],
-    wind_east: &[f64],
-    wind_north: &[f64],
     substep_seconds: f64,
     cfl_limit: f64,
-    maximum_speed_m_s: f64,
-) -> (Vec<f64>, usize, usize) {
-    let mut requested = Vec::<(usize, usize, f64)>::with_capacity(edges.len());
-    let mut requested_outflow = vec![0.0; moisture_mass.len()];
+    requested_outflow: &mut [f64],
+    donor_scale: &mut [f64],
+    delta: &mut [f64],
+) -> (usize, usize) {
+    requested_outflow.fill(0.0);
+    donor_scale.fill(1.0);
+    delta.fill(0.0);
+
     for edge in edges {
-        let outward_a = wind_east[edge.a] * edge.a_east + wind_north[edge.a] * edge.a_north;
-        let outward_b = wind_east[edge.b] * edge.b_east + wind_north[edge.b] * edge.b_north;
-        let normal_speed =
-            (0.5 * (outward_a - outward_b)).clamp(-maximum_speed_m_s, maximum_speed_m_s);
-        if normal_speed.abs() <= 1.0e-12 {
-            continue;
-        }
-        let (donor, receiver) = if normal_speed >= 0.0 {
-            (edge.a, edge.b)
-        } else {
-            (edge.b, edge.a)
-        };
-        let donor_column_moisture = moisture_mass[donor] / cell_area_m2[donor].max(1.0);
-        let mass =
-            donor_column_moisture * normal_speed.abs() * edge.interface_length_m * substep_seconds;
+        let donor_column_moisture = moisture_mass[edge.donor] / cell_area_m2[edge.donor].max(1.0);
+        let mass = donor_column_moisture
+            * edge.normal_speed_abs_m_s
+            * edge.interface_length_m
+            * substep_seconds;
         if mass > 0.0 {
-            requested.push((donor, receiver, mass));
-            requested_outflow[donor] += mass;
+            requested_outflow[edge.donor] += mass;
         }
     }
-    let mut donor_scale = vec![1.0; moisture_mass.len()];
+
     let mut active_donors = 0usize;
     let mut limited_donors = 0usize;
     for i in 0..moisture_mass.len() {
@@ -1095,24 +1112,25 @@ fn advect_moisture_substep(
         active_donors += 1;
         let allowed = moisture_mass[i] * cfl_limit;
         if requested_outflow[i] > allowed {
-            donor_scale[i] = if requested_outflow[i] > 0.0 {
-                allowed / requested_outflow[i]
-            } else {
-                1.0
-            };
+            donor_scale[i] = allowed / requested_outflow[i];
             limited_donors += 1;
         }
     }
-    let mut delta = vec![0.0; moisture_mass.len()];
-    for (donor, receiver, mass) in requested {
-        let transfer = mass * donor_scale[donor];
-        delta[donor] -= transfer;
-        delta[receiver] += transfer;
+
+    for edge in edges {
+        let donor_column_moisture = moisture_mass[edge.donor] / cell_area_m2[edge.donor].max(1.0);
+        let mass = donor_column_moisture
+            * edge.normal_speed_abs_m_s
+            * edge.interface_length_m
+            * substep_seconds;
+        let transfer = mass * donor_scale[edge.donor];
+        delta[edge.donor] -= transfer;
+        delta[edge.receiver] += transfer;
     }
     for i in 0..moisture_mass.len() {
         moisture_mass[i] = (moisture_mass[i] + delta[i]).max(0.0);
     }
-    (delta, limited_donors, active_donors)
+    (limited_donors, active_donors)
 }
 
 fn build_ocean_projection_geometry(
@@ -1541,6 +1559,11 @@ fn generate_coupled_climate_internal(
     let atmospheric_heat_geometry = build_atmospheric_heat_geometry(topology, planet.radius_m);
     let atmospheric_moisture_edges =
         build_atmospheric_moisture_edges(topology, &east_bases, &north_bases, planet.radius_m);
+    let mut phase_moisture_edges = Vec::with_capacity(atmospheric_moisture_edges.len());
+    let mut moisture_outgoing_rate = vec![0.0; sample_count];
+    let mut moisture_requested_outflow = vec![0.0; sample_count];
+    let mut moisture_donor_scale = vec![1.0; sample_count];
+    let mut moisture_transport_delta = vec![0.0; sample_count];
     let ocean_projection_geometry = build_ocean_projection_geometry(
         topology,
         &ocean,
@@ -1990,11 +2013,17 @@ fn generate_coupled_climate_internal(
                 // Resolve one seasonal wind state through multiple conservative
                 // finite-volume advection substeps. Moisture can therefore cross
                 // multiple cells during a phase without an index-order dependency.
-                let moisture_substeps = moisture_transport_substeps_for_phase(
+                prepare_phase_moisture_transport(
                     &atmospheric_moisture_edges,
-                    &cell_area_m2,
                     &wind_east,
                     &wind_north,
+                    parameters.maximum_climatological_moisture_transport_speed_m_s,
+                    &mut phase_moisture_edges,
+                    &mut moisture_outgoing_rate,
+                );
+                let moisture_substeps = moisture_transport_substeps_for_phase(
+                    &moisture_outgoing_rate,
+                    &cell_area_m2,
                     phase_seconds,
                     parameters,
                 );
@@ -2002,20 +2031,20 @@ fn generate_coupled_climate_internal(
                     maximum_moisture_transport_substeps_used.max(moisture_substeps);
                 let substep_seconds = phase_seconds / f64::from(moisture_substeps);
                 for _ in 0..usize::from(moisture_substeps) {
-                    let (transport_delta, limited_donors, active_donors) = advect_moisture_substep(
-                        &atmospheric_moisture_edges,
+                    let (limited_donors, active_donors) = advect_moisture_substep(
+                        &phase_moisture_edges,
                         &mut moisture_mass,
                         &cell_area_m2,
-                        &wind_east,
-                        &wind_north,
                         substep_seconds,
                         parameters.moisture_transport_cfl_limit,
-                        parameters.maximum_climatological_moisture_transport_speed_m_s,
+                        &mut moisture_requested_outflow,
+                        &mut moisture_donor_scale,
+                        &mut moisture_transport_delta,
                     );
                     moisture_transport_limited_donor_steps += limited_donors;
                     moisture_transport_active_donor_steps += active_donors;
                     for i in 0..sample_count {
-                        if transport_delta[i] <= 0.0 || air_mass[i] <= 0.0 {
+                        if moisture_transport_delta[i] <= 0.0 || air_mass[i] <= 0.0 {
                             continue;
                         }
                         let saturation_air =
@@ -2031,7 +2060,7 @@ fn generate_coupled_climate_internal(
                         } else {
                             0.0
                         };
-                        let convergence_mass = transport_delta[i]
+                        let convergence_mass = moisture_transport_delta[i]
                             * parameters.convergence_precipitation_efficiency
                             * activation;
                         let precipitation_mass = convergence_mass.min(moisture_mass[i]);
