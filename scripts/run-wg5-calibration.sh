@@ -31,7 +31,7 @@ case "${MODE}" in
     run_case "wg5-cal-c" 4 6 16
     ;;
   quality)
-    "$0" standard
+    bash "$0" standard
     run_case "ci-wg5-l7" 5 7 24
     ;;
   *)
