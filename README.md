@@ -2,7 +2,7 @@
 
 Planet Engine is the standalone deterministic planetary physical-world generator for Project Interlink.
 
-The engine owns canonical spherical topology, macro tectonics, crust and geological history, lithospheric mechanics and tectonic refinement, multiresolution physical inheritance, planetary physical profiles, native diagnostics, browser/WASM transport, and the standalone Planet Engine Lab.
+The engine owns canonical spherical topology, macro tectonics, crust and geological history, lithospheric mechanics and tectonic refinement, multiresolution physical inheritance, initial physical topography/bathymetry, planetary physical profiles, native diagnostics, browser/WASM transport, and the standalone Planet Engine Lab.
 
 ## Current physical pipeline
 
@@ -19,7 +19,7 @@ WG-3.5 lithosphere + structural/kinematic refinement
           ↓
 WG-3.75 multiresolution physical inheritance
           ↓
-WG-4 initial physical topography (next)
+WG-4 initial physical topography
 ```
 
 Gameplay Regions, Features, resource nodes, selection, factories, and the industrial runtime are intentionally outside this repository.

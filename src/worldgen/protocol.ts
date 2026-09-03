@@ -1,4 +1,4 @@
-export const WORLDGEN_PROTOCOL_VERSION = 6;
+export const WORLDGEN_PROTOCOL_VERSION = 7;
 export const WORLDGEN_SYNTHETIC_MAX_SAMPLES = 4_194_304;
 export const WORLDGEN_TOPOLOGY_MAX_LEVEL = 7;
 export const WORLDGEN_TECTONICS_MAX_LEVEL = 6;
@@ -6,6 +6,8 @@ export const WORLDGEN_GEOLOGY_MAX_LEVEL = 6;
 export const WORLDGEN_LITHOSPHERE_MAX_LEVEL = 6;
 export const WORLDGEN_INHERITANCE_COARSE_MAX_LEVEL = 6;
 export const WORLDGEN_INHERITANCE_FINE_MAX_LEVEL = 7;
+export const WORLDGEN_TOPOGRAPHY_COARSE_MAX_LEVEL = 6;
+export const WORLDGEN_TOPOGRAPHY_FINE_MAX_LEVEL = 7;
 export const WORLDGEN_TECTONICS_MIN_PLATES = 4;
 export const WORLDGEN_TECTONICS_MAX_PLATES = 48;
 
@@ -15,6 +17,7 @@ export interface WorldgenTectonicsRequest { seed: string; level: number; plateCo
 export interface WorldgenGeologyRequest { seed: string; level: number; plateCount: number; }
 export interface WorldgenLithosphereRequest { seed: string; level: number; plateCount: number; }
 export interface WorldgenInheritanceRequest { seed: string; coarseLevel: number; fineLevel: number; plateCount: number; }
+export interface WorldgenTopographyRequest { seed: string; coarseLevel: number; fineLevel: number; plateCount: number; }
 
 export interface WorldgenFieldStatistics { sampleCount: number; minimum: number; maximum: number; mean: number; fieldHash: string; }
 export interface WorldgenStageMetadata { id: string; version: number; stageSeed: string; durationMs: number; }
@@ -287,13 +290,78 @@ export interface WorldgenInheritanceResult {
   boundaryCoarseSourceIndices: Uint32Array;
 }
 
+
+export interface WorldgenTopographyMetrics {
+  coarseSampleCount: number;
+  fineSampleCount: number;
+  plateCount: number;
+  fineBoundaryEdgeCount: number;
+  minimumSolidElevationM: number;
+  maximumSolidElevationM: number;
+  meanSolidElevationM: number;
+  p05SolidElevationM: number;
+  medianSolidElevationM: number;
+  p95SolidElevationM: number;
+  hasSeaLevel: boolean;
+  seaLevelM: number;
+  landAreaFraction: number;
+  oceanAreaFraction: number;
+  meanLandElevationM: number;
+  meanWaterDepthM: number;
+  maximumWaterDepthM: number;
+  targetWaterVolumeM3: number;
+  solvedWaterVolumeM3: number;
+  waterVolumeRelativeError: number;
+  clampedSampleCount: number;
+  coarseTopologyHash: string;
+  fineTopologyHash: string;
+  tectonicHash: string;
+  geologyHash: string;
+  lithosphereHash: string;
+  inheritanceHash: string;
+  boundaryHash: string;
+  planetParameterHash: string;
+  topographyParameterHash: string;
+  topographyHash: string;
+}
+
+export interface WorldgenTopographyResult {
+  engineVersion: number;
+  coarseLevel: number;
+  fineLevel: number;
+  stage: WorldgenStageMetadata;
+  metrics: WorldgenTopographyMetrics;
+  parameters: WorldgenPlanetPhysicalProfile;
+  positions: Float64Array;
+  faces: Uint32Array;
+  neighborOffsets: Uint32Array;
+  neighbors: Uint32Array;
+  plateIds: Uint16Array;
+  crustKind: Uint8Array;
+  boundarySamples: Uint32Array;
+  geologicalBoundaryRegimes: Uint8Array;
+  isostaticElevationM: Float32Array;
+  thermalElevationM: Float32Array;
+  orogenicElevationM: Float32Array;
+  ridgeElevationM: Float32Array;
+  riftBasinElevationM: Float32Array;
+  trenchElevationM: Float32Array;
+  arcElevationM: Float32Array;
+  mantleDynamicElevationM: Float32Array;
+  solidElevationM: Float32Array;
+  elevationAboveSeaLevelM: Float32Array;
+  waterDepthM: Float32Array;
+  submergedMask: Uint8Array;
+}
+
 export interface WorldgenSyntheticCommand { protocolVersion: number; requestId: number; type: 'generate-synthetic'; payload: WorldgenSyntheticRequest; }
 export interface WorldgenTopologyCommand { protocolVersion: number; requestId: number; type: 'generate-topology'; payload: WorldgenTopologyRequest; }
 export interface WorldgenTectonicsCommand { protocolVersion: number; requestId: number; type: 'generate-tectonics'; payload: WorldgenTectonicsRequest; }
 export interface WorldgenGeologyCommand { protocolVersion: number; requestId: number; type: 'generate-geology'; payload: WorldgenGeologyRequest; }
 export interface WorldgenLithosphereCommand { protocolVersion: number; requestId: number; type: 'generate-lithosphere'; payload: WorldgenLithosphereRequest; }
 export interface WorldgenInheritanceCommand { protocolVersion: number; requestId: number; type: 'generate-inheritance'; payload: WorldgenInheritanceRequest; }
-export type WorldgenCommand = WorldgenSyntheticCommand | WorldgenTopologyCommand | WorldgenTectonicsCommand | WorldgenGeologyCommand | WorldgenLithosphereCommand | WorldgenInheritanceCommand;
+export interface WorldgenTopographyCommand { protocolVersion: number; requestId: number; type: 'generate-topography'; payload: WorldgenTopographyRequest; }
+export type WorldgenCommand = WorldgenSyntheticCommand | WorldgenTopologyCommand | WorldgenTectonicsCommand | WorldgenGeologyCommand | WorldgenLithosphereCommand | WorldgenInheritanceCommand | WorldgenTopographyCommand;
 
 export interface WorldgenGeneratedSyntheticEvent { protocolVersion: number; requestId: number; type: 'generated-synthetic'; payload: WorldgenSyntheticResult; }
 export interface WorldgenGeneratedTopologyEvent { protocolVersion: number; requestId: number; type: 'generated-topology'; payload: WorldgenTopologyResult; }
@@ -301,8 +369,9 @@ export interface WorldgenGeneratedTectonicsEvent { protocolVersion: number; requ
 export interface WorldgenGeneratedGeologyEvent { protocolVersion: number; requestId: number; type: 'generated-geology'; payload: WorldgenGeologyResult; }
 export interface WorldgenGeneratedLithosphereEvent { protocolVersion: number; requestId: number; type: 'generated-lithosphere'; payload: WorldgenLithosphereResult; }
 export interface WorldgenGeneratedInheritanceEvent { protocolVersion: number; requestId: number; type: 'generated-inheritance'; payload: WorldgenInheritanceResult; }
+export interface WorldgenGeneratedTopographyEvent { protocolVersion: number; requestId: number; type: 'generated-topography'; payload: WorldgenTopographyResult; }
 export interface WorldgenErrorEvent { protocolVersion: number; requestId: number; type: 'error'; payload: { message: string }; }
-export type WorldgenEvent = WorldgenGeneratedSyntheticEvent | WorldgenGeneratedTopologyEvent | WorldgenGeneratedTectonicsEvent | WorldgenGeneratedGeologyEvent | WorldgenGeneratedLithosphereEvent | WorldgenGeneratedInheritanceEvent | WorldgenErrorEvent;
+export type WorldgenEvent = WorldgenGeneratedSyntheticEvent | WorldgenGeneratedTopologyEvent | WorldgenGeneratedTectonicsEvent | WorldgenGeneratedGeologyEvent | WorldgenGeneratedLithosphereEvent | WorldgenGeneratedInheritanceEvent | WorldgenGeneratedTopographyEvent | WorldgenErrorEvent;
 
 export function validateSyntheticRequest(request: WorldgenSyntheticRequest): void {
   if (!request.seed.trim()) throw new Error('Worldgen seed must not be empty.');
@@ -348,9 +417,21 @@ export function validateInheritanceRequest(request: WorldgenInheritanceRequest):
   if (request.plateCount > coarseSamples) throw new Error('WG-3.75 plate count cannot exceed coarse topology sample count.');
 }
 
+
+export function validateTopographyRequest(request: WorldgenTopographyRequest): void {
+  if (!request.seed.trim()) throw new Error('WG-4 topography seed must not be empty.');
+  if (!Number.isInteger(request.coarseLevel) || request.coarseLevel < 0 || request.coarseLevel > WORLDGEN_TOPOGRAPHY_COARSE_MAX_LEVEL) throw new Error(`WG-4 coarse level must be an integer from 0 through ${WORLDGEN_TOPOGRAPHY_COARSE_MAX_LEVEL}.`);
+  if (!Number.isInteger(request.fineLevel) || request.fineLevel < request.coarseLevel || request.fineLevel > WORLDGEN_TOPOGRAPHY_FINE_MAX_LEVEL) throw new Error(`WG-4 fine level must be an integer from coarse level through ${WORLDGEN_TOPOGRAPHY_FINE_MAX_LEVEL}.`);
+  if (!Number.isInteger(request.plateCount) || request.plateCount < WORLDGEN_TECTONICS_MIN_PLATES || request.plateCount > WORLDGEN_TECTONICS_MAX_PLATES) throw new Error(`WG-4 plate count must be an integer from ${WORLDGEN_TECTONICS_MIN_PLATES} through ${WORLDGEN_TECTONICS_MAX_PLATES}.`);
+  const coarseSamples = 10 * (4 ** request.coarseLevel) + 2;
+  if (request.plateCount > coarseSamples) throw new Error('WG-4 plate count cannot exceed coarse topology sample count.');
+}
+
 export function worldgenSyntheticCommand(requestId: number, payload: WorldgenSyntheticRequest): WorldgenSyntheticCommand { validateSyntheticRequest(payload); return { protocolVersion: WORLDGEN_PROTOCOL_VERSION, requestId, type: 'generate-synthetic', payload }; }
 export function worldgenTopologyCommand(requestId: number, payload: WorldgenTopologyRequest): WorldgenTopologyCommand { validateTopologyRequest(payload); return { protocolVersion: WORLDGEN_PROTOCOL_VERSION, requestId, type: 'generate-topology', payload }; }
 export function worldgenTectonicsCommand(requestId: number, payload: WorldgenTectonicsRequest): WorldgenTectonicsCommand { validateTectonicsRequest(payload); return { protocolVersion: WORLDGEN_PROTOCOL_VERSION, requestId, type: 'generate-tectonics', payload }; }
 export function worldgenGeologyCommand(requestId: number, payload: WorldgenGeologyRequest): WorldgenGeologyCommand { validateGeologyRequest(payload); return { protocolVersion: WORLDGEN_PROTOCOL_VERSION, requestId, type: 'generate-geology', payload }; }
 export function worldgenLithosphereCommand(requestId: number, payload: WorldgenLithosphereRequest): WorldgenLithosphereCommand { validateLithosphereRequest(payload); return { protocolVersion: WORLDGEN_PROTOCOL_VERSION, requestId, type: 'generate-lithosphere', payload }; }
 export function worldgenInheritanceCommand(requestId: number, payload: WorldgenInheritanceRequest): WorldgenInheritanceCommand { validateInheritanceRequest(payload); return { protocolVersion: WORLDGEN_PROTOCOL_VERSION, requestId, type: 'generate-inheritance', payload }; }
+
+export function worldgenTopographyCommand(requestId: number, payload: WorldgenTopographyRequest): WorldgenTopographyCommand { validateTopographyRequest(payload); return { protocolVersion: WORLDGEN_PROTOCOL_VERSION, requestId, type: 'generate-topography', payload }; }

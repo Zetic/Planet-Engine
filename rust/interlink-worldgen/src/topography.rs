@@ -84,7 +84,10 @@ impl TopographyParameters {
             self.arc_width_m,
             self.mantle_dynamic_scale_m,
         ];
-        if positive.iter().any(|value| !value.is_finite() || *value <= 0.0) {
+        if positive
+            .iter()
+            .any(|value| !value.is_finite() || *value <= 0.0)
+        {
             return Err("topography physical scales must be finite and positive");
         }
         if self.mechanical_filter_iterations > 32 {
@@ -481,7 +484,11 @@ fn area_weighted_mean(values: &[f64], areas_sr: &[f64]) -> f64 {
         sum += *value * *cell_area;
         area += *cell_area;
     }
-    if area > 0.0 { sum / area } else { 0.0 }
+    if area > 0.0 {
+        sum / area
+    } else {
+        0.0
+    }
 }
 
 fn area_weighted_quantile(values: &[f64], areas_sr: &[f64], q: f64) -> f64 {
@@ -527,10 +534,7 @@ fn solve_sea_level(
     if target == 0.0 {
         return (None, 0.0, 0.0);
     }
-    let minimum = elevation_m
-        .iter()
-        .copied()
-        .fold(f64::INFINITY, f64::min);
+    let minimum = elevation_m.iter().copied().fold(f64::INFINITY, f64::min);
     let maximum = elevation_m
         .iter()
         .copied()
@@ -629,25 +633,21 @@ pub fn generate_initial_topography(
         let ridge_kernel = if ridge_source[i] == u32::MAX {
             0.0
         } else {
-            gaussian(ridge_distance[i], p.ridge_width_m)
-                * ridge_sources[ridge_source[i] as usize]
+            gaussian(ridge_distance[i], p.ridge_width_m) * ridge_sources[ridge_source[i] as usize]
         };
-        ridge[i] = p.ridge_uplift_scale_m * ridge_kernel
-            + 500.0 * f64::from(inherited.ridge_history[i]);
+        ridge[i] =
+            p.ridge_uplift_scale_m * ridge_kernel + 500.0 * f64::from(inherited.ridge_history[i]);
 
         let rift_kernel = if rift_source[i] == u32::MAX {
             0.0
         } else {
-            gaussian(rift_distance[i], p.rift_width_m)
-                * rift_sources[rift_source[i] as usize]
+            gaussian(rift_distance[i], p.rift_width_m) * rift_sources[rift_source[i] as usize]
         };
-        rift_basin[i] = -(
-            p.rift_subsidence_scale_m
-                * (rift_kernel * structural_focus + 0.55 * f64::from(inherited.rift_history[i]))
-                + p.basin_subsidence_scale_m
-                    * (0.55 * f64::from(inherited.basin_potential[i])
-                        + 0.45 * f64::from(inherited.subsidence_history[i]))
-        );
+        rift_basin[i] = -(p.rift_subsidence_scale_m
+            * (rift_kernel * structural_focus + 0.55 * f64::from(inherited.rift_history[i]))
+            + p.basin_subsidence_scale_m
+                * (0.55 * f64::from(inherited.basin_potential[i])
+                    + 0.45 * f64::from(inherited.subsidence_history[i])));
 
         let trench_kernel = if trench_source[i] == u32::MAX {
             0.0
@@ -669,8 +669,7 @@ pub fn generate_initial_topography(
             * arc_kernel
             * (0.65 + 0.35 * f64::from(inherited.volcanic_arc_history[i]));
 
-        mantle[i] =
-            p.mantle_dynamic_scale_m * f64::from(inherited.mantle_dynamic_support_index[i]);
+        mantle[i] = p.mantle_dynamic_scale_m * f64::from(inherited.mantle_dynamic_support_index[i]);
     }
 
     let mut raw = vec![0.0_f64; count];
@@ -758,8 +757,7 @@ pub fn generate_initial_topography(
     };
 
     let minimum_solid_elevation_m = solid.iter().copied().fold(f64::INFINITY, f64::min);
-    let maximum_solid_elevation_m =
-        solid.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    let maximum_solid_elevation_m = solid.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     let mean_solid_elevation_m = area_weighted_mean(&solid, topology.dual_area_steradians());
     let p05_solid_elevation_m =
         area_weighted_quantile(&solid, topology.dual_area_steradians(), 0.05);
@@ -855,13 +853,9 @@ mod tests {
         let fine = build_icosphere(4).unwrap();
         let tectonics =
             generate_tectonics(&coarse, &TectonicsRequest::new(seed, 12), planet).unwrap();
-        let geology = generate_crust_and_history(
-            &coarse,
-            &tectonics,
-            &GeologyRequest::new(seed),
-            planet,
-        )
-        .unwrap();
+        let geology =
+            generate_crust_and_history(&coarse, &tectonics, &GeologyRequest::new(seed), planet)
+                .unwrap();
         let lithosphere = generate_lithosphere(
             &coarse,
             &tectonics,
@@ -871,14 +865,9 @@ mod tests {
         .unwrap();
         let inherited =
             inherit_physical_state(&fine, 3, &tectonics, &geology, &lithosphere, planet).unwrap();
-        let boundaries = inherit_boundary_interfaces(
-            &coarse,
-            &fine,
-            &tectonics,
-            &geology,
-            &inherited.plate_ids,
-        )
-        .unwrap();
+        let boundaries =
+            inherit_boundary_interfaces(&coarse, &fine, &tectonics, &geology, &inherited.plate_ids)
+                .unwrap();
         generate_initial_topography(
             &fine,
             &inherited,
@@ -897,7 +886,10 @@ mod tests {
         assert_eq!(a.solid_elevation_m, b.solid_elevation_m);
         assert_eq!(a.metrics.sample_count as usize, a.solid_elevation_m.len());
         assert!(a.solid_elevation_m.iter().all(|value| value.is_finite()));
-        assert!(a.water_depth_m.iter().all(|value| value.is_finite() && *value >= 0.0));
+        assert!(a
+            .water_depth_m
+            .iter()
+            .all(|value| value.is_finite() && *value >= 0.0));
         assert!(a.metrics.minimum_solid_elevation_m < a.metrics.maximum_solid_elevation_m);
     }
 

@@ -85,7 +85,11 @@ impl InheritedBoundarySet {
 }
 
 fn ordered_pair(a: u16, b: u16) -> (u16, u16) {
-    if a <= b { (a, b) } else { (b, a) }
+    if a <= b {
+        (a, b)
+    } else {
+        (b, a)
+    }
 }
 
 fn normalize(value: [f64; 3]) -> [f64; 3] {
@@ -194,9 +198,11 @@ pub fn inherit_boundary_interfaces(
                 continue;
             }
             let pair = ordered_pair(plate_a, plate_b);
-            let pair_candidates = candidates.get(&pair).ok_or(WorldgenError::InvalidRefinement(
-                "fine macro boundary has no compatible coarse boundary provenance",
-            ))?;
+            let pair_candidates = candidates
+                .get(&pair)
+                .ok_or(WorldgenError::InvalidRefinement(
+                    "fine macro boundary has no compatible coarse boundary provenance",
+                ))?;
             let fine_midpoint = midpoint(
                 fine_topology.positions()[sample_a as usize],
                 fine_topology.positions()[*sample_b as usize],
@@ -283,9 +289,12 @@ mod tests {
         let parameters = PlanetPhysicalParameters::earthlike_reference();
         let coarse = build_icosphere(3).unwrap();
         let fine = build_icosphere(5).unwrap();
-        let tectonics =
-            generate_tectonics(&coarse, &TectonicsRequest::new("wg375-boundary", 12), parameters)
-                .unwrap();
+        let tectonics = generate_tectonics(
+            &coarse,
+            &TectonicsRequest::new("wg375-boundary", 12),
+            parameters,
+        )
+        .unwrap();
         let geology = generate_crust_and_history(
             &coarse,
             &tectonics,
@@ -295,14 +304,9 @@ mod tests {
         .unwrap();
         let map = build_refinement_map(&fine, 3).unwrap();
         let fine_plate_ids = refine_categorical_u16(&map, &tectonics.plate_ids).unwrap();
-        let inherited = inherit_boundary_interfaces(
-            &coarse,
-            &fine,
-            &tectonics,
-            &geology,
-            &fine_plate_ids,
-        )
-        .unwrap();
+        let inherited =
+            inherit_boundary_interfaces(&coarse, &fine, &tectonics, &geology, &fine_plate_ids)
+                .unwrap();
 
         let expected_fine_edges = (0..fine.metrics().sample_count)
             .flat_map(|sample_a| {
@@ -323,7 +327,10 @@ mod tests {
                 ordered_pair(source.plate_a, source.plate_b)
             );
             assert_eq!(boundary.tectonic_kind, source.kind);
-            assert_eq!(boundary.normal_rate_m_per_year, source.normal_rate_m_per_year);
+            assert_eq!(
+                boundary.normal_rate_m_per_year,
+                source.normal_rate_m_per_year
+            );
             assert_eq!(boundary.shear_rate_m_per_year, source.shear_rate_m_per_year);
         }
     }
@@ -333,9 +340,12 @@ mod tests {
         let parameters = PlanetPhysicalParameters::earthlike_reference();
         let coarse = build_icosphere(3).unwrap();
         let fine = build_icosphere(4).unwrap();
-        let tectonics =
-            generate_tectonics(&coarse, &TectonicsRequest::new("wg375-boundary-determinism", 10), parameters)
-                .unwrap();
+        let tectonics = generate_tectonics(
+            &coarse,
+            &TectonicsRequest::new("wg375-boundary-determinism", 10),
+            parameters,
+        )
+        .unwrap();
         let geology = generate_crust_and_history(
             &coarse,
             &tectonics,

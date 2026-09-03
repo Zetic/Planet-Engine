@@ -20,7 +20,8 @@
     "worldgen:geology": "cargo run -p interlink-worldgen-cli -- geology --level 5 --plates 16",
     "worldgen:lithosphere": "cargo run -p interlink-worldgen-cli -- lithosphere --level 5 --plates 16",
     "worldgen:inheritance": "cargo run -p interlink-worldgen-cli -- inheritance --seed test-world --coarse-level 4 --level 6 --plates 16",
-    "worldgen:profile": "cargo run -p interlink-worldgen-cli -- profile"
+    "worldgen:profile": "cargo run -p interlink-worldgen-cli -- profile",
+    "worldgen:topography": "cargo run -p interlink-worldgen-cli -- topography --seed test-world --coarse-level 4 --level 6 --plates 16"
   },
   "devDependencies": {
     "tsx": "4.23.13",

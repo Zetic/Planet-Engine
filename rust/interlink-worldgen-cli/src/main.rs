@@ -1,8 +1,9 @@
 use interlink_worldgen::{
-    build_icosphere, generate_crust_and_history, generate_lithosphere, generate_synthetic,
-    generate_tectonics, inherit_physical_state, GeologyRequest, LithosphereRequest,
-    PlanetPhysicalParameters, PlateScaleClass, SyntheticRequest, TectonicFragmentKind,
-    TectonicsRequest, WORLDGEN_ENGINE_VERSION,
+    build_icosphere, generate_crust_and_history, generate_initial_topography, generate_lithosphere,
+    generate_synthetic, generate_tectonics, inherit_boundary_interfaces, inherit_physical_state,
+    GeologyRequest, LithosphereRequest, PlanetPhysicalParameters, PlateScaleClass,
+    SyntheticRequest, TectonicFragmentKind, TectonicsRequest, TopographyRequest,
+    WORLDGEN_ENGINE_VERSION,
 };
 use std::{env, process, time::Instant};
 
@@ -19,7 +20,7 @@ struct Options {
 }
 
 fn usage() -> &'static str {
-    "interlink-worldgen-cli <generate|benchmark|topology|tectonics|geology|lithosphere|inheritance|profile> [--seed TEXT] [--width N] [--height N] [--iterations N] [--level N] [--coarse-level N] [--plates N]"
+    "interlink-worldgen-cli <generate|benchmark|topology|tectonics|geology|lithosphere|inheritance|topography|profile> [--seed TEXT] [--width N] [--height N] [--iterations N] [--level N] [--coarse-level N] [--plates N]"
 }
 fn parse_u32(name: &str, value: Option<String>) -> Result<u32, String> {
     value
@@ -40,6 +41,7 @@ fn parse_options() -> Result<Options, String> {
             | "geology"
             | "lithosphere"
             | "inheritance"
+            | "topography"
             | "profile"
     ) {
         return Err(format!("unsupported command '{command}'\n{}", usage()));
@@ -445,6 +447,119 @@ fn inheritance(options: &Options) -> Result<(), String> {
     Ok(())
 }
 
+fn topography(options: &Options) -> Result<(), String> {
+    if options.coarse_level > options.level {
+        return Err("--coarse-level cannot exceed --level".to_owned());
+    }
+    let started = Instant::now();
+    let coarse = build_icosphere(options.coarse_level).map_err(|error| error.to_string())?;
+    let fine = build_icosphere(options.level).map_err(|error| error.to_string())?;
+    let parameters = PlanetPhysicalParameters::earthlike_reference();
+    let tectonics = generate_tectonics(
+        &coarse,
+        &TectonicsRequest::new(options.seed.as_str(), options.plates),
+        parameters,
+    )
+    .map_err(|error| error.to_string())?;
+    let geology = generate_crust_and_history(
+        &coarse,
+        &tectonics,
+        &GeologyRequest::new(options.seed.as_str()),
+        parameters,
+    )
+    .map_err(|error| error.to_string())?;
+    let lithosphere = generate_lithosphere(
+        &coarse,
+        &tectonics,
+        &geology,
+        &LithosphereRequest::new(options.seed.as_str()),
+    )
+    .map_err(|error| error.to_string())?;
+    let inherited = inherit_physical_state(
+        &fine,
+        options.coarse_level,
+        &tectonics,
+        &geology,
+        &lithosphere,
+        parameters,
+    )
+    .map_err(|error| error.to_string())?;
+    let boundaries =
+        inherit_boundary_interfaces(&coarse, &fine, &tectonics, &geology, &inherited.plate_ids)
+            .map_err(|error| error.to_string())?;
+    let terrain = generate_initial_topography(
+        &fine,
+        &inherited,
+        &boundaries,
+        parameters,
+        &TopographyRequest::new(options.seed.as_str()),
+    )
+    .map_err(|error| error.to_string())?;
+    let metrics = &terrain.metrics;
+    println!("Project Interlink Planet Engine WG-4 Initial Physical Topography");
+    println!("engine_version={}", WORLDGEN_ENGINE_VERSION);
+    println!("stage={}@{}", terrain.stage.id, terrain.stage.version);
+    println!("seed={} macro_plates={}", options.seed, options.plates);
+    println!(
+        "levels coarse={} fine={}",
+        options.coarse_level, options.level
+    );
+    println!(
+        "samples={} fine_boundaries={}",
+        metrics.sample_count,
+        boundaries.boundaries.len()
+    );
+    println!(
+        "topography_hash={} topography_parameter_hash={}",
+        metrics.topography_hash_hex(),
+        metrics.parameter_hash_hex()
+    );
+    println!(
+        "inheritance_hash={} boundary_hash={} planet_parameter_hash={}",
+        inherited.inheritance_hash_hex(),
+        boundaries.boundary_hash_hex(),
+        parameters.parameter_hash_hex()
+    );
+    println!(
+        "elevation_m min={:.3} p05={:.3} median={:.3} p95={:.3} max={:.3}",
+        metrics.minimum_solid_elevation_m,
+        metrics.p05_solid_elevation_m,
+        metrics.median_solid_elevation_m,
+        metrics.p95_solid_elevation_m,
+        metrics.maximum_solid_elevation_m
+    );
+    match metrics.sea_level_m {
+        Some(level) => println!("sea_level_m={:.6}", level),
+        None => println!("sea_level_m=none"),
+    }
+    println!(
+        "area_fraction land={:.6} ocean={:.6}",
+        metrics.land_area_fraction, metrics.ocean_area_fraction
+    );
+    println!(
+        "mean_land_elevation_m={:.3} mean_water_depth_m={:.3} maximum_water_depth_m={:.3}",
+        metrics.mean_land_elevation_m, metrics.mean_water_depth_m, metrics.maximum_water_depth_m
+    );
+    println!(
+        "water_volume_m3 target={:.6e} solved={:.6e} relative_error={:.6e}",
+        metrics.target_water_volume_m3,
+        metrics.solved_water_volume_m3,
+        metrics.water_volume_relative_error
+    );
+    println!("clamped_samples={}", metrics.clamped_sample_count);
+    println!(
+        "upstream tectonic_hash={} geology_hash={} lithosphere_hash={}",
+        tectonics.metrics.tectonic_hash_hex(),
+        geology.metrics.geology_hash_hex(),
+        lithosphere.metrics.lithosphere_hash_hex()
+    );
+    println!(
+        "elapsed_ms={:.3}",
+        started.elapsed().as_secs_f64() * 1_000.0
+    );
+    Ok(())
+}
+
 fn profile(_options: &Options) -> Result<(), String> {
     let parameters = PlanetPhysicalParameters::earthlike_reference();
     parameters.validate().map_err(str::to_owned)?;
@@ -481,6 +596,7 @@ fn main() {
         "geology" => geology(&options),
         "lithosphere" => lithosphere(&options),
         "inheritance" => inheritance(&options),
+        "topography" => topography(&options),
         "profile" => profile(&options),
         _ => generate_once(&options),
     };

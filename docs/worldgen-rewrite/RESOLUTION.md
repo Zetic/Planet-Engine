@@ -62,3 +62,7 @@ Before increasing canonical process levels, profiling must report generation tim
 ## WG-3.75 physical inheritance contract
 
 WG-3.75 implements the previously documented coarse-to-fine checkpoint. Accepted upstream truth can now be inherited onto a finer canonical topology without rerunning or rerandomizing the coarse stages. This permits WG-4 terrain to begin at a finer process level while macro tectonic/crust/lithosphere identity remains anchored to its accepted coarse samples.
+
+## WG-4 terrain checkpoint
+
+WG-4 now consumes accepted coarse physics exclusively through WG-3.75 inheritance. L7 remains the intended initial global terrain-quality target (~163,842 samples / ~56 km characteristic spacing on the Earth-like profile), while lower levels are used for CI and diagnostics. Finer terrain must remain a refinement of accepted physical truth rather than a rerun of tectonics.

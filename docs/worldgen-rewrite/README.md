@@ -90,7 +90,12 @@ WG-3.75 breaks the temporary same-resolution coupling before terrain generation:
 - categorical fields use deterministic geodesic nearest-source provenance;
 - fine plate-boundary interfaces retain tectonic kind, geological regime, subduction polarity, normal/shear rates, and coarse-source identity;
 - provenance, physical parameters, upstream stage hashes, inherited fields, and reconstructed boundaries have explicit deterministic identities;
-- WASM protocol v6 transports the finer physical substrate to the standalone Planet Engine Lab;
+- WASM protocol v7 transports the finer physical substrate to the standalone Planet Engine Lab;
 - an Earth-like physical profile remains the default while water inventory and interior/isostatic parameters are explicit for future rocky planets.
 
 WG-3.75 is still foundation work. It generates no elevation, bathymetry, sea-level solution, climate, hydrology, erosion, resources, Regions, Features, or gameplay cutover. WG-4 consumes this accepted finer substrate instead of rerunning tectonics/geology at terrain resolution.
+
+
+## WG-4
+
+WG-4 derives initial solid elevation, tectonic bathymetry, a deterministic vertical datum, and water-volume-conserving sea level from accepted WG-3.75 truth. See `TOPOGRAPHY.md`.
