@@ -1,0 +1,61 @@
+name: WG-5 Performance Lab
+
+on:
+  push:
+    branches:
+      - wg5-performance-lab
+
+concurrency:
+  group: wg5-performance-lab
+  cancel-in-progress: true
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust stable
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - name: Benchmark thin-LTO baseline
+        run: |
+          RUNS=1 bash scripts/benchmark-wg5-performance.sh l6 | tee /tmp/thin.txt
+      - name: Switch release profile to fat LTO
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('Cargo.toml')
+          text = path.read_text()
+          if 'lto = "thin"' not in text:
+              raise SystemExit('thin LTO profile not found')
+          path.write_text(text.replace('lto = "thin"', 'lto = "fat"', 1))
+          PY
+      - name: Benchmark fat LTO twice
+        run: |
+          RUNS=1 bash scripts/benchmark-wg5-performance.sh l6 | tee /tmp/fat1.txt
+          RUNS=1 bash scripts/benchmark-wg5-performance.sh l6 | tee /tmp/fat2.txt
+      - name: Compare exact output and runtime
+        run: |
+          python - <<'PY'
+          import re
+          from pathlib import Path
+
+          def read(path):
+              text = Path(path).read_text()
+              m = re.search(r'wg5_performance .*mean_climate_ms=([0-9.]+).*final_hash=([0-9a-f]+)', text)
+              if not m:
+                  raise SystemExit(f'missing benchmark summary in {path}')
+              return float(m.group(1)), m.group(2)
+
+          thin_ms, thin_hash = read('/tmp/thin.txt')
+          fat1_ms, fat1_hash = read('/tmp/fat1.txt')
+          fat2_ms, fat2_hash = read('/tmp/fat2.txt')
+          if thin_hash != fat1_hash or fat1_hash != fat2_hash:
+              raise SystemExit(f'hash mismatch thin={thin_hash} fat1={fat1_hash} fat2={fat2_hash}')
+          fat_mean = (fat1_ms + fat2_ms) / 2.0
+          reduction = (1.0 - fat_mean / thin_ms) * 100.0
+          print(f'wg5_fat_lto thin_ms={thin_ms:.3f} fat1_ms={fat1_ms:.3f} fat2_ms={fat2_ms:.3f} fat_mean_ms={fat_mean:.3f} reduction={reduction:.2f}% hash={thin_hash}')
+          if reduction < 2.0:
+              raise SystemExit('fat LTO improvement is below 2% adoption threshold')
+          PY
