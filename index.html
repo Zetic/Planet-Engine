@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Planet Engine · Lab</title>
+  <link rel="stylesheet" href="styles/base.css">
+  <link rel="stylesheet" href="styles/worldgenLab.css">
+</head>
+<body class="worldgen-lab-body">
+  <main class="worldgen-lab">
+    <header class="worldgen-lab-header">
+      <div>
+        <p class="worldgen-lab-kicker">PLANET ENGINE · WG-3.75</p>
+        <h1>PLANET ENGINE LAB</h1>
+        <p>Deterministic coarse-to-fine inheritance of accepted tectonic, geological, and lithospheric truth, including fine boundary-interface provenance and planetary physical parameters.</p>
+      </div>
+    </header>
+
+    <section class="worldgen-lab-controls" aria-label="WG-3.75 multiresolution controls">
+      <label>Seed <input id="worldgen-seed" type="text" value="interlink-wg3-75"></label>
+      <label>Coarse physical level <input id="worldgen-coarse-level" type="number" min="0" max="6" value="4"></label>
+      <label>Fine diagnostic level <input id="worldgen-level" type="number" min="0" max="7" value="6"></label>
+      <label>Plate count <input id="worldgen-plates" type="number" min="4" max="48" value="16"></label>
+      <label>Projection
+        <select id="worldgen-projection">
+          <option value="globe">Orthographic globe</option>
+          <option value="map">Equirectangular map</option>
+        </select>
+      </label>
+      <label>Diagnostic
+        <select id="worldgen-visualization">
+          <optgroup label="Inheritance">
+            <option value="inherited-mask">Inherited coarse samples</option>
+            <option value="provenance">Nearest coarse provenance</option>
+            <option value="boundary-provenance">Boundary provenance</option>
+          </optgroup>
+          <optgroup label="Tectonics">
+            <option value="plates">Macro plate ownership</option>
+            <option value="kinematic-domains">Refined kinematic domains</option>
+            <option value="tectonic-boundaries">Fine tectonic boundaries</option>
+            <option value="geological-boundaries">Fine geological regimes</option>
+          </optgroup>
+          <optgroup label="Crust / history">
+            <option value="crust-type">Crust type</option>
+            <option value="crust-age">Crust age</option>
+            <option value="crust-thickness">Crust thickness</option>
+            <option value="orogeny">Orogenic history</option>
+            <option value="ridge">Ridge history</option>
+            <option value="trench">Trench history</option>
+          </optgroup>
+          <optgroup label="Lithosphere">
+            <option value="strength" selected>Lithospheric strength</option>
+            <option value="weakness">Lithospheric weakness</option>
+            <option value="dynamic-support">Mantle dynamic support</option>
+            <option value="structural-zones">Structural zone type</option>
+            <option value="fragmentation">Fragmentation propensity</option>
+          </optgroup>
+          <optgroup label="Topology">
+            <option value="mesh">Fine topology mesh</option>
+          </optgroup>
+        </select>
+      </label>
+      <button id="worldgen-generate" type="button">Generate inheritance</button>
+    </section>
+
+    <p id="worldgen-status" class="worldgen-lab-status">Initializing Planet Engine Worker…</p>
+
+    <section class="worldgen-lab-grid">
+      <div class="worldgen-lab-viewport">
+        <canvas id="worldgen-field" aria-label="Multiresolution physical inheritance diagnostics"></canvas>
+      </div>
+      <aside>
+        <h2>Physical diagnostics</h2>
+        <div id="worldgen-metrics" class="worldgen-lab-metrics"></div>
+        <div class="worldgen-lab-note">
+          <strong>WG-3.75 scope</strong>
+          <p>WG-2, WG-3, and WG-3.5 run once on the coarse topology. Their accepted categorical and continuous physical fields are then inherited to the requested finer topology through stable WG-1 ancestry and deterministic geodesic provenance.</p>
+          <p>Fine boundary interfaces retain the accepted tectonic kind, geological regime, subduction polarity, convergence/divergence rate, shear rate, and source-boundary provenance needed by WG-4 terrain.</p>
+          <p>The Earth-like physical profile remains the default while water inventory, ocean density, isostatic mantle density, heat flux, and mantle thermal expansivity are explicit inputs for future rocky-planet profiles.</p>
+          <p>No elevation, bathymetry, sea-level solve, climate, hydrology, erosion, resources, Regions, Features, or gameplay cutover are generated in WG-3.75.</p>
+        </div>
+      </aside>
+    </section>
+  </main>
+  <script type="module" src="dist/worldgen/diagnostics/worldgenInheritanceLabStandalone.js"></script>
+</body>
+</html>
