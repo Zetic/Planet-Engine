@@ -13,9 +13,26 @@ jobs:
         run: |
           rustup toolchain install stable --profile minimal
           rustup default stable
-      - name: Run WG-5 hydroclimate quality ensemble
+      - name: Apply experimental land PET energy ceiling
         run: |
-          bash scripts/run-wg5-hydroclimate-closure.sh quality | tee hydroclimate-measurement.txt
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('rust/interlink-worldgen/src/climate.rs')
+          text = path.read_text()
+          old = '''                    let potential_mass = evaporation_flux * cell_area_m2[i] * phase_seconds;\n                    potential_evaporation_mass_year[i] += potential_mass;\n                    if ocean[i] {\n                        requested_ocean_evaporation_mass[i] = potential_mass;\n'''
+          new = '''                    let potential_mass = evaporation_flux * cell_area_m2[i] * phase_seconds;\n                    let diagnostic_potential_mass = if ocean[i] {\n                        potential_mass\n                    } else {\n                        let energy_limited_mass = parameters.evaporation_energy_fraction\n                            * absorbed_surface_energy_w_m2[i]\n                            * cell_area_m2[i]\n                            * phase_seconds\n                            / LATENT_HEAT_VAPORIZATION_J_PER_KG;\n                        potential_mass.min(energy_limited_mass.max(0.0))\n                    };\n                    potential_evaporation_mass_year[i] += diagnostic_potential_mass;\n                    if ocean[i] {\n                        requested_ocean_evaporation_mass[i] = potential_mass;\n'''
+          if old not in text:
+              raise SystemExit('target PET block not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Run fixed-ancestry L6 hydroclimate
+        run: |
+          cargo run --release -q -p interlink-worldgen-cli --example hydroclimate_closure -- \
+            --seed ci-wg5-l7 --coarse-level 5 --level 6 --plates 24 --skip-orography-intervention | tee hydroclimate-measurement.txt
+      - name: Run fixed-ancestry L7 hydroclimate
+        run: |
+          cargo run --release -q -p interlink-worldgen-cli --example hydroclimate_closure -- \
+            --seed ci-wg5-l7 --coarse-level 5 --level 7 --plates 24 --skip-orography-intervention | tee -a hydroclimate-measurement.txt
       - uses: actions/upload-artifact@v4
         with:
           name: wg5-hydroclimate-measurement
