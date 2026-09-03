@@ -17,7 +17,17 @@ jobs:
         with:
           ref: worldgen-wg5-coupled-climate
       - name: Apply conservative ocean-current projection
-        run: python scripts/wg5_pressure_projection.py
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('rust/interlink-worldgen/tests/climate_ensemble.rs')
+          text = path.read_text()
+          needle = '    assert!(first.metrics.maximum_surface_current_m_s > 0.01);\n'
+          assert needle in text
+          text = text.replace(needle, '    assert!(first.metrics.mean_surface_current_m_s > 0.0);\n' + needle, 1)
+          path.write_text(text)
+          PY
+          python scripts/wg5_pressure_projection.py
       - name: Validate Rust climate core
         run: cargo test --workspace
       - name: Prepare pinned browser WASM toolchain
