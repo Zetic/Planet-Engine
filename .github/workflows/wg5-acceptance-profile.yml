@@ -1,4 +1,4 @@
-name: Temporary WG-5 L7 CFL calibration
+name: Temporary WG-5 L7 advection-strength calibration
 
 on:
   push:
@@ -6,43 +6,43 @@ on:
       - worldgen-wg5-coupled-climate
 
 jobs:
-  cfl-025:
+  adv-020:
     if: ${{ github.actor != 'github-actions[bot]' }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
-      - name: Set ocean CFL limit 0.25
+      - name: Set ocean advection coupling 0.020
         run: |
-          sed -i 's/ocean_advection_cfl_limit: 0.45/ocean_advection_cfl_limit: 0.25/' rust/interlink-worldgen/src/climate.rs
+          sed -i 's/ocean_advection_relaxation: 0.025/ocean_advection_relaxation: 0.020/' rust/interlink-worldgen/src/climate.rs
       - name: Run L7 acceptance
         run: |
           cargo run --release -p interlink-worldgen-cli -- climate --seed wg5-accept-l7 --coarse-level 5 --level 7 --plates 24 | tee /tmp/wg5.txt
           python scripts/wg5_assert_acceptance.py /tmp/wg5.txt
 
-  cfl-020:
+  adv-015:
     if: ${{ github.actor != 'github-actions[bot]' }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
-      - name: Set ocean CFL limit 0.20
+      - name: Set ocean advection coupling 0.015
         run: |
-          sed -i 's/ocean_advection_cfl_limit: 0.45/ocean_advection_cfl_limit: 0.20/' rust/interlink-worldgen/src/climate.rs
+          sed -i 's/ocean_advection_relaxation: 0.025/ocean_advection_relaxation: 0.015/' rust/interlink-worldgen/src/climate.rs
       - name: Run L7 acceptance
         run: |
           cargo run --release -p interlink-worldgen-cli -- climate --seed wg5-accept-l7 --coarse-level 5 --level 7 --plates 24 | tee /tmp/wg5.txt
           python scripts/wg5_assert_acceptance.py /tmp/wg5.txt
 
-  cfl-015:
+  adv-010:
     if: ${{ github.actor != 'github-actions[bot]' }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
-      - name: Set ocean CFL limit 0.15
+      - name: Set ocean advection coupling 0.010
         run: |
-          sed -i 's/ocean_advection_cfl_limit: 0.45/ocean_advection_cfl_limit: 0.15/' rust/interlink-worldgen/src/climate.rs
+          sed -i 's/ocean_advection_relaxation: 0.025/ocean_advection_relaxation: 0.010/' rust/interlink-worldgen/src/climate.rs
       - name: Run L7 acceptance
         run: |
           cargo run --release -p interlink-worldgen-cli -- climate --seed wg5-accept-l7 --coarse-level 5 --level 7 --plates 24 | tee /tmp/wg5.txt
