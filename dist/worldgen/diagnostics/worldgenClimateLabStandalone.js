@@ -659,7 +659,10 @@ function scheduleRedraw(interactive) {
 }
 function vectorAnimationFrame(timestampMs) {
     animationRequest = 0;
-    if (visualization.value === 'winds' || visualization.value === 'currents') {
+    const overlays = selectedOverlays();
+    const vectorsActive = visualization.value === 'winds' || visualization.value === 'currents'
+        || overlays.has('winds') || overlays.has('currents');
+    if (vectorsActive) {
         if (timestampMs - lastVectorAnimationMs >= VECTOR_ANIMATION_INTERVAL_MS) {
             animationPhase = (animationPhase + 0.9) % 1000;
             lastVectorAnimationMs = timestampMs;
