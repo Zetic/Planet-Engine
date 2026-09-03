@@ -1,0 +1,50 @@
+name: Temporary WG-5 follow-up hardening
+
+on:
+  push:
+    branches: [wg5-followup-review-hardening]
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install browser dependencies
+        run: npm ci
+      - name: Install Rust stable and browser target
+        run: |
+          rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown
+          rustup default stable
+      - name: Apply WG-5 follow-up patch
+        run: python3 scripts/wg5_followup_patch.py
+      - name: Format Rust
+        run: cargo fmt --all
+      - name: Build browser modules
+        run: npm run build
+      - name: Run browser regressions
+        run: npm run test:ts
+      - name: Run Rust workspace tests
+        run: cargo test --workspace
+      - name: Run WG-5 L7 acceptance
+        run: cargo run --release -p interlink-worldgen-cli -- climate --seed ci-wg5-l7 --coarse-level 5 --level 7 --plates 24
+      - name: Install pinned wasm-bindgen CLI
+        run: cargo install wasm-bindgen-cli --version 0.2.127 --locked
+      - name: Rebuild committed browser WASM package
+        run: npm run build:worldgen-wasm
+      - name: Verify browser bridge target
+        run: cargo check -p interlink-worldgen-wasm --target wasm32-unknown-unknown
+      - name: Commit validated WG-5 follow-up
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add rust src dist tests docs .github/workflows/ci.yml
+          git commit -m "Harden WG-5 post-review physical contracts"
+          git push
