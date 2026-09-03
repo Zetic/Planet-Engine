@@ -1,0 +1,37 @@
+name: Temporary WG-5 Moisture Sweep
+
+on:
+  push:
+    branches: [wg5-moisture-transport-rebuild]
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: wg5-moisture-transport-rebuild
+      - name: Install Rust stable
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - name: Apply moisture prototype
+        env:
+          EVAP_BULK: '0.0010'
+          MOISTURE_SUBSTEPS: '4'
+          MOISTURE_CFL: '0.65'
+          CONVERGENCE_RH: '0.65'
+          CONVERGENCE_EFF: '0.25'
+        run: |
+          set -euo pipefail
+          python scripts/wg5_moisture_patch.py
+          cargo fmt --all
+          cargo check -p interlink-worldgen
+      - name: Run reference L6 calibration
+        run: |
+          set -euo pipefail
+          cargo run --release -p interlink-worldgen-cli --example climate_calibration -- --seed interlink-wg5 --coarse-level 4 --level 6 --plates 16 --skip-orography-intervention
+      - name: Run second L6 calibration
+        run: |
+          set -euo pipefail
+          cargo run --release -p interlink-worldgen-cli --example climate_calibration -- --seed wg5-cal-a --coarse-level 4 --level 6 --plates 16 --skip-orography-intervention
