@@ -34,6 +34,7 @@ jobs:
           python scripts/wg5_moisture_adaptive_patch.py
           python scripts/wg5_moisture_adaptive_fix.py
           python scripts/wg5_moisture_speedcap_patch.py
+          python scripts/wg5_moisture_speedcap_fix.py
           cargo fmt --all
           cargo check -p interlink-worldgen
           cargo check -p interlink-worldgen-cli --examples
