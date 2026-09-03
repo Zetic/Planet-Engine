@@ -5,57 +5,9 @@ on:
     branches:
       - wg5-performance
 
-permissions:
-  contents: write
-
 jobs:
-  optimize:
-    if: ${{ github.actor != 'github-actions[bot]' }}
+  paused:
+    if: ${{ false }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Install Rust stable and browser target
-        run: |
-          rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown
-          rustup default stable
-      - name: Restore wasm-bindgen CLI cache
-        id: wasm-bindgen-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/bin/wasm-bindgen*
-          key: ${{ runner.os }}-wasm-bindgen-cli-0.2.127
-      - name: Install pinned wasm-bindgen CLI
-        if: ${{ steps.wasm-bindgen-cache.outputs.cache-hit != 'true' }}
-        run: cargo install wasm-bindgen-cli --version 0.2.127 --locked
-      - name: Establish optimized Stage-5 L6 baseline
-        run: RUNS=1 bash scripts/benchmark-wg5-performance.sh l6 | tee /tmp/wg5-before.txt
-      - name: Apply phase workspace optimization
-        run: |
-          python scripts/temp-wg5-performance-experiment.py
-          rustfmt --edition 2021 rust/interlink-worldgen/src/climate.rs
-      - name: Benchmark phase workspace L6
-        run: RUNS=1 bash scripts/benchmark-wg5-performance.sh l6 | tee /tmp/wg5-after.txt
-      - name: Verify exact Stage-5 output
-        run: |
-          BEFORE_HASH="$(grep 'wg5_performance ' /tmp/wg5-before.txt | sed -E 's/.*final_hash=([^ ]+).*/\1/')"
-          AFTER_HASH="$(grep 'wg5_performance ' /tmp/wg5-after.txt | sed -E 's/.*final_hash=([^ ]+).*/\1/')"
-          BEFORE_MS="$(grep 'wg5_performance ' /tmp/wg5-before.txt | sed -E 's/.*mean_climate_ms=([^ ]+).*/\1/')"
-          AFTER_MS="$(grep 'wg5_performance ' /tmp/wg5-after.txt | sed -E 's/.*mean_climate_ms=([^ ]+).*/\1/')"
-          echo "before=${BEFORE_MS} ms after=${AFTER_MS} ms"
-          echo "before_hash=${BEFORE_HASH} after_hash=${AFTER_HASH}"
-          test "${BEFORE_HASH}" = "${AFTER_HASH}"
-      - name: Run focused physical acceptance
-        run: |
-          cargo test -p interlink-worldgen
-          bash scripts/check-wg5-hydroclimate-closure.sh smoke
-          cargo check -p interlink-worldgen-wasm --target wasm32-unknown-unknown
-      - name: Rebuild committed WASM package
-        run: npm run build:worldgen-wasm
-      - name: Commit successful optimization
-        run: |
-          git diff --check
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add rust/interlink-worldgen/src/climate.rs src/wasm-worldgen
-          git commit -m "Reuse WG-5 phase workspaces"
-          git push origin HEAD:wg5-performance
+      - run: echo paused
