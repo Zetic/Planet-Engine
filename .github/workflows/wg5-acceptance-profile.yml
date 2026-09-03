@@ -1,0 +1,27 @@
+name: Temporary WG-5 acceptance profiling
+
+on:
+  push:
+    branches:
+      - worldgen-wg5-coupled-climate
+
+jobs:
+  profile-l6:
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Profile L6 coupled climate
+        run: |
+          /usr/bin/time -v cargo run --release -p interlink-worldgen-cli -- climate --seed wg5-accept-l6 --coarse-level 4 --level 6 --plates 18
+
+  profile-l7:
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Profile L7 coupled climate
+        run: |
+          /usr/bin/time -v cargo run --release -p interlink-worldgen-cli -- climate --seed wg5-accept-l7 --coarse-level 5 --level 7 --plates 24
