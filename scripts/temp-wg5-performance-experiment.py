@@ -24,163 +24,30 @@ replace_once(
         .map(|(r, z)| r * z)
         .sum::<f64>();
     let initial_rho = rho;
-    let mut trace_rho = rho;
-    let mut iterations_used = 0usize;
-    let mut threshold_hits = [usize::MAX; 4];
-    const TRACE_THRESHOLDS: [f64; 4] = [1.0e-2, 5.0e-3, 2.5e-3, 1.0e-3];
 
     for _ in 0..usize::from(parameters.atmospheric_heat_solver_iterations) {
 ''',
-    'instrument atmospheric solver setup',
+    'capture atmospheric initial residual',
 )
 
 replace_once(
-    '''        let next_rho = residual
-            .iter()
-            .zip(preconditioned.iter())
-            .map(|(r, z)| r * z)
-            .sum::<f64>();
-        if !next_rho.is_finite() || next_rho <= 1.0e-18 {
+    '''        if !next_rho.is_finite() || next_rho <= 1.0e-18 {
             break;
         }
+        let beta = next_rho / rho;
 ''',
-    '''        let next_rho = residual
-            .iter()
-            .zip(preconditioned.iter())
-            .map(|(r, z)| r * z)
-            .sum::<f64>();
-        iterations_used += 1;
-        trace_rho = next_rho;
-        if initial_rho.is_finite() && initial_rho > 0.0 && next_rho.is_finite() {
-            let ratio = next_rho / initial_rho;
-            for (slot, threshold) in threshold_hits.iter_mut().zip(TRACE_THRESHOLDS) {
-                if *slot == usize::MAX && ratio <= threshold {
-                    *slot = iterations_used;
-                }
-            }
-        }
-        if !next_rho.is_finite() || next_rho <= 1.0e-18 {
+    '''        if !next_rho.is_finite() || next_rho <= 1.0e-18 {
             break;
         }
-''',
-    'instrument atmospheric solver iterations',
-)
-
-replace_once(
-    '''    for i in 0..temperature.len() {
-        temperature[i] = x[i].clamp(120.0, 355.0);
-    }
-}
-
-fn exchange_air_sea_heat(
-''',
-    '''    if std::env::var_os("WG5_SOLVER_TRACE").is_some() {
-        let final_ratio = if initial_rho.is_finite() && initial_rho > 0.0 {
-            trace_rho / initial_rho
-        } else {
-            f64::NAN
-        };
-        let hit = |value: usize| if value == usize::MAX { 0 } else { value };
-        eprintln!(
-            "wg5_atmos_solver iterations={} ratio={:.9e} hit_1e2={} hit_5e3={} hit_2p5e3={} hit_1e3={}",
-            iterations_used,
-            final_ratio,
-            hit(threshold_hits[0]),
-            hit(threshold_hits[1]),
-            hit(threshold_hits[2]),
-            hit(threshold_hits[3]),
-        );
-    }
-    for i in 0..temperature.len() {
-        temperature[i] = x[i].clamp(120.0, 355.0);
-    }
-}
-
-fn exchange_air_sea_heat(
-''',
-    'emit atmospheric solver trace',
-)
-
-replace_once(
-    '''    let mut rho = residual
-        .iter()
-        .zip(preconditioned.iter())
-        .map(|(r, z)| r * z)
-        .sum::<f64>();
-    for _ in 0..usize::from(parameters.ocean_current_correction_iterations) {
-''',
-    '''    let mut rho = residual
-        .iter()
-        .zip(preconditioned.iter())
-        .map(|(r, z)| r * z)
-        .sum::<f64>();
-    let initial_rho = rho;
-    let mut trace_rho = rho;
-    let mut iterations_used = 0usize;
-    let mut threshold_hits = [usize::MAX; 4];
-    const TRACE_THRESHOLDS: [f64; 4] = [1.0e-2, 5.0e-3, 2.5e-3, 1.0e-3];
-    for _ in 0..usize::from(parameters.ocean_current_correction_iterations) {
-''',
-    'instrument ocean solver setup',
-)
-
-replace_once(
-    '''        let next_rho = residual
-            .iter()
-            .zip(preconditioned.iter())
-            .map(|(r, z)| r * z)
-            .sum::<f64>();
-        if !next_rho.is_finite() || next_rho <= 1.0e-24 {
+        if initial_rho.is_finite()
+            && initial_rho > 0.0
+            && next_rho / initial_rho <= 2.5e-3
+        {
             break;
         }
+        let beta = next_rho / rho;
 ''',
-    '''        let next_rho = residual
-            .iter()
-            .zip(preconditioned.iter())
-            .map(|(r, z)| r * z)
-            .sum::<f64>();
-        iterations_used += 1;
-        trace_rho = next_rho;
-        if initial_rho.is_finite() && initial_rho > 0.0 && next_rho.is_finite() {
-            let ratio = next_rho / initial_rho;
-            for (slot, threshold) in threshold_hits.iter_mut().zip(TRACE_THRESHOLDS) {
-                if *slot == usize::MAX && ratio <= threshold {
-                    *slot = iterations_used;
-                }
-            }
-        }
-        if !next_rho.is_finite() || next_rho <= 1.0e-24 {
-            break;
-        }
-''',
-    'instrument ocean solver iterations',
-)
-
-replace_once(
-    '''    projected_divergence.fill(0.0);
-    for (edge_index, edge) in geometry.edges.iter().enumerate() {
-''',
-    '''    if std::env::var_os("WG5_SOLVER_TRACE").is_some() {
-        let final_ratio = if initial_rho.is_finite() && initial_rho > 0.0 {
-            trace_rho / initial_rho
-        } else {
-            f64::NAN
-        };
-        let hit = |value: usize| if value == usize::MAX { 0 } else { value };
-        eprintln!(
-            "wg5_ocean_solver iterations={} ratio={:.9e} hit_1e2={} hit_5e3={} hit_2p5e3={} hit_1e3={}",
-            iterations_used,
-            final_ratio,
-            hit(threshold_hits[0]),
-            hit(threshold_hits[1]),
-            hit(threshold_hits[2]),
-            hit(threshold_hits[3]),
-        );
-    }
-    projected_divergence.fill(0.0);
-    for (edge_index, edge) in geometry.edges.iter().enumerate() {
-''',
-    'emit ocean solver trace',
+    'add atmospheric relative residual exit',
 )
 
 path.write_text(text)
