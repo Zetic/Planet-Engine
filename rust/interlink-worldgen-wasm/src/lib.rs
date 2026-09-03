@@ -547,7 +547,7 @@ mod tests {
     use super::*;
     #[test]
     fn wasm_protocol_and_engine_versions_are_explicit() {
-        assert_eq!(worldgen_protocol_version(), 8);
+        assert_eq!(worldgen_protocol_version(), WORLDGEN_WASM_PROTOCOL_VERSION);
         assert_eq!(worldgen_engine_version(), WORLDGEN_ENGINE_VERSION);
     }
     #[test]
