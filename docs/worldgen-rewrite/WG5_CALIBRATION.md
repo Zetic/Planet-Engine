@@ -114,6 +114,14 @@ The L7 quality case (`ci-wg5-l7`) remains numerically accepted while showing the
 
 For the user-reference `interlink-wg5` L6 world, the latitude-band report also exposes the extreme thermal structure directly: the `0–15°` band averages about `310.3 K`, while the southern `75–90°` band averages about `168.3 K`; tropical SST is about `324 K`. This confirms that the unusual screenshot is a model-state signal, not only a palette or projection artifact.
 
+## WG-4 `@2` hypsometry follow-up
+
+WG-4 calibration was intentionally applied before changing WG-5 equations. On the user-reference `interlink-wg5` L6 world, the upstream terrain change moves mean land elevation from `4068` to `1615 m`, land p95 from `9256` to `4691 m`, land above 2 km from `78.0%` to `27.6%`, and land fraction from `41.1%` to `34.8%`; mean standing-ocean depth remains near `4.1 km`.
+
+The same unchanged WG-5 model then moves land annual-mean temperature from `231.3` to `255.8 K` and reduces the land/ocean contrast from `79.3` to `52.8 K`. Mean SST remains very warm at `309.4 K`, the reduced energy-imbalance proxy remains strongly positive at about `+32 W/m²`, moisture-edge cap occupancy remains about `88.8%`, and mean precipitation remains low at about `198 mm/yr`. The four-seed L6 follow-up shows the same separation of concerns: terrain calibration materially fixes continental hypsometry while leaving the ocean thermal and atmospheric moisture-transport problems clearly present for dedicated WG-5 revisions.
+
+The permanent L7 climate quality case remains numerically accepted after the upstream change (`0.0738 K` final RMS temperature change and moisture-budget relative error about `4.4e-13`).
+
 ## Baseline interpretation
 
 The measured baseline changes the priority order for subsequent tuning work:

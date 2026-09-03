@@ -178,6 +178,42 @@ fn multi_seed_topography_expresses_expected_signed_physical_responses() {
 }
 
 #[test]
+fn earthlike_reference_hypsometry_stays_within_pre_erosion_ensemble_envelope() {
+    for seed in ["wg4-e0", "wg4-e1", "wg4-e2", "wg4-e3", "wg4-e4"] {
+        let generated = generate(seed, None);
+        let metrics = &generated.terrain.metrics;
+
+        assert!(
+            (0.20..=0.40).contains(&metrics.land_area_fraction),
+            "Earth-like reference land fraction escaped the broad pre-erosion envelope for {seed}: {}",
+            metrics.land_area_fraction
+        );
+        assert!(
+            (700.0..=2_500.0).contains(&metrics.mean_land_elevation_m),
+            "Earth-like reference mean land elevation escaped the broad pre-erosion envelope for {seed}: {} m",
+            metrics.mean_land_elevation_m
+        );
+        assert!(
+            (2_800.0..=5_000.0).contains(&metrics.mean_water_depth_m),
+            "Earth-like reference mean ocean depth escaped the broad pre-erosion envelope for {seed}: {} m",
+            metrics.mean_water_depth_m
+        );
+        assert!(
+            (3_500.0..=7_000.0).contains(&metrics.p95_solid_elevation_m),
+            "Earth-like reference p95 solid elevation escaped the broad pre-erosion envelope for {seed}: {} m",
+            metrics.p95_solid_elevation_m
+        );
+        assert!(
+            metrics.maximum_solid_elevation_m <= 11_000.0,
+            "Earth-like reference maximum solid elevation is excessively broad/high before erosion for {seed}: {} m",
+            metrics.maximum_solid_elevation_m
+        );
+        assert_eq!(metrics.clamped_sample_count, 0);
+        assert!(metrics.water_volume_relative_error < 1.0e-10);
+    }
+}
+
+#[test]
 fn changing_only_water_inventory_changes_flooding_not_the_solid_surface() {
     let wet = generate("wg4-water-profile", None);
     let half_water = generate("wg4-water-profile", Some(7.0e20));
