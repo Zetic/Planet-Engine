@@ -1,4 +1,4 @@
-name: Temporary WG-5 L7 spin-up trace
+name: Temporary WG-5 L7 spinup trace
 
 on:
   push:
@@ -6,46 +6,13 @@ on:
       - worldgen-wg5-coupled-climate
 
 jobs:
-  l7-spinup-trace:
+  trace:
     if: ${{ github.actor != 'github-actions[bot]' }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
-      - name: Instrument annual convergence components
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          p = Path('rust/interlink-worldgen/src/climate.rs')
-          s = p.read_text()
-          old = '''        let mut squared_change = 0.0;
-        for i in 0..sample_count {
-            let delta_temperature = temperature[i] - start_temperature[i];
-            let delta_sst = sea_surface_temperature[i] - start_sst[i];
-            squared_change += delta_temperature * delta_temperature + 0.5 * delta_sst * delta_sst;
-        }
-        final_temperature_rms_change = (squared_change / (sample_count as f64 * 1.5)).sqrt();
-        spinup_years = year + 1;
-'''
-          new = '''        let mut squared_change = 0.0;
-        let mut squared_temperature_change = 0.0;
-        let mut squared_sst_change = 0.0;
-        for i in 0..sample_count {
-            let delta_temperature = temperature[i] - start_temperature[i];
-            let delta_sst = sea_surface_temperature[i] - start_sst[i];
-            squared_temperature_change += delta_temperature * delta_temperature;
-            squared_sst_change += delta_sst * delta_sst;
-            squared_change += delta_temperature * delta_temperature + 0.5 * delta_sst * delta_sst;
-        }
-        final_temperature_rms_change = (squared_change / (sample_count as f64 * 1.5)).sqrt();
-        let temperature_rms = (squared_temperature_change / sample_count as f64).sqrt();
-        let sst_rms = (squared_sst_change / sample_count as f64).sqrt();
-        eprintln!("WG5_SPINUP year={} combined_rms={:.9} temperature_rms={:.9} sst_rms={:.9}", year + 1, final_temperature_rms_change, temperature_rms, sst_rms);
-        spinup_years = year + 1;
-'''
-          assert old in s
-          p.write_text(s.replace(old, new, 1))
-          PY
-      - name: Trace L7 coupled climate spin-up
-        run: |
-          cargo run --release -p interlink-worldgen-cli -- climate --seed wg5-accept-l7 --coarse-level 5 --level 7 --plates 24
+      - name: Instrument annual convergence
+        run: python scripts/wg5_spinup_trace.py
+      - name: Trace L7 climate
+        run: cargo run --release -p interlink-worldgen-cli -- climate --seed wg5-accept-l7 --coarse-level 5 --level 7 --plates 24
