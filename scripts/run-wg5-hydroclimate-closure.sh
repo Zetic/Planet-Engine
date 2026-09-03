@@ -31,6 +31,7 @@ case "${MODE}" in
     ;;
   quality)
     bash "$0" standard
+    run_case "ci-wg5-l7" 5 6 24 --skip-orography-intervention
     run_case "ci-wg5-l7" 5 7 24 --skip-orography-intervention
     ;;
   *)
