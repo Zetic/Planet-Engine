@@ -27,7 +27,7 @@ replace_once(
     let mut trace_rho = rho;
     let mut iterations_used = 0usize;
     let mut threshold_hits = [usize::MAX; 4];
-    const TRACE_THRESHOLDS: [f64; 4] = [1.0e-2, 1.0e-4, 1.0e-6, 1.0e-8];
+    const TRACE_THRESHOLDS: [f64; 4] = [1.0e-2, 5.0e-3, 2.5e-3, 1.0e-3];
 
     for _ in 0..usize::from(parameters.atmospheric_heat_solver_iterations) {
 ''',
@@ -82,7 +82,7 @@ fn exchange_air_sea_heat(
         };
         let hit = |value: usize| if value == usize::MAX { 0 } else { value };
         eprintln!(
-            "wg5_atmos_solver iterations={} ratio={:.9e} hit_1e2={} hit_1e4={} hit_1e6={} hit_1e8={}",
+            "wg5_atmos_solver iterations={} ratio={:.9e} hit_1e2={} hit_5e3={} hit_2p5e3={} hit_1e3={}",
             iterations_used,
             final_ratio,
             hit(threshold_hits[0]),
@@ -118,7 +118,7 @@ replace_once(
     let mut trace_rho = rho;
     let mut iterations_used = 0usize;
     let mut threshold_hits = [usize::MAX; 4];
-    const TRACE_THRESHOLDS: [f64; 4] = [1.0e-2, 1.0e-4, 1.0e-6, 1.0e-8];
+    const TRACE_THRESHOLDS: [f64; 4] = [1.0e-2, 5.0e-3, 2.5e-3, 1.0e-3];
     for _ in 0..usize::from(parameters.ocean_current_correction_iterations) {
 ''',
     'instrument ocean solver setup',
@@ -168,7 +168,7 @@ replace_once(
         };
         let hit = |value: usize| if value == usize::MAX { 0 } else { value };
         eprintln!(
-            "wg5_ocean_solver iterations={} ratio={:.9e} hit_1e2={} hit_1e4={} hit_1e6={} hit_1e8={}",
+            "wg5_ocean_solver iterations={} ratio={:.9e} hit_1e2={} hit_5e3={} hit_2p5e3={} hit_1e3={}",
             iterations_used,
             final_ratio,
             hit(threshold_hits[0]),
