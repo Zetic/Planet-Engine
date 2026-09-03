@@ -6,8 +6,59 @@ on:
       - wg5-performance
 
 jobs:
-  paused:
-    if: ${{ false }}
+  measure-solvers:
     runs-on: ubuntu-latest
     steps:
-      - run: echo paused
+      - uses: actions/checkout@v4
+      - name: Install Rust stable
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - name: Apply solver instrumentation
+        run: |
+          python scripts/temp-wg5-performance-experiment.py
+          rustfmt --edition 2021 rust/interlink-worldgen/src/climate.rs
+          cargo test -p interlink-worldgen --lib --no-run
+      - name: Trace L6 solver convergence
+        run: WG5_SOLVER_TRACE=1 RUNS=1 bash scripts/benchmark-wg5-performance.sh l6 2>&1 | tee /tmp/wg5-solver-trace.txt
+      - name: Summarize solver convergence
+        run: |
+          python - <<'PY'
+          import re
+          import statistics
+          from pathlib import Path
+
+          text = Path('/tmp/wg5-solver-trace.txt').read_text()
+          pattern = re.compile(
+              r'wg5_(atmos|ocean)_solver iterations=(\d+) ratio=([^ ]+) '
+              r'hit_1e2=(\d+) hit_1e4=(\d+) hit_1e6=(\d+) hit_1e8=(\d+)'
+          )
+          rows = {'atmos': [], 'ocean': []}
+          for match in pattern.finditer(text):
+              rows[match.group(1)].append({
+                  'iterations': int(match.group(2)),
+                  'ratio': float(match.group(3)),
+                  'hits': [int(match.group(i)) for i in range(4, 8)],
+              })
+
+          for name in ('atmos', 'ocean'):
+              data = rows[name]
+              if not data:
+                  raise SystemExit(f'no {name} solver traces found')
+              iterations = [row['iterations'] for row in data]
+              ratios = [row['ratio'] for row in data]
+              print(
+                  f'wg5_solver_summary solver={name} calls={len(data)} '
+                  f'iterations_min={min(iterations)} iterations_mean={statistics.mean(iterations):.3f} '
+                  f'iterations_median={statistics.median(iterations):.1f} iterations_max={max(iterations)} '
+                  f'final_ratio_median={statistics.median(ratios):.6e} final_ratio_max={max(ratios):.6e}'
+              )
+              for index, threshold in enumerate(('1e-2', '1e-4', '1e-6', '1e-8')):
+                  hits = [row['hits'][index] for row in data if row['hits'][index] > 0]
+                  print(
+                      f'wg5_solver_threshold solver={name} threshold={threshold} '
+                      f'reached={len(hits)}/{len(data)} '
+                      + (f'hit_min={min(hits)} hit_mean={statistics.mean(hits):.3f} '
+                         f'hit_median={statistics.median(hits):.1f} hit_max={max(hits)}' if hits else 'hit_min=na hit_mean=na hit_median=na hit_max=na')
+                  )
+          PY
