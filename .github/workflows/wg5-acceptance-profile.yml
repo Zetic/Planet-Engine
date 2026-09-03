@@ -1,35 +1,42 @@
-name: Temporary WG-5 L7 ocean-advection diagnostic
+name: Temporary WG-5 CFL hardening
 
 on:
   push:
     branches:
       - worldgen-wg5-coupled-climate
 
-jobs:
-  no-advection:
-    if: ${{ github.actor != 'github-actions[bot]' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
-    steps:
-      - uses: actions/checkout@v4
-      - name: Disable ocean heat advection
-        run: |
-          sed -i 's/ocean_advection_relaxation: 0.025/ocean_advection_relaxation: 0.0/' rust/interlink-worldgen/src/climate.rs
-      - name: Instrument convergence
-        run: python scripts/wg5_spinup_trace.py
-      - name: Run L7 climate
-        run: cargo run --release -p interlink-worldgen-cli -- climate --seed wg5-accept-l7 --coarse-level 5 --level 7 --plates 24
+permissions:
+  contents: write
 
-  reduced-advection:
+jobs:
+  harden:
     if: ${{ github.actor != 'github-actions[bot]' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
-      - name: Reduce ocean heat advection
-        run: |
-          sed -i 's/ocean_advection_relaxation: 0.025/ocean_advection_relaxation: 0.010/' rust/interlink-worldgen/src/climate.rs
-      - name: Instrument convergence
-        run: python scripts/wg5_spinup_trace.py
-      - name: Run L7 climate
+        with:
+          ref: worldgen-wg5-coupled-climate
+      - name: Apply conservative transport CFL hardening
+        run: python scripts/wg5_cfl_hardening.py
+      - name: Format Rust
+        run: cargo fmt --all
+      - name: Validate Rust workspace
+        run: cargo test --workspace
+      - name: Validate L6 climate acceptance
+        run: cargo run --release -p interlink-worldgen-cli -- climate --seed wg5-accept-l6 --coarse-level 4 --level 6 --plates 18
+      - name: Validate L7 climate acceptance
         run: cargo run --release -p interlink-worldgen-cli -- climate --seed wg5-accept-l7 --coarse-level 5 --level 7 --plates 24
+      - name: Prepare pinned browser WASM toolchain
+        run: |
+          rustup target add wasm32-unknown-unknown
+          cargo install wasm-bindgen-cli --version 0.2.127 --locked
+      - name: Rebuild browser WASM package
+        run: npm run build:worldgen-wasm
+      - name: Commit WG-5 transport stability hardening
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add rust/interlink-worldgen/src/climate.rs docs/worldgen-rewrite/WG5_CLIMATE.md src/wasm-worldgen
+          git commit -m 'Stabilize WG-5 conservative climate transport at L7'
+          git push origin HEAD:worldgen-wg5-coupled-climate
