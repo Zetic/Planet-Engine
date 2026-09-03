@@ -166,6 +166,14 @@ replace_once(
 )
 
 replace_once(
+    '''        apply_ocean_laplacian(geometry, &direction, &mut laplacian_direction);
+''',
+    '''        apply_ocean_laplacian(geometry, direction, laplacian_direction);
+''',
+    'borrow reused laplacian workspace',
+)
+
+replace_once(
     '''    let mut projected_divergence = vec![0.0; ocean.len()];
     let mut perimeter = vec![0.0; ocean.len()];
     for (edge_index, edge) in geometry.edges.iter().enumerate() {
@@ -245,6 +253,40 @@ replace_once(
                 );
 ''',
     'pass ocean workspace',
+)
+
+# Keep the two small synthetic geometry fixtures explicit now that the
+# production geometry owns precomputed reconstruction coefficients.
+replace_once(
+    '''            diagonal: vec![1.0, 1.0],
+        };
+        let mut tendency = vec![0.0; 2];
+''',
+    '''            diagonal: vec![1.0, 1.0],
+            perimeter: vec![10.0, 10.0],
+            matrix_ee: vec![10.0, 10.0],
+            matrix_en: vec![0.0, 0.0],
+            matrix_nn: vec![0.0, 0.0],
+        };
+        let mut tendency = vec![0.0; 2];
+''',
+    'first ocean geometry test fixture',
+)
+
+replace_once(
+    '''            diagonal: vec![1.0, 1.0],
+        };
+        let temperature = [300.0, 280.0];
+''',
+    '''            diagonal: vec![1.0, 1.0],
+            perimeter: vec![1.0, 1.0],
+            matrix_ee: vec![1.0, 1.0],
+            matrix_en: vec![0.0, 0.0],
+            matrix_nn: vec![0.0, 0.0],
+        };
+        let temperature = [300.0, 280.0];
+''',
+    'second ocean geometry test fixture',
 )
 
 path.write_text(text)
