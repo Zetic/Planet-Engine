@@ -18,13 +18,9 @@ fn generate(seed: &str, water_mass_kg: Option<f64>) -> Generated {
     let coarse = build_icosphere(3).unwrap();
     let fine = build_icosphere(4).unwrap();
     let tectonics = generate_tectonics(&coarse, &TectonicsRequest::new(seed, 12), planet).unwrap();
-    let geology = generate_crust_and_history(
-        &coarse,
-        &tectonics,
-        &GeologyRequest::new(seed),
-        planet,
-    )
-    .unwrap();
+    let geology =
+        generate_crust_and_history(&coarse, &tectonics, &GeologyRequest::new(seed), planet)
+            .unwrap();
     let lithosphere = generate_lithosphere(
         &coarse,
         &tectonics,
@@ -32,25 +28,14 @@ fn generate(seed: &str, water_mass_kg: Option<f64>) -> Generated {
         &LithosphereRequest::new(seed),
     )
     .unwrap();
-    let inherited = inherit_physical_state(
-        &fine,
-        3,
-        &tectonics,
-        &geology,
-        &lithosphere,
-        planet,
-    )
-    .unwrap();
-    let boundaries = inherit_boundary_interfaces(
-        &coarse,
-        &fine,
-        &tectonics,
-        &geology,
-        &inherited.plate_ids,
-    )
-    .unwrap();
+    let inherited =
+        inherit_physical_state(&fine, 3, &tectonics, &geology, &lithosphere, planet).unwrap();
+    let boundaries =
+        inherit_boundary_interfaces(&coarse, &fine, &tectonics, &geology, &inherited.plate_ids)
+            .unwrap();
     let request = TopographyRequest::new(seed);
-    let terrain = generate_initial_topography(&fine, &inherited, &boundaries, planet, &request).unwrap();
+    let terrain =
+        generate_initial_topography(&fine, &inherited, &boundaries, planet, &request).unwrap();
 
     // Intervene only on the inherited basin driver. Keeping every other
     // upstream field and every boundary identical makes the comparison a
@@ -126,11 +111,13 @@ fn multi_seed_topography_expresses_expected_signed_physical_responses() {
         let mut minimum_basin_delta_m = 0.0_f32;
         let mut basin_driver_was_present = false;
         for i in 0..terrain.rift_basin_elevation_m.len() {
-            let inherited_driver = 0.55 * inherited.basin_potential[i]
-                + 0.45 * inherited.subsidence_history[i];
+            let inherited_driver =
+                0.55 * inherited.basin_potential[i] + 0.45 * inherited.subsidence_history[i];
             basin_driver_was_present |= inherited_driver > 0.05;
             let delta = terrain.rift_basin_elevation_m[i]
-                - generated.terrain_without_inherited_basin.rift_basin_elevation_m[i];
+                - generated
+                    .terrain_without_inherited_basin
+                    .rift_basin_elevation_m[i];
             assert!(
                 delta <= 1.0e-3,
                 "removing inherited basin forcing must never deepen the WG-4 rift/basin component"
@@ -178,11 +165,59 @@ fn multi_seed_topography_expresses_expected_signed_physical_responses() {
 }
 
 #[test]
+fn earthlike_reference_hypsometry_stays_within_pre_erosion_ensemble_envelope() {
+    for seed in ["wg4-e0", "wg4-e1", "wg4-e2", "wg4-e3", "wg4-e4"] {
+        let generated = generate(seed, None);
+        let metrics = &generated.terrain.metrics;
+
+        assert!(
+            (0.20..=0.40).contains(&metrics.land_area_fraction),
+            "Earth-like reference land fraction escaped the broad pre-erosion envelope for {seed}: {}",
+            metrics.land_area_fraction
+        );
+        assert!(
+            (700.0..=2_500.0).contains(&metrics.mean_land_elevation_m),
+            "Earth-like reference mean land elevation escaped the broad pre-erosion envelope for {seed}: {} m",
+            metrics.mean_land_elevation_m
+        );
+        assert!(
+            (2_800.0..=5_000.0).contains(&metrics.mean_water_depth_m),
+            "Earth-like reference mean ocean depth escaped the broad pre-erosion envelope for {seed}: {} m",
+            metrics.mean_water_depth_m
+        );
+        assert!(
+            (3_500.0..=7_000.0).contains(&metrics.p95_solid_elevation_m),
+            "Earth-like reference p95 solid elevation escaped the broad pre-erosion envelope for {seed}: {} m",
+            metrics.p95_solid_elevation_m
+        );
+        assert!(
+            metrics.maximum_solid_elevation_m <= 11_000.0,
+            "Earth-like reference maximum solid elevation is excessively broad/high before erosion for {seed}: {} m",
+            metrics.maximum_solid_elevation_m
+        );
+        assert_eq!(metrics.clamped_sample_count, 0);
+        assert!(metrics.water_volume_relative_error < 1.0e-10);
+    }
+}
+
+#[test]
 fn changing_only_water_inventory_changes_flooding_not_the_solid_surface() {
     let wet = generate("wg4-water-profile", None);
     let half_water = generate("wg4-water-profile", Some(7.0e20));
-    assert_eq!(wet.terrain.solid_elevation_m, half_water.terrain.solid_elevation_m);
-    assert_ne!(wet.terrain.metrics.topography_hash, half_water.terrain.metrics.topography_hash);
-    assert_ne!(wet.terrain.metrics.sea_level_m, half_water.terrain.metrics.sea_level_m);
-    assert_ne!(wet.terrain.submerged_mask, half_water.terrain.submerged_mask);
+    assert_eq!(
+        wet.terrain.solid_elevation_m,
+        half_water.terrain.solid_elevation_m
+    );
+    assert_ne!(
+        wet.terrain.metrics.topography_hash,
+        half_water.terrain.metrics.topography_hash
+    );
+    assert_ne!(
+        wet.terrain.metrics.sea_level_m,
+        half_water.terrain.metrics.sea_level_m
+    );
+    assert_ne!(
+        wet.terrain.submerged_mask,
+        half_water.terrain.submerged_mask
+    );
 }

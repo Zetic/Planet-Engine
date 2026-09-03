@@ -7,7 +7,7 @@ use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 
 pub const TOPOGRAPHY_STAGE_ID: &str = "terrain:initial-topography";
-pub const TOPOGRAPHY_STAGE_VERSION: u32 = 1;
+pub const TOPOGRAPHY_STAGE_VERSION: u32 = 2;
 const TOPOGRAPHY_NAMESPACE: &str = "terrain:structure:v1";
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
@@ -43,11 +43,11 @@ pub struct TopographyParameters {
 impl Default for TopographyParameters {
     fn default() -> Self {
         Self {
-            isostatic_scale: 1.0,
+            isostatic_scale: 0.55,
             oceanic_subsidence_100_myr_m: 2_900.0,
-            inherited_orogeny_scale_m: 1_900.0,
-            collision_uplift_scale_m: 3_600.0,
-            collision_width_m: 850_000.0,
+            inherited_orogeny_scale_m: 1_200.0,
+            collision_uplift_scale_m: 2_400.0,
+            collision_width_m: 600_000.0,
             ridge_uplift_scale_m: 2_000.0,
             ridge_width_m: 600_000.0,
             rift_subsidence_scale_m: 1_050.0,
@@ -58,7 +58,7 @@ impl Default for TopographyParameters {
             arc_uplift_scale_m: 2_300.0,
             arc_peak_offset_m: 220_000.0,
             arc_width_m: 260_000.0,
-            mantle_dynamic_scale_m: 1_000.0,
+            mantle_dynamic_scale_m: 650.0,
             mechanical_filter_iterations: 4,
             mechanical_filter_min_lambda: 0.08,
             mechanical_filter_max_lambda: 0.34,
