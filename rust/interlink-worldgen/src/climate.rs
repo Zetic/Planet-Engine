@@ -5,7 +5,7 @@ use crate::{
 
 const CLIMATE_NAMESPACE: &str = "climate:v1";
 pub const CLIMATE_STAGE_ID: &str = "climate:coupled-surface";
-pub const CLIMATE_STAGE_VERSION: u32 = 1;
+pub const CLIMATE_STAGE_VERSION: u32 = 2;
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 const STEFAN_BOLTZMANN: f64 = 5.670_374_419e-8;
@@ -534,6 +534,43 @@ fn daily_mean_insolation(latitude: f64, declination: f64, stellar_flux: f64) -> 
     value.max(0.0)
 }
 
+fn atmospheric_surface_height_m(submerged: bool, elevation_above_sea_level_m: f64) -> f64 {
+    if submerged {
+        0.0
+    } else {
+        elevation_above_sea_level_m.max(0.0)
+    }
+}
+
+fn solve_orbital_forcing(
+    mean_longitude_rad: f64,
+    eccentricity: f64,
+    longitude_of_periapsis_rad: f64,
+) -> (f64, f64) {
+    let mean_anomaly = (mean_longitude_rad - longitude_of_periapsis_rad).rem_euclid(TWO_PI);
+    let mut eccentric_anomaly = if eccentricity < 0.8 {
+        mean_anomaly
+    } else {
+        std::f64::consts::PI
+    };
+    for _ in 0..16 {
+        let residual = eccentric_anomaly - eccentricity * eccentric_anomaly.sin() - mean_anomaly;
+        let derivative = 1.0 - eccentricity * eccentric_anomaly.cos();
+        let step = residual / derivative.max(1.0e-12);
+        eccentric_anomaly -= step;
+        if step.abs() <= 1.0e-13 {
+            break;
+        }
+    }
+    let half_e = 0.5 * eccentric_anomaly;
+    let true_anomaly = 2.0
+        * ((1.0 + eccentricity).sqrt() * half_e.sin())
+            .atan2((1.0 - eccentricity).sqrt() * half_e.cos());
+    let solar_longitude = true_anomaly + longitude_of_periapsis_rad;
+    let radius_over_a = (1.0 - eccentricity * eccentric_anomaly.cos()).max(1.0e-6);
+    (solar_longitude, 1.0 / (radius_over_a * radius_over_a))
+}
+
 fn saturation_specific_humidity(temperature_k: f64, pressure_pa: f64) -> f64 {
     if pressure_pa <= 1.0 || temperature_k <= 100.0 {
         return 0.0;
@@ -637,6 +674,24 @@ fn edge_direction_components(
         tangent[2] / magnitude,
     ];
     Some((dot(direction, east), dot(direction, north)))
+}
+
+fn symmetric_edge_normal_wind_m_s(
+    topology: &GeodesicTopology,
+    a: usize,
+    b: usize,
+    east_bases: &[[f64; 3]],
+    north_bases: &[[f64; 3]],
+    wind_east: &[f64],
+    wind_north: &[f64],
+) -> Option<f64> {
+    let (a_east, a_north) =
+        edge_direction_components(topology, a, b, east_bases[a], north_bases[a])?;
+    let (b_east, b_north) =
+        edge_direction_components(topology, b, a, east_bases[b], north_bases[b])?;
+    let outward_a = wind_east[a] * a_east + wind_north[a] * a_north;
+    let outward_b = wind_east[b] * b_east + wind_north[b] * b_north;
+    Some(0.5 * (outward_a - outward_b))
 }
 
 fn build_ocean_projection_geometry(
@@ -987,6 +1042,8 @@ pub fn generate_coupled_climate(
     let atmosphere_exists = planet.reference_surface_pressure_pa > 0.0;
     let specific_gas_constant =
         UNIVERSAL_GAS_CONSTANT / physical.atmospheric_mean_molar_mass_kg_per_mol;
+    let atmospheric_heat_capacity_response =
+        (1_004.0 / physical.atmospheric_specific_heat_j_per_kg_k).clamp(0.25, 4.0);
     let phase_seconds = planet.orbital_period_s / phase_count as f64;
 
     let mut latitude = vec![0.0; sample_count];
@@ -1004,19 +1061,14 @@ pub fn generate_coupled_climate(
         north_bases[i] = basis.north;
         cell_area_m2[i] = topology.dual_area_steradians()[i] * planet.radius_m * planet.radius_m;
         ocean[i] = terrain.submerged_mask[i] != 0;
-        terrain_height_m[i] = if ocean[i] {
-            0.0
-        } else {
-            f64::from(terrain.elevation_above_sea_level_m[i]).max(0.0)
-        };
+        terrain_height_m[i] = atmospheric_surface_height_m(
+            ocean[i],
+            f64::from(terrain.elevation_above_sea_level_m[i]),
+        );
         water_depth_m[i] = f64::from(terrain.water_depth_m[i]).max(0.0);
     }
 
-    let terrain_values = terrain
-        .elevation_above_sea_level_m
-        .iter()
-        .map(|value| f64::from(*value))
-        .collect::<Vec<_>>();
+    let terrain_values = terrain_height_m.clone();
     let mut terrain_gradient_east = vec![0.0; sample_count];
     let mut terrain_gradient_north = vec![0.0; sample_count];
     for i in 0..sample_count {
@@ -1083,6 +1135,8 @@ pub fn generate_coupled_climate(
     let mut wind_east_sin = vec![0.0; sample_count];
     let mut wind_north_cos = vec![0.0; sample_count];
     let mut wind_north_sin = vec![0.0; sample_count];
+    let mut wind_speed_sum = vec![0.0; sample_count];
+    let mut maximum_wind_speed_over_phases = 0.0_f64;
     let mut sst_sum = vec![0.0; sample_count];
     let mut sst_cos = vec![0.0; sample_count];
     let mut sst_sin = vec![0.0; sample_count];
@@ -1106,7 +1160,7 @@ pub fn generate_coupled_climate(
     let mut moisture_budget_error_year = 0.0;
     let mut final_temperature_rms_change = f64::INFINITY;
     let mut spinup_years = parameters.maximum_spinup_years;
-    let mut final_divergence_residual = 0.0;
+    let mut maximum_ocean_divergence_residual = 0.0_f64;
 
     for year in 0..parameters.maximum_spinup_years {
         let start_temperature = temperature.clone();
@@ -1126,6 +1180,8 @@ pub fn generate_coupled_climate(
         wind_east_sin.fill(0.0);
         wind_north_cos.fill(0.0);
         wind_north_sin.fill(0.0);
+        wind_speed_sum.fill(0.0);
+        maximum_wind_speed_over_phases = 0.0;
         sst_sum.fill(0.0);
         sst_cos.fill(0.0);
         sst_sin.fill(0.0);
@@ -1147,16 +1203,17 @@ pub fn generate_coupled_climate(
         global_evaporation_year = 0.0;
         global_precipitation_year = 0.0;
         moisture_budget_error_year = 0.0;
+        maximum_ocean_divergence_residual = 0.0;
 
         for phase in 0..phase_count {
-            let orbital_angle = TWO_PI * phase as f64 / phase_count as f64;
-            let eccentricity = physical.orbital_eccentricity;
-            let distance_factor = ((1.0
-                + eccentricity * (orbital_angle - physical.longitude_of_periapsis_rad).cos())
-                / (1.0 - eccentricity * eccentricity))
-                .powi(2);
-            let declination = (planet.axial_tilt_rad.sin() * orbital_angle.sin()).asin();
-            let phase_angle = orbital_angle;
+            let mean_longitude = TWO_PI * phase as f64 / phase_count as f64;
+            let (solar_longitude, distance_factor) = solve_orbital_forcing(
+                mean_longitude,
+                physical.orbital_eccentricity,
+                physical.longitude_of_periapsis_rad,
+            );
+            let declination = (planet.axial_tilt_rad.sin() * solar_longitude.sin()).asin();
+            let phase_angle = mean_longitude;
             let phase_cos = phase_angle.cos();
             let phase_sin = phase_angle.sin();
 
@@ -1213,9 +1270,14 @@ pub fn generate_coupled_climate(
             let previous_temperature = temperature.clone();
             for i in 0..sample_count {
                 let neighbor_temperature = mean_neighbor(topology, &previous_temperature, i);
-                let transported_target = radiative_target[i]
-                    + parameters.atmospheric_heat_relaxation
-                        * (neighbor_temperature - previous_temperature[i]);
+                let atmospheric_transport = if atmosphere_exists {
+                    parameters.atmospheric_heat_relaxation
+                        * atmospheric_heat_capacity_response
+                        * (neighbor_temperature - previous_temperature[i])
+                } else {
+                    0.0
+                };
+                let transported_target = radiative_target[i] + atmospheric_transport;
                 let relaxation = if ocean[i] {
                     parameters.ocean_thermal_relaxation
                 } else {
@@ -1305,7 +1367,7 @@ pub fn generate_coupled_climate(
                     (current_east[i], current_north[i]) =
                         clamp_vector(east, north, parameters.maximum_surface_current_m_s);
                 }
-                final_divergence_residual = correct_ocean_currents(
+                let phase_divergence_residual = correct_ocean_currents(
                     &ocean,
                     &ocean_projection_geometry,
                     &mut current_east,
@@ -1313,6 +1375,8 @@ pub fn generate_coupled_climate(
                     &mut ocean_edge_transport_m2_s,
                     &parameters,
                 );
+                maximum_ocean_divergence_residual =
+                    maximum_ocean_divergence_residual.max(phase_divergence_residual);
             }
 
             let previous_sst = sea_surface_temperature.clone();
@@ -1359,7 +1423,6 @@ pub fn generate_coupled_climate(
                 let mut requested_transfers = Vec::<(usize, usize, f64)>::new();
                 let mut requested_outflow = vec![0.0; sample_count];
                 for i in 0..sample_count {
-                    let origin = topology.positions()[i];
                     for (neighbor_index, arc) in topology
                         .neighbors_of(i as u32)
                         .iter()
@@ -1369,24 +1432,17 @@ pub fn generate_coupled_climate(
                         if j <= i {
                             continue;
                         }
-                        let position = topology.positions()[j];
-                        let radial = dot(position, origin);
-                        let tangent = [
-                            position[0] - origin[0] * radial,
-                            position[1] - origin[1] * radial,
-                            position[2] - origin[2] * radial,
-                        ];
-                        let tangent_norm = dot(tangent, tangent).sqrt();
-                        if tangent_norm <= 1.0e-15 {
+                        let Some(projected) = symmetric_edge_normal_wind_m_s(
+                            topology,
+                            i,
+                            j,
+                            &east_bases,
+                            &north_bases,
+                            &wind_east,
+                            &wind_north,
+                        ) else {
                             continue;
-                        }
-                        let direction = [
-                            tangent[0] / tangent_norm,
-                            tangent[1] / tangent_norm,
-                            tangent[2] / tangent_norm,
-                        ];
-                        let projected = wind_east[i] * dot(direction, east_bases[i])
-                            + wind_north[i] * dot(direction, north_bases[i]);
+                        };
                         let distance = (*arc * planet.radius_m).max(1.0);
                         let fraction = (projected.abs() * phase_seconds / distance
                             * parameters.moisture_transport_cfl)
@@ -1497,6 +1553,10 @@ pub fn generate_coupled_climate(
                 wind_east_sin[i] += wind_east[i] * phase_sin;
                 wind_north_cos[i] += wind_north[i] * phase_cos;
                 wind_north_sin[i] += wind_north[i] * phase_sin;
+                let phase_wind_speed = norm2(wind_east[i], wind_north[i]);
+                wind_speed_sum[i] += phase_wind_speed;
+                maximum_wind_speed_over_phases =
+                    maximum_wind_speed_over_phases.max(phase_wind_speed);
                 sst_sum[i] += sea_surface_temperature[i];
                 sst_cos[i] += sea_surface_temperature[i] * phase_cos;
                 sst_sin[i] += sea_surface_temperature[i] * phase_sin;
@@ -1529,6 +1589,12 @@ pub fn generate_coupled_climate(
         {
             break;
         }
+    }
+
+    if final_temperature_rms_change > parameters.convergence_temperature_rms_k {
+        return Err(WorldgenError::InvalidClimate(
+            "WG-5 climate did not converge within the configured spin-up bound",
+        ));
     }
 
     let phase_count_f64 = phase_count as f64;
@@ -1632,13 +1698,12 @@ pub fn generate_coupled_climate(
     let mean_ocean_temperature =
         subset_area_weighted_mean(topology, &temperature_mean, |i| ocean[i]);
     let mean_sst = subset_area_weighted_mean(topology, &sst_mean, |i| ocean[i]);
-    let mut wind_speed_values = vec![0.0_f32; sample_count];
-    for i in 0..sample_count {
-        wind_speed_values[i] =
-            norm2(f64::from(wind_east_mean[i]), f64::from(wind_north_mean[i])) as f32;
-    }
-    let mean_wind_speed = area_weighted_mean(topology, &wind_speed_values);
-    let maximum_wind_speed = wind_speed_values.iter().copied().fold(0.0_f32, f32::max) as f64;
+    let wind_speed_mean = wind_speed_sum
+        .iter()
+        .map(|value| (value / phase_count_f64) as f32)
+        .collect::<Vec<_>>();
+    let mean_wind_speed = area_weighted_mean(topology, &wind_speed_mean);
+    let maximum_wind_speed = maximum_wind_speed_over_phases;
     let mean_current_speed = subset_area_weighted_mean(topology, &current_speed_mean, |i| ocean[i]);
     let maximum_current_speed = current_speed_mean.iter().copied().fold(0.0_f32, f32::max) as f64;
     let mean_precipitation = area_weighted_mean(topology, &annual_precipitation_mm);
@@ -1648,6 +1713,11 @@ pub fn generate_coupled_climate(
         .max(global_precipitation_year.abs())
         .max(1.0);
     let moisture_budget_relative_error = moisture_budget_error_year / total_budget_scale;
+    if moisture_budget_relative_error > 1.0e-8 {
+        return Err(WorldgenError::InvalidClimate(
+            "WG-5 atmospheric moisture budget did not close within tolerance",
+        ));
+    }
     let total_area = topology.metrics().total_area_steradians.max(1.0e-12);
     let persistent_snow_area_fraction = persistent_snow_potential
         .iter()
@@ -1665,25 +1735,51 @@ pub fn generate_coupled_climate(
     let physical_hash = physical.parameter_hash();
     let model_hash = parameters.parameter_hash();
     let mut climate_hash = FNV_OFFSET_BASIS;
+    climate_hash = fnv_update(climate_hash, CLIMATE_STAGE_ID.as_bytes());
+    climate_hash = fnv_update(climate_hash, &CLIMATE_STAGE_VERSION.to_le_bytes());
     climate_hash = fnv_update(climate_hash, &stage_seed.to_le_bytes());
     climate_hash = fnv_update(climate_hash, &terrain.metrics.topography_hash.to_le_bytes());
     climate_hash = fnv_update(climate_hash, &planet.parameter_hash().to_le_bytes());
     climate_hash = fnv_update(climate_hash, &physical_hash.to_le_bytes());
     climate_hash = fnv_update(climate_hash, &model_hash.to_le_bytes());
-    climate_hash = hash_f32_slice(climate_hash, &temperature_mean);
-    climate_hash = hash_f32_slice(climate_hash, &wind_east_mean);
-    climate_hash = hash_f32_slice(climate_hash, &wind_north_mean);
-    climate_hash = hash_f32_slice(climate_hash, &sst_mean);
-    climate_hash = hash_f32_slice(climate_hash, &sst_cos_out);
-    climate_hash = hash_f32_slice(climate_hash, &sst_sin_out);
-    climate_hash = hash_f32_slice(climate_hash, &current_east_mean);
-    climate_hash = hash_f32_slice(climate_hash, &current_north_mean);
-    climate_hash = hash_f32_slice(climate_hash, &current_east_cos_out);
-    climate_hash = hash_f32_slice(climate_hash, &current_east_sin_out);
-    climate_hash = hash_f32_slice(climate_hash, &current_north_cos_out);
-    climate_hash = hash_f32_slice(climate_hash, &current_north_sin_out);
-    climate_hash = hash_f32_slice(climate_hash, &annual_precipitation_mm);
-    climate_hash = hash_f32_slice(climate_hash, &aridity_index);
+    for values in [
+        &annual_mean_insolation_f32,
+        &seasonal_insolation_amplitude,
+        &temperature_mean,
+        &temperature_annual_cos,
+        &temperature_annual_sin,
+        &temperature_min_f32,
+        &temperature_max_f32,
+        &pressure_f32,
+        &wind_east_mean,
+        &wind_north_mean,
+        &wind_east_cos_out,
+        &wind_east_sin_out,
+        &wind_north_cos_out,
+        &wind_north_sin_out,
+        &sst_mean,
+        &sst_cos_out,
+        &sst_sin_out,
+        &current_east_mean,
+        &current_north_mean,
+        &current_east_cos_out,
+        &current_east_sin_out,
+        &current_north_cos_out,
+        &current_north_sin_out,
+        &current_speed_mean,
+        &ocean_heat_transport,
+        &humidity_mean,
+        &annual_precipitation_mm,
+        &precipitation_seasonality,
+        &potential_evaporation_mm,
+        &moisture_balance_mm,
+        &aridity_index,
+        &snowfall_fraction,
+        &persistent_snow_potential,
+        &sea_ice_potential,
+    ] {
+        climate_hash = hash_f32_slice(climate_hash, values);
+    }
 
     let metrics = ClimateMetrics {
         sample_count: sample_count as u32,
@@ -1704,7 +1800,7 @@ pub fn generate_coupled_climate(
         maximum_wind_speed_m_s: maximum_wind_speed,
         mean_surface_current_m_s: mean_current_speed,
         maximum_surface_current_m_s: maximum_current_speed,
-        ocean_divergence_residual_m_s: final_divergence_residual,
+        ocean_divergence_residual_m_s: maximum_ocean_divergence_residual,
         mean_sea_surface_temperature_k: mean_sst,
         mean_annual_precipitation_mm: mean_precipitation,
         p95_annual_precipitation_mm: p95_precipitation,
@@ -1890,5 +1986,69 @@ mod tests {
             &mut tendency,
         );
         assert_eq!(tendency, [0.0, 0.0]);
+    }
+
+    #[test]
+    fn atmospheric_surface_ignores_submerged_relief() {
+        assert_eq!(atmospheric_surface_height_m(true, -8_000.0), 0.0);
+        assert_eq!(atmospheric_surface_height_m(true, -50.0), 0.0);
+        assert_eq!(atmospheric_surface_height_m(false, 1_250.0), 1_250.0);
+        assert_eq!(atmospheric_surface_height_m(false, -2.0), 0.0);
+    }
+
+    #[test]
+    fn eccentric_orbit_uses_equal_time_kepler_geometry() {
+        let e = 0.7;
+        let periapsis = 0.9;
+        let (_, peri_flux) = solve_orbital_forcing(periapsis, e, periapsis);
+        let (_, apo_flux) = solve_orbital_forcing(periapsis + std::f64::consts::PI, e, periapsis);
+        assert!((peri_flux - 1.0 / (1.0 - e).powi(2)).abs() < 1.0e-10);
+        assert!((apo_flux - 1.0 / (1.0 + e).powi(2)).abs() < 1.0e-10);
+        assert!(peri_flux > apo_flux);
+        let (longitude, flux) = solve_orbital_forcing(2.1, 0.94, periapsis);
+        assert!(longitude.is_finite());
+        assert!(flux.is_finite() && flux > 0.0);
+    }
+
+    #[test]
+    fn atmospheric_face_velocity_is_orientation_invariant() {
+        let topology = crate::build_icosphere(1).unwrap();
+        let count = topology.positions().len();
+        let mut east_bases = Vec::with_capacity(count);
+        let mut north_bases = Vec::with_capacity(count);
+        for position in topology.positions() {
+            let basis = crate::tangent_basis(*position).unwrap();
+            east_bases.push(basis.east);
+            north_bases.push(basis.north);
+        }
+        let a = 0usize;
+        let b = topology.neighbors_of(a as u32)[0] as usize;
+        let mut east = vec![0.0; count];
+        let mut north = vec![0.0; count];
+        east[a] = 7.0;
+        north[a] = -2.0;
+        east[b] = -4.0;
+        north[b] = 3.5;
+        let forward = symmetric_edge_normal_wind_m_s(
+            &topology,
+            a,
+            b,
+            &east_bases,
+            &north_bases,
+            &east,
+            &north,
+        )
+        .unwrap();
+        let reverse = symmetric_edge_normal_wind_m_s(
+            &topology,
+            b,
+            a,
+            &east_bases,
+            &north_bases,
+            &east,
+            &north,
+        )
+        .unwrap();
+        assert!((forward + reverse).abs() < 1.0e-12);
     }
 }

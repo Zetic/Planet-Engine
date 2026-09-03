@@ -1,4 +1,5 @@
 import { createWorldgenClient } from '../worldgenClient.js';
+import { mapVectorDelta, reconstructAnnualHarmonicFromBasis } from './worldgenClimateMath.js';
 import { WORLDGEN_BOUNDARY_CONVERGENT, WORLDGEN_BOUNDARY_DIVERGENT, WORLDGEN_BOUNDARY_TRANSFORM, WORLDGEN_CRUST_CONTINENTAL, WORLDGEN_CRUST_OCEANIC, WORLDGEN_CRUST_TRANSITIONAL, WORLDGEN_GEOLOGY_CONTINENTAL_COLLISION, WORLDGEN_GEOLOGY_CONTINENTAL_RIFT, WORLDGEN_GEOLOGY_OCEANIC_RIDGE, WORLDGEN_GEOLOGY_OCEANIC_SUBDUCTION, WORLDGEN_GEOLOGY_OCEAN_CONTINENT_SUBDUCTION, WORLDGEN_GEOLOGY_TRANSFORM, WORLDGEN_GEOLOGY_TRANSITIONAL_DIVERGENCE, WORLDGEN_STRUCTURE_CONTINENTAL_MARGIN, WORLDGEN_STRUCTURE_NONE, WORLDGEN_STRUCTURE_RIFT, WORLDGEN_STRUCTURE_SUTURE, WORLDGEN_STRUCTURE_TRANSFORM, } from '../protocol.js';
 const PALETTE_STEPS = 256;
 const TWO_PI = Math.PI * 2;
@@ -117,14 +118,14 @@ function bucketize(count, colorAt) {
 }
 function seasonalValue(mean, cosine, sine, phase) {
     const angle = phase * TWO_PI;
-    return mean + cosine * Math.cos(angle) + sine * Math.sin(angle);
+    return reconstructAnnualHarmonicFromBasis(mean, cosine, sine, Math.cos(angle), Math.sin(angle));
 }
 function seasonalScalar(mean, cosine, sine, phase, scratch) {
     const angle = phase * TWO_PI;
     const c = Math.cos(angle);
     const s = Math.sin(angle);
     for (let index = 0; index < scratch.length; index += 1)
-        scratch[index] = mean[index] + cosine[index] * c + sine[index] * s;
+        scratch[index] = reconstructAnnualHarmonicFromBasis(mean[index], cosine[index], sine[index], c, s);
     return scratch;
 }
 function magnitudeField(east, north, scratch) {
@@ -259,10 +260,8 @@ function screenTangentDelta(position, eastValue, northValue, projection, yaw, pi
         (eastValue * east[1] + northValue * north[1]) / speed,
         (eastValue * east[2] + northValue * north[2]) / speed,
     ];
-    if (projection === 'map') {
-        const cosLat = Math.max(0.18, Math.cos(lat));
-        return [tangent[0] * width * 0.014 / cosLat, -tangent[2] * height * 0.026];
-    }
+    if (projection === 'map')
+        return mapVectorDelta(eastValue, northValue, lat, width, height);
     const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
     const x1 = cy * tangent[0] - sy * tangent[1];
     const y1 = sy * tangent[0] + cy * tangent[1];

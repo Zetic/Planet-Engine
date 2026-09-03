@@ -1,4 +1,5 @@
 import { createWorldgenClient } from '../worldgenClient.js';
+import { mapVectorDelta, reconstructAnnualHarmonicFromBasis } from './worldgenClimateMath.js';
 import {
   WORLDGEN_BOUNDARY_CONVERGENT,
   WORLDGEN_BOUNDARY_DIVERGENT,
@@ -111,7 +112,7 @@ function bucketize(count: number, colorAt: (index: number) => string): DrawBucke
 }
 function seasonalValue(mean: number, cosine: number, sine: number, phase: number): number {
   const angle = phase * TWO_PI;
-  return mean + cosine * Math.cos(angle) + sine * Math.sin(angle);
+  return reconstructAnnualHarmonicFromBasis(mean, cosine, sine, Math.cos(angle), Math.sin(angle));
 }
 function seasonalScalar(
   mean: Float32Array,
@@ -123,7 +124,7 @@ function seasonalScalar(
   const angle = phase * TWO_PI;
   const c = Math.cos(angle);
   const s = Math.sin(angle);
-  for (let index = 0; index < scratch.length; index += 1) scratch[index] = mean[index]! + cosine[index]! * c + sine[index]! * s;
+  for (let index = 0; index < scratch.length; index += 1) scratch[index] = reconstructAnnualHarmonicFromBasis(mean[index]!, cosine[index]!, sine[index]!, c, s);
   return scratch;
 }
 function magnitudeField(east: Float32Array, north: Float32Array, scratch: Float32Array): Float32Array {
@@ -243,10 +244,7 @@ function screenTangentDelta(position: [number, number, number], eastValue: numbe
     (eastValue * east[1] + northValue * north[1]) / speed,
     (eastValue * east[2] + northValue * north[2]) / speed,
   ];
-  if (projection === 'map') {
-    const cosLat = Math.max(0.18, Math.cos(lat));
-    return [tangent[0] * width * 0.014 / cosLat, -tangent[2] * height * 0.026];
-  }
+  if (projection === 'map') return mapVectorDelta(eastValue, northValue, lat, width, height);
   const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
   const x1 = cy * tangent[0] - sy * tangent[1];
   const y1 = sy * tangent[0] + cy * tangent[1];
