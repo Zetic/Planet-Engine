@@ -1,6 +1,6 @@
 # WG-5 Coupled Planetary Climate
 
-WG-5 converts the accepted WG-4 physical surface into a deterministic climatology. It is a generation-time physical solve, not a perpetual post-generation weather simulation. The corrected climate algorithm is stage version `2`; version `2` tightens orbital, atmospheric-transport, acceptance, diagnostic, and state-identity semantics without changing the browser protocol shape.
+WG-5 converts the accepted WG-4 physical surface into a deterministic climatology. It is a generation-time physical solve, not a perpetual post-generation weather simulation. The thermally recalibrated climate algorithm is stage version `3`; version `3` rebuilds reduced shortwave forcing, atmospheric heat redistribution, and air-sea heat exchange while retaining the existing browser climate-state shape.
 
 ## Causal pipeline
 
@@ -29,6 +29,10 @@ orographic lifting / condensation / precipitation
 moisture balance / aridity / snow and sea-ice potential
 ```
 
+Stage `3` separates unresolved atmospheric/background shortwave reflection from the fraction of local surface albedo that reaches the reduced top-of-atmosphere budget. The Earth-like reference uses atmospheric shortwave reflectivity `0.25` and surface-albedo coupling `0.25`; land, ocean, snow, and ice therefore remain causally distinct without exposing their raw surface-albedo contrast directly to the planetary budget. This is a reduced cloud/atmosphere masking term, not an explicit cloud field. When reference atmospheric pressure is zero, that masking vanishes and the exposed surface albedo directly controls absorbed shortwave; ocean SST likewise collapses to the exposed radiative surface temperature because no distinct atmospheric air-sea reservoir exists.
+
+Atmospheric heat redistribution is now a conservative geometry-aware diffusion solve. Mesh interfaces use physical interface length and center distance, atmospheric thermal capacity uses local pressure, cell area, and specific heat, and a deterministic diagonally-preconditioned conjugate-gradient solve advances the implicit diffusion step. The Earth-like reference diffusivity is `2.0e6 m^2/s`. Air-sea exchange is likewise heat-capacity-aware: an `8 W/m^2/K` exchange coefficient couples the atmospheric column to a `14 m` effective mixed layer while conserving their combined column heat absent diagnostic clamps.
+
 WG-5 intentionally includes a reduced B+ surface-ocean circulation model. Wind stress produces candidate currents, latitude- and rotation-rate-dependent Coriolis response deflects them, WG-4 ocean connectivity removes land-crossing flow, and bathymetry reduces shallow-water mobility. The candidate field is converted to antisymmetric ocean-interface transports and passed through a deterministic graph pressure projection so the retained transport has a small divergence residual. ENU current vectors are reconstructed from those projected interface transports for diagnostics, while SST heat advection uses the projected transports directly; ocean diffusion also remains on ocean-only neighbors. SST then feeds back into atmospheric temperature and circulation. WG-5 does not attempt a full 3-D salinity/thermohaline ocean.
 
 Projected ocean-edge transports drive SST advection through a conservative donor-cell update. Aggregate donor outflow is CFL-limited per orbital phase, so the explicit heat step remains stable as mesh spacing shrinks through the L7 quality target without weakening circulation at coarser levels. Atmospheric moisture transport likewise scales aggregate outgoing graph transfers to the donor water mass before applying paired transfers, preserving moisture mass instead of relying on post-transport zero clamps. Each undirected atmospheric interface uses a symmetric face-normal velocity reconstructed from both endpoint winds, so moisture routing is independent of which endpoint has the lower mesh sample index. Atmospheric terrain gradients are taken from the exposed land/sea surface: submerged bathymetry is not treated as an atmospheric obstacle or orographic precipitation source.
@@ -45,9 +49,10 @@ The accepted `PlanetPhysicalParameters` remains the WG-3.75/WG-4 profile contrac
 - longitude of periapsis;
 - atmospheric mean molar mass;
 - atmospheric specific heat;
+- reduced atmospheric shortwave reflectivity;
 - reduced longwave optical depth.
 
-`ClimateParameters` separately owns numerical/model choices such as albedo, thermal response, atmospheric heat transport, wind response, current coupling, ocean diffusion/advection, moisture transport, condensation, and orographic precipitation.
+`ClimateParameters` separately owns numerical/model choices such as surface-albedo shortwave coupling, land/ocean thermal response, atmospheric heat diffusivity and solver iterations, air-sea exchange and mixed-layer depth, wind response, current coupling, ocean diffusion/advection, moisture transport, condensation, and orographic precipitation.
 
 ## Seasonal solve
 

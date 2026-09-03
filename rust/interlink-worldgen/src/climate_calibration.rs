@@ -1,6 +1,7 @@
+use crate::climate::effective_shortwave_albedo;
 use crate::{
-    tangent_basis, ClimateRequest, ClimateState, GeodesicTopology,
-    PlanetPhysicalParameters, TopographyState, WorldgenError,
+    tangent_basis, ClimateRequest, ClimateState, GeodesicTopology, PlanetPhysicalParameters,
+    TopographyState, WorldgenError,
 };
 
 const STEFAN_BOLTZMANN: f64 = 5.670_374_419e-8;
@@ -35,9 +36,9 @@ pub struct ClimateCalibrationReport {
     pub p95_land_elevation_m: f64,
     pub land_area_above_2km_fraction: f64,
     pub land_area_above_4km_fraction: f64,
-    pub clear_surface_absorbed_shortwave_w_m2: f64,
-    pub clear_surface_absorbed_shortwave_land_w_m2: f64,
-    pub clear_surface_absorbed_shortwave_ocean_w_m2: f64,
+    pub effective_absorbed_shortwave_w_m2: f64,
+    pub effective_absorbed_shortwave_land_w_m2: f64,
+    pub effective_absorbed_shortwave_ocean_w_m2: f64,
     pub outgoing_longwave_proxy_w_m2: f64,
     pub outgoing_longwave_land_proxy_w_m2: f64,
     pub outgoing_longwave_ocean_proxy_w_m2: f64,
@@ -83,10 +84,7 @@ fn saturation_specific_humidity(temperature_k: f64, pressure_pa: f64) -> f64 {
     }
 }
 
-fn weighted_mean(
-    topology: &GeodesicTopology,
-    values: impl Iterator<Item = (usize, f64)>,
-) -> f64 {
+fn weighted_mean(topology: &GeodesicTopology, values: impl Iterator<Item = (usize, f64)>) -> f64 {
     let mut weighted = 0.0;
     let mut area = 0.0;
     for (index, value) in values {
@@ -94,7 +92,11 @@ fn weighted_mean(
         weighted += value * sample_area;
         area += sample_area;
     }
-    if area > 0.0 { weighted / area } else { 0.0 }
+    if area > 0.0 {
+        weighted / area
+    } else {
+        0.0
+    }
 }
 
 fn weighted_fraction(
@@ -111,7 +113,11 @@ fn weighted_fraction(
             matching += area;
         }
     }
-    if total > 0.0 { matching / total } else { 0.0 }
+    if total > 0.0 {
+        matching / total
+    } else {
+        0.0
+    }
 }
 
 fn weighted_percentile(mut values: Vec<(f64, f64)>, fraction: f64) -> f64 {
@@ -119,7 +125,11 @@ fn weighted_percentile(mut values: Vec<(f64, f64)>, fraction: f64) -> f64 {
         return 0.0;
     }
     values.sort_by(|a, b| a.0.total_cmp(&b.0));
-    let total_weight = values.iter().map(|(_, weight)| *weight).sum::<f64>().max(1.0e-18);
+    let total_weight = values
+        .iter()
+        .map(|(_, weight)| *weight)
+        .sum::<f64>()
+        .max(1.0e-18);
     let target = total_weight * fraction.clamp(0.0, 1.0);
     let mut cumulative = 0.0;
     for (value, weight) in values.iter().copied() {
@@ -183,23 +193,40 @@ fn latitude_bands(
     let total_area = topology.metrics().total_area_steradians.max(1.0e-18);
     for minimum in (-90..90).step_by(LATITUDE_BAND_DEGREES as usize) {
         let maximum = minimum + LATITUDE_BAND_DEGREES;
-        let indices = (0..climate.temperature_mean_k.len()).filter(|index| {
-            let latitude = topology.positions()[*index][2].clamp(-1.0, 1.0).asin().to_degrees();
-            latitude >= f64::from(minimum)
-                && (latitude < f64::from(maximum) || maximum == 90 && latitude <= 90.0)
-        }).collect::<Vec<_>>();
-        let band_area = indices.iter().map(|index| topology.dual_area_steradians()[*index]).sum::<f64>();
+        let indices = (0..climate.temperature_mean_k.len())
+            .filter(|index| {
+                let latitude = topology.positions()[*index][2]
+                    .clamp(-1.0, 1.0)
+                    .asin()
+                    .to_degrees();
+                latitude >= f64::from(minimum)
+                    && (latitude < f64::from(maximum) || maximum == 90 && latitude <= 90.0)
+            })
+            .collect::<Vec<_>>();
+        let band_area = indices
+            .iter()
+            .map(|index| topology.dual_area_steradians()[*index])
+            .sum::<f64>();
         let mean_temperature_k = weighted_mean(
             topology,
-            indices.iter().copied().map(|index| (index, f64::from(climate.temperature_mean_k[index]))),
+            indices
+                .iter()
+                .copied()
+                .map(|index| (index, f64::from(climate.temperature_mean_k[index]))),
         );
         let mean_precipitation_mm = weighted_mean(
             topology,
-            indices.iter().copied().map(|index| (index, f64::from(climate.annual_precipitation_mm[index]))),
+            indices
+                .iter()
+                .copied()
+                .map(|index| (index, f64::from(climate.annual_precipitation_mm[index]))),
         );
         let mean_specific_humidity = weighted_mean(
             topology,
-            indices.iter().copied().map(|index| (index, f64::from(climate.specific_humidity_mean[index]))),
+            indices
+                .iter()
+                .copied()
+                .map(|index| (index, f64::from(climate.specific_humidity_mean[index]))),
         );
         let mean_relative_humidity_proxy = weighted_mean(
             topology,
@@ -216,24 +243,40 @@ fn latitude_bands(
                 (index, rh.clamp(0.0, 2.0))
             }),
         );
-        let ocean_indices = indices.iter().copied().filter(|index| terrain.submerged_mask[*index] != 0).collect::<Vec<_>>();
+        let ocean_indices = indices
+            .iter()
+            .copied()
+            .filter(|index| terrain.submerged_mask[*index] != 0)
+            .collect::<Vec<_>>();
         let mean_sst = if ocean_indices.is_empty() {
             None
         } else {
             Some(weighted_mean(
                 topology,
-                ocean_indices.iter().copied().map(|index| (index, f64::from(climate.sea_surface_temperature_mean_k[index]))),
+                ocean_indices.iter().copied().map(|index| {
+                    (
+                        index,
+                        f64::from(climate.sea_surface_temperature_mean_k[index]),
+                    )
+                }),
             ))
         };
         let mean_snowfall_mm = weighted_mean(
             topology,
             indices.iter().copied().map(|index| {
-                (index, f64::from(climate.annual_precipitation_mm[index]) * f64::from(climate.snowfall_fraction[index]))
+                (
+                    index,
+                    f64::from(climate.annual_precipitation_mm[index])
+                        * f64::from(climate.snowfall_fraction[index]),
+                )
             }),
         );
         let mean_sea_ice_potential = weighted_mean(
             topology,
-            indices.iter().copied().map(|index| (index, f64::from(climate.sea_ice_potential[index]))),
+            indices
+                .iter()
+                .copied()
+                .map(|index| (index, f64::from(climate.sea_ice_potential[index]))),
         );
         result.push(ClimateLatitudeBand {
             minimum_latitude_deg: f64::from(minimum),
@@ -266,50 +309,98 @@ pub fn build_climate_calibration_report(
         ));
     }
     let ocean = |index: usize| terrain.submerged_mask[index] != 0;
-    let land_indices = (0..count).filter(|index| !ocean(*index)).collect::<Vec<_>>();
+    let land_indices = (0..count)
+        .filter(|index| !ocean(*index))
+        .collect::<Vec<_>>();
     let ocean_indices = (0..count).filter(|index| ocean(*index)).collect::<Vec<_>>();
 
-    let land_elevation_values = land_indices.iter().map(|index| {
-        (
-            f64::from(terrain.elevation_above_sea_level_m[*index]),
-            topology.dual_area_steradians()[*index],
-        )
-    }).collect::<Vec<_>>();
+    let land_elevation_values = land_indices
+        .iter()
+        .map(|index| {
+            (
+                f64::from(terrain.elevation_above_sea_level_m[*index]),
+                topology.dual_area_steradians()[*index],
+            )
+        })
+        .collect::<Vec<_>>();
     let mean_land_elevation_m = weighted_mean(
         topology,
-        land_indices.iter().copied().map(|index| (index, f64::from(terrain.elevation_above_sea_level_m[index]))),
+        land_indices
+            .iter()
+            .copied()
+            .map(|index| (index, f64::from(terrain.elevation_above_sea_level_m[index]))),
     );
     let median_land_elevation_m = weighted_percentile(land_elevation_values.clone(), 0.50);
     let p95_land_elevation_m = weighted_percentile(land_elevation_values, 0.95);
-    let land_area_above_2km_fraction = weighted_fraction(topology, land_indices.iter().copied(), |index| terrain.elevation_above_sea_level_m[index] >= 2_000.0);
-    let land_area_above_4km_fraction = weighted_fraction(topology, land_indices.iter().copied(), |index| terrain.elevation_above_sea_level_m[index] >= 4_000.0);
+    let land_area_above_2km_fraction =
+        weighted_fraction(topology, land_indices.iter().copied(), |index| {
+            terrain.elevation_above_sea_level_m[index] >= 2_000.0
+        });
+    let land_area_above_4km_fraction =
+        weighted_fraction(topology, land_indices.iter().copied(), |index| {
+            terrain.elevation_above_sea_level_m[index] >= 4_000.0
+        });
 
-    let clear_asr = |index: usize| {
+    let effective_asr = |index: usize| {
         let albedo = if ocean(index) {
             request.parameters.ocean_albedo
         } else {
             request.parameters.land_albedo
         };
-        f64::from(climate.annual_mean_insolation_w_m2[index]) * (1.0 - albedo)
+        let effective_albedo = effective_shortwave_albedo(
+            request.physical.atmospheric_shortwave_reflectivity,
+            request.parameters.surface_albedo_shortwave_coupling,
+            albedo,
+        );
+        f64::from(climate.annual_mean_insolation_w_m2[index]) * (1.0 - effective_albedo)
     };
     let olr_proxy = |index: usize| {
         let pressure_ratio = if planet.reference_surface_pressure_pa > 0.0 {
-            (f64::from(climate.local_pressure_pa[index]) / planet.reference_surface_pressure_pa).clamp(0.0, 2.0)
+            (f64::from(climate.local_pressure_pa[index]) / planet.reference_surface_pressure_pa)
+                .clamp(0.0, 2.0)
         } else {
             0.0
         };
-        let greenhouse_denominator = 1.0
-            + 0.75 * request.physical.atmospheric_longwave_optical_depth * pressure_ratio;
+        let greenhouse_denominator =
+            1.0 + 0.75 * request.physical.atmospheric_longwave_optical_depth * pressure_ratio;
         STEFAN_BOLTZMANN * f64::from(climate.temperature_mean_k[index]).powi(4)
             / greenhouse_denominator.max(1.0e-12)
     };
-    let clear_surface_absorbed_shortwave_w_m2 = weighted_mean(topology, (0..count).map(|index| (index, clear_asr(index))));
-    let clear_surface_absorbed_shortwave_land_w_m2 = weighted_mean(topology, land_indices.iter().copied().map(|index| (index, clear_asr(index))));
-    let clear_surface_absorbed_shortwave_ocean_w_m2 = weighted_mean(topology, ocean_indices.iter().copied().map(|index| (index, clear_asr(index))));
-    let outgoing_longwave_proxy_w_m2 = weighted_mean(topology, (0..count).map(|index| (index, olr_proxy(index))));
-    let outgoing_longwave_land_proxy_w_m2 = weighted_mean(topology, land_indices.iter().copied().map(|index| (index, olr_proxy(index))));
-    let outgoing_longwave_ocean_proxy_w_m2 = weighted_mean(topology, ocean_indices.iter().copied().map(|index| (index, olr_proxy(index))));
-    let toa_energy_imbalance_proxy_w_m2 = clear_surface_absorbed_shortwave_w_m2
+    let effective_absorbed_shortwave_w_m2 = weighted_mean(
+        topology,
+        (0..count).map(|index| (index, effective_asr(index))),
+    );
+    let effective_absorbed_shortwave_land_w_m2 = weighted_mean(
+        topology,
+        land_indices
+            .iter()
+            .copied()
+            .map(|index| (index, effective_asr(index))),
+    );
+    let effective_absorbed_shortwave_ocean_w_m2 = weighted_mean(
+        topology,
+        ocean_indices
+            .iter()
+            .copied()
+            .map(|index| (index, effective_asr(index))),
+    );
+    let outgoing_longwave_proxy_w_m2 =
+        weighted_mean(topology, (0..count).map(|index| (index, olr_proxy(index))));
+    let outgoing_longwave_land_proxy_w_m2 = weighted_mean(
+        topology,
+        land_indices
+            .iter()
+            .copied()
+            .map(|index| (index, olr_proxy(index))),
+    );
+    let outgoing_longwave_ocean_proxy_w_m2 = weighted_mean(
+        topology,
+        ocean_indices
+            .iter()
+            .copied()
+            .map(|index| (index, olr_proxy(index))),
+    );
+    let toa_energy_imbalance_proxy_w_m2 = effective_absorbed_shortwave_w_m2
         + planet.internal_heat_flux_w_per_m2
         - outgoing_longwave_proxy_w_m2;
 
@@ -347,14 +438,20 @@ pub fn build_climate_calibration_report(
                 phase_cos,
                 phase_sin,
             );
-            let speed = (wind_east[index] * wind_east[index] + wind_north[index] * wind_north[index]).sqrt();
+            let speed = (wind_east[index] * wind_east[index]
+                + wind_north[index] * wind_north[index])
+                .sqrt();
             if speed >= request.parameters.maximum_wind_speed_m_s * 0.98 {
                 wind_cap_samples += 1;
             }
             wind_samples += 1;
         }
         for a in 0..count {
-            for (neighbor, arc) in topology.neighbors_of(a as u32).iter().zip(topology.neighbor_arc_lengths_of(a as u32).iter()) {
+            for (neighbor, arc) in topology
+                .neighbors_of(a as u32)
+                .iter()
+                .zip(topology.neighbor_arc_lengths_of(a as u32).iter())
+            {
                 let b = *neighbor as usize;
                 if b <= a {
                     continue;
@@ -381,18 +478,20 @@ pub fn build_climate_calibration_report(
         }
     }
 
-    let rh_values = (0..count).map(|index| {
-        let saturation = saturation_specific_humidity(
-            f64::from(climate.temperature_mean_k[index]),
-            f64::from(climate.local_pressure_pa[index]),
-        );
-        let rh = if saturation > 1.0e-12 {
-            f64::from(climate.specific_humidity_mean[index]) / saturation
-        } else {
-            0.0
-        };
-        (rh.clamp(0.0, 2.0), topology.dual_area_steradians()[index])
-    }).collect::<Vec<_>>();
+    let rh_values = (0..count)
+        .map(|index| {
+            let saturation = saturation_specific_humidity(
+                f64::from(climate.temperature_mean_k[index]),
+                f64::from(climate.local_pressure_pa[index]),
+            );
+            let rh = if saturation > 1.0e-12 {
+                f64::from(climate.specific_humidity_mean[index]) / saturation
+            } else {
+                0.0
+            };
+            (rh.clamp(0.0, 2.0), topology.dual_area_steradians()[index])
+        })
+        .collect::<Vec<_>>();
 
     let mean_potential_evaporation_mm = weighted_mean(
         topology,
@@ -407,7 +506,11 @@ pub fn build_climate_calibration_report(
         if let Some(no_orography) = no_orography_climate {
             let baseline = no_orography.metrics.mean_annual_precipitation_mm;
             let total = climate.metrics.mean_annual_precipitation_mm;
-            let fraction = if total.abs() > 1.0e-12 { (total - baseline) / total } else { 0.0 };
+            let fraction = if total.abs() > 1.0e-12 {
+                (total - baseline) / total
+            } else {
+                0.0
+            };
             (Some(baseline), Some(fraction))
         } else {
             (None, None)
@@ -439,22 +542,31 @@ pub fn build_climate_calibration_report(
         mean_temperature_k: climate.metrics.mean_temperature_k,
         mean_land_temperature_k: climate.metrics.mean_land_temperature_k,
         mean_ocean_temperature_k: climate.metrics.mean_ocean_temperature_k,
-        land_ocean_temperature_contrast_k: climate.metrics.mean_ocean_temperature_k - climate.metrics.mean_land_temperature_k,
+        land_ocean_temperature_contrast_k: climate.metrics.mean_ocean_temperature_k
+            - climate.metrics.mean_land_temperature_k,
         mean_sea_surface_temperature_k: climate.metrics.mean_sea_surface_temperature_k,
         mean_land_elevation_m,
         median_land_elevation_m,
         p95_land_elevation_m,
         land_area_above_2km_fraction,
         land_area_above_4km_fraction,
-        clear_surface_absorbed_shortwave_w_m2,
-        clear_surface_absorbed_shortwave_land_w_m2,
-        clear_surface_absorbed_shortwave_ocean_w_m2,
+        effective_absorbed_shortwave_w_m2,
+        effective_absorbed_shortwave_land_w_m2,
+        effective_absorbed_shortwave_ocean_w_m2,
         outgoing_longwave_proxy_w_m2,
         outgoing_longwave_land_proxy_w_m2,
         outgoing_longwave_ocean_proxy_w_m2,
         toa_energy_imbalance_proxy_w_m2,
-        reconstructed_wind_cap_fraction: if wind_samples > 0 { wind_cap_samples as f64 / wind_samples as f64 } else { 0.0 },
-        reconstructed_moisture_edge_cap_fraction: if moisture_edges > 0 { moisture_cap_edges as f64 / moisture_edges as f64 } else { 0.0 },
+        reconstructed_wind_cap_fraction: if wind_samples > 0 {
+            wind_cap_samples as f64 / wind_samples as f64
+        } else {
+            0.0
+        },
+        reconstructed_moisture_edge_cap_fraction: if moisture_edges > 0 {
+            moisture_cap_edges as f64 / moisture_edges as f64
+        } else {
+            0.0
+        },
         mean_state_relative_humidity_p05: weighted_percentile(rh_values.clone(), 0.05),
         mean_state_relative_humidity_p50: weighted_percentile(rh_values.clone(), 0.50),
         mean_state_relative_humidity_p95: weighted_percentile(rh_values, 0.95),

@@ -164,9 +164,22 @@ fn airless_planet_retains_radiative_temperature_but_has_no_wind_or_precipitation
         .annual_precipitation_mm
         .iter()
         .all(|value| *value == 0.0));
+    for (index, submerged) in terrain.submerged_mask.iter().enumerate() {
+        if *submerged != 0 {
+            assert!(
+                (climate.sea_surface_temperature_mean_k[index]
+                    - climate.temperature_mean_k[index])
+                    .abs()
+                    < 1.0e-4,
+                "airless ocean surfaces must not retain a distinct atmospheric temperature reservoir",
+            );
+        }
+    }
 
     let mut no_transport_request = ClimateRequest::new("wg5-airless");
-    no_transport_request.parameters.atmospheric_heat_relaxation = 0.0;
+    no_transport_request
+        .parameters
+        .atmospheric_heat_diffusivity_m2_s = 1.0;
     let no_transport =
         generate_coupled_climate(&topology, &terrain, airless, &no_transport_request).unwrap();
     assert_eq!(
