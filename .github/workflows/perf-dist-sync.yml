@@ -1,0 +1,37 @@
+name: WG-3.75 Renderer Dist Sync
+
+on:
+  push:
+    branches:
+      - perf-wg375-globe-renderer
+
+permissions:
+  contents: write
+
+jobs:
+  sync-dist:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf-wg375-globe-renderer
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build browser modules
+        run: npm run build
+      - name: Commit generated diagnostic only
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- dist/worldgen/diagnostics/worldgenInheritanceLabStandalone.js
+          if git diff --cached --quiet; then
+            echo "Generated diagnostic already in sync."
+            exit 0
+          fi
+          git commit -m "Sync optimized WG-3.75 diagnostic build"
+          git push origin HEAD:perf-wg375-globe-renderer
