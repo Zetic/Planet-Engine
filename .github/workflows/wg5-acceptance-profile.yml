@@ -1,4 +1,4 @@
-name: Temporary WG-5 L7 spinup trace
+name: Temporary WG-5 L7 ocean-advection diagnostic
 
 on:
   push:
@@ -6,13 +6,28 @@ on:
       - worldgen-wg5-coupled-climate
 
 jobs:
-  trace:
+  no-advection:
     if: ${{ github.actor != 'github-actions[bot]' }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
-      - name: Instrument annual convergence
+      - name: Disable ocean heat advection
+        run: sed -i 's/ocean_advection_relaxation: 0.025/ocean_advection_relaxation: 0.0/' rust/interlink-worldgen/src/climate.rs
+      - name: Instrument convergence
         run: python scripts/wg5_spinup_trace.py
-      - name: Trace L7 climate
+      - name: Run L7 climate
+        run: cargo run --release -p interlink-worldgen-cli -- climate --seed wg5-accept-l7 --coarse-level 5 --level 7 --plates 24
+
+  reduced-advection:
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reduce ocean heat advection
+        run: sed -i 's/ocean_advection_relaxation: 0.025/ocean_advection_relaxation: 0.010/' rust/interlink-worldgen/src/climate.rs
+      - name: Instrument convergence
+        run: python scripts/wg5_spinup_trace.py
+      - name: Run L7 climate
         run: cargo run --release -p interlink-worldgen-cli -- climate --seed wg5-accept-l7 --coarse-level 5 --level 7 --plates 24
