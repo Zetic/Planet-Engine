@@ -9,177 +9,192 @@ def replace_once(old: str, new: str, label: str) -> None:
         raise SystemExit(f'{label} anchor not found')
     text = text.replace(old, new, 1)
 
-old_fn = '''fn advect_moisture_substep(
-    edges: &[PhaseAtmosphericMoistureEdge],
-    moisture_mass: &mut [f64],
-    cell_area_m2: &[f64],
-    substep_seconds: f64,
-    cfl_limit: f64,
-    requested_outflow: &mut [f64],
-    donor_scale: &mut [f64],
-    delta: &mut [f64],
-) -> (usize, usize) {
-    requested_outflow.fill(0.0);
-    donor_scale.fill(1.0);
-    delta.fill(0.0);
-
-    for edge in edges {
-        let donor_column_moisture = moisture_mass[edge.donor] / cell_area_m2[edge.donor].max(1.0);
-        let mass = donor_column_moisture
-            * edge.normal_speed_abs_m_s
-            * edge.interface_length_m
-            * substep_seconds;
-        if mass > 0.0 {
-            requested_outflow[edge.donor] += mass;
-        }
-    }
-
-    let mut active_donors = 0usize;
-    let mut limited_donors = 0usize;
-    for i in 0..moisture_mass.len() {
-        if requested_outflow[i] <= 0.0 {
-            continue;
-        }
-        active_donors += 1;
-        let allowed = moisture_mass[i] * cfl_limit;
-        if requested_outflow[i] > allowed {
-            donor_scale[i] = allowed / requested_outflow[i];
-            limited_donors += 1;
-        }
-    }
-
-    for edge in edges {
-        let donor_column_moisture = moisture_mass[edge.donor] / cell_area_m2[edge.donor].max(1.0);
-        let mass = donor_column_moisture
-            * edge.normal_speed_abs_m_s
-            * edge.interface_length_m
-            * substep_seconds;
-        let transfer = mass * donor_scale[edge.donor];
-        delta[edge.donor] -= transfer;
-        delta[edge.receiver] += transfer;
-    }
-    for i in 0..moisture_mass.len() {
-        moisture_mass[i] = (moisture_mass[i] + delta[i]).max(0.0);
-    }
-    (limited_donors, active_donors)
+replace_once(
+    '''struct AtmosphericHeatEdge {
+    a: usize,
+    b: usize,
+    geometric_conductance: f64,
 }
-'''
-new_fn = '''fn advect_moisture_substep(
-    edges: &[PhaseAtmosphericMoistureEdge],
-    moisture_mass: &mut [f64],
-    cell_area_m2: &[f64],
-    substep_seconds: f64,
-    cfl_limit: f64,
-    column_moisture: &mut [f64],
-    requested_edge_mass: &mut [f64],
-    requested_outflow: &mut [f64],
-    donor_scale: &mut [f64],
-    delta: &mut [f64],
-) -> (usize, usize) {
-    debug_assert!(requested_edge_mass.len() >= edges.len());
-    requested_outflow.fill(0.0);
-    donor_scale.fill(1.0);
-    delta.fill(0.0);
 
-    // Moisture mass is unchanged during the request pass, so compute each
-    // donor column density once per cell rather than repeating the same
-    // division for every incident transport edge (and then repeating it again
-    // during application).
-    for i in 0..moisture_mass.len() {
-        column_moisture[i] = moisture_mass[i] / cell_area_m2[i].max(1.0);
-    }
-    for (edge_index, edge) in edges.iter().enumerate() {
-        let mass = column_moisture[edge.donor]
-            * edge.normal_speed_abs_m_s
-            * edge.interface_length_m
-            * substep_seconds;
-        requested_edge_mass[edge_index] = mass;
-        if mass > 0.0 {
-            requested_outflow[edge.donor] += mass;
-        }
-    }
-
-    let mut active_donors = 0usize;
-    let mut limited_donors = 0usize;
-    for i in 0..moisture_mass.len() {
-        if requested_outflow[i] <= 0.0 {
-            continue;
-        }
-        active_donors += 1;
-        let allowed = moisture_mass[i] * cfl_limit;
-        if requested_outflow[i] > allowed {
-            donor_scale[i] = allowed / requested_outflow[i];
-            limited_donors += 1;
-        }
-    }
-
-    // Reuse the exact request mass calculated above. Donor scaling does not
-    // mutate moisture until this pass, so recomputing the mass here was pure
-    // duplicate floating-point work.
-    for (edge_index, edge) in edges.iter().enumerate() {
-        let transfer = requested_edge_mass[edge_index] * donor_scale[edge.donor];
-        delta[edge.donor] -= transfer;
-        delta[edge.receiver] += transfer;
-    }
-    for i in 0..moisture_mass.len() {
-        moisture_mass[i] = (moisture_mass[i] + delta[i]).max(0.0);
-    }
-    (limited_donors, active_donors)
+#[derive(Clone, Debug)]
+struct AtmosphericHeatGeometry {
+    edges: Vec<AtmosphericHeatEdge>,
+    diagonal_geometry: Vec<f64>,
 }
-'''
-replace_once(old_fn, new_fn, 'moisture substep function')
 
-workspace_old = '''    let mut moisture_requested_outflow = vec![0.0; sample_count];
-    let mut moisture_donor_scale = vec![1.0; sample_count];
-    let mut moisture_transport_delta = vec![0.0; sample_count];
-'''
-workspace_new = '''    let mut moisture_column_mass_per_m2 = vec![0.0; sample_count];
-    let mut moisture_requested_edge_mass = vec![0.0; atmospheric_moisture_edges.len()];
-    let mut moisture_requested_outflow = vec![0.0; sample_count];
-    let mut moisture_donor_scale = vec![1.0; sample_count];
-    let mut moisture_transport_delta = vec![0.0; sample_count];
-    let mut phase_saturation_air = vec![0.0; sample_count];
-'''
-replace_once(workspace_old, workspace_new, 'moisture workspace')
+fn build_atmospheric_heat_geometry(
+    topology: &GeodesicTopology,
+    radius_m: f64,
+) -> AtmosphericHeatGeometry {
+''',
+    '''struct AtmosphericHeatEdge {
+    a: usize,
+    b: usize,
+    geometric_conductance: f64,
+    diffusion_conductance_j_k: f64,
+}
 
-call_old = '''                        substep_seconds,
-                        parameters.moisture_transport_cfl_limit,
-                        &mut moisture_requested_outflow,
-                        &mut moisture_donor_scale,
-                        &mut moisture_transport_delta,
-'''
-call_new = '''                        substep_seconds,
-                        parameters.moisture_transport_cfl_limit,
-                        &mut moisture_column_mass_per_m2,
-                        &mut moisture_requested_edge_mass,
-                        &mut moisture_requested_outflow,
-                        &mut moisture_donor_scale,
-                        &mut moisture_transport_delta,
-'''
-replace_once(call_old, call_new, 'moisture substep call')
+#[derive(Clone, Debug)]
+struct AtmosphericHeatGeometry {
+    edges: Vec<AtmosphericHeatEdge>,
+    diagonal_geometry: Vec<f64>,
+    diffusion_diagonal_j_k: Vec<f64>,
+}
 
-sat_anchor = '''                let substep_seconds = phase_seconds / f64::from(moisture_substeps);
-                for _ in 0..usize::from(moisture_substeps) {
-'''
-sat_insert = '''                let substep_seconds = phase_seconds / f64::from(moisture_substeps);
-                // Temperature and pressure remain fixed throughout all moisture
-                // substeps in this orbital phase. Saturation humidity therefore
-                // only needs to be evaluated once per cell per phase.
-                for i in 0..sample_count {
-                    phase_saturation_air[i] =
-                        saturation_specific_humidity(temperature[i], pressure[i]);
-                }
-                for _ in 0..usize::from(moisture_substeps) {
-'''
-replace_once(sat_anchor, sat_insert, 'phase saturation insertion')
+fn build_atmospheric_heat_geometry(
+    topology: &GeodesicTopology,
+    radius_m: f64,
+    diffusion_scale_j_k: f64,
+) -> AtmosphericHeatGeometry {
+''',
+    'heat geometry definitions',
+)
 
-sat_old = '''                        let saturation_air =
-                            saturation_specific_humidity(temperature[i], pressure[i]);
-                        if saturation_air <= 1.0e-12 {
+replace_once(
+    '''            edges.push(AtmosphericHeatEdge {
+                a,
+                b,
+                geometric_conductance,
+            });
+''',
+    '''            edges.push(AtmosphericHeatEdge {
+                a,
+                b,
+                geometric_conductance,
+                diffusion_conductance_j_k: diffusion_scale_j_k * geometric_conductance,
+            });
+''',
+    'scaled edge conductance',
+)
+
+replace_once(
+    '''    AtmosphericHeatGeometry {
+        edges,
+        diagonal_geometry,
+    }
+}
+
+fn apply_atmospheric_heat_matrix(
+    geometry: &AtmosphericHeatGeometry,
+    thermal_capacity_j_k: &[f64],
+    diffusion_scale_j_k: f64,
+    values: &[f64],
+''',
+    '''    let diffusion_diagonal_j_k = diagonal_geometry
+        .iter()
+        .map(|value| diffusion_scale_j_k * value)
+        .collect();
+    AtmosphericHeatGeometry {
+        edges,
+        diagonal_geometry,
+        diffusion_diagonal_j_k,
+    }
+}
+
+fn apply_atmospheric_heat_matrix(
+    geometry: &AtmosphericHeatGeometry,
+    thermal_capacity_j_k: &[f64],
+    values: &[f64],
+''',
+    'scaled diagonal and matrix signature',
+)
+
+replace_once(
+    '''    for edge in &geometry.edges {
+        let contribution =
+            diffusion_scale_j_k * edge.geometric_conductance * (values[edge.a] - values[edge.b]);
+''',
+    '''    for edge in &geometry.edges {
+        let contribution =
+            edge.diffusion_conductance_j_k * (values[edge.a] - values[edge.b]);
+''',
+    'matrix edge coefficient',
+)
+
+replace_once(
+    '''    physical: ClimatePhysicalParameters,
+    parameters: ClimateParameters,
+    phase_seconds: f64,
+) {
+''',
+    '''    physical: ClimatePhysicalParameters,
+    parameters: ClimateParameters,
+    reference_column_capacity_j_m2_k: f64,
+) {
+''',
+    'diffuse signature',
+)
+
+replace_once(
+    '''    let reference_column_capacity_j_m2_k = planet.reference_surface_pressure_pa
+        / planet.surface_gravity_m_s2
+        * physical.atmospheric_specific_heat_j_per_kg_k;
+    let diffusion_scale_j_k = phase_seconds
+        * parameters.atmospheric_heat_diffusivity_m2_s
+        * reference_column_capacity_j_m2_k;
+''',
+    '',
+    'remove repeated diffusion scale calculation',
+)
+
+replace_once(
+    '''        diagonal[i] = capacity[i] + diffusion_scale_j_k * geometry.diagonal_geometry[i];
+''',
+    '''        diagonal[i] = capacity[i] + geometry.diffusion_diagonal_j_k[i];
+''',
+    'scaled diagonal lookup',
+)
+
+replace_once(
+    '''    apply_atmospheric_heat_matrix(geometry, &capacity, diffusion_scale_j_k, &x, &mut matrix_x);
+''',
+    '''    apply_atmospheric_heat_matrix(geometry, &capacity, &x, &mut matrix_x);
+''',
+    'initial heat matrix call',
+)
+
+replace_once(
+    '''        apply_atmospheric_heat_matrix(
+            geometry,
+            &capacity,
+            diffusion_scale_j_k,
+            &direction,
+            &mut matrix_direction,
+        );
+''',
+    '''        apply_atmospheric_heat_matrix(geometry, &capacity, &direction, &mut matrix_direction);
+''',
+    'iterative heat matrix call',
+)
+
+caller_old = '''    let atmospheric_heat_geometry = build_atmospheric_heat_geometry(topology, planet.radius_m);
+    let atmospheric_moisture_edges =
 '''
-sat_new = '''                        let saturation_air = phase_saturation_air[i];
-                        if saturation_air <= 1.0e-12 {
+caller_new = '''    let atmospheric_reference_column_capacity_j_m2_k = planet.reference_surface_pressure_pa
+        / planet.surface_gravity_m_s2
+        * physical.atmospheric_specific_heat_j_per_kg_k;
+    let atmospheric_heat_diffusion_scale_j_k = phase_seconds
+        * parameters.atmospheric_heat_diffusivity_m2_s
+        * atmospheric_reference_column_capacity_j_m2_k;
+    let atmospheric_heat_geometry = build_atmospheric_heat_geometry(
+        topology,
+        planet.radius_m,
+        atmospheric_heat_diffusion_scale_j_k,
+    );
+    let atmospheric_moisture_edges =
 '''
-replace_once(sat_old, sat_new, 'substep saturation lookup')
+replace_once(caller_old, caller_new, 'heat geometry caller')
+
+call_old = '''                physical,
+                parameters,
+                phase_seconds,
+            );
+'''
+call_new = '''                physical,
+                parameters,
+                atmospheric_reference_column_capacity_j_m2_k,
+            );
+'''
+replace_once(call_old, call_new, 'diffuse heat caller')
 
 path.write_text(text)
