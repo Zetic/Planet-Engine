@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   finalize:
-    if: github.event.head_commit.message != 'WG-5: Rebuild moisture transport and precipitation'
+    if: "${{ github.event.head_commit.message != 'WG-5: Rebuild moisture transport and precipitation' }}"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
