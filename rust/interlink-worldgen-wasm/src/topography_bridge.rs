@@ -232,6 +232,12 @@ impl WasmWorldgenTopography {
     pub fn isostatic_mantle_density_kg_per_m3(&self) -> f64 {
         self.parameters.isostatic_mantle_density_kg_per_m3
     }
+    pub fn internal_heat_flux_w_per_m2(&self) -> f64 {
+        self.parameters.internal_heat_flux_w_per_m2
+    }
+    pub fn mantle_thermal_expansivity_per_k(&self) -> f64 {
+        self.parameters.mantle_thermal_expansivity_per_k
+    }
 
     pub fn positions(&self) -> Vec<f64> {
         self.fine_topology.flattened_positions()

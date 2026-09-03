@@ -14,6 +14,8 @@ const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 const DISTANCE_EPSILON_M: f64 = 1.0e-6;
 const CRUST_OCEANIC: u8 = 1;
 const CRUST_TRANSITIONAL: u8 = 2;
+const STRUCTURE_SUTURE: u8 = 1;
+const STRUCTURE_RIFT: u8 = 2;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TopographyParameters {
@@ -292,6 +294,7 @@ fn validate_inputs(
         inherited.effective_elastic_thickness_km.len(),
         inherited.mantle_dynamic_support_index.len(),
         inherited.structural_fabric_strength.len(),
+        inherited.structural_zone_kind.len(),
         inherited.kinematic_domain_ids.len(),
     ];
     if lengths.iter().any(|len| *len != count) {
@@ -452,7 +455,14 @@ fn mechanically_filter(
                 let neighbor = topology.neighbor_indices()[cursor] as usize;
                 let center = topology.neighbor_center_arc_lengths_rad_values()[cursor].max(1.0e-12);
                 let interface = topology.neighbor_interface_arc_lengths_rad_values()[cursor];
-                let weight = interface / center;
+                let domain_factor = if inherited.kinematic_domain_ids[neighbor]
+                    == inherited.kinematic_domain_ids[sample]
+                {
+                    1.0
+                } else {
+                    0.35
+                };
+                let weight = interface / center * domain_factor;
                 weighted_sum += current[neighbor] * weight;
                 weight_sum += weight;
             }
@@ -619,8 +629,21 @@ pub fn generate_initial_topography(
                 .min(1.55)
             * ocean_weight;
 
-        let structural_focus =
-            1.0 + 0.25 * f64::from(inherited.structural_fabric_strength[i]).clamp(0.0, 1.0);
+        let fabric = f64::from(inherited.structural_fabric_strength[i]).clamp(0.0, 1.0);
+        let collision_focus = 1.0
+            + fabric
+                * if inherited.structural_zone_kind[i] == STRUCTURE_SUTURE {
+                    0.55
+                } else {
+                    0.20
+                };
+        let rift_focus = 1.0
+            + fabric
+                * if inherited.structural_zone_kind[i] == STRUCTURE_RIFT {
+                    0.55
+                } else {
+                    0.20
+                };
         let collision_kernel = if collision_source[i] == u32::MAX {
             0.0
         } else {
@@ -628,7 +651,7 @@ pub fn generate_initial_topography(
                 * collision_sources[collision_source[i] as usize]
         };
         orogenic[i] = p.inherited_orogeny_scale_m * f64::from(inherited.orogenic_history[i])
-            + p.collision_uplift_scale_m * collision_kernel * structural_focus;
+            + p.collision_uplift_scale_m * collision_kernel * collision_focus;
 
         let ridge_kernel = if ridge_source[i] == u32::MAX {
             0.0
@@ -644,7 +667,7 @@ pub fn generate_initial_topography(
             gaussian(rift_distance[i], p.rift_width_m) * rift_sources[rift_source[i] as usize]
         };
         rift_basin[i] = -(p.rift_subsidence_scale_m
-            * (rift_kernel * structural_focus + 0.55 * f64::from(inherited.rift_history[i]))
+            * (rift_kernel * rift_focus + 0.55 * f64::from(inherited.rift_history[i]))
             + p.basin_subsidence_scale_m
                 * (0.55 * f64::from(inherited.basin_potential[i])
                     + 0.45 * f64::from(inherited.subsidence_history[i])));

@@ -20,6 +20,8 @@ WG-3.5 lithosphere + structural/kinematic refinement
 WG-3.75 multiresolution physical inheritance
           ↓
 WG-4 initial physical topography
+          ↓
+WG-5 climate (next)
 ```
 
 Gameplay Regions, Features, resource nodes, selection, factories, and the industrial runtime are intentionally outside this repository.
