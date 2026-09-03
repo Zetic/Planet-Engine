@@ -1,0 +1,74 @@
+name: Temporary Lab Vector Overlay Animation Fix
+
+on:
+  push:
+    branches:
+      - lab-generation-telemetry-diagnostic-overlays
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: ${{ !contains(github.event.head_commit.message, 'Fix vector overlay animation') }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: lab-generation-telemetry-diagnostic-overlays
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Fix overlay animation loop
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('src/worldgen/diagnostics/worldgenClimateLabStandalone.ts')
+          s = p.read_text()
+          old = """function vectorAnimationFrame(timestampMs: number): void {
+            animationRequest = 0;
+            if (visualization.value === 'winds' || visualization.value === 'currents') {
+              if (timestampMs - lastVectorAnimationMs >= VECTOR_ANIMATION_INTERVAL_MS) {
+                animationPhase = (animationPhase + 0.9) % 1000;
+                lastVectorAnimationMs = timestampMs;
+                redraw(true);
+              }
+              animationRequest = requestAnimationFrame(vectorAnimationFrame);
+            }
+          }
+          """
+          new = """function vectorAnimationFrame(timestampMs: number): void {
+            animationRequest = 0;
+            const overlays = selectedOverlays();
+            const vectorsActive = visualization.value === 'winds' || visualization.value === 'currents'
+              || overlays.has('winds') || overlays.has('currents');
+            if (vectorsActive) {
+              if (timestampMs - lastVectorAnimationMs >= VECTOR_ANIMATION_INTERVAL_MS) {
+                animationPhase = (animationPhase + 0.9) % 1000;
+                lastVectorAnimationMs = timestampMs;
+                redraw(true);
+              }
+              animationRequest = requestAnimationFrame(vectorAnimationFrame);
+            }
+          }
+          """
+          if old in s:
+              p.write_text(s.replace(old, new, 1))
+          elif 'const vectorsActive =' not in s:
+              raise SystemExit('vector animation anchor missing')
+          PY
+      - name: Build and test browser output
+        run: |
+          npm run build
+          npm run test:ts
+      - name: Commit fix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/worldgen/diagnostics/worldgenClimateLabStandalone.ts dist/worldgen/diagnostics/worldgenClimateLabStandalone.js
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Fix vector overlay animation'
+          git push origin HEAD:lab-generation-telemetry-diagnostic-overlays
