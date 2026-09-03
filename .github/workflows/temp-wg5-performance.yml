@@ -6,13 +6,8 @@ on:
       - wg5-performance
 
 jobs:
-  benchmark-l7:
+  paused:
+    if: ${{ false }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Install Rust stable
-        run: |
-          rustup toolchain install stable --profile minimal
-          rustup default stable
-      - name: Benchmark current Stage-5 L7
-        run: RUNS=1 SEED=ci-wg5-l7 bash scripts/benchmark-wg5-performance.sh l7
+      - run: echo paused
