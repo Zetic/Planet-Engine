@@ -1,11 +1,11 @@
-name: Temporary WG-5 Moisture Acceptance
+name: Temporary WG-5 Moisture Resolution Pair
 
 on:
   push:
     branches: [wg5-moisture-transport-rebuild]
 
 jobs:
-  acceptance:
+  resolution-pair:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,16 +31,15 @@ jobs:
           python scripts/wg5_moisture_speedcap_patch.py
           python scripts/wg5_moisture_speedcap_fix.py
           python scripts/wg5_moisture_substeps64_patch.py
+          python scripts/wg5_moisture_evap_diagnostics_patch.py
           cargo fmt --all
           cargo check -p interlink-worldgen
           cargo check -p interlink-worldgen-cli --examples
-      - name: Run L6 ensemble
+      - name: Run fixed-coarse L6
         run: |
           set -euo pipefail
-          for seed in wg5-cal-a wg5-cal-b wg5-cal-c; do
-            cargo run --release -p interlink-worldgen-cli --example climate_calibration -- --seed "$seed" --coarse-level 4 --level 6 --plates 16 --skip-orography-intervention
-          done
-      - name: Run L7 quality case
+          cargo run --release -p interlink-worldgen-cli --example climate_calibration -- --seed ci-wg5-l7 --coarse-level 5 --level 6 --plates 24 --skip-orography-intervention
+      - name: Run fixed-coarse L7
         run: |
           set -euo pipefail
           cargo run --release -p interlink-worldgen-cli --example climate_calibration -- --seed ci-wg5-l7 --coarse-level 5 --level 7 --plates 24 --skip-orography-intervention
