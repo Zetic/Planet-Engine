@@ -11,282 +11,179 @@ def replace_once(old: str, new: str, label: str) -> None:
 
 replace_once(
     '''#[derive(Clone, Debug)]
-struct OceanProjectionGeometry {
-    edges: Vec<OceanProjectionEdge>,
-    diagonal: Vec<f64>,
+struct AtmosphericHeatGeometry {
+    edges: Vec<AtmosphericHeatEdge>,
+    diagonal_geometry: Vec<f64>,
 }
 ''',
     '''#[derive(Clone, Debug)]
-struct OceanProjectionGeometry {
-    edges: Vec<OceanProjectionEdge>,
-    diagonal: Vec<f64>,
-    perimeter: Vec<f64>,
-    matrix_ee: Vec<f64>,
-    matrix_en: Vec<f64>,
-    matrix_nn: Vec<f64>,
+struct AtmosphericHeatGeometry {
+    edges: Vec<AtmosphericHeatEdge>,
+    diagonal_geometry: Vec<f64>,
 }
 
 #[derive(Clone, Debug)]
-struct OceanProjectionWorkspace {
-    divergence: Vec<f64>,
-    pressure: Vec<f64>,
+struct AtmosphericHeatWorkspace {
+    capacity: Vec<f64>,
+    rhs: Vec<f64>,
+    diagonal: Vec<f64>,
+    x: Vec<f64>,
+    matrix_x: Vec<f64>,
     residual: Vec<f64>,
     preconditioned: Vec<f64>,
     direction: Vec<f64>,
-    laplacian_direction: Vec<f64>,
-    projected_divergence: Vec<f64>,
-    rhs_e: Vec<f64>,
-    rhs_n: Vec<f64>,
+    matrix_direction: Vec<f64>,
 }
 
-impl OceanProjectionWorkspace {
+impl AtmosphericHeatWorkspace {
     fn new(sample_count: usize) -> Self {
         Self {
-            divergence: vec![0.0; sample_count],
-            pressure: vec![0.0; sample_count],
+            capacity: vec![0.0; sample_count],
+            rhs: vec![0.0; sample_count],
+            diagonal: vec![0.0; sample_count],
+            x: vec![0.0; sample_count],
+            matrix_x: vec![0.0; sample_count],
             residual: vec![0.0; sample_count],
             preconditioned: vec![0.0; sample_count],
             direction: vec![0.0; sample_count],
-            laplacian_direction: vec![0.0; sample_count],
-            projected_divergence: vec![0.0; sample_count],
-            rhs_e: vec![0.0; sample_count],
-            rhs_n: vec![0.0; sample_count],
+            matrix_direction: vec![0.0; sample_count],
         }
     }
 }
 ''',
-    'ocean geometry/workspace definition',
+    'heat workspace definition',
 )
 
 replace_once(
-    '''    OceanProjectionGeometry { edges, diagonal }
-}
+    '''fn diffuse_atmospheric_heat(
+    geometry: &AtmosphericHeatGeometry,
+    temperature: &mut [f64],
 ''',
-    '''    let mut perimeter = vec![0.0; ocean.len()];
-    let mut matrix_ee = vec![0.0; ocean.len()];
-    let mut matrix_en = vec![0.0; ocean.len()];
-    let mut matrix_nn = vec![0.0; ocean.len()];
-    for edge in &edges {
-        perimeter[edge.a] += edge.interface_length_m;
-        perimeter[edge.b] += edge.interface_length_m;
-        for (sample, east, north) in [
-            (edge.a, edge.a_east, edge.a_north),
-            (edge.b, edge.b_east, edge.b_north),
-        ] {
-            let weight = edge.interface_length_m;
-            matrix_ee[sample] += weight * east * east;
-            matrix_en[sample] += weight * east * north;
-            matrix_nn[sample] += weight * north * north;
-        }
-    }
-    OceanProjectionGeometry {
-        edges,
+    '''fn diffuse_atmospheric_heat(
+    geometry: &AtmosphericHeatGeometry,
+    workspace: &mut AtmosphericHeatWorkspace,
+    temperature: &mut [f64],
+''',
+    'heat diffuse signature',
+)
+
+replace_once(
+    '''    let mut capacity = vec![0.0; temperature.len()];
+    let mut rhs = vec![0.0; temperature.len()];
+    let mut diagonal = vec![0.0; temperature.len()];
+    for i in 0..temperature.len() {
+''',
+    '''    let AtmosphericHeatWorkspace {
+        capacity,
+        rhs,
         diagonal,
-        perimeter,
-        matrix_ee,
-        matrix_en,
-        matrix_nn,
-    }
-}
-''',
-    'precompute ocean reconstruction geometry',
-)
-
-replace_once(
-    '''    projected_edge_transport_m2_s: &mut [f64],
-    parameters: &ClimateParameters,
-) -> f64 {
-''',
-    '''    projected_edge_transport_m2_s: &mut [f64],
-    workspace: &mut OceanProjectionWorkspace,
-    parameters: &ClimateParameters,
-) -> f64 {
-''',
-    'ocean correction signature',
-)
-
-replace_once(
-    '''    if geometry.edges.is_empty() {
-        current_east.fill(0.0);
-        current_north.fill(0.0);
-        return 0.0;
-    }
-
-    // Convert endpoint ENU vectors into one antisymmetric transport value per
-''',
-    '''    if geometry.edges.is_empty() {
-        current_east.fill(0.0);
-        current_north.fill(0.0);
-        return 0.0;
-    }
-
-    let OceanProjectionWorkspace {
-        divergence,
-        pressure,
+        x,
+        matrix_x,
         residual,
         preconditioned,
         direction,
-        laplacian_direction,
-        projected_divergence,
-        rhs_e,
-        rhs_n,
+        matrix_direction,
     } = workspace;
-    divergence.fill(0.0);
-
-    // Convert endpoint ENU vectors into one antisymmetric transport value per
+    debug_assert_eq!(capacity.len(), temperature.len());
+    for i in 0..temperature.len() {
 ''',
-    'destructure ocean workspace',
+    'reuse heat coefficient workspace',
 )
 
 replace_once(
-    '''    let mut divergence = vec![0.0; ocean.len()];
-    for (edge_index, edge) in geometry.edges.iter().enumerate() {
+    '''    let mut x = temperature.to_vec();
+    let mut matrix_x = vec![0.0; x.len()];
+    apply_atmospheric_heat_matrix(geometry, &capacity, diffusion_scale_j_k, &x, &mut matrix_x);
+    let mut residual = rhs
+        .iter()
+        .zip(matrix_x.iter())
+        .map(|(b, ax)| b - ax)
+        .collect::<Vec<_>>();
+    let mut preconditioned = residual
+        .iter()
+        .enumerate()
+        .map(|(i, r)| r / diagonal[i].max(1.0e-18))
+        .collect::<Vec<_>>();
+    let mut direction = preconditioned.clone();
+    let mut matrix_direction = vec![0.0; x.len()];
 ''',
-    '''    for (edge_index, edge) in geometry.edges.iter().enumerate() {
+    '''    x.copy_from_slice(temperature);
+    apply_atmospheric_heat_matrix(geometry, capacity, diffusion_scale_j_k, x, matrix_x);
+    for i in 0..x.len() {
+        residual[i] = rhs[i] - matrix_x[i];
+        preconditioned[i] = residual[i] / diagonal[i].max(1.0e-18);
+        direction[i] = preconditioned[i];
+    }
 ''',
-    'reuse divergence workspace',
+    'reuse heat CG vectors',
 )
 
 replace_once(
-    '''    let mut pressure = vec![0.0; ocean.len()];
-    let mut residual = divergence.clone();
-    let mut preconditioned = vec![0.0; ocean.len()];
-    let mut direction = vec![0.0; ocean.len()];
-    let mut laplacian_direction = vec![0.0; ocean.len()];
-    for i in 0..ocean.len() {
+    '''        apply_atmospheric_heat_matrix(
+            geometry,
+            &capacity,
+            diffusion_scale_j_k,
+            &direction,
+            &mut matrix_direction,
+        );
 ''',
-    '''    pressure.fill(0.0);
-    residual.copy_from_slice(divergence);
-    preconditioned.fill(0.0);
-    direction.fill(0.0);
-    laplacian_direction.fill(0.0);
-    for i in 0..ocean.len() {
+    '''        apply_atmospheric_heat_matrix(
+            geometry,
+            capacity,
+            diffusion_scale_j_k,
+            direction,
+            matrix_direction,
+        );
 ''',
-    'reuse CG workspace',
+    'reuse heat matrix direction',
 )
 
 replace_once(
-    '''        apply_ocean_laplacian(geometry, &direction, &mut laplacian_direction);
+    '''    let atmospheric_heat_geometry = build_atmospheric_heat_geometry(topology, planet.radius_m);
+    let atmospheric_moisture_edges =
 ''',
-    '''        apply_ocean_laplacian(geometry, direction, laplacian_direction);
+    '''    let atmospheric_heat_geometry = build_atmospheric_heat_geometry(topology, planet.radius_m);
+    let mut atmospheric_heat_workspace = AtmosphericHeatWorkspace::new(sample_count);
+    let atmospheric_moisture_edges =
 ''',
-    'borrow reused laplacian workspace',
+    'create heat workspace once',
 )
 
 replace_once(
-    '''    let mut projected_divergence = vec![0.0; ocean.len()];
-    let mut perimeter = vec![0.0; ocean.len()];
-    for (edge_index, edge) in geometry.edges.iter().enumerate() {
+    '''            diffuse_atmospheric_heat(
+                &atmospheric_heat_geometry,
+                &mut temperature,
 ''',
-    '''    projected_divergence.fill(0.0);
-    for (edge_index, edge) in geometry.edges.iter().enumerate() {
+    '''            diffuse_atmospheric_heat(
+                &atmospheric_heat_geometry,
+                &mut atmospheric_heat_workspace,
+                &mut temperature,
 ''',
-    'reuse projected divergence',
+    'pass main heat workspace',
 )
 
 replace_once(
-    '''        projected_divergence[edge.a] += projected_edge_transport_m2_s[edge_index];
-        projected_divergence[edge.b] -= projected_edge_transport_m2_s[edge_index];
-        perimeter[edge.a] += edge.interface_length_m;
-        perimeter[edge.b] += edge.interface_length_m;
+    '''        let mut temperature = [300.0, 280.0];
+        let before =
 ''',
-    '''        projected_divergence[edge.a] += projected_edge_transport_m2_s[edge_index];
-        projected_divergence[edge.b] -= projected_edge_transport_m2_s[edge_index];
+    '''        let mut temperature = [300.0, 280.0];
+        let mut workspace = AtmosphericHeatWorkspace::new(2);
+        let before =
 ''',
-    'remove repeated perimeter accumulation',
+    'create heat test workspace',
 )
 
 replace_once(
-    '''    let mut matrix_ee = vec![0.0; ocean.len()];
-    let mut matrix_en = vec![0.0; ocean.len()];
-    let mut matrix_nn = vec![0.0; ocean.len()];
-    let mut rhs_e = vec![0.0; ocean.len()];
-    let mut rhs_n = vec![0.0; ocean.len()];
-    for (edge_index, edge) in geometry.edges.iter().enumerate() {
+    '''        diffuse_atmospheric_heat(
+            &geometry,
+            &mut temperature,
 ''',
-    '''    rhs_e.fill(0.0);
-    rhs_n.fill(0.0);
-    for (edge_index, edge) in geometry.edges.iter().enumerate() {
+    '''        diffuse_atmospheric_heat(
+            &geometry,
+            &mut workspace,
+            &mut temperature,
 ''',
-    'reuse reconstruction rhs',
-)
-
-replace_once(
-    '''            let weight = edge.interface_length_m;
-            matrix_ee[sample] += weight * east * east;
-            matrix_en[sample] += weight * east * north;
-            matrix_nn[sample] += weight * north * north;
-            rhs_e[sample] += weight * speed * east;
-''',
-    '''            let weight = edge.interface_length_m;
-            rhs_e[sample] += weight * speed * east;
-''',
-    'remove repeated reconstruction matrix accumulation',
-)
-
-text = text.replace('perimeter[i]', 'geometry.perimeter[i]')
-text = text.replace('matrix_ee[i]', 'geometry.matrix_ee[i]')
-text = text.replace('matrix_en[i]', 'geometry.matrix_en[i]')
-text = text.replace('matrix_nn[i]', 'geometry.matrix_nn[i]')
-
-replace_once(
-    '''    let mut ocean_edge_transport_m2_s = vec![0.0; ocean_projection_geometry.edges.len()];
-    let mut ocean_heat_tendency_k_s = vec![0.0; sample_count];
-''',
-    '''    let mut ocean_projection_workspace = OceanProjectionWorkspace::new(sample_count);
-    let mut ocean_edge_transport_m2_s = vec![0.0; ocean_projection_geometry.edges.len()];
-    let mut ocean_heat_tendency_k_s = vec![0.0; sample_count];
-''',
-    'create ocean workspace once',
-)
-
-replace_once(
-    '''                    &mut current_north,
-                    &mut ocean_edge_transport_m2_s,
-                    &parameters,
-                );
-''',
-    '''                    &mut current_north,
-                    &mut ocean_edge_transport_m2_s,
-                    &mut ocean_projection_workspace,
-                    &parameters,
-                );
-''',
-    'pass ocean workspace',
-)
-
-# Keep the two small synthetic geometry fixtures explicit now that the
-# production geometry owns precomputed reconstruction coefficients.
-replace_once(
-    '''            diagonal: vec![1.0, 1.0],
-        };
-        let mut tendency = vec![0.0; 2];
-''',
-    '''            diagonal: vec![1.0, 1.0],
-            perimeter: vec![10.0, 10.0],
-            matrix_ee: vec![10.0, 10.0],
-            matrix_en: vec![0.0, 0.0],
-            matrix_nn: vec![0.0, 0.0],
-        };
-        let mut tendency = vec![0.0; 2];
-''',
-    'first ocean geometry test fixture',
-)
-
-replace_once(
-    '''            diagonal: vec![1.0, 1.0],
-        };
-        let temperature = [300.0, 280.0];
-''',
-    '''            diagonal: vec![1.0, 1.0],
-            perimeter: vec![1.0, 1.0],
-            matrix_ee: vec![1.0, 1.0],
-            matrix_en: vec![0.0, 0.0],
-            matrix_nn: vec![0.0, 0.0],
-        };
-        let temperature = [300.0, 280.0];
-''',
-    'second ocean geometry test fixture',
+    'pass heat test workspace',
 )
 
 path.write_text(text)
