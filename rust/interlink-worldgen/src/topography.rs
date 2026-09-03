@@ -376,11 +376,11 @@ fn boundary_source_fields(
     inherited: &InheritedPhysicalState,
     boundaries: &InheritedBoundarySet,
 ) -> (Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>) {
-    let mut collision = vec![0.0; count];
-    let mut ridge = vec![0.0; count];
-    let mut rift = vec![0.0; count];
-    let mut trench = vec![0.0; count];
-    let mut arc = vec![0.0; count];
+    let mut collision = vec![0.0_f64; count];
+    let mut ridge = vec![0.0_f64; count];
+    let mut rift = vec![0.0_f64; count];
+    let mut trench = vec![0.0_f64; count];
+    let mut arc = vec![0.0_f64; count];
 
     for edge in &boundaries.boundaries {
         let convergence = clamp01(edge.normal_rate_m_per_year.abs() / 0.08);
