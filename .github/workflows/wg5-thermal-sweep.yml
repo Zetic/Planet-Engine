@@ -14,27 +14,34 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: wg5-thermal-budget-calibration
-      - name: Shortwave-longwave balance sweep at L6
+      - name: Install Rust stable
         run: |
-          set -euo pipefail
           rustup toolchain install stable --profile minimal
           rustup default stable
+      - name: Normal-gate L6 and L7 thermal candidates
+        run: |
+          set -uo pipefail
           for spec in \
-            '0.22 0.25 1.05' \
-            '0.22 0.25 1.15' \
-            '0.24 0.25 1.10' \
             '0.24 0.25 1.20' \
-            '0.25 0.25 1.20' \
-            '0.25 0.25 1.30' \
-            '0.26 0.25 1.25' \
-            '0.27 0.25 1.30'; do
+            '0.25 0.25 1.25' \
+            '0.25 0.25 1.30'; do
             read -r reflectivity coupling longwave <<< "${spec}"
-            echo "===== REFLECTIVITY=${reflectivity} COUPLING=${coupling} LW=${longwave} ====="
+            echo "===== CANDIDATE REFLECTIVITY=${reflectivity} COUPLING=${coupling} LW=${longwave} ====="
             git checkout -- rust/interlink-worldgen/src/climate.rs rust/interlink-worldgen/src/climate_calibration.rs
             SW_REFLECTIVITY="${reflectivity}" LW_OPTICAL_DEPTH="${longwave}" HEAT_DIFFUSIVITY=2000000.0 AIR_SEA_EXCHANGE=8.0 MIXED_LAYER_DEPTH=20.0 HEAT_SOLVER_ITERS=20 \
               python scripts/wg5_thermal_sweep_patch.py
             SURFACE_ALBEDO_COUPLING="${coupling}" python scripts/wg5_thermal_coupling_patch.py
-            sed -i 's/maximum_spinup_years: 10/maximum_spinup_years: 24/' rust/interlink-worldgen/src/climate.rs
+            cargo fmt --all -- --check || exit 1
+            echo '--- L6 acceptance ---'
+            cargo run --release -q -p interlink-worldgen-cli -- climate \
+              --seed interlink-wg5 --coarse-level 4 --level 6 --plates 16 || echo 'L6_ACCEPTANCE_FAILED'
+            echo '--- L6 calibration ---'
             cargo run --release -q -p interlink-worldgen-cli --example climate_calibration -- \
               --seed interlink-wg5 --coarse-level 4 --level 6 --plates 16 --skip-orography-intervention || true
+            echo '--- L7 acceptance ---'
+            cargo run --release -q -p interlink-worldgen-cli -- climate \
+              --seed ci-wg5-l7 --coarse-level 5 --level 7 --plates 24 || echo 'L7_ACCEPTANCE_FAILED'
+            echo '--- L7 calibration ---'
+            cargo run --release -q -p interlink-worldgen-cli --example climate_calibration -- \
+              --seed ci-wg5-l7 --coarse-level 5 --level 7 --plates 24 --skip-orography-intervention || true
           done
