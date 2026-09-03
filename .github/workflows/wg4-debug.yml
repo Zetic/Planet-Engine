@@ -1,0 +1,33 @@
+name: WG-4 Rust Diagnostic
+
+on:
+  push:
+    branches: [worldgen-wg4-initial-topography]
+
+permissions:
+  contents: write
+
+jobs:
+  capture:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: worldgen-wg4-initial-topography
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Capture Rust workspace result
+        run: |
+          set +e
+          cargo test --workspace > wg4-rust.log 2>&1
+          status=$?
+          echo "exit_status=$status" >> wg4-rust.log
+          exit 0
+      - name: Commit diagnostic log
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add wg4-rust.log
+          git commit -m "Capture WG-4 Rust diagnostic" || exit 0
+          git push origin HEAD:worldgen-wg4-initial-topography
