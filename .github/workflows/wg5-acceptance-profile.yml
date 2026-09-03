@@ -17,6 +17,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: worldgen-wg5-coupled-climate
+      - name: Repair hardening documentation anchor
+        run: python scripts/wg5_cfl_prepare.py
       - name: Apply conservative transport CFL hardening
         run: python scripts/wg5_cfl_hardening.py
       - name: Format Rust
