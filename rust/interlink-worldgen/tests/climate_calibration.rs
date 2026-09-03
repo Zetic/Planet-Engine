@@ -76,7 +76,7 @@ fn calibration_report_is_deterministic_finite_and_diagnostic_only() {
     assert!(first.outgoing_longwave_proxy_w_m2.is_finite());
     assert!(first.toa_energy_imbalance_proxy_w_m2.is_finite());
     assert!((0.0..=1.0).contains(&first.reconstructed_wind_cap_fraction));
-    assert!((0.0..=1.0).contains(&first.reconstructed_moisture_edge_cap_fraction));
+    assert!((0.0..=1.0).contains(&first.moisture_transport_limiter_fraction));
     assert!((0.0..=2.0).contains(&first.mean_state_relative_humidity_p05));
     assert!((0.0..=2.0).contains(&first.mean_state_relative_humidity_p50));
     assert!((0.0..=2.0).contains(&first.mean_state_relative_humidity_p95));

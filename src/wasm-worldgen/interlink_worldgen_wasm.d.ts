@@ -59,6 +59,7 @@ export class WasmWorldgenClimate {
     longitude_of_periapsis_rad(): number;
     mantle_dynamic_elevation_m(): Float32Array;
     mantle_dynamic_support_index(): Float32Array;
+    maximum_moisture_transport_substeps(): number;
     maximum_solid_elevation_m(): number;
     maximum_surface_current_m_s(): number;
     maximum_temperature_k(): number;
@@ -74,6 +75,7 @@ export class WasmWorldgenClimate {
     minimum_temperature_k(): number;
     moisture_balance_mm(): Float32Array;
     moisture_budget_relative_error(): number;
+    moisture_transport_limiter_fraction(): number;
     nearest_coarse_source(): Uint32Array;
     neighbor_offsets(): Uint32Array;
     neighbors(): Uint32Array;
@@ -600,6 +602,7 @@ export interface InitOutput {
     readonly wasmworldgenclimate_longitude_of_periapsis_rad: (a: number) => number;
     readonly wasmworldgenclimate_mantle_dynamic_elevation_m: (a: number) => [number, number];
     readonly wasmworldgenclimate_mantle_dynamic_support_index: (a: number) => [number, number];
+    readonly wasmworldgenclimate_maximum_moisture_transport_substeps: (a: number) => number;
     readonly wasmworldgenclimate_maximum_solid_elevation_m: (a: number) => number;
     readonly wasmworldgenclimate_maximum_surface_current_m_s: (a: number) => number;
     readonly wasmworldgenclimate_maximum_temperature_k: (a: number) => number;
@@ -615,6 +618,7 @@ export interface InitOutput {
     readonly wasmworldgenclimate_minimum_temperature_k: (a: number) => number;
     readonly wasmworldgenclimate_moisture_balance_mm: (a: number) => [number, number];
     readonly wasmworldgenclimate_moisture_budget_relative_error: (a: number) => number;
+    readonly wasmworldgenclimate_moisture_transport_limiter_fraction: (a: number) => number;
     readonly wasmworldgenclimate_nearest_coarse_source: (a: number) => [number, number];
     readonly wasmworldgenclimate_neighbor_offsets: (a: number) => [number, number];
     readonly wasmworldgenclimate_neighbors: (a: number) => [number, number];

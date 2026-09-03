@@ -5,7 +5,7 @@ fn climate_bridge_exposes_coupled_climate_and_accepted_surface() {
     let output = WasmWorldgenClimate::new("wg5-wasm".to_owned(), 3, 4, 12).unwrap();
 
     assert_eq!(output.stage_id(), "climate:coupled-surface");
-    assert_eq!(output.stage_version(), 3);
+    assert_eq!(output.stage_version(), 4);
     assert_eq!(output.coarse_level(), 3);
     assert_eq!(output.fine_level(), 4);
     assert_eq!(output.orbital_phase_count(), 24);

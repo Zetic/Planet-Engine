@@ -5,10 +5,11 @@ use crate::{
 
 const CLIMATE_NAMESPACE: &str = "climate:v1";
 pub const CLIMATE_STAGE_ID: &str = "climate:coupled-surface";
-pub const CLIMATE_STAGE_VERSION: u32 = 3;
+pub const CLIMATE_STAGE_VERSION: u32 = 4;
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 const STEFAN_BOLTZMANN: f64 = 5.670_374_419e-8;
+const LATENT_HEAT_VAPORIZATION_J_PER_KG: f64 = 2_450_000.0;
 const UNIVERSAL_GAS_CONSTANT: f64 = 8.314_462_618;
 const TWO_PI: f64 = std::f64::consts::PI * 2.0;
 const EARTH_REFERENCE_ROTATION_PERIOD_S: f64 = 86_164.0905;
@@ -122,8 +123,14 @@ pub struct ClimateParameters {
     pub ocean_temperature_diffusion: f64,
     pub ocean_advection_relaxation: f64,
     pub ocean_advection_cfl_limit: f64,
-    pub evaporation_relaxation: f64,
-    pub moisture_transport_cfl: f64,
+    pub evaporation_bulk_transfer_coefficient: f64,
+    pub evaporation_energy_fraction: f64,
+    pub moisture_transport_minimum_substeps: u8,
+    pub moisture_transport_maximum_substeps: u8,
+    pub moisture_transport_cfl_limit: f64,
+    pub maximum_climatological_moisture_transport_speed_m_s: f64,
+    pub convergence_precipitation_relative_humidity: f64,
+    pub convergence_precipitation_efficiency: f64,
     pub condensation_relative_humidity: f64,
     pub condensation_efficiency: f64,
     pub orographic_precipitation_strength: f64,
@@ -162,8 +169,14 @@ impl Default for ClimateParameters {
             ocean_temperature_diffusion: 0.08,
             ocean_advection_relaxation: 0.010,
             ocean_advection_cfl_limit: 0.45,
-            evaporation_relaxation: 0.055,
-            moisture_transport_cfl: 0.025,
+            evaporation_bulk_transfer_coefficient: 0.0015,
+            evaporation_energy_fraction: 0.45,
+            moisture_transport_minimum_substeps: 4,
+            moisture_transport_maximum_substeps: 64,
+            moisture_transport_cfl_limit: 0.90,
+            maximum_climatological_moisture_transport_speed_m_s: 1.0,
+            convergence_precipitation_relative_humidity: 0.60,
+            convergence_precipitation_efficiency: 0.35,
             condensation_relative_humidity: 0.80,
             condensation_efficiency: 0.72,
             orographic_precipitation_strength: 13.0,
@@ -197,8 +210,10 @@ impl ClimateParameters {
             self.ocean_bathymetric_drag_depth_m,
             self.maximum_surface_current_m_s,
             self.ocean_advection_cfl_limit,
-            self.evaporation_relaxation,
-            self.moisture_transport_cfl,
+            self.evaporation_bulk_transfer_coefficient,
+            self.evaporation_energy_fraction,
+            self.moisture_transport_cfl_limit,
+            self.maximum_climatological_moisture_transport_speed_m_s,
             self.orographic_precipitation_strength,
             self.snow_temperature_k,
             self.sea_ice_temperature_k,
@@ -221,6 +236,9 @@ impl ClimateParameters {
             self.ocean_temperature_diffusion,
             self.ocean_advection_relaxation,
             self.ocean_advection_cfl_limit,
+            self.moisture_transport_cfl_limit,
+            self.convergence_precipitation_relative_humidity,
+            self.convergence_precipitation_efficiency,
             self.condensation_relative_humidity,
             self.condensation_efficiency,
             self.maximum_orographic_fraction,
@@ -239,6 +257,18 @@ impl ClimateParameters {
         {
             return Err("atmospheric heat solver iterations must be from 1 through 32");
         }
+        if self.moisture_transport_minimum_substeps == 0
+            || self.moisture_transport_maximum_substeps < self.moisture_transport_minimum_substeps
+            || self.moisture_transport_maximum_substeps > 64
+        {
+            return Err("moisture transport substep bounds must be within 1 through 64");
+        }
+        if !self.evaporation_energy_fraction.is_finite()
+            || self.evaporation_energy_fraction <= 0.0
+            || self.evaporation_energy_fraction > 1.0
+        {
+            return Err("evaporation energy fraction must be finite and within (0, 1]");
+        }
         if self.ocean_current_correction_iterations > 24 {
             return Err("ocean current correction iterations exceed supported bound");
         }
@@ -252,6 +282,8 @@ impl ClimateParameters {
         hash = fnv_update(hash, &[self.maximum_spinup_years]);
         hash = fnv_update(hash, &[self.ocean_current_correction_iterations]);
         hash = fnv_update(hash, &[self.atmospheric_heat_solver_iterations]);
+        hash = fnv_update(hash, &[self.moisture_transport_minimum_substeps]);
+        hash = fnv_update(hash, &[self.moisture_transport_maximum_substeps]);
         for value in [
             self.convergence_temperature_rms_k,
             self.land_albedo,
@@ -275,8 +307,11 @@ impl ClimateParameters {
             self.ocean_temperature_diffusion,
             self.ocean_advection_relaxation,
             self.ocean_advection_cfl_limit,
-            self.evaporation_relaxation,
-            self.moisture_transport_cfl,
+            self.evaporation_bulk_transfer_coefficient,
+            self.moisture_transport_cfl_limit,
+            self.maximum_climatological_moisture_transport_speed_m_s,
+            self.convergence_precipitation_relative_humidity,
+            self.convergence_precipitation_efficiency,
             self.condensation_relative_humidity,
             self.condensation_efficiency,
             self.orographic_precipitation_strength,
@@ -332,6 +367,8 @@ pub struct ClimateMetrics {
     pub global_evaporation_kg: f64,
     pub global_precipitation_kg: f64,
     pub moisture_budget_relative_error: f64,
+    pub moisture_transport_limiter_fraction: f64,
+    pub maximum_moisture_transport_substeps: u8,
     pub persistent_snow_area_fraction: f64,
     pub sea_ice_area_fraction: f64,
     pub final_temperature_rms_change_k: f64,
@@ -918,6 +955,157 @@ fn symmetric_edge_normal_wind_m_s(
     Some(0.5 * (outward_a - outward_b))
 }
 
+#[derive(Clone, Copy, Debug)]
+struct AtmosphericMoistureEdge {
+    a: usize,
+    b: usize,
+    a_east: f64,
+    a_north: f64,
+    b_east: f64,
+    b_north: f64,
+    interface_length_m: f64,
+}
+
+fn build_atmospheric_moisture_edges(
+    topology: &GeodesicTopology,
+    east_bases: &[[f64; 3]],
+    north_bases: &[[f64; 3]],
+    radius_m: f64,
+) -> Vec<AtmosphericMoistureEdge> {
+    let mut edges = Vec::new();
+    for a in 0..topology.metrics().sample_count as usize {
+        for (neighbor, interface_arc) in topology
+            .neighbors_of(a as u32)
+            .iter()
+            .zip(topology.neighbor_interface_arc_lengths_of(a as u32).iter())
+        {
+            let b = *neighbor as usize;
+            if b <= a {
+                continue;
+            }
+            let Some((a_east, a_north)) =
+                edge_direction_components(topology, a, b, east_bases[a], north_bases[a])
+            else {
+                continue;
+            };
+            let Some((b_east, b_north)) =
+                edge_direction_components(topology, b, a, east_bases[b], north_bases[b])
+            else {
+                continue;
+            };
+            edges.push(AtmosphericMoistureEdge {
+                a,
+                b,
+                a_east,
+                a_north,
+                b_east,
+                b_north,
+                interface_length_m: (*interface_arc * radius_m).max(1.0),
+            });
+        }
+    }
+    edges
+}
+
+fn moisture_transport_substeps_for_phase(
+    edges: &[AtmosphericMoistureEdge],
+    cell_area_m2: &[f64],
+    wind_east: &[f64],
+    wind_north: &[f64],
+    phase_seconds: f64,
+    parameters: ClimateParameters,
+) -> u8 {
+    let mut outgoing_rate = vec![0.0; cell_area_m2.len()];
+    for edge in edges {
+        let outward_a = wind_east[edge.a] * edge.a_east + wind_north[edge.a] * edge.a_north;
+        let outward_b = wind_east[edge.b] * edge.b_east + wind_north[edge.b] * edge.b_north;
+        let normal_speed = (0.5 * (outward_a - outward_b)).clamp(
+            -parameters.maximum_climatological_moisture_transport_speed_m_s,
+            parameters.maximum_climatological_moisture_transport_speed_m_s,
+        );
+        if normal_speed > 0.0 {
+            outgoing_rate[edge.a] += normal_speed * edge.interface_length_m;
+        } else if normal_speed < 0.0 {
+            outgoing_rate[edge.b] += -normal_speed * edge.interface_length_m;
+        }
+    }
+    let maximum_phase_courant = outgoing_rate
+        .iter()
+        .enumerate()
+        .map(|(i, rate)| rate * phase_seconds / cell_area_m2[i].max(1.0))
+        .fold(0.0_f64, f64::max);
+    let required = (maximum_phase_courant / parameters.moisture_transport_cfl_limit)
+        .ceil()
+        .max(1.0) as u32;
+    required.clamp(
+        u32::from(parameters.moisture_transport_minimum_substeps),
+        u32::from(parameters.moisture_transport_maximum_substeps),
+    ) as u8
+}
+
+fn advect_moisture_substep(
+    edges: &[AtmosphericMoistureEdge],
+    moisture_mass: &mut [f64],
+    cell_area_m2: &[f64],
+    wind_east: &[f64],
+    wind_north: &[f64],
+    substep_seconds: f64,
+    cfl_limit: f64,
+    maximum_speed_m_s: f64,
+) -> (Vec<f64>, usize, usize) {
+    let mut requested = Vec::<(usize, usize, f64)>::with_capacity(edges.len());
+    let mut requested_outflow = vec![0.0; moisture_mass.len()];
+    for edge in edges {
+        let outward_a = wind_east[edge.a] * edge.a_east + wind_north[edge.a] * edge.a_north;
+        let outward_b = wind_east[edge.b] * edge.b_east + wind_north[edge.b] * edge.b_north;
+        let normal_speed =
+            (0.5 * (outward_a - outward_b)).clamp(-maximum_speed_m_s, maximum_speed_m_s);
+        if normal_speed.abs() <= 1.0e-12 {
+            continue;
+        }
+        let (donor, receiver) = if normal_speed >= 0.0 {
+            (edge.a, edge.b)
+        } else {
+            (edge.b, edge.a)
+        };
+        let donor_column_moisture = moisture_mass[donor] / cell_area_m2[donor].max(1.0);
+        let mass =
+            donor_column_moisture * normal_speed.abs() * edge.interface_length_m * substep_seconds;
+        if mass > 0.0 {
+            requested.push((donor, receiver, mass));
+            requested_outflow[donor] += mass;
+        }
+    }
+    let mut donor_scale = vec![1.0; moisture_mass.len()];
+    let mut active_donors = 0usize;
+    let mut limited_donors = 0usize;
+    for i in 0..moisture_mass.len() {
+        if requested_outflow[i] <= 0.0 {
+            continue;
+        }
+        active_donors += 1;
+        let allowed = moisture_mass[i] * cfl_limit;
+        if requested_outflow[i] > allowed {
+            donor_scale[i] = if requested_outflow[i] > 0.0 {
+                allowed / requested_outflow[i]
+            } else {
+                1.0
+            };
+            limited_donors += 1;
+        }
+    }
+    let mut delta = vec![0.0; moisture_mass.len()];
+    for (donor, receiver, mass) in requested {
+        let transfer = mass * donor_scale[donor];
+        delta[donor] -= transfer;
+        delta[receiver] += transfer;
+    }
+    for i in 0..moisture_mass.len() {
+        moisture_mass[i] = (moisture_mass[i] + delta[i]).max(0.0);
+    }
+    (delta, limited_donors, active_donors)
+}
+
 fn build_ocean_projection_geometry(
     topology: &GeodesicTopology,
     ocean: &[bool],
@@ -1307,6 +1495,8 @@ pub fn generate_coupled_climate(
     }
 
     let atmospheric_heat_geometry = build_atmospheric_heat_geometry(topology, planet.radius_m);
+    let atmospheric_moisture_edges =
+        build_atmospheric_moisture_edges(topology, &east_bases, &north_bases, planet.radius_m);
     let ocean_projection_geometry = build_ocean_projection_geometry(
         topology,
         &ocean,
@@ -1381,6 +1571,9 @@ pub fn generate_coupled_climate(
     let mut global_evaporation_year = 0.0;
     let mut global_precipitation_year = 0.0;
     let mut moisture_budget_error_year = 0.0;
+    let mut moisture_transport_limited_donor_steps = 0usize;
+    let mut moisture_transport_active_donor_steps = 0usize;
+    let mut maximum_moisture_transport_substeps_used = 0u8;
     let mut final_temperature_rms_change = f64::INFINITY;
     let mut spinup_years = parameters.maximum_spinup_years;
     let mut maximum_ocean_divergence_residual = 0.0_f64;
@@ -1426,6 +1619,9 @@ pub fn generate_coupled_climate(
         global_evaporation_year = 0.0;
         global_precipitation_year = 0.0;
         moisture_budget_error_year = 0.0;
+        moisture_transport_limited_donor_steps = 0;
+        moisture_transport_active_donor_steps = 0;
+        maximum_moisture_transport_substeps_used = 0;
         maximum_ocean_divergence_residual = 0.0;
 
         for phase in 0..phase_count {
@@ -1441,6 +1637,7 @@ pub fn generate_coupled_climate(
             let phase_sin = phase_angle.sin();
 
             let mut insolation = vec![0.0; sample_count];
+            let mut absorbed_surface_energy_w_m2 = vec![0.0; sample_count];
             let mut radiative_target = vec![0.0; sample_count];
             for i in 0..sample_count {
                 let solar = daily_mean_insolation(
@@ -1484,6 +1681,7 @@ pub fn generate_coupled_climate(
                 let absorbed = (solar * (1.0 - effective_albedo)
                     + planet.internal_heat_flux_w_per_m2)
                     .max(0.0);
+                absorbed_surface_energy_w_m2[i] = absorbed;
                 let effective_temperature = if absorbed > 0.0 {
                     (absorbed / STEFAN_BOLTZMANN).powf(0.25)
                 } else {
@@ -1671,85 +1869,121 @@ pub fn generate_coupled_climate(
                     moisture_mass[i] = humidity[i] * air_mass[i];
                 }
                 let moisture_before = moisture_mass.iter().sum::<f64>();
-                let mut requested_transfers = Vec::<(usize, usize, f64)>::new();
-                let mut requested_outflow = vec![0.0; sample_count];
-                for i in 0..sample_count {
-                    for (neighbor_index, arc) in topology
-                        .neighbors_of(i as u32)
-                        .iter()
-                        .zip(topology.neighbor_arc_lengths_of(i as u32).iter())
-                    {
-                        let j = *neighbor_index as usize;
-                        if j <= i {
-                            continue;
-                        }
-                        let Some(projected) = symmetric_edge_normal_wind_m_s(
-                            topology,
-                            i,
-                            j,
-                            &east_bases,
-                            &north_bases,
-                            &wind_east,
-                            &wind_north,
-                        ) else {
-                            continue;
-                        };
-                        let distance = (*arc * planet.radius_m).max(1.0);
-                        let fraction = (projected.abs() * phase_seconds / distance
-                            * parameters.moisture_transport_cfl)
-                            .clamp(0.0, 0.22);
-                        let (donor, receiver) = if projected >= 0.0 { (i, j) } else { (j, i) };
-                        let requested = moisture_mass[donor] * fraction;
-                        if requested > 0.0 {
-                            requested_transfers.push((donor, receiver, requested));
-                            requested_outflow[donor] += requested;
-                        }
-                    }
-                }
-                let mut donor_scale = vec![1.0; sample_count];
-                for i in 0..sample_count {
-                    if requested_outflow[i] > moisture_mass[i] && requested_outflow[i] > 0.0 {
-                        donor_scale[i] = moisture_mass[i] / requested_outflow[i];
-                    }
-                }
-                let mut transport_delta = vec![0.0; sample_count];
-                for (donor, receiver, requested) in requested_transfers {
-                    let transfer = requested * donor_scale[donor];
-                    transport_delta[donor] -= transfer;
-                    transport_delta[receiver] += transfer;
-                }
-                for i in 0..sample_count {
-                    moisture_mass[i] = (moisture_mass[i] + transport_delta[i]).max(0.0);
-                }
-
                 let mut phase_evaporation = 0.0;
                 let mut phase_precipitation = 0.0;
+                let mut precipitation_mass_phase = vec![0.0; sample_count];
+
+                // Bulk-aerodynamic evaporation is expressed as a surface mass flux
+                // rather than a per-phase humidity relaxation, making the source
+                // independent of mesh resolution and orbital phase count.
+                let mut requested_ocean_evaporation_mass = vec![0.0; sample_count];
+                let mut requested_ocean_evaporation_total = 0.0;
+                let mut ocean_absorbed_power_w = 0.0;
                 for i in 0..sample_count {
                     if air_mass[i] <= 0.0 {
                         humidity[i] = 0.0;
                         continue;
                     }
                     let q = moisture_mass[i] / air_mass[i];
-                    let wind_speed = norm2(wind_east[i], wind_north[i]);
-                    let saturation_surface = saturation_specific_humidity(
-                        if ocean[i] {
-                            sea_surface_temperature[i]
-                        } else {
-                            temperature[i]
-                        },
-                        pressure[i],
-                    );
-                    let potential_fraction = ((saturation_surface - q).max(0.0)
-                        * parameters.evaporation_relaxation
-                        * (0.65 + (wind_speed / 12.0).clamp(0.0, 1.4)))
-                    .max(0.0);
-                    let potential_mass = potential_fraction * air_mass[i];
+                    let wind_speed = norm2(wind_east[i], wind_north[i]).max(1.0);
+                    let surface_temperature = if ocean[i] {
+                        sea_surface_temperature[i]
+                    } else {
+                        temperature[i]
+                    };
+                    let saturation_surface =
+                        saturation_specific_humidity(surface_temperature, pressure[i]);
+                    let density = pressure[i] / (specific_gas_constant * temperature[i].max(120.0));
+                    let evaporation_flux = density
+                        * parameters.evaporation_bulk_transfer_coefficient
+                        * wind_speed
+                        * (saturation_surface - q).max(0.0);
+                    let potential_mass = evaporation_flux * cell_area_m2[i] * phase_seconds;
                     potential_evaporation_mass_year[i] += potential_mass;
                     if ocean[i] {
-                        moisture_mass[i] += potential_mass;
-                        phase_evaporation += potential_mass;
+                        requested_ocean_evaporation_mass[i] = potential_mass;
+                        requested_ocean_evaporation_total += potential_mass;
+                        ocean_absorbed_power_w += absorbed_surface_energy_w_m2[i] * cell_area_m2[i];
                     }
+                }
+                let energy_limited_ocean_evaporation_mass =
+                    parameters.evaporation_energy_fraction * ocean_absorbed_power_w * phase_seconds
+                        / LATENT_HEAT_VAPORIZATION_J_PER_KG;
+                let evaporation_energy_scale = if requested_ocean_evaporation_total > 0.0 {
+                    (energy_limited_ocean_evaporation_mass / requested_ocean_evaporation_total)
+                        .clamp(0.0, 1.0)
+                } else {
+                    1.0
+                };
+                for i in 0..sample_count {
+                    if !ocean[i] {
+                        continue;
+                    }
+                    let evaporation_mass =
+                        requested_ocean_evaporation_mass[i] * evaporation_energy_scale;
+                    moisture_mass[i] += evaporation_mass;
+                    phase_evaporation += evaporation_mass;
+                }
 
+                // Resolve one seasonal wind state through multiple conservative
+                // finite-volume advection substeps. Moisture can therefore cross
+                // multiple cells during a phase without an index-order dependency.
+                let moisture_substeps = moisture_transport_substeps_for_phase(
+                    &atmospheric_moisture_edges,
+                    &cell_area_m2,
+                    &wind_east,
+                    &wind_north,
+                    phase_seconds,
+                    parameters,
+                );
+                maximum_moisture_transport_substeps_used =
+                    maximum_moisture_transport_substeps_used.max(moisture_substeps);
+                let substep_seconds = phase_seconds / f64::from(moisture_substeps);
+                for _ in 0..usize::from(moisture_substeps) {
+                    let (transport_delta, limited_donors, active_donors) = advect_moisture_substep(
+                        &atmospheric_moisture_edges,
+                        &mut moisture_mass,
+                        &cell_area_m2,
+                        &wind_east,
+                        &wind_north,
+                        substep_seconds,
+                        parameters.moisture_transport_cfl_limit,
+                        parameters.maximum_climatological_moisture_transport_speed_m_s,
+                    );
+                    moisture_transport_limited_donor_steps += limited_donors;
+                    moisture_transport_active_donor_steps += active_donors;
+                    for i in 0..sample_count {
+                        if transport_delta[i] <= 0.0 || air_mass[i] <= 0.0 {
+                            continue;
+                        }
+                        let saturation_air =
+                            saturation_specific_humidity(temperature[i], pressure[i]);
+                        if saturation_air <= 1.0e-12 {
+                            continue;
+                        }
+                        let relative_humidity =
+                            (moisture_mass[i] / air_mass[i] / saturation_air).max(0.0);
+                        let threshold = parameters.convergence_precipitation_relative_humidity;
+                        let activation = if threshold < 1.0 {
+                            ((relative_humidity - threshold) / (1.0 - threshold)).clamp(0.0, 1.0)
+                        } else {
+                            0.0
+                        };
+                        let convergence_mass = transport_delta[i]
+                            * parameters.convergence_precipitation_efficiency
+                            * activation;
+                        let precipitation_mass = convergence_mass.min(moisture_mass[i]);
+                        moisture_mass[i] -= precipitation_mass;
+                        precipitation_mass_phase[i] += precipitation_mass;
+                    }
+                }
+
+                for i in 0..sample_count {
+                    if air_mass[i] <= 0.0 {
+                        humidity[i] = 0.0;
+                        continue;
+                    }
+                    let wind_speed = norm2(wind_east[i], wind_north[i]);
                     let current_q = moisture_mass[i] / air_mass[i];
                     let saturation_air = saturation_specific_humidity(temperature[i], pressure[i]);
                     let threshold = saturation_air * parameters.condensation_relative_humidity;
@@ -1770,16 +2004,21 @@ pub fn generate_coupled_climate(
                     let orographic_mass = after_condensation * orographic_fraction;
                     let precipitation_mass = condensation_mass + orographic_mass;
                     moisture_mass[i] = (after_condensation - orographic_mass).max(0.0);
-                    precipitation_mass_year[i] += precipitation_mass;
-                    precipitation_phase_max[i] = precipitation_phase_max[i].max(precipitation_mass);
-                    if temperature[i] <= parameters.snow_temperature_k {
-                        cold_precipitation_mass_year[i] += precipitation_mass;
+                    precipitation_mass_phase[i] += precipitation_mass;
+                    let phase_cell_precipitation = precipitation_mass_phase[i];
+                    precipitation_mass_year[i] += phase_cell_precipitation;
+                    precipitation_phase_max[i] =
+                        precipitation_phase_max[i].max(phase_cell_precipitation);
+                    if temperature[i] <= parameters.snow_temperature_k
+                        && phase_cell_precipitation > 0.0
+                    {
+                        cold_precipitation_mass_year[i] += phase_cell_precipitation;
                         snow_phase_count[i] += 1.0;
                     }
                     if ocean[i] && sea_surface_temperature[i] <= parameters.sea_ice_temperature_k {
                         sea_ice_phase_count[i] += 1.0;
                     }
-                    phase_precipitation += precipitation_mass;
+                    phase_precipitation += phase_cell_precipitation;
                     humidity[i] = (moisture_mass[i] / air_mass[i]).clamp(0.0, 0.2);
                 }
                 let moisture_after = moisture_mass.iter().sum::<f64>();
@@ -2032,6 +2271,12 @@ pub fn generate_coupled_climate(
         climate_hash = hash_f32_slice(climate_hash, values);
     }
 
+    let moisture_transport_limiter_fraction = if moisture_transport_active_donor_steps > 0 {
+        moisture_transport_limited_donor_steps as f64 / moisture_transport_active_donor_steps as f64
+    } else {
+        0.0
+    };
+
     let metrics = ClimateMetrics {
         sample_count: sample_count as u32,
         orbital_phase_count: parameters.orbital_phase_count,
@@ -2058,6 +2303,8 @@ pub fn generate_coupled_climate(
         global_evaporation_kg: global_evaporation_year,
         global_precipitation_kg: global_precipitation_year,
         moisture_budget_relative_error,
+        moisture_transport_limiter_fraction,
+        maximum_moisture_transport_substeps: maximum_moisture_transport_substeps_used,
         persistent_snow_area_fraction,
         sea_ice_area_fraction,
         final_temperature_rms_change_k: final_temperature_rms_change,

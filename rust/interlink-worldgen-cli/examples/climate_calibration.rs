@@ -155,8 +155,10 @@ fn main() -> Result<(), String> {
         report.toa_energy_imbalance_proxy_w_m2
     );
     println!(
-        "transport_caps reconstructed_wind={:.6} reconstructed_moisture_edge={:.6}",
-        report.reconstructed_wind_cap_fraction, report.reconstructed_moisture_edge_cap_fraction
+        "transport wind_cap={:.6} moisture_limiter={:.6} moisture_max_substeps={}",
+        report.reconstructed_wind_cap_fraction,
+        report.moisture_transport_limiter_fraction,
+        report.maximum_moisture_transport_substeps
     );
     println!(
         "relative_humidity_proxy p05={:.6} p50={:.6} p95={:.6}",
@@ -170,6 +172,19 @@ fn main() -> Result<(), String> {
         report.p95_annual_precipitation_mm,
         report.mean_potential_evaporation_mm,
         report.precipitation_to_evaporation_ratio
+    );
+    println!(
+        "water_budget_kg evaporation={:.6e} precipitation={:.6e} relative_error={:.6e}",
+        climate.metrics.global_evaporation_kg,
+        climate.metrics.global_precipitation_kg,
+        climate.metrics.moisture_budget_relative_error
+    );
+    println!(
+        "evap_drivers wind_mean_m_s={:.6} wind_max_m_s={:.6} land_fraction={:.6} ocean_fraction={:.6}",
+        climate.metrics.mean_wind_speed_m_s,
+        climate.metrics.maximum_wind_speed_m_s,
+        terrain.metrics.land_area_fraction,
+        terrain.metrics.ocean_area_fraction
     );
     if let (Some(no_orography), Some(fraction)) = (
         report.no_orography_mean_annual_precipitation_mm,

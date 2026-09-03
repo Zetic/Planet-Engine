@@ -525,6 +525,13 @@ export class WasmWorldgenClimate {
     /**
      * @returns {number}
      */
+    maximum_moisture_transport_substeps() {
+        const ret = wasm.wasmworldgenclimate_maximum_moisture_transport_substeps(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
     maximum_solid_elevation_m() {
         const ret = wasm.wasmworldgenclimate_maximum_solid_elevation_m(this.__wbg_ptr);
         return ret;
@@ -627,6 +634,13 @@ export class WasmWorldgenClimate {
      */
     moisture_budget_relative_error() {
         const ret = wasm.wasmworldgenclimate_moisture_budget_relative_error(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    moisture_transport_limiter_fraction() {
+        const ret = wasm.wasmworldgenclimate_moisture_transport_limiter_fraction(this.__wbg_ptr);
         return ret;
     }
     /**

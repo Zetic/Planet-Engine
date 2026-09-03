@@ -231,6 +231,12 @@ impl WasmWorldgenClimate {
     pub fn moisture_budget_relative_error(&self) -> f64 {
         self.climate.metrics.moisture_budget_relative_error
     }
+    pub fn moisture_transport_limiter_fraction(&self) -> f64 {
+        self.climate.metrics.moisture_transport_limiter_fraction
+    }
+    pub fn maximum_moisture_transport_substeps(&self) -> u8 {
+        self.climate.metrics.maximum_moisture_transport_substeps
+    }
     pub fn persistent_snow_area_fraction(&self) -> f64 {
         self.climate.metrics.persistent_snow_area_fraction
     }

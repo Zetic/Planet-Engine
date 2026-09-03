@@ -163,3 +163,12 @@ These are different deterministic acceptance seeds and are not presented as a re
 The reported TOA energy imbalance remains a reduced diagnostic proxy rather than a strict closed radiative-energy budget because WG-5 still uses a reduced gray-atmosphere target-temperature formulation and does not model explicit clouds, vertical atmospheric layers, or a full radiative-transfer column.
 
 Moisture-routing cap saturation remains a separate calibration problem and is intentionally not redesigned by this thermal PR.
+
+
+## Stage-4 moisture transport and precipitation recalibration
+
+Stage `climate:coupled-surface@4` keeps the accepted stage-3 thermal solution fixed and replaces the resolution-cap-dominated moisture path. Selected reduced Earth-like defaults are bulk evaporation coefficient `0.0015`, latent-energy availability `0.45`, climatological moisture speed `1.0 m/s`, adaptive substeps `4–64`, donor CFL `0.90`, convergence RH threshold `0.60`, and convergence efficiency `0.35`.
+
+The latent-energy fraction is a reduced-model availability ceiling, not a fully coupled surface-energy claim. Latent heat is not subtracted from the stage-3 temperature solve. Raw potential-evaporation demand remains diagnostic; PET/aridity recalibration is intentionally deferred.
+
+A fixed-ancestry resolution pair (`ci-wg5-l7`, coarse L5, 24 plates) changes only fine topology. The selected candidate measures `1125.604 mm/yr` precipitation and `5.743150e17 kg` evaporation at L6 versus `1122.388 mm/yr` and `5.726104e17 kg` at L7. Runtime limiter occupancy is `0.000000` / `0.000059`, maximum adaptive substeps are `33` / `64`, and moisture-budget errors are `1.72e-14` / `3.68e-14`. Global precipitation drift is about `0.3%`, replacing the pre-closure prototype's roughly `57%` L6→L7 increase while leaving the stage-3 thermal state unchanged.
