@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  benchmark:
+  phase-study:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,44 +18,111 @@ jobs:
         run: |
           rustup toolchain install stable --profile minimal
           rustup default stable
-      - name: Benchmark thin-LTO baseline
+      - name: Compile phase-study harness
+        run: cargo test -p interlink-worldgen-cli --examples --no-run
+      - name: Benchmark 24-phase Stage-5 reference
         run: |
-          RUNS=1 bash scripts/benchmark-wg5-performance.sh l6 | tee /tmp/thin.txt
-      - name: Switch release profile to fat LTO
+          cargo run --release -q -p interlink-worldgen-cli --example climate_performance -- \
+            --seed ci-wg5-performance --coarse-level 4 --level 6 --plates 16 --runs 1 --phases 24 \
+            | tee /tmp/phase24.txt
+      - name: Benchmark 16-phase candidate
         run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('Cargo.toml')
-          text = path.read_text()
-          if 'lto = "thin"' not in text:
-              raise SystemExit('thin LTO profile not found')
-          path.write_text(text.replace('lto = "thin"', 'lto = "fat"', 1))
-          PY
-      - name: Benchmark fat LTO twice
+          cargo run --release -q -p interlink-worldgen-cli --example climate_performance -- \
+            --seed ci-wg5-performance --coarse-level 4 --level 6 --plates 16 --runs 1 --phases 16 \
+            | tee /tmp/phase16.txt
+      - name: Benchmark 12-phase candidate
         run: |
-          RUNS=1 bash scripts/benchmark-wg5-performance.sh l6 | tee /tmp/fat1.txt
-          RUNS=1 bash scripts/benchmark-wg5-performance.sh l6 | tee /tmp/fat2.txt
-      - name: Compare exact output and runtime
+          cargo run --release -q -p interlink-worldgen-cli --example climate_performance -- \
+            --seed ci-wg5-performance --coarse-level 4 --level 6 --plates 16 --runs 1 --phases 12 \
+            | tee /tmp/phase12.txt
+      - name: Compare runtime and physical drift
         run: |
           python - <<'PY'
           import re
           from pathlib import Path
 
+          fields = [
+              'mean_climate_ms', 'mean_temperature_k', 'mean_precipitation_mm',
+              'p95_precipitation_mm', 'mean_wind_m_s', 'max_wind_m_s',
+              'mean_current_m_s', 'snow_fraction', 'sea_ice_fraction',
+              'thermal_rms_k', 'tropical_precip_centroid_excursion_deg',
+              'moisture_error', 'final_spinup_years',
+          ]
+
           def read(path):
               text = Path(path).read_text()
-              m = re.search(r'wg5_performance .*mean_climate_ms=([0-9.]+).*final_hash=([0-9a-f]+)', text)
-              if not m:
+              line = next((line for line in text.splitlines() if line.startswith('wg5_performance ')), None)
+              if line is None:
                   raise SystemExit(f'missing benchmark summary in {path}')
-              return float(m.group(1)), m.group(2)
+              result = {}
+              for field in fields:
+                  match = re.search(rf'\b{field}=([^ ]+)', line)
+                  if not match:
+                      raise SystemExit(f'missing {field} in {path}')
+                  result[field] = float(match.group(1))
+              phase_match = re.search(r'\bphases=(\d+)', line)
+              hash_match = re.search(r'\bfinal_hash=([0-9a-f]+)', line)
+              result['phases'] = int(phase_match.group(1))
+              result['hash'] = hash_match.group(1)
+              return result
 
-          thin_ms, thin_hash = read('/tmp/thin.txt')
-          fat1_ms, fat1_hash = read('/tmp/fat1.txt')
-          fat2_ms, fat2_hash = read('/tmp/fat2.txt')
-          if thin_hash != fat1_hash or fat1_hash != fat2_hash:
-              raise SystemExit(f'hash mismatch thin={thin_hash} fat1={fat1_hash} fat2={fat2_hash}')
-          fat_mean = (fat1_ms + fat2_ms) / 2.0
-          reduction = (1.0 - fat_mean / thin_ms) * 100.0
-          print(f'wg5_fat_lto thin_ms={thin_ms:.3f} fat1_ms={fat1_ms:.3f} fat2_ms={fat2_ms:.3f} fat_mean_ms={fat_mean:.3f} reduction={reduction:.2f}% hash={thin_hash}')
-          if reduction < 2.0:
-              raise SystemExit('fat LTO improvement is below 2% adoption threshold')
+          reference = read('/tmp/phase24.txt')
+          candidates = [read('/tmp/phase16.txt'), read('/tmp/phase12.txt')]
+
+          def rel_delta(candidate, field):
+              baseline = reference[field]
+              if abs(baseline) < 1.0e-12:
+                  return 0.0 if abs(candidate[field]) < 1.0e-12 else float('inf')
+              return abs(candidate[field] - baseline) / abs(baseline)
+
+          accepted = []
+          for candidate in candidates:
+              speedup = reference['mean_climate_ms'] / candidate['mean_climate_ms']
+              centroid_ratio = (
+                  candidate['tropical_precip_centroid_excursion_deg']
+                  / reference['tropical_precip_centroid_excursion_deg']
+                  if reference['tropical_precip_centroid_excursion_deg'] > 0.25
+                  else 1.0
+              )
+              checks = {
+                  'temperature': abs(candidate['mean_temperature_k'] - reference['mean_temperature_k']) <= 0.5,
+                  'precip_mean': rel_delta(candidate, 'mean_precipitation_mm') <= 0.02,
+                  'precip_p95': rel_delta(candidate, 'p95_precipitation_mm') <= 0.05,
+                  'wind_mean': rel_delta(candidate, 'mean_wind_m_s') <= 0.05,
+                  'wind_max': rel_delta(candidate, 'max_wind_m_s') <= 0.10,
+                  'current_mean': rel_delta(candidate, 'mean_current_m_s') <= 0.10,
+                  'snow': abs(candidate['snow_fraction'] - reference['snow_fraction']) <= 0.03,
+                  'sea_ice': abs(candidate['sea_ice_fraction'] - reference['sea_ice_fraction']) <= 0.03,
+                  'thermal_convergence': candidate['thermal_rms_k'] <= 0.08,
+                  'moisture_conservation': candidate['moisture_error'] <= 1.0e-10,
+                  'seasonal_centroid': centroid_ratio >= 0.75,
+                  'spinup': candidate['final_spinup_years'] <= 10,
+              }
+              passed = all(checks.values())
+              print(
+                  f'wg5_phase_candidate phases={candidate["phases"]} '
+                  f'runtime_ms={candidate["mean_climate_ms"]:.3f} speedup={speedup:.3f}x '
+                  f'temp_delta_k={candidate["mean_temperature_k"]-reference["mean_temperature_k"]:+.4f} '
+                  f'precip_delta_pct={100.0*(candidate["mean_precipitation_mm"]/reference["mean_precipitation_mm"]-1.0):+.3f} '
+                  f'p95_delta_pct={100.0*(candidate["p95_precipitation_mm"]/reference["p95_precipitation_mm"]-1.0):+.3f} '
+                  f'centroid_excursion_deg={candidate["tropical_precip_centroid_excursion_deg"]:.3f} '
+                  f'centroid_ratio={centroid_ratio:.3f} thermal_rms={candidate["thermal_rms_k"]:.6f} '
+                  f'moisture_error={candidate["moisture_error"]:.3e} screening_pass={passed}'
+              )
+              failed = [name for name, ok in checks.items() if not ok]
+              if failed:
+                  print(f'wg5_phase_candidate_failed phases={candidate["phases"]} checks={",".join(failed)}')
+              else:
+                  accepted.append((candidate['phases'], speedup))
+
+          print(
+              f'wg5_phase_reference phases=24 runtime_ms={reference["mean_climate_ms"]:.3f} '
+              f'centroid_excursion_deg={reference["tropical_precip_centroid_excursion_deg"]:.3f} '
+              f'hash={reference["hash"]}'
+          )
+          if accepted:
+              best = max(accepted, key=lambda item: item[1])
+              print(f'wg5_phase_screening_best phases={best[0]} speedup={best[1]:.3f}x')
+          else:
+              print('wg5_phase_screening_best none')
           PY
