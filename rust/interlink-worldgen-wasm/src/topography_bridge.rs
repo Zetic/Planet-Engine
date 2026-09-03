@@ -257,11 +257,56 @@ impl WasmWorldgenTopography {
     pub fn crust_kind(&self) -> Vec<u8> {
         self.inherited.crust_kind.clone()
     }
+    pub fn nearest_coarse_source(&self) -> Vec<u32> {
+        self.inherited.map.nearest_coarse_source.clone()
+    }
+    pub fn inherited_sample_mask(&self) -> Vec<u8> {
+        self.inherited.map.inherited_sample_mask.clone()
+    }
+    pub fn crust_age_myr(&self) -> Vec<f32> {
+        self.inherited.crust_age_myr.clone()
+    }
+    pub fn crust_thickness_km(&self) -> Vec<f32> {
+        self.inherited.crust_thickness_km.clone()
+    }
+    pub fn orogenic_history(&self) -> Vec<f32> {
+        self.inherited.orogenic_history.clone()
+    }
+    pub fn ridge_history(&self) -> Vec<f32> {
+        self.inherited.ridge_history.clone()
+    }
+    pub fn trench_history(&self) -> Vec<f32> {
+        self.inherited.trench_history.clone()
+    }
+    pub fn strength_index(&self) -> Vec<f32> {
+        self.inherited.strength_index.clone()
+    }
+    pub fn weakness_index(&self) -> Vec<f32> {
+        self.inherited.weakness_index.clone()
+    }
+    pub fn mantle_dynamic_support_index(&self) -> Vec<f32> {
+        self.inherited.mantle_dynamic_support_index.clone()
+    }
+    pub fn structural_zone_kind(&self) -> Vec<u8> {
+        self.inherited.structural_zone_kind.clone()
+    }
+    pub fn fragmentation_propensity(&self) -> Vec<f32> {
+        self.inherited.fragmentation_propensity.clone()
+    }
+    pub fn kinematic_domain_ids(&self) -> Vec<u16> {
+        self.inherited.kinematic_domain_ids.clone()
+    }
     pub fn boundary_samples(&self) -> Vec<u32> {
         self.boundaries.flattened_samples()
     }
+    pub fn boundary_kinds(&self) -> Vec<u8> {
+        self.boundaries.tectonic_kinds()
+    }
     pub fn geological_boundary_regimes(&self) -> Vec<u8> {
         self.boundaries.geological_regimes()
+    }
+    pub fn boundary_coarse_source_indices(&self) -> Vec<u32> {
+        self.boundaries.coarse_boundary_indices()
     }
 
     pub fn isostatic_elevation_m(&self) -> Vec<f32> {

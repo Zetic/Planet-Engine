@@ -20,6 +20,42 @@ fn topography_bridge_exposes_physical_surface_and_water_solution() {
         output.fine_sample_count() as usize,
         output.submerged_mask().len()
     );
+    assert_eq!(
+        output.fine_sample_count() as usize,
+        output.nearest_coarse_source().len()
+    );
+    assert_eq!(
+        output.fine_sample_count() as usize,
+        output.inherited_sample_mask().len()
+    );
+    assert_eq!(
+        output.fine_sample_count() as usize,
+        output.crust_age_myr().len()
+    );
+    assert_eq!(
+        output.fine_sample_count() as usize,
+        output.crust_thickness_km().len()
+    );
+    assert_eq!(
+        output.fine_sample_count() as usize,
+        output.strength_index().len()
+    );
+    assert_eq!(
+        output.fine_sample_count() as usize,
+        output.weakness_index().len()
+    );
+    assert_eq!(
+        output.fine_sample_count() as usize,
+        output.kinematic_domain_ids().len()
+    );
+    assert_eq!(
+        output.fine_boundary_edge_count() as usize,
+        output.boundary_kinds().len()
+    );
+    assert_eq!(
+        output.fine_boundary_edge_count() as usize,
+        output.boundary_coarse_source_indices().len()
+    );
     assert!(output.minimum_solid_elevation_m() < output.maximum_solid_elevation_m());
     assert!(output.has_sea_level());
     assert!(output.land_area_fraction() > 0.0);
