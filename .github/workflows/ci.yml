@@ -1,0 +1,42 @@
+name: Planet Engine Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  browser:
+    name: Browser protocol and diagnostics
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Build browser modules
+        run: npm run build
+      - name: Verify committed browser output
+        run: git diff --exit-code -- dist/worldgen
+      - name: Run browser regressions
+        run: npm run test:ts
+
+  rust:
+    name: Rust physical engine
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust stable and browser target
+        run: |
+          rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown
+          rustup default stable
+      - name: Test standalone workspace
+        run: cargo test --workspace
+      - name: Smoke-test physical diagnostics
+        run: |
+          cargo run -p interlink-worldgen-cli -- inheritance --seed ci-inheritance --coarse-level 4 --level 6 --plates 18
+          cargo run -p interlink-worldgen-cli -- profile
+      - name: Compile browser bridge
+        run: cargo check -p interlink-worldgen-wasm --target wasm32-unknown-unknown
