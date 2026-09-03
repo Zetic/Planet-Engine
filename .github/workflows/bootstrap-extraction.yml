@@ -1,0 +1,199 @@
+name: Bootstrap WG-3.75 Extraction
+
+on:
+  push:
+    branches: [extract-wg3-75-foundation]
+
+permissions:
+  contents: write
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install toolchains
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Rust stable and browser target
+        run: |
+          rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown
+          rustup default stable
+
+      - name: Import pinned Planet Engine foundation
+        env:
+          SOURCE_SHA: 4cd8d727b5d437396a0da0fe652b64685a3bc309
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none https://github.com/Zetic/Project-Interlink.git /tmp/project-interlink
+          git -C /tmp/project-interlink fetch --depth=1 origin "$SOURCE_SHA"
+          git -C /tmp/project-interlink checkout --detach "$SOURCE_SHA"
+
+          rm -rf rust src dist docs tests scripts
+          mkdir -p rust src dist docs tests scripts
+
+          cp -R /tmp/project-interlink/rust/interlink-worldgen rust/
+          cp -R /tmp/project-interlink/rust/interlink-worldgen-wasm rust/
+          cp -R /tmp/project-interlink/rust/interlink-worldgen-cli rust/
+          cp -R /tmp/project-interlink/src/worldgen src/
+          cp -R /tmp/project-interlink/src/wasm-worldgen src/
+          cp -R /tmp/project-interlink/dist/worldgen dist/
+          cp -R /tmp/project-interlink/docs/worldgen-rewrite docs/
+          cp /tmp/project-interlink/tests/worldgenRewrite.test.ts tests/
+          cp /tmp/project-interlink/scripts/build-worldgen-wasm.sh scripts/
+          cp /tmp/project-interlink/worldgen-lab.html .
+          cp /tmp/project-interlink/tsconfig.json .
+          chmod +x scripts/build-worldgen-wasm.sh
+
+          cat > Cargo.toml <<'EOF'
+          [workspace]
+          members = [
+            "rust/interlink-worldgen",
+            "rust/interlink-worldgen-wasm",
+            "rust/interlink-worldgen-cli",
+          ]
+          resolver = "2"
+
+          [workspace.package]
+          version = "0.1.0"
+          edition = "2021"
+          publish = false
+
+          [profile.release]
+          opt-level = 3
+          lto = "thin"
+          codegen-units = 1
+          panic = "abort"
+          EOF
+
+          cat > package.json <<'EOF'
+          {
+            "name": "project-interlink-planet-engine",
+            "version": "0.1.0",
+            "description": "Standalone deterministic planetary physical-world generator for Project Interlink",
+            "type": "module",
+            "private": true,
+            "scripts": {
+              "build": "node --input-type=module -e \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true });\" && tsc -p tsconfig.json",
+              "typecheck": "tsc -p tsconfig.json --noEmit",
+              "test": "npm run build && npm run test:ts && cargo test --workspace",
+              "test:ts": "tsx --test tests/*.test.ts",
+              "test:rust": "cargo test --workspace",
+              "check:worldgen-wasm": "cargo check -p interlink-worldgen-wasm --target wasm32-unknown-unknown",
+              "build:worldgen-wasm": "bash scripts/build-worldgen-wasm.sh",
+              "check:worldgen-wasm-package": "bash scripts/build-worldgen-wasm.sh target/worldgen-wasm-package",
+              "worldgen:generate": "cargo run -p interlink-worldgen-cli -- generate",
+              "worldgen:benchmark": "cargo run -p interlink-worldgen-cli -- benchmark",
+              "worldgen:topology": "cargo run -p interlink-worldgen-cli -- topology --level 4",
+              "worldgen:tectonics": "cargo run -p interlink-worldgen-cli -- tectonics --level 5 --plates 16",
+              "worldgen:geology": "cargo run -p interlink-worldgen-cli -- geology --level 5 --plates 16",
+              "worldgen:lithosphere": "cargo run -p interlink-worldgen-cli -- lithosphere --level 5 --plates 16",
+              "worldgen:inheritance": "cargo run -p interlink-worldgen-cli -- inheritance --seed test-world --coarse-level 4 --level 6 --plates 16",
+              "worldgen:profile": "cargo run -p interlink-worldgen-cli -- profile"
+            },
+            "devDependencies": {
+              "tsx": "4.23.13",
+              "typescript": "5.8.3"
+            }
+          }
+          EOF
+
+          cat > .gitignore <<'EOF'
+          /target/
+          /node_modules/
+          /target/worldgen-wasm-package/
+          .DS_Store
+          EOF
+
+          cat > README.md <<'EOF'
+          # Planet Engine
+
+          Planet Engine is the standalone deterministic planetary physical-world generator for Project Interlink.
+
+          The engine owns canonical spherical topology, macro tectonics, crust and geological history, lithospheric mechanics and tectonic refinement, multiresolution physical inheritance, planetary physical profiles, native diagnostics, browser/WASM transport, and the standalone Planet Engine Lab.
+
+          ## Current physical pipeline
+
+          ```text
+          seed + engine/stage versions
+                    ↓
+          WG-1 hierarchical geodesic sphere
+                    ↓
+          WG-2 macro tectonics and rigid kinematics
+                    ↓
+          WG-3 crust + inferred geological history
+                    ↓
+          WG-3.5 lithosphere + structural/kinematic refinement
+                    ↓
+          WG-3.75 multiresolution physical inheritance
+                    ↓
+          WG-4 initial physical topography (next)
+          ```
+
+          Gameplay Regions, Features, resource nodes, selection, factories, and the industrial runtime are intentionally outside this repository.
+
+          ## Repository layout
+
+          - `rust/interlink-worldgen` — deterministic Rust physical-generation core.
+          - `rust/interlink-worldgen-wasm` — browser WASM bridge.
+          - `rust/interlink-worldgen-cli` — native diagnostics and benchmarks.
+          - `src/worldgen` — browser protocol, Worker/client transport, and diagnostics.
+          - `src/wasm-worldgen` — committed packaged Planet Engine WASM assets.
+          - `worldgen-lab.html` — standalone browser diagnostic lab.
+          - `docs/worldgen-rewrite` — architecture, determinism, resolution, geology, lithosphere, parameters, and validation contracts.
+
+          ## Development
+
+          ```bash
+          npm install
+          npm run build
+          npm run test:ts
+          cargo test --workspace
+          npm run worldgen:inheritance
+          npm run worldgen:profile
+          ```
+
+          Browser WASM packaging requires `wasm-bindgen-cli 0.2.127`:
+
+          ```bash
+          rustup target add wasm32-unknown-unknown
+          cargo install wasm-bindgen-cli --version 0.2.127 --locked
+          npm run build:worldgen-wasm
+          ```
+
+          ## Extraction provenance
+
+          Initial standalone foundation extracted from `Zetic/Project-Interlink` commit `4cd8d727b5d437396a0da0fe652b64685a3bc309`, the completed WG-3.75 PR #104 head. Future Planet Engine physics should be developed here and consumed by Project Interlink through an explicit versioned engine boundary.
+          EOF
+
+          rm -f Cargo.lock package-lock.json
+          cargo generate-lockfile
+          npm install --package-lock-only
+
+      - name: Validate standalone extraction
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build
+          npm run test:ts
+          cargo test --workspace
+          cargo run -p interlink-worldgen-cli -- inheritance --seed extraction-check --coarse-level 4 --level 6 --plates 18
+          cargo run -p interlink-worldgen-cli -- profile
+          cargo check -p interlink-worldgen-wasm --target wasm32-unknown-unknown
+
+      - name: Commit extracted foundation
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "Extract WG-3.75 Planet Engine foundation"
+          git push origin HEAD:extract-wg3-75-foundation
