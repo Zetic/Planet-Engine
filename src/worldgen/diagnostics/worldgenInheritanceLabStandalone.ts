@@ -21,8 +21,17 @@ import {
   type WorldgenInheritanceResult,
 } from '../protocol.js';
 
-type Vec3 = [number, number, number];
 type ScalarDescriptor = { values: Float32Array; minimum: number; maximum: number; lowHue: number; highHue: number };
+type ProjectionBuffers = { x: Float32Array; y: Float32Array; visible: Uint8Array };
+type DrawBucket = { color: string; indices: Uint32Array };
+type StyleCache = {
+  result: WorldgenInheritanceResult | null;
+  mode: string;
+  sampleBuckets: DrawBucket[];
+  boundaryBuckets: DrawBucket[];
+};
+
+const SCALAR_PALETTE_STEPS = 256;
 
 function element<T extends HTMLElement>(id: string): T {
   const target = document.getElementById(id);
@@ -37,16 +46,6 @@ function metric(container: HTMLElement, label: string, value: string): void {
   detail.textContent = value;
   item.append(key, detail);
   container.appendChild(item);
-}
-function rotate(position: readonly number[], yaw: number, pitch: number): Vec3 {
-  const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
-  const x1 = cy * position[0]! - sy * position[1]!;
-  const y1 = sy * position[0]! + cy * position[1]!;
-  return [cp * x1 + sp * position[2]!, y1, -sp * x1 + cp * position[2]!];
-}
-function samplePosition(result: WorldgenInheritanceResult, sample: number): Vec3 {
-  const offset = sample * 3;
-  return [result.positions[offset]!, result.positions[offset + 1]!, result.positions[offset + 2]!];
 }
 function plateColor(plate: number): string { return `hsl(${(plate * 137.507764 + 18) % 360} 60% 55%)`; }
 function provenanceColor(source: number): string { return `hsl(${(source * 137.507764 + 42) % 360} 58% 54%)`; }
@@ -80,9 +79,7 @@ function geologicalBoundaryColor(regime: number): string {
   if (regime === WORLDGEN_GEOLOGY_TRANSFORM) return '#d59cff';
   return '#d7e2ef';
 }
-function scalarColor(value: number, minimum: number, maximum: number, lowHue: number, highHue: number): string {
-  const span = Math.max(1e-12, maximum - minimum);
-  const t = Math.max(0, Math.min(1, (value - minimum) / span));
+function scalarColorFromT(t: number, lowHue: number, highHue: number): string {
   const hue = lowHue + (highHue - lowHue) * t;
   return `hsl(${hue} 68% ${38 + t * 22}%)`;
 }
@@ -101,27 +98,114 @@ function scalar(result: WorldgenInheritanceResult, mode: string): ScalarDescript
   }
 }
 
-function renderPlanet(canvas: HTMLCanvasElement, result: WorldgenInheritanceResult, projection: string, mode: string, yaw: number, pitch: number): void {
+function bucketize(count: number, colorAt: (index: number) => string): DrawBucket[] {
+  const buckets = new Map<string, number[]>();
+  for (let index = 0; index < count; index += 1) {
+    const color = colorAt(index);
+    const indices = buckets.get(color);
+    if (indices) indices.push(index);
+    else buckets.set(color, [index]);
+  }
+  return Array.from(buckets, ([color, indices]) => ({ color, indices: Uint32Array.from(indices) }));
+}
+
+function sampleColor(result: WorldgenInheritanceResult, mode: string, sample: number, scalarDescriptor: ScalarDescriptor | null): string {
+  if (mode === 'plates' || mode === 'tectonic-boundaries' || mode === 'geological-boundaries' || mode === 'boundary-provenance') return plateColor(result.plateIds[sample]!);
+  if (mode === 'kinematic-domains') return plateColor(result.kinematicDomainIds[sample]!);
+  if (mode === 'crust-type') return crustColor(result.crustKind[sample]!);
+  if (mode === 'structural-zones') return structuralColor(result.structuralZoneKind[sample]!);
+  if (mode === 'provenance') return provenanceColor(result.nearestCoarseSource[sample]!);
+  if (mode === 'inherited-mask') return result.inheritedSampleMask[sample] ? '#f4e27a' : '#5794c8';
+  if (scalarDescriptor) {
+    const span = Math.max(1e-12, scalarDescriptor.maximum - scalarDescriptor.minimum);
+    const raw = Math.max(0, Math.min(1, (scalarDescriptor.values[sample]! - scalarDescriptor.minimum) / span));
+    const quantized = Math.round(raw * (SCALAR_PALETTE_STEPS - 1)) / (SCALAR_PALETTE_STEPS - 1);
+    return scalarColorFromT(quantized, scalarDescriptor.lowHue, scalarDescriptor.highHue);
+  }
+  return '#8297aa';
+}
+
+function buildStyleCache(result: WorldgenInheritanceResult, mode: string): StyleCache {
+  const scalarDescriptor = scalar(result, mode);
+  const sampleBuckets = bucketize(result.metrics.fineSampleCount, sample => sampleColor(result, mode, sample, scalarDescriptor));
+  let boundaryBuckets: DrawBucket[] = [];
+  if (mode === 'tectonic-boundaries') {
+    boundaryBuckets = bucketize(result.metrics.fineBoundaryEdgeCount, boundary => tectonicBoundaryColor(result.boundaryKinds[boundary]!));
+  } else if (mode === 'geological-boundaries') {
+    boundaryBuckets = bucketize(result.metrics.fineBoundaryEdgeCount, boundary => geologicalBoundaryColor(result.geologicalBoundaryRegimes[boundary]!));
+  } else if (mode === 'boundary-provenance') {
+    boundaryBuckets = bucketize(result.metrics.fineBoundaryEdgeCount, boundary => provenanceColor(result.boundaryCoarseSourceIndices[boundary]!));
+  }
+  return { result, mode, sampleBuckets, boundaryBuckets };
+}
+
+let projectionBuffers: ProjectionBuffers = { x: new Float32Array(0), y: new Float32Array(0), visible: new Uint8Array(0) };
+let styleCache: StyleCache = { result: null, mode: '', sampleBuckets: [], boundaryBuckets: [] };
+
+function ensureProjectionBuffers(sampleCount: number): ProjectionBuffers {
+  if (projectionBuffers.x.length !== sampleCount) {
+    projectionBuffers = {
+      x: new Float32Array(sampleCount),
+      y: new Float32Array(sampleCount),
+      visible: new Uint8Array(sampleCount),
+    };
+  }
+  return projectionBuffers;
+}
+
+function projectSamples(result: WorldgenInheritanceResult, projection: string, yaw: number, pitch: number, width: number, height: number): ProjectionBuffers {
+  const buffers = ensureProjectionBuffers(result.metrics.fineSampleCount);
+  const positions = result.positions;
+  if (projection === 'map') {
+    for (let sample = 0, offset = 0; sample < result.metrics.fineSampleCount; sample += 1, offset += 3) {
+      const px = positions[offset]!;
+      const py = positions[offset + 1]!;
+      const pz = positions[offset + 2]!;
+      const lon = Math.atan2(py, px);
+      const lat = Math.asin(Math.max(-1, Math.min(1, pz)));
+      buffers.x[sample] = (lon + Math.PI) / (2 * Math.PI) * width;
+      buffers.y[sample] = (Math.PI / 2 - lat) / Math.PI * height;
+      buffers.visible[sample] = 1;
+    }
+    return buffers;
+  }
+
+  const cosYaw = Math.cos(yaw);
+  const sinYaw = Math.sin(yaw);
+  const cosPitch = Math.cos(pitch);
+  const sinPitch = Math.sin(pitch);
+  const radius = Math.min(width, height) * 0.44;
+  const centerX = width / 2;
+  const centerY = height / 2;
+  for (let sample = 0, offset = 0; sample < result.metrics.fineSampleCount; sample += 1, offset += 3) {
+    const px = positions[offset]!;
+    const py = positions[offset + 1]!;
+    const pz = positions[offset + 2]!;
+    const x1 = cosYaw * px - sinYaw * py;
+    const y1 = sinYaw * px + cosYaw * py;
+    const rotatedX = cosPitch * x1 + sinPitch * pz;
+    const rotatedZ = -sinPitch * x1 + cosPitch * pz;
+    buffers.x[sample] = centerX + y1 * radius;
+    buffers.y[sample] = centerY - rotatedZ * radius;
+    buffers.visible[sample] = rotatedX >= 0 ? 1 : 0;
+  }
+  return buffers;
+}
+
+function renderPlanet(canvas: HTMLCanvasElement, result: WorldgenInheritanceResult, projection: string, mode: string, yaw: number, pitch: number, interactive: boolean): void {
   const width = 1100;
   const height = projection === 'map' ? 550 : 760;
-  canvas.width = width;
-  canvas.height = height;
+  if (canvas.width !== width) canvas.width = width;
+  if (canvas.height !== height) canvas.height = height;
   const context = canvas.getContext('2d');
   if (!context) throw new Error('Worldgen Lab could not acquire a 2D canvas context.');
   context.fillStyle = '#08101a';
   context.fillRect(0, 0, width, height);
 
-  function projectVector(raw: readonly number[]): [number, number, boolean] {
-    if (projection === 'map') {
-      const lon = Math.atan2(raw[1]!, raw[0]!);
-      const lat = Math.asin(Math.max(-1, Math.min(1, raw[2]!)));
-      return [(lon + Math.PI) / (2 * Math.PI) * width, (Math.PI / 2 - lat) / Math.PI * height, true];
-    }
-    const position = rotate(raw, yaw, pitch);
-    const radius = Math.min(width, height) * 0.44;
-    return [width / 2 + position[1] * radius, height / 2 - position[2] * radius, position[0] >= 0];
-  }
-  function projectSample(sample: number): [number, number, boolean] { return projectVector(samplePosition(result, sample)); }
+  const projected = projectSamples(result, projection, yaw, pitch, width, height);
+  const x = projected.x;
+  const y = projected.y;
+  const visible = projected.visible;
 
   if (projection === 'globe') {
     context.beginPath();
@@ -136,52 +220,74 @@ function renderPlanet(canvas: HTMLCanvasElement, result: WorldgenInheritanceResu
     context.strokeStyle = '#35536d';
     context.lineWidth = 0.65;
     for (let sample = 0; sample < result.metrics.fineSampleCount; sample += 1) {
-      const [ax, ay, av] = projectSample(sample);
-      if (!av) continue;
+      if (!visible[sample]) continue;
+      const ax = x[sample]!;
+      const ay = y[sample]!;
       for (let cursor = result.neighborOffsets[sample]!; cursor < result.neighborOffsets[sample + 1]!; cursor += 1) {
         const neighbor = result.neighbors[cursor]!;
-        if (neighbor <= sample) continue;
-        const [bx, by, bv] = projectSample(neighbor);
-        if (!bv || (projection === 'map' && Math.abs(ax - bx) > width / 2)) continue;
-        context.moveTo(ax, ay); context.lineTo(bx, by);
+        if (neighbor <= sample || !visible[neighbor]) continue;
+        const bx = x[neighbor]!;
+        if (projection === 'map' && Math.abs(ax - bx) > width / 2) continue;
+        context.moveTo(ax, ay);
+        context.lineTo(bx, y[neighbor]!);
       }
     }
     context.stroke();
     return;
   }
 
+  if (styleCache.result !== result || styleCache.mode !== mode) styleCache = buildStyleCache(result, mode);
   const pointRadius = result.metrics.fineSampleCount > 100_000 ? 0.8 : result.metrics.fineSampleCount > 30_000 ? 1.15 : result.metrics.fineSampleCount > 5_000 ? 2.0 : 3.0;
   const boundaryMode = mode === 'tectonic-boundaries' || mode === 'geological-boundaries' || mode === 'boundary-provenance';
-  const scalarDescriptor = scalar(result, mode);
   context.globalAlpha = boundaryMode ? 0.28 : 0.94;
-  for (let sample = 0; sample < result.metrics.fineSampleCount; sample += 1) {
-    const [x, y, visible] = projectSample(sample);
-    if (!visible) continue;
-    if (mode === 'plates' || boundaryMode) context.fillStyle = plateColor(result.plateIds[sample]!);
-    else if (mode === 'kinematic-domains') context.fillStyle = plateColor(result.kinematicDomainIds[sample]!);
-    else if (mode === 'crust-type') context.fillStyle = crustColor(result.crustKind[sample]!);
-    else if (mode === 'structural-zones') context.fillStyle = structuralColor(result.structuralZoneKind[sample]!);
-    else if (mode === 'provenance') context.fillStyle = provenanceColor(result.nearestCoarseSource[sample]!);
-    else if (mode === 'inherited-mask') context.fillStyle = result.inheritedSampleMask[sample] ? '#f4e27a' : '#5794c8';
-    else if (scalarDescriptor) context.fillStyle = scalarColor(scalarDescriptor.values[sample]!, scalarDescriptor.minimum, scalarDescriptor.maximum, scalarDescriptor.lowHue, scalarDescriptor.highHue);
-    else context.fillStyle = '#8297aa';
-    context.beginPath(); context.arc(x, y, pointRadius, 0, Math.PI * 2); context.fill();
+
+  const fastPoints = interactive && result.metrics.fineSampleCount > 20_000;
+  if (fastPoints) {
+    const size = Math.max(1.5, pointRadius * 1.7);
+    const half = size / 2;
+    for (const bucket of styleCache.sampleBuckets) {
+      context.fillStyle = bucket.color;
+      for (let cursor = 0; cursor < bucket.indices.length; cursor += 1) {
+        const sample = bucket.indices[cursor]!;
+        if (!visible[sample]) continue;
+        context.fillRect(x[sample]! - half, y[sample]! - half, size, size);
+      }
+    }
+  } else {
+    for (const bucket of styleCache.sampleBuckets) {
+      context.fillStyle = bucket.color;
+      context.beginPath();
+      for (let cursor = 0; cursor < bucket.indices.length; cursor += 1) {
+        const sample = bucket.indices[cursor]!;
+        if (!visible[sample]) continue;
+        const sx = x[sample]!;
+        const sy = y[sample]!;
+        context.moveTo(sx + pointRadius, sy);
+        context.arc(sx, sy, pointRadius, 0, Math.PI * 2);
+      }
+      context.fill();
+    }
   }
   context.globalAlpha = 1;
 
   if (boundaryMode) {
     context.lineCap = 'round';
-    for (let boundary = 0; boundary < result.metrics.fineBoundaryEdgeCount; boundary += 1) {
-      const sampleA = result.boundarySamples[boundary * 2]!;
-      const sampleB = result.boundarySamples[boundary * 2 + 1]!;
-      const [ax, ay, av] = projectSample(sampleA);
-      const [bx, by, bv] = projectSample(sampleB);
-      if (!av || !bv || (projection === 'map' && Math.abs(ax - bx) > width / 2)) continue;
-      if (mode === 'tectonic-boundaries') context.strokeStyle = tectonicBoundaryColor(result.boundaryKinds[boundary]!);
-      else if (mode === 'geological-boundaries') context.strokeStyle = geologicalBoundaryColor(result.geologicalBoundaryRegimes[boundary]!);
-      else context.strokeStyle = provenanceColor(result.boundaryCoarseSourceIndices[boundary]!);
-      context.lineWidth = mode === 'boundary-provenance' ? 1.4 : 2.0;
-      context.beginPath(); context.moveTo(ax, ay); context.lineTo(bx, by); context.stroke();
+    context.lineWidth = mode === 'boundary-provenance' ? 1.4 : 2.0;
+    for (const bucket of styleCache.boundaryBuckets) {
+      context.strokeStyle = bucket.color;
+      context.beginPath();
+      for (let cursor = 0; cursor < bucket.indices.length; cursor += 1) {
+        const boundary = bucket.indices[cursor]!;
+        const sampleA = result.boundarySamples[boundary * 2]!;
+        const sampleB = result.boundarySamples[boundary * 2 + 1]!;
+        if (!visible[sampleA] || !visible[sampleB]) continue;
+        const ax = x[sampleA]!;
+        const bx = x[sampleB]!;
+        if (projection === 'map' && Math.abs(ax - bx) > width / 2) continue;
+        context.moveTo(ax, y[sampleA]!);
+        context.lineTo(bx, y[sampleB]!);
+      }
+      context.stroke();
     }
   }
 }
@@ -201,10 +307,15 @@ let current: WorldgenInheritanceResult | null = null;
 let yaw = -0.65;
 let pitch = 0.25;
 let drag: { x: number; y: number; yaw: number; pitch: number } | null = null;
+let frameRequest: number | null = null;
 
 function redraw(): void {
-  if (!current) return;
-  renderPlanet(canvas, current, projection.value, visualization.value, yaw, pitch);
+  if (!current || frameRequest !== null) return;
+  frameRequest = requestAnimationFrame(() => {
+    frameRequest = null;
+    if (!current) return;
+    renderPlanet(canvas, current, projection.value, visualization.value, yaw, pitch, drag !== null);
+  });
 }
 function showMetrics(result: WorldgenInheritanceResult): void {
   metrics.replaceChildren();
@@ -227,6 +338,7 @@ async function generatePlanet(): Promise<void> {
   try {
     const loaded = await client.generateInheritance({ seed: seed.value, coarseLevel: Number(coarseLevel.value), fineLevel: Number(fineLevel.value), plateCount: Number(plates.value) });
     current = loaded;
+    styleCache = { result: null, mode: '', sampleBuckets: [], boundaryBuckets: [] };
     showMetrics(loaded);
     redraw();
     status.textContent = `WG-3.75 ready: L${loaded.coarseLevel} accepted physics inherited to L${loaded.fineLevel}; ${loaded.metrics.fineBoundaryEdgeCount.toLocaleString()} fine boundary interfaces.`;
@@ -240,9 +352,25 @@ async function generatePlanet(): Promise<void> {
 generate.addEventListener('click', () => void generatePlanet());
 projection.addEventListener('change', redraw);
 visualization.addEventListener('change', redraw);
-canvas.addEventListener('pointerdown', event => { if (projection.value !== 'globe') return; drag = { x: event.clientX, y: event.clientY, yaw, pitch }; canvas.setPointerCapture(event.pointerId); });
-canvas.addEventListener('pointermove', event => { if (!drag || projection.value !== 'globe') return; yaw = drag.yaw + (event.clientX - drag.x) * 0.007; pitch = Math.max(-1.45, Math.min(1.45, drag.pitch + (event.clientY - drag.y) * 0.007)); redraw(); });
-canvas.addEventListener('pointerup', event => { drag = null; if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId); });
-canvas.addEventListener('pointercancel', () => { drag = null; });
-window.addEventListener('beforeunload', () => client.dispose());
+canvas.addEventListener('pointerdown', event => {
+  if (projection.value !== 'globe') return;
+  drag = { x: event.clientX, y: event.clientY, yaw, pitch };
+  canvas.setPointerCapture(event.pointerId);
+});
+canvas.addEventListener('pointermove', event => {
+  if (!drag || projection.value !== 'globe') return;
+  yaw = drag.yaw + (event.clientX - drag.x) * 0.007;
+  pitch = Math.max(-1.45, Math.min(1.45, drag.pitch + (event.clientY - drag.y) * 0.007));
+  redraw();
+});
+canvas.addEventListener('pointerup', event => {
+  drag = null;
+  redraw();
+  if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+});
+canvas.addEventListener('pointercancel', () => { drag = null; redraw(); });
+window.addEventListener('beforeunload', () => {
+  if (frameRequest !== null) cancelAnimationFrame(frameRequest);
+  client.dispose();
+});
 void generatePlanet();
