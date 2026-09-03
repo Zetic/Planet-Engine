@@ -17,6 +17,16 @@ jobs:
           ref: worldgen-wg4-initial-topography
           fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
+      - name: Apply narrow WG-4 compile fix
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('rust/interlink-worldgen/src/topography.rs')
+          text = path.read_text()
+          for name in ['collision', 'ridge', 'rift', 'trench', 'arc']:
+              text = text.replace(f'let mut {name} = vec![0.0; count];', f'let mut {name} = vec![0.0_f64; count];')
+          path.write_text(text)
+          PY
       - name: Capture Rust workspace result
         run: |
           set +e
@@ -24,10 +34,10 @@ jobs:
           status=$?
           echo "exit_status=$status" >> wg4-rust.log
           exit 0
-      - name: Commit diagnostic log
+      - name: Commit fix and diagnostic log
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add wg4-rust.log
-          git commit -m "Capture WG-4 Rust diagnostic" || exit 0
+          git add rust/interlink-worldgen/src/topography.rs wg4-rust.log
+          git commit -m "WG-4: fix source field scalar types" || exit 0
           git push origin HEAD:worldgen-wg4-initial-topography
