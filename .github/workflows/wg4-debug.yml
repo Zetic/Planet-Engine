@@ -23,7 +23,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
-      - name: Validate source integration
+      - name: Apply polish and validate source integration
         run: |
           set +e
           : > wg4-validation.log
@@ -35,6 +35,7 @@ jobs:
             echo "exit_status=$rc" >> wg4-validation.log
             return $rc
           }
+          run_step physical-polish python scripts/wg4_polish.py || true
           run_step rustfmt cargo fmt --all || true
           run_step npm-install npm ci || true
           run_step browser-build npm run build || true
@@ -66,7 +67,8 @@ jobs:
             src/wasm-worldgen \
             dist/worldgen \
             tests \
+            README.md \
             wg4-validation.log
           if git diff --cached --quiet; then exit 0; fi
-          git commit -m "WG-4: validate and package topography integration"
+          git commit -m "WG-4: finalize physical topography integration"
           git push origin HEAD:worldgen-wg4-initial-topography
