@@ -712,6 +712,35 @@ struct AtmosphericHeatGeometry {
     diagonal_geometry: Vec<f64>,
 }
 
+#[derive(Clone, Debug)]
+struct AtmosphericHeatWorkspace {
+    capacity: Vec<f64>,
+    rhs: Vec<f64>,
+    diagonal: Vec<f64>,
+    x: Vec<f64>,
+    matrix_x: Vec<f64>,
+    residual: Vec<f64>,
+    preconditioned: Vec<f64>,
+    direction: Vec<f64>,
+    matrix_direction: Vec<f64>,
+}
+
+impl AtmosphericHeatWorkspace {
+    fn new(sample_count: usize) -> Self {
+        Self {
+            capacity: vec![0.0; sample_count],
+            rhs: vec![0.0; sample_count],
+            diagonal: vec![0.0; sample_count],
+            x: vec![0.0; sample_count],
+            matrix_x: vec![0.0; sample_count],
+            residual: vec![0.0; sample_count],
+            preconditioned: vec![0.0; sample_count],
+            direction: vec![0.0; sample_count],
+            matrix_direction: vec![0.0; sample_count],
+        }
+    }
+}
+
 fn build_atmospheric_heat_geometry(
     topology: &GeodesicTopology,
     radius_m: f64,
@@ -768,6 +797,7 @@ fn apply_atmospheric_heat_matrix(
 
 fn diffuse_atmospheric_heat(
     geometry: &AtmosphericHeatGeometry,
+    workspace: &mut AtmosphericHeatWorkspace,
     temperature: &mut [f64],
     pressure_pa: &[f64],
     cell_area_m2: &[f64],
@@ -789,9 +819,18 @@ fn diffuse_atmospheric_heat(
     let diffusion_scale_j_k = phase_seconds
         * parameters.atmospheric_heat_diffusivity_m2_s
         * reference_column_capacity_j_m2_k;
-    let mut capacity = vec![0.0; temperature.len()];
-    let mut rhs = vec![0.0; temperature.len()];
-    let mut diagonal = vec![0.0; temperature.len()];
+    let AtmosphericHeatWorkspace {
+        capacity,
+        rhs,
+        diagonal,
+        x,
+        matrix_x,
+        residual,
+        preconditioned,
+        direction,
+        matrix_direction,
+    } = workspace;
+    debug_assert_eq!(capacity.len(), temperature.len());
     for i in 0..temperature.len() {
         let column_capacity = (pressure_pa[i] / planet.surface_gravity_m_s2
             * physical.atmospheric_specific_heat_j_per_kg_k)
@@ -801,21 +840,13 @@ fn diffuse_atmospheric_heat(
         diagonal[i] = capacity[i] + diffusion_scale_j_k * geometry.diagonal_geometry[i];
     }
 
-    let mut x = temperature.to_vec();
-    let mut matrix_x = vec![0.0; x.len()];
-    apply_atmospheric_heat_matrix(geometry, &capacity, diffusion_scale_j_k, &x, &mut matrix_x);
-    let mut residual = rhs
-        .iter()
-        .zip(matrix_x.iter())
-        .map(|(b, ax)| b - ax)
-        .collect::<Vec<_>>();
-    let mut preconditioned = residual
-        .iter()
-        .enumerate()
-        .map(|(i, r)| r / diagonal[i].max(1.0e-18))
-        .collect::<Vec<_>>();
-    let mut direction = preconditioned.clone();
-    let mut matrix_direction = vec![0.0; x.len()];
+    x.copy_from_slice(temperature);
+    apply_atmospheric_heat_matrix(geometry, capacity, diffusion_scale_j_k, x, matrix_x);
+    for i in 0..x.len() {
+        residual[i] = rhs[i] - matrix_x[i];
+        preconditioned[i] = residual[i] / diagonal[i].max(1.0e-18);
+        direction[i] = preconditioned[i];
+    }
     let mut rho = residual
         .iter()
         .zip(preconditioned.iter())
@@ -828,10 +859,10 @@ fn diffuse_atmospheric_heat(
         }
         apply_atmospheric_heat_matrix(
             geometry,
-            &capacity,
+            capacity,
             diffusion_scale_j_k,
-            &direction,
-            &mut matrix_direction,
+            direction,
+            matrix_direction,
         );
         let denominator = direction
             .iter()
@@ -1625,6 +1656,7 @@ fn generate_coupled_climate_internal(
     }
 
     let atmospheric_heat_geometry = build_atmospheric_heat_geometry(topology, planet.radius_m);
+    let mut atmospheric_heat_workspace = AtmosphericHeatWorkspace::new(sample_count);
     let atmospheric_moisture_edges =
         build_atmospheric_moisture_edges(topology, &east_bases, &north_bases, planet.radius_m);
     let mut phase_moisture_edges = Vec::with_capacity(atmospheric_moisture_edges.len());
@@ -1864,6 +1896,7 @@ fn generate_coupled_climate_internal(
             }
             diffuse_atmospheric_heat(
                 &atmospheric_heat_geometry,
+                &mut atmospheric_heat_workspace,
                 &mut temperature,
                 &pressure,
                 &cell_area_m2,
@@ -2759,10 +2792,12 @@ mod tests {
         let column_capacity = pressure[0] / planet.surface_gravity_m_s2
             * physical.atmospheric_specific_heat_j_per_kg_k;
         let mut temperature = [300.0, 280.0];
+        let mut workspace = AtmosphericHeatWorkspace::new(2);
         let before =
             column_capacity * area[0] * temperature[0] + column_capacity * area[1] * temperature[1];
         diffuse_atmospheric_heat(
             &geometry,
+            &mut workspace,
             &mut temperature,
             &pressure,
             &area,
