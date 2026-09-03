@@ -812,7 +812,7 @@ pub fn generate_coupled_climate(
     let mut ocean_heat_transport_sum = vec![0.0; sample_count];
     let mut humidity_sum = vec![0.0; sample_count];
     let mut precipitation_mass_year = vec![0.0; sample_count];
-    let mut precipitation_phase_max = vec![0.0; sample_count];
+    let mut precipitation_phase_max = vec![0.0_f64; sample_count];
     let mut potential_evaporation_mass_year = vec![0.0; sample_count];
     let mut cold_precipitation_mass_year = vec![0.0; sample_count];
     let mut snow_phase_count = vec![0.0; sample_count];
