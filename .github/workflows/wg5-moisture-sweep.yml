@@ -1,11 +1,16 @@
-name: Temporary WG-5 Moisture Resolution Pair
+name: Temporary WG-5 Evaporation Wind-Cap Sweep
 
 on:
   push:
     branches: [wg5-moisture-transport-rebuild]
 
 jobs:
-  resolution-pair:
+  sweep:
+    strategy:
+      fail-fast: false
+      matrix:
+        evap_wind_cap: ['4.0', '6.0', '8.0']
+    name: evap-cap-${{ matrix.evap_wind_cap }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,6 +28,7 @@ jobs:
           CONVERGENCE_RH: '0.60'
           CONVERGENCE_EFF: '0.35'
           MOISTURE_SPEED_CAP: '1.0'
+          EVAP_WIND_CAP: ${{ matrix.evap_wind_cap }}
         run: |
           set -euo pipefail
           python scripts/wg5_moisture_patch.py
@@ -31,6 +37,7 @@ jobs:
           python scripts/wg5_moisture_speedcap_patch.py
           python scripts/wg5_moisture_speedcap_fix.py
           python scripts/wg5_moisture_substeps64_patch.py
+          python scripts/wg5_evap_windcap_sweep_patch.py
           python scripts/wg5_moisture_evap_diagnostics_patch.py
           cargo fmt --all
           cargo check -p interlink-worldgen
