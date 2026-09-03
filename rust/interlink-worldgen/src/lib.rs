@@ -1,4 +1,5 @@
 mod boundary_refinement;
+mod climate;
 mod coordinates;
 mod diagnostics;
 mod fields;
@@ -15,6 +16,10 @@ use std::fmt;
 
 pub use boundary_refinement::{
     inherit_boundary_interfaces, InheritedBoundaryEdge, InheritedBoundarySet,
+};
+pub use climate::{
+    generate_coupled_climate, ClimateMetrics, ClimateParameters, ClimatePhysicalParameters,
+    ClimateRequest, ClimateState, CLIMATE_STAGE_ID, CLIMATE_STAGE_VERSION,
 };
 pub use coordinates::{
     anchor_origin_cartesian, cartesian_to_local_enu, great_circle_distance_m,
@@ -71,6 +76,7 @@ pub enum WorldgenError {
     InvalidLithosphere(&'static str),
     InvalidRefinement(&'static str),
     InvalidTopography(&'static str),
+    InvalidClimate(&'static str),
 }
 impl fmt::Display for WorldgenError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -83,7 +89,8 @@ impl fmt::Display for WorldgenError {
             | Self::InvalidGeology(message)
             | Self::InvalidLithosphere(message)
             | Self::InvalidRefinement(message)
-            | Self::InvalidTopography(message) => formatter.write_str(message),
+            | Self::InvalidTopography(message)
+            | Self::InvalidClimate(message) => formatter.write_str(message),
         }
     }
 }
