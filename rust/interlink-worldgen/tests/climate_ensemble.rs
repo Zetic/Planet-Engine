@@ -14,15 +14,10 @@ fn generated_surface(
 ) {
     let coarse = build_icosphere(3).unwrap();
     let fine = build_icosphere(4).unwrap();
-    let tectonics =
-        generate_tectonics(&coarse, &TectonicsRequest::new(seed, 12), planet).unwrap();
-    let geology = generate_crust_and_history(
-        &coarse,
-        &tectonics,
-        &GeologyRequest::new(seed),
-        planet,
-    )
-    .unwrap();
+    let tectonics = generate_tectonics(&coarse, &TectonicsRequest::new(seed, 12), planet).unwrap();
+    let geology =
+        generate_crust_and_history(&coarse, &tectonics, &GeologyRequest::new(seed), planet)
+            .unwrap();
     let lithosphere = generate_lithosphere(
         &coarse,
         &tectonics,
@@ -30,23 +25,11 @@ fn generated_surface(
         &LithosphereRequest::new(seed),
     )
     .unwrap();
-    let inherited = inherit_physical_state(
-        &fine,
-        3,
-        &tectonics,
-        &geology,
-        &lithosphere,
-        planet,
-    )
-    .unwrap();
-    let boundaries = inherit_boundary_interfaces(
-        &coarse,
-        &fine,
-        &tectonics,
-        &geology,
-        &inherited.plate_ids,
-    )
-    .unwrap();
+    let inherited =
+        inherit_physical_state(&fine, 3, &tectonics, &geology, &lithosphere, planet).unwrap();
+    let boundaries =
+        inherit_boundary_interfaces(&coarse, &fine, &tectonics, &geology, &inherited.plate_ids)
+            .unwrap();
     let terrain = generate_initial_topography(
         &fine,
         &inherited,
@@ -69,8 +52,14 @@ fn earthlike_climate_is_deterministic_and_couples_atmosphere_ocean_and_moisture(
     assert_eq!(first.metrics.climate_hash, second.metrics.climate_hash);
     assert_eq!(first.temperature_mean_k, second.temperature_mean_k);
     assert_eq!(first.current_east_mean_m_s, second.current_east_mean_m_s);
-    assert_eq!(first.annual_precipitation_mm, second.annual_precipitation_mm);
-    assert_eq!(first.metrics.sample_count as usize, topology.positions().len());
+    assert_eq!(
+        first.annual_precipitation_mm,
+        second.annual_precipitation_mm
+    );
+    assert_eq!(
+        first.metrics.sample_count as usize,
+        topology.positions().len()
+    );
     assert!(first.metrics.mean_temperature_k > 220.0);
     assert!(first.metrics.mean_temperature_k < 330.0);
     assert!(first.metrics.mean_wind_speed_m_s > 0.1);
@@ -86,14 +75,12 @@ fn earthlike_climate_is_deterministic_and_couples_atmosphere_ocean_and_moisture(
     assert!(first.metrics.mean_annual_precipitation_mm >= 0.0);
     assert!(first.metrics.moisture_budget_relative_error < 1.0e-8);
 
-
     let mut no_ocean_heat_request = request.clone();
     no_ocean_heat_request.parameters.ocean_advection_relaxation = 0.0;
     let no_ocean_heat =
         generate_coupled_climate(&topology, &terrain, planet, &no_ocean_heat_request).unwrap();
     assert_ne!(
-        first.sea_surface_temperature_mean_k,
-        no_ocean_heat.sea_surface_temperature_mean_k,
+        first.sea_surface_temperature_mean_k, no_ocean_heat.sea_surface_temperature_mean_k,
         "surface-current heat advection must causally affect SST",
     );
 
@@ -138,16 +125,15 @@ fn dry_planet_has_no_ocean_current_or_ocean_evaporation() {
     let mut dry = PlanetPhysicalParameters::earthlike_reference();
     dry.surface_water_mass_kg = 0.0;
     let (topology, terrain) = generated_surface("wg5-dry", dry);
-    let climate = generate_coupled_climate(
-        &topology,
-        &terrain,
-        dry,
-        &ClimateRequest::new("wg5-dry"),
-    )
-    .unwrap();
+    let climate =
+        generate_coupled_climate(&topology, &terrain, dry, &ClimateRequest::new("wg5-dry"))
+            .unwrap();
 
     assert!(terrain.submerged_mask.iter().all(|value| *value == 0));
-    assert!(climate.current_speed_mean_m_s.iter().all(|value| *value == 0.0));
+    assert!(climate
+        .current_speed_mean_m_s
+        .iter()
+        .all(|value| *value == 0.0));
     assert_eq!(climate.metrics.global_evaporation_kg, 0.0);
 }
 
@@ -165,20 +151,43 @@ fn airless_planet_retains_radiative_temperature_but_has_no_wind_or_precipitation
     )
     .unwrap();
 
-    assert!(climate.temperature_mean_k.iter().all(|value| value.is_finite()));
+    assert!(climate
+        .temperature_mean_k
+        .iter()
+        .all(|value| value.is_finite()));
     assert!(climate.wind_east_mean_m_s.iter().all(|value| *value == 0.0));
-    assert!(climate.wind_north_mean_m_s.iter().all(|value| *value == 0.0));
-    assert!(climate.annual_precipitation_mm.iter().all(|value| *value == 0.0));
-}
+    assert!(climate
+        .wind_north_mean_m_s
+        .iter()
+        .all(|value| *value == 0.0));
+    assert!(climate
+        .annual_precipitation_mm
+        .iter()
+        .all(|value| *value == 0.0));
 
+    let mut no_transport_request = ClimateRequest::new("wg5-airless");
+    no_transport_request.parameters.atmospheric_heat_relaxation = 0.0;
+    let no_transport =
+        generate_coupled_climate(&topology, &terrain, airless, &no_transport_request).unwrap();
+    assert_eq!(
+        climate.temperature_mean_k, no_transport.temperature_mean_k,
+        "airless surfaces must not retain atmospheric lateral heat redistribution",
+    );
+}
 
 fn mean_field(values: &[f32]) -> f64 {
     values.iter().map(|value| f64::from(*value)).sum::<f64>() / values.len() as f64
 }
 
 fn zonal_fraction(east: &[f32], north: &[f32]) -> f64 {
-    let east_total = east.iter().map(|value| f64::from(*value).abs()).sum::<f64>();
-    let north_total = north.iter().map(|value| f64::from(*value).abs()).sum::<f64>();
+    let east_total = east
+        .iter()
+        .map(|value| f64::from(*value).abs())
+        .sum::<f64>();
+    let north_total = north
+        .iter()
+        .map(|value| f64::from(*value).abs())
+        .sum::<f64>();
     east_total / (east_total + north_total).max(1.0e-12)
 }
 
@@ -244,6 +253,39 @@ fn rotation_rate_changes_circulation_and_faster_rotation_is_more_zonal() {
         fast_zonal > slow_zonal,
         "faster rotation should increase zonal control: slow={slow_zonal} fast={fast_zonal}",
     );
-    assert_ne!(slow_climate.wind_east_mean_m_s, fast_climate.wind_east_mean_m_s);
-    assert_ne!(slow_climate.current_east_mean_m_s, fast_climate.current_east_mean_m_s);
+    assert_ne!(
+        slow_climate.wind_east_mean_m_s,
+        fast_climate.wind_east_mean_m_s
+    );
+    assert_ne!(
+        slow_climate.current_east_mean_m_s,
+        fast_climate.current_east_mean_m_s
+    );
+}
+
+#[test]
+fn atmospheric_specific_heat_changes_thermal_redistribution_on_fixed_wg4_surface() {
+    let planet = PlanetPhysicalParameters::earthlike_reference();
+    let (topology, terrain) = generated_surface("wg5-specific-heat", planet);
+    let reference = ClimateRequest::new("wg5-specific-heat");
+    let normal = generate_coupled_climate(&topology, &terrain, planet, &reference).unwrap();
+    let mut high_heat_capacity = reference.clone();
+    high_heat_capacity
+        .physical
+        .atmospheric_specific_heat_j_per_kg_k *= 2.0;
+    let high = generate_coupled_climate(&topology, &terrain, planet, &high_heat_capacity).unwrap();
+    assert_ne!(normal.temperature_mean_k, high.temperature_mean_k);
+    assert_ne!(normal.wind_east_mean_m_s, high.wind_east_mean_m_s);
+}
+
+#[test]
+fn core_rejects_unconverged_climate_instead_of_returning_a_state() {
+    let planet = PlanetPhysicalParameters::earthlike_reference();
+    let (topology, terrain) = generated_surface("wg5-nonconverged", planet);
+    let mut request = ClimateRequest::new("wg5-nonconverged");
+    request.parameters.minimum_spinup_years = 1;
+    request.parameters.maximum_spinup_years = 1;
+    request.parameters.convergence_temperature_rms_k = 1.0e-12;
+    let error = generate_coupled_climate(&topology, &terrain, planet, &request).unwrap_err();
+    assert!(error.to_string().contains("did not converge"));
 }
