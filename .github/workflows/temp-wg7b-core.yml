@@ -1,0 +1,39 @@
+name: Temporary WG-7B Core Integration
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    if: github.head_ref == 'wg7b-bounded-terrain-evolution'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+      - name: Apply WG-7B core transformer
+        run: python scripts/temp-wg7b-core.py
+      - name: Format core
+        run: cargo fmt --all
+      - name: Test worldgen core
+        run: cargo test -p interlink-worldgen
+      - name: Remove temporary transformer
+        run: rm scripts/temp-wg7b-core.py
+      - name: Commit WG-7B core integration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add rust/interlink-worldgen/src/drainage.rs rust/interlink-worldgen/src/evolution.rs rust/interlink-worldgen/src/lib.rs scripts/temp-wg7b-core.py
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Integrate WG-7B bounded terrain evolution core"
+            git push origin HEAD:${{ github.head_ref }}
+          fi
