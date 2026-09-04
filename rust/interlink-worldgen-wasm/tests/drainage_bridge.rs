@@ -3,7 +3,7 @@ use interlink_worldgen_wasm::WasmWorldgenDrainage;
 #[test]
 fn drainage_bridge_exposes_routing_topology_and_conservation() {
     let output = WasmWorldgenDrainage::new("wg6a-wasm".to_owned(), 3, 4, 12).unwrap();
-    assert_eq!(output.generator_version(), 9);
+    assert_eq!(output.generator_version(), 10);
     assert_eq!(output.stage_id(), "hydrology:drainage-topology");
     assert_eq!(output.stage_version(), 1);
     assert_eq!(output.coarse_level(), 3);
