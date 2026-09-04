@@ -1,0 +1,31 @@
+name: Temporary WG-6A Final Benchmark
+
+on:
+  push:
+    branches: [wg6-drainage-topology]
+
+permissions:
+  contents: read
+
+env:
+  RUST_VERSION: '1.98.1'
+  RUNS: '3'
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned Rust
+        run: |
+          rustup toolchain install "${RUST_VERSION}" --profile minimal
+          rustup default "${RUST_VERSION}"
+      - name: Build drainage benchmark
+        run: cargo build --release -p interlink-worldgen-cli --example drainage_performance
+      - name: Benchmark WG-6A L4
+        run: bash scripts/benchmark-wg6-drainage.sh l4
+      - name: Benchmark WG-6A L6
+        run: bash scripts/benchmark-wg6-drainage.sh l6
+      - name: Benchmark WG-6A L7
+        run: bash scripts/benchmark-wg6-drainage.sh l7
