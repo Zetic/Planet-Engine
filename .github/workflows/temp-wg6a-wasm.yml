@@ -40,7 +40,7 @@ jobs:
           PY
       - name: Install pinned Rust and browser target
         run: |
-          rustup toolchain install "${RUST_VERSION}" --profile minimal --target wasm32-unknown-unknown
+          rustup toolchain install "${RUST_VERSION}" --profile minimal --target wasm32-unknown-unknown --component rustfmt
           rustup default "${RUST_VERSION}"
       - name: Format and test Rust workspace
         run: |
