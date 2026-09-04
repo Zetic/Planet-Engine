@@ -50,7 +50,7 @@ test('WG-6A command uses the dedicated drainage transport contract', () => {
 test('primary Planet Engine Lab blends WG-6A into the main physical diagnostic surface', () => {
   const page = fs.readFileSync('index.html', 'utf8');
   const source = fs.readFileSync('src/worldgen/diagnostics/worldgenClimateLabStandalone.ts', 'utf8');
-  assert.match(page, /THROUGH WG-7A/);
+  assert.match(page, /THROUGH WG-7B/);
   for (const mode of ['contributing-area', 'basins', 'flow-direction', 'depression-depth', 'depressions', 'escape-elevation']) {
     assert.match(page, new RegExp(`value=["']${mode}["']`));
   }

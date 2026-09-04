@@ -1,6 +1,6 @@
 # WG-7 — Fluvial erosion and sediment
 
-WG-7 begins geomorphic evolution after the accepted WG-4 physical surface and WG-6 hydrology. WG-7A establishes deterministic erosive forcing and conservative sediment routing without changing terrain. WG-7B is reserved for applying that forcing to terrain and rebuilding drainage after the surface changes.
+WG-7 begins geomorphic evolution after the accepted WG-4 physical surface and WG-6 hydrology. WG-7A establishes deterministic erosive forcing and conservative sediment routing without changing terrain. WG-7B consumes that accepted forcing to create a distinct bounded evolved surface, apply conservative sediment deposition, rebuild drainage once, and reroute accepted annual runoff on the rebuilt DAG.
 
 ## WG-7A stage identity
 
@@ -200,7 +200,7 @@ Every public WG-7A vector participates in the deterministic stage hash.
 
 ## Browser and Lab contract
 
-WG-7A advances the cumulative browser/WASM protocol to version `15`. The single cumulative planet request generates WG-7A after WG-6D; there is intentionally no separate browser `generateErosion` path that could create a mismatched physical ancestry.
+The cumulative browser/WASM contract is now version `16`. The single cumulative planet request still generates WG-7A after WG-6D and then WG-7B; there is intentionally no separate browser `generateErosion` or `generateEvolution` path that could create mismatched physical ancestry.
 
 The primary Planet Engine Lab exposes WG-7A diagnostics for:
 
@@ -253,7 +253,7 @@ WG-7A remains small relative to the full coupled climate/hydrology generation co
 9. Public state and upstream identities are included in deterministic hashing.
 10. WG-4 terrain, WG-6A receivers/depressions, and all accepted WG-6 hydrology remain immutable in WG-7A.
 
-## Deferred to WG-7B and later
+## WG-7A boundary carried into WG-7B
 
 WG-7A intentionally does not perform:
 
@@ -265,4 +265,157 @@ WG-7A intentionally does not perform:
 - iterative hydro-geomorphic feedback;
 - hillslope diffusion, mass wasting, glacial erosion, weathering, soil production, or detailed lithology.
 
-WG-7B should begin only after the WG-7A forcing, ancestry, resolution interpretation, and sediment-conservation contracts are treated as stable inputs.
+WG-7B now consumes WG-7A under exactly those forcing, ancestry, resolution-interpretation, and sediment-conservation contracts.
+
+## WG-7B stage identity
+
+The implemented terrain-mutation stage is:
+
+```text
+geomorphology:bounded-terrain-evolution@1
+```
+
+WG-7B does not overwrite WG-4. It owns a distinct evolved-terrain state whose identity includes the stage seed, WG-7B parameter hash, accepted WG-4/WG-6/WG-7A ancestry, evolved surface, rebuilt drainage identity, applied erosion/deposition state, changed-receiver mask, and rerouted post-erosion discharge.
+
+The generation-time causality is:
+
+```text
+accepted WG-7A incision potential + channel width + transport capacity
+             +
+immutable WG-4 solid terrain / sea level / ocean mask
+             +
+accepted WG-6A receiver DAG + depression membership
+             +
+accepted WG-6B local runoff + WG-6C active lake depressions
+             ↓
+channel-to-valley cell-average erosion rate
+             ↓
+one adaptive bounded geomorphic horizon
+             ↓
+applied erosion + conservative applied-sediment routing
+             ↓
+ordinary land deposition + lake sink + terminal/ocean sink
+             ↓
+distinct evolved solid surface
+             ↓
+one WG-6A drainage rebuild on evolved terrain
+             ↓
+accepted WG-6B local runoff rerouted over rebuilt drainage
+```
+
+### Valley-footprint terrain response
+
+WG-7A incision is a channel-bed diagnostic and must not lower an entire dual cell by the same depth. WG-7B expands the accepted hydraulic channel width into a bounded coarse valley width and converts incision to cell-average erosion:
+
+```text
+valley_width = clamp(channel_width * valley_width_multiplier,
+                     minimum_valley_width,
+                     maximum_valley_width)
+valley_area = min(receiver_segment_length * valley_width, dual_cell_area)
+resolved_erosion_rate = incision_potential * valley_area / dual_cell_area
+```
+
+Default valley parameters are multiplier `3`, minimum width `100 m`, and maximum width `20,000 m`.
+
+### One adaptive direct geomorphic horizon
+
+WG-7B is not a year-stepped landscape simulator. It first estimates the maximum resolved erosion or ordinary-land deposition rate, then chooses one direct duration:
+
+```text
+duration = min(maximum_geomorphic_years,
+               maximum_resolved_elevation_change / maximum_resolved_rate)
+```
+
+The defaults are `250,000 years` and `120 m`. The stage therefore remains a small set of dense passes plus one drainage rebuild instead of repeatedly invoking climate/hydrology and erosion.
+
+Applied erosion is additionally limited by available relief. Existing WG-4 land remains at least `1 m` above the fixed WG-4 sea level, and an eroding land cell remains at least `0.1 m` above its accepted downstream land receiver. These are v1 stability/base-level guards, not claims of detailed channel-bed geometry.
+
+### Applied sediment ledger
+
+After bounded erosion is known, WG-7B recomputes sediment production from the **actually applied erosion volume** rather than carrying forward WG-7A diagnostic production unchanged. The default source and deposited-sediment densities are both `1,800 kg/m³`.
+
+Applied sediment is routed once over the accepted pre-erosion WG-6A DAG using the accepted WG-7A transport-capacity field. Ordinary land deposition is converted to elevation gain on the evolved surface. Every member of an active WG-6C depression remains a complete lake sink, and terminal/ocean export is retained as an explicit sink. Lake and terminal/ocean sinks do not construct lake fill or deltas in WG-7B v1.
+
+The required mass invariant is:
+
+```text
+applied sediment generated
+  = ordinary land deposition
+  + active-lake sink
+  + terminal/ocean sink
+```
+
+Permanent CI requires relative closure at or below `1e-10`.
+
+### Evolved terrain and fixed coastline
+
+`evolved_solid_elevation_m` is a new WG-7B field. WG-4 `solid_elevation_m`, its component decomposition, topography hash, solved sea level, and submerged mask remain immutable upstream truth.
+
+WG-7B v1 deliberately preserves the WG-4 ocean mask. Existing land cannot erode through the fixed sea-level clearance and existing ocean cells are not raised by terminal sediment. This avoids claiming coastline migration before coastal construction and water-volume/sea-level feedback are modeled together.
+
+### One drainage rebuild and cheap runoff reroute
+
+After applying the terrain delta, WG-7B invokes the accepted WG-6A drainage solver exactly once on the evolved solid surface while retaining the WG-4 ocean mask. It records which land samples changed receiver and the complete rebuilt contributing-area state internally.
+
+WG-7B does **not** rerun WG-5 climate, WG-6C lake equilibrium, or WG-6D seasonal hydrology. For a first post-erosion hydrologic diagnostic, it reroutes the accepted WG-6B local annual runoff field over the rebuilt receiver DAG. This preserves annual runoff mass and exposes how changed terrain alters potential flow concentration without introducing an implicit iterative hydro-geomorphic loop.
+
+Permanent CI requires rebuilt drainage area closure and post-erosion runoff closure at or below `1e-10`.
+
+### WG-7B state contract
+
+`TerrainEvolutionState` exposes or retains:
+
+- evolved solid elevation;
+- signed terrain delta;
+- applied erosion depth;
+- applied ordinary-land deposition depth;
+- applied sediment source/load/deposition ledgers;
+- a receiver-changed mask;
+- the rebuilt drainage state;
+- post-erosion potential annual discharge.
+
+Metrics include the selected geomorphic duration, eroded/depositional/receiver-changed sample counts, maximum and mean terrain-change magnitudes, applied sediment source/sink totals and closure, maximum post-erosion potential discharge and runoff closure, parameter/upstream hashes, evolved-surface hash, rebuilt-drainage hash, and final terrain-evolution hash.
+
+### Browser and Lab contract
+
+Protocol `16` carries WG-7B in the same cumulative climate/planet result after WG-7A. The primary Lab exposes:
+
+- evolved solid elevation;
+- signed terrain elevation delta;
+- applied erosion;
+- applied ordinary-land deposition;
+- changed receiver locations;
+- post-erosion contributing area;
+- post-erosion potential discharge.
+
+The Lab validates that WG-7B references the exact displayed WG-4 topography, WG-6A drainage, WG-6B runoff, WG-6C lake, and WG-7A erosion identities. It also reports the selected horizon, terrain-change counts/magnitudes, sediment sink split and closure, post-erosion runoff closure, and WG-7B hashes.
+
+### WG-7B invariants
+
+1. Every input aligns on the canonical fine topology.
+2. WG-7B requires exact accepted WG-4/WG-6/WG-7A ancestry.
+3. WG-4 terrain identity and submerged mask remain unchanged.
+4. Channel incision is converted to cell-average valley erosion before terrain mutation.
+5. The direct geomorphic horizon is finite, nonnegative, and bounded by the parameterized duration/elevation-change limits.
+6. Applied erosion cannot cross the fixed WG-4 land/sea or accepted downstream base-level guards.
+7. Sediment production is recomputed from actually applied erosion.
+8. Applied sediment closes into ordinary land deposition, active-lake sinks, and terminal/ocean sinks.
+9. Only ordinary land deposition modifies elevation in WG-7B v1.
+10. Drainage is rebuilt exactly once after terrain mutation.
+11. Accepted WG-6B local runoff is rerouted on that rebuilt DAG without rerunning climate or seasonal hydrology.
+12. Every public WG-7B diagnostic and ancestry identity participates in deterministic hashing.
+
+### Deferred beyond WG-7B
+
+WG-7B intentionally does not yet model:
+
+- coastline migration or a new water-volume/sea-level solve;
+- evolving lake capacity, bathymetry, spill thresholds, or lake infill;
+- delta, alluvial-fan, estuary, or other coastal construction;
+- iterative climate/runoff/lake/erosion feedback after each terrain update;
+- explicit channel cross-sections, migration, avulsion, or floodplains;
+- hillslope diffusion, mass wasting, regolith, weathering, or soil production;
+- glacier flow and glacial erosion/deposition;
+- detailed lithology, chemistry, resources, Regions, Features, or gameplay geography.
+
+WG-7B is therefore the first bounded terrain-response pass, not a terminal landscape-evolution model.

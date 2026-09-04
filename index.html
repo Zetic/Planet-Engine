@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Planet Engine · Through WG-7A</title>
+  <title>Planet Engine · Through WG-7B</title>
   <link rel="stylesheet" href="styles/base.css">
   <link rel="stylesheet" href="styles/worldgenLab.css">
 </head>
@@ -11,14 +11,14 @@
   <main class="worldgen-lab">
     <header class="worldgen-lab-header">
       <div>
-        <p class="worldgen-lab-kicker">PLANET ENGINE · THROUGH WG-7A</p>
+        <p class="worldgen-lab-kicker">PLANET ENGINE · THROUGH WG-7B</p>
         <h1>PLANET ENGINE LAB</h1>
-        <p>Generate one deterministic physical planet through WG-7A, then inspect topology, tectonics, geology, lithosphere, topography, climate, drainage, lakes, seasonal realized flow, erosive forcing, and sediment routing from one matched physical state.</p>
+        <p>Generate one deterministic physical planet through WG-7B, then inspect topology, tectonics, geology, lithosphere, initial topography, climate, drainage, lakes, seasonal realized flow, erosive forcing, sediment routing, the evolved terrain surface, and rebuilt post-erosion drainage from one matched physical state.</p>
       </div>
     </header>
 
     <section class="worldgen-lab-controls" aria-label="Planet generation controls">
-      <label>Seed <input id="worldgen-seed" type="text" value="interlink-wg7a"></label>
+      <label>Seed <input id="worldgen-seed" type="text" value="interlink-wg7b"></label>
       <label>Coarse physical level <input id="worldgen-coarse-level" type="number" min="0" max="6" value="4"></label>
       <label>Fine planet level <input id="worldgen-level" type="number" min="0" max="7" value="6"></label>
       <label>Plate count <input id="worldgen-plates" type="number" min="4" max="48" value="16"></label>
@@ -36,6 +36,15 @@
         <div class="worldgen-lab-diagnostic-controls">
           <label>Diagnostic
             <select id="worldgen-visualization">
+          <optgroup label="Geomorphology · Evolved terrain / rebuilt drainage (WG-7B)">
+            <option value="evolution-solid-elevation">Evolved solid elevation</option>
+            <option value="evolution-terrain-delta">Terrain elevation delta</option>
+            <option value="evolution-applied-erosion">Applied erosion depth</option>
+            <option value="evolution-applied-deposition">Applied land deposition depth</option>
+            <option value="evolution-receiver-change">Changed drainage receivers</option>
+            <option value="evolution-contributing-area">Post-erosion contributing area</option>
+            <option value="evolution-potential-discharge">Post-erosion potential discharge</option>
+          </optgroup>
           <optgroup label="Geomorphology · Fluvial erosion / sediment (WG-7A)">
             <option value="erosion-effective-discharge">Effective erosive discharge</option>
             <option value="erosion-channel-slope">Channel slope</option>
@@ -188,10 +197,10 @@
         <div id="worldgen-metrics" class="worldgen-lab-metrics"></div>
       </div>
       <div class="worldgen-lab-note">
-        <strong>Current physical frontier: WG-7A</strong>
-        <p>One generation runs the accepted topology, tectonic, geological, lithospheric, multiresolution inheritance, WG-4 topography, WG-5 coupled climate, WG-6A drainage topology, WG-6B annual runoff/discharge, WG-6C lake equilibrium, WG-6D seasonal hydrology, and WG-7A fluvial erosion/sediment diagnostics in one cumulative Rust/WASM result. WG-7A references the exact accepted inheritance, topography, drainage, lake, and seasonal-hydrology identities.</p>
-        <p>WG-7A derives peak-sensitive effective discharge, channel slope and hydraulic width, inherited erodibility, bounded incision potential, sediment production, carrying capacity, downstream sediment load, and deposition. Active WG-6C lake depressions are first-pass complete sediment traps, and global generated sediment is conserved into land, lake, and terminal/ocean deposition.</p>
-        <p>WG-7A is deliberately non-mutating: the displayed WG-4 surface and WG-6 drainage/hydrology remain unchanged while erosional forcing is validated. Applied incision, valley development, sedimentary fill, drainage recalculation, glacier flow, detailed lithology, resource deposits, Regions, Features, and gameplay integration remain downstream.</p>
+        <strong>Current physical frontier: WG-7B</strong>
+        <p>One generation runs the accepted topology, tectonic, geological, lithospheric, multiresolution inheritance, WG-4 topography, WG-5 coupled climate, WG-6A drainage topology, WG-6B annual runoff/discharge, WG-6C lake equilibrium, WG-6D seasonal hydrology, WG-7A fluvial erosion/sediment diagnostics, and WG-7B bounded terrain evolution in one cumulative Rust/WASM result.</p>
+        <p>WG-7B converts WG-7A channel incision into cell-average valley erosion, chooses one bounded adaptive geomorphic horizon, conserves the actually applied sediment mass into land deposition plus lake and terminal/ocean sinks, and creates a distinct evolved solid surface without rewriting WG-4 identity.</p>
+        <p>The WG-4 ocean mask/coastline remains fixed in WG-7B v1. Drainage is rebuilt exactly once on the evolved surface and accepted WG-6B local runoff is rerouted over that new DAG for post-erosion diagnostics; climate, lake equilibrium, and seasonal hydrology are not iterated. Coastline migration, evolving lake capacity/spill thresholds, delta/coastal construction, hillslope transport, glaciers, weathering/soil/lithology, resources, Regions, Features, and gameplay integration remain downstream.</p>
       </div>
     </section>
   </main>

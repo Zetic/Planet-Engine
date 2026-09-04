@@ -28,7 +28,7 @@ test('WG-7A cumulative browser contract is protocol v16 and single-request', () 
     assert.match(html, new RegExp(mode));
     assert.match(lab, new RegExp(mode));
   }
-  assert.match(html, /Current physical frontier: WG-7A/);
+  assert.match(html, /Current physical frontier: WG-7B/);
   assert.match(lab, /WG-7A sediment closure/);
   assert.match(lab, /erosionMetrics\.seasonalHydrologyHash/);
   assert.match(lab, /erosionMetrics\.topographyHash/);

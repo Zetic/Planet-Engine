@@ -80,6 +80,7 @@ function geologicalBoundaryColor(regime: number): string {
 }
 
 
+const EVOLUTION_MODES = new Set(['evolution-solid-elevation', 'evolution-terrain-delta', 'evolution-applied-erosion', 'evolution-applied-deposition', 'evolution-receiver-change', 'evolution-contributing-area', 'evolution-potential-discharge']);
 const EROSION_MODES = new Set(['erosion-effective-discharge', 'erosion-channel-slope', 'erosion-channel-width', 'erosion-erodibility', 'erosion-incision-potential', 'erosion-sediment-supply', 'erosion-sediment-load', 'erosion-sediment-deposition']);
 const LAKE_MODES = new Set(['realized-discharge', 'lake-depth', 'lake-state', 'lake-fraction']);
 function isLakeMode(mode: string): boolean { return LAKE_MODES.has(mode); }
@@ -373,6 +374,30 @@ function scalarField(result: WorldgenClimateResult, mode: string, phase: number)
       }
       return { values: scalarScratch, minimum: 0, maximum: 1, lowHue: 225, highHue: 175 };
     }
+    case 'evolution-solid-elevation': return { values: result.evolvedSolidElevationM, minimum: -12_000, maximum: 8_000, lowHue: 225, highHue: 25 };
+    case 'evolution-terrain-delta': {
+      const bound = Math.max(0.01, result.evolutionMetrics.maximumAbsoluteTerrainChangeM);
+      return { values: result.terrainDeltaM, minimum: -bound, maximum: bound, lowHue: 225, highHue: 20 };
+    }
+    case 'evolution-applied-erosion': return { values: result.appliedErosionM, minimum: 0, maximum: Math.max(0.01, result.evolutionMetrics.maximumAppliedErosionM), lowHue: 55, highHue: 345 };
+    case 'evolution-applied-deposition': return { values: result.appliedDepositionM, minimum: 0, maximum: Math.max(0.01, result.evolutionMetrics.maximumAppliedDepositionM), lowHue: 205, highHue: 45 };
+    case 'evolution-receiver-change': {
+      for (let index = 0; index < scalarScratch.length; index += 1) scalarScratch[index] = result.receiverChangedMask[index]!;
+      return { values: scalarScratch, minimum: 0, maximum: 1, lowHue: 210, highHue: 5 };
+    }
+    case 'evolution-contributing-area': {
+      let maximum = 0;
+      for (let index = 0; index < scalarScratch.length; index += 1) {
+        const value = Math.log1p(Math.max(0, result.postErosionContributingAreaM2[index]!));
+        scalarScratch[index] = value;
+        maximum = Math.max(maximum, value);
+      }
+      return { values: scalarScratch, minimum: 0, maximum: Math.max(1e-6, maximum), lowHue: 55, highHue: 205 };
+    }
+    case 'evolution-potential-discharge': {
+      for (let index = 0; index < scalarScratch.length; index += 1) scalarScratch[index] = Math.log1p(Math.max(0, result.postErosionPotentialDischargeM3S[index]!));
+      return { values: scalarScratch, minimum: 0, maximum: Math.log1p(Math.max(1e-6, result.evolutionMetrics.maximumPostErosionPotentialDischargeM3S)), lowHue: 205, highHue: 20 };
+    }
     case 'erosion-effective-discharge': {
       for (let index = 0; index < scalarScratch.length; index += 1) scalarScratch[index] = Math.log1p(Math.max(0, result.effectiveDischargeM3S[index]!));
       return { values: scalarScratch, minimum: 0, maximum: Math.log1p(Math.max(1e-6, result.erosionMetrics.maximumEffectiveDischargeM3S)), lowHue: 205, highHue: 20 };
@@ -429,6 +454,7 @@ function sampleColor(result: WorldgenClimateResult, mode: string, sample: number
   }
   if (mode === 'provenance') return provenanceColor(result.nearestCoarseSource[sample]!);
   if (mode === 'inherited-mask') return result.inheritedSampleMask[sample] ? '#f4e27a' : '#5794c8';
+  if (EVOLUTION_MODES.has(mode) && result.submergedMask[sample]) return '#102c43';
   if (EROSION_MODES.has(mode) && mode !== 'erosion-sediment-deposition' && result.submergedMask[sample]) return '#102c43';
   if (field) return scalarColor(field.values[sample]!, field);
   return '#8297aa';
@@ -781,6 +807,7 @@ const GENERATION_STAGE_LABELS: Record<string, string> = {
   'lake-equilibrium': 'Lake equilibrium',
   'seasonal-hydrology': 'Seasonal hydrology',
   'fluvial-erosion-sediment': 'Fluvial erosion / sediment',
+  'bounded-terrain-evolution': 'Bounded terrain evolution',
   packaging: 'Packaging / transfer',
 };
 let generationStartedAt = 0;
@@ -928,13 +955,25 @@ function showMetrics(result: WorldgenClimateResult): void {
   metric(metrics, 'WG-7A deposition land / lake / terminal-ocean', `${result.erosionMetrics.totalLandDepositionKgS.toFixed(1)} / ${result.erosionMetrics.totalLakeDepositionKgS.toFixed(1)} / ${result.erosionMetrics.totalTerminalOceanDepositionKgS.toFixed(1)} kg/s`);
   metric(metrics, 'WG-7A sediment closure', result.erosionMetrics.sedimentConservationRelativeError.toExponential(2));
   metric(metrics, 'WG-7A erosion hash', result.erosionMetrics.fluvialErosionHash);
+  metric(metrics, 'WG-7B / stage', `v${result.engineVersion} · ${result.evolutionStage.id}@${result.evolutionStage.version}`);
+  metric(metrics, 'WG-7B geomorphic horizon', `${result.evolutionMetrics.geomorphicDurationYears.toFixed(0)} years`);
+  metric(metrics, 'WG-7B changed terrain samples', `${result.evolutionMetrics.erodedSampleCount.toLocaleString()} eroded · ${result.evolutionMetrics.depositionalSampleCount.toLocaleString()} depositional`);
+  metric(metrics, 'WG-7B receiver changes', `${result.evolutionMetrics.receiverChangedSampleCount.toLocaleString()} · ${(result.evolutionMetrics.receiverChangedFraction * 100).toFixed(3)}% of land`);
+  metric(metrics, 'WG-7B terrain change', `${result.evolutionMetrics.maximumAppliedErosionM.toFixed(2)} m max erosion · ${result.evolutionMetrics.maximumAppliedDepositionM.toFixed(2)} m max deposition · ${result.evolutionMetrics.meanLandAbsoluteTerrainChangeM.toFixed(3)} m mean |Δz|`);
+  metric(metrics, 'WG-7B sediment generation', `${result.evolutionMetrics.totalAppliedSedimentGeneratedKgS.toFixed(1)} kg/s`);
+  metric(metrics, 'WG-7B deposition land / lake / terminal-ocean', `${result.evolutionMetrics.totalLandDepositionKgS.toFixed(1)} / ${result.evolutionMetrics.totalLakeSinkKgS.toFixed(1)} / ${result.evolutionMetrics.totalTerminalOceanSinkKgS.toFixed(1)} kg/s`);
+  metric(metrics, 'WG-7B sediment closure', result.evolutionMetrics.sedimentConservationRelativeError.toExponential(2));
+  metric(metrics, 'WG-7B max post-erosion potential flow', `${result.evolutionMetrics.maximumPostErosionPotentialDischargeM3S.toFixed(1)} m³/s`);
+  metric(metrics, 'WG-7B post-erosion runoff closure', result.evolutionMetrics.postErosionRunoffConservationRelativeError.toExponential(2));
+  metric(metrics, 'WG-7B evolved surface / drainage hash', `${result.evolutionMetrics.evolvedSurfaceHash} / ${result.evolutionMetrics.postErosionDrainageHash}`);
+  metric(metrics, 'WG-7B evolution hash', result.evolutionMetrics.terrainEvolutionHash);
 }
 
 
 async function generatePlanet(): Promise<void> {
   generate.disabled = true;
   startGenerationTelemetry();
-  status.textContent = 'Generating one physical planet through WG-7A fluvial erosion and sediment diagnostics in Rust/WASM…';
+  status.textContent = 'Generating one physical planet through WG-7B bounded terrain evolution in Rust/WASM…';
   try {
     const request = { seed: seed.value, coarseLevel: Number(coarseLevel.value), fineLevel: Number(fineLevel.value), plateCount: Number(plates.value) };
     const loaded = await client.generateClimate(request, handleGenerationProgress);
@@ -952,14 +991,19 @@ async function generatePlanet(): Promise<void> {
     if (loaded.erosionMetrics.drainageHash !== loaded.drainageMetrics.drainageHash) throw new Error('WG-7A drainage identity does not match accepted WG-6A topology.');
     if (loaded.erosionMetrics.lakeHash !== loaded.lakeMetrics.lakeHash) throw new Error('WG-7A lake identity does not match accepted WG-6C state.');
     if (loaded.erosionMetrics.seasonalHydrologyHash !== loaded.seasonalMetrics.seasonalHydrologyHash) throw new Error('WG-7A seasonal identity does not match accepted WG-6D hydrology.');
+    if (loaded.evolutionMetrics.topographyHash !== loaded.metrics.topographyHash) throw new Error('WG-7B topography identity does not match accepted WG-4 terrain.');
+    if (loaded.evolutionMetrics.drainageHash !== loaded.drainageMetrics.drainageHash) throw new Error('WG-7B drainage identity does not match accepted WG-6A topology.');
+    if (loaded.evolutionMetrics.runoffHash !== loaded.runoffMetrics.runoffHash) throw new Error('WG-7B runoff identity does not match accepted WG-6B runoff.');
+    if (loaded.evolutionMetrics.lakeHash !== loaded.lakeMetrics.lakeHash) throw new Error('WG-7B lake identity does not match accepted WG-6C state.');
+    if (loaded.evolutionMetrics.fluvialErosionHash !== loaded.erosionMetrics.fluvialErosionHash) throw new Error('WG-7B erosion identity does not match accepted WG-7A forcing.');
     current = loaded;
     buffers = { x: new Float32Array(loaded.metrics.fineSampleCount), y: new Float32Array(loaded.metrics.fineSampleCount), visible: new Uint8Array(loaded.metrics.fineSampleCount) };
     styleCache = { result: null, key: '', sampleBuckets: [], boundaryBuckets: [] };
     edgeOverlayCache = { result: null, coastline: new Uint32Array(0), contours: [] };
     showMetrics(loaded); redraw(false); updateAnimation(); finishGenerationTelemetry(loaded);
-    generationStep.textContent = `${loaded.metrics.spinupYears} climate spin-up years · ${loaded.drainageMetrics.basinCount.toLocaleString()} basins · ${loaded.lakeMetrics.lakeCount.toLocaleString()} equilibrium lakes · ${loaded.erosionMetrics.erosiveSampleCount.toLocaleString()} erosive cells`;
+    generationStep.textContent = `${loaded.metrics.spinupYears} climate spin-up years · ${loaded.drainageMetrics.basinCount.toLocaleString()} basins · ${loaded.lakeMetrics.lakeCount.toLocaleString()} equilibrium lakes · ${loaded.evolutionMetrics.receiverChangedSampleCount.toLocaleString()} receivers changed after evolution`;
     generationTimer.textContent = formatDuration(performance.now() - generationStartedAt);
-    status.textContent = `Planet ready through WG-7A: ${loaded.metrics.fineSampleCount.toLocaleString()} samples, ${loaded.erosionMetrics.erosiveSampleCount.toLocaleString()} erosive cells, ${loaded.erosionMetrics.totalSedimentGeneratedKgS.toFixed(1)} kg/s generated sediment, closure ${loaded.erosionMetrics.sedimentConservationRelativeError.toExponential(2)}.`;
+    status.textContent = `Planet ready through WG-7B: ${loaded.metrics.fineSampleCount.toLocaleString()} samples, ${loaded.evolutionMetrics.erodedSampleCount.toLocaleString()} evolved erosion cells, ${loaded.evolutionMetrics.receiverChangedSampleCount.toLocaleString()} drainage receivers changed, mean land |Δz| ${loaded.evolutionMetrics.meanLandAbsoluteTerrainChangeM.toFixed(3)} m, sediment closure ${loaded.evolutionMetrics.sedimentConservationRelativeError.toExponential(2)}.`;
   } catch (error) {
     if (generationTimerHandle) { clearInterval(generationTimerHandle); generationTimerHandle = null; }
     generationStage.textContent = 'Generation failed';
