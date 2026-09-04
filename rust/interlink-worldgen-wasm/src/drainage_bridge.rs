@@ -65,14 +65,9 @@ impl WasmWorldgenDrainage {
             planet,
         )
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
-        let boundaries = inherit_boundary_interfaces(
-            &coarse,
-            &fine,
-            &tectonics,
-            &geology,
-            &inherited.plate_ids,
-        )
-        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        let boundaries =
+            inherit_boundary_interfaces(&coarse, &fine, &tectonics, &geology, &inherited.plate_ids)
+                .map_err(|error| JsValue::from_str(&error.to_string()))?;
         let terrain = generate_initial_topography(
             &fine,
             &inherited,
@@ -81,13 +76,9 @@ impl WasmWorldgenDrainage {
             &TopographyRequest::new(seed.as_str()),
         )
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
-        let drainage = generate_drainage_topology(
-            &fine,
-            &terrain,
-            planet,
-            &DrainageRequest::new(seed),
-        )
-        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        let drainage =
+            generate_drainage_topology(&fine, &terrain, planet, &DrainageRequest::new(seed))
+                .map_err(|error| JsValue::from_str(&error.to_string()))?;
 
         Ok(Self {
             topology: fine,
@@ -232,7 +223,11 @@ impl WasmWorldgenDrainage {
             .collect()
     }
     pub fn basin_areas_m2(&self) -> Vec<f64> {
-        self.drainage.basins.iter().map(|basin| basin.area_m2).collect()
+        self.drainage
+            .basins
+            .iter()
+            .map(|basin| basin.area_m2)
+            .collect()
     }
     pub fn depression_floor_samples(&self) -> Vec<u32> {
         self.drainage

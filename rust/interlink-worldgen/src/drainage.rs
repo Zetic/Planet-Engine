@@ -1,4 +1,7 @@
-use crate::{derive_stage_seed, GeodesicTopology, PlanetPhysicalParameters, PlanetTopology, StageIdentity, TopographyState, WorldgenError, INVALID_SAMPLE_ID};
+use crate::{
+    derive_stage_seed, GeodesicTopology, PlanetPhysicalParameters, PlanetTopology, StageIdentity,
+    TopographyState, WorldgenError, INVALID_SAMPLE_ID,
+};
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BinaryHeap, VecDeque};
 
@@ -518,10 +521,7 @@ fn solve_core<T: PlanetTopology>(
     } else {
         0.0
     };
-    let maximum_contributing_area_m2 = contributing_area_m2
-        .iter()
-        .copied()
-        .fold(0.0_f64, f64::max);
+    let maximum_contributing_area_m2 = contributing_area_m2.iter().copied().fold(0.0_f64, f64::max);
 
     Ok(DrainageCore {
         receiver,
@@ -570,7 +570,10 @@ pub fn generate_drainage_topology(
     drainage_hash = fnv_update(drainage_hash, &DRAINAGE_STAGE_VERSION.to_le_bytes());
     drainage_hash = fnv_update(drainage_hash, &stage_seed.to_le_bytes());
     drainage_hash = fnv_update(drainage_hash, &planet.parameter_hash().to_le_bytes());
-    drainage_hash = fnv_update(drainage_hash, &topography.metrics.topography_hash.to_le_bytes());
+    drainage_hash = fnv_update(
+        drainage_hash,
+        &topography.metrics.topography_hash.to_le_bytes(),
+    );
     for &value in &core.receiver {
         drainage_hash = fnv_update(drainage_hash, &value.to_le_bytes());
     }
@@ -701,8 +704,7 @@ mod tests {
     #[test]
     fn simple_slope_routes_monotonically_to_ocean() {
         let topology = TestTopology::chain(4);
-        let result = solve_core(&topology, &[3.0, 2.0, 1.0, -1.0], &[0, 0, 0, 1], 1.0)
-            .unwrap();
+        let result = solve_core(&topology, &[3.0, 2.0, 1.0, -1.0], &[0, 0, 0, 1], 1.0).unwrap();
         assert_eq!(result.receiver, vec![1, 2, 3, INVALID_SAMPLE_ID]);
         assert_eq!(result.outlet_sample[0], 3);
         assert_eq!(result.basins.len(), 1);
@@ -725,8 +727,7 @@ mod tests {
     #[test]
     fn flat_plateau_uses_flood_rank_to_remain_acyclic() {
         let topology = TestTopology::chain(4);
-        let result = solve_core(&topology, &[2.0, 2.0, 2.0, -1.0], &[0, 0, 0, 1], 1.0)
-            .unwrap();
+        let result = solve_core(&topology, &[2.0, 2.0, 2.0, -1.0], &[0, 0, 0, 1], 1.0).unwrap();
         assert_eq!(result.receiver, vec![1, 2, 3, INVALID_SAMPLE_ID]);
         assert_eq!(result.drainage_order, vec![0, 1, 2]);
     }

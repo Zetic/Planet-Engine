@@ -1,5 +1,7 @@
 mod climate_bridge;
 pub use climate_bridge::WasmWorldgenClimate;
+mod drainage_bridge;
+pub use drainage_bridge::WasmWorldgenDrainage;
 mod inheritance_bridge;
 pub use inheritance_bridge::WasmWorldgenInheritance;
 mod topography_bridge;
