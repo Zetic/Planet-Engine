@@ -7,6 +7,9 @@ use std::collections::BTreeSet;
 const MM_TO_M: f64 = 1.0e-3;
 const FLOW_EPSILON_M3_S: f64 = 1.0e-12;
 const LAKE_CYCLE_CONVERGENCE_RELATIVE: f64 = 1.0e-6;
+// A centimetre-scale surface drift is a more physically interpretable cycle
+// closure test than fractional volume for tiny or shallow resolved basins.
+const LAKE_SURFACE_CYCLE_CONVERGENCE_M: f64 = 0.02;
 const MINIMUM_LAKE_SPINUP_YEARS: u8 = 2;
 const MAXIMUM_LAKE_SPINUP_YEARS: u8 = 12;
 const EVAPORATION_WEIGHT_FLOOR_K: f64 = 250.0;
@@ -650,7 +653,8 @@ pub(crate) fn solve_seasonal_lake_routing(
 
         if lake_count == 0
             || (completed_years >= MINIMUM_LAKE_SPINUP_YEARS
-                && cycle_relative_change <= LAKE_CYCLE_CONVERGENCE_RELATIVE)
+                && (cycle_relative_change <= LAKE_CYCLE_CONVERGENCE_RELATIVE
+                    || lake_surface_cycle_change_m <= LAKE_SURFACE_CYCLE_CONVERGENCE_M))
         {
             break;
         }
