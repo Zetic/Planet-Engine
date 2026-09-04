@@ -1,0 +1,48 @@
+name: Temporary WG-6A Main Lab Integration
+
+on:
+  push:
+    branches: [wg6a-main-lab-integration]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: temporary-wg6a-main-lab
+  cancel-in-progress: true
+
+jobs:
+  integrate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: wg6a-main-lab-integration
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install browser dependencies
+        run: npm ci --prefer-offline --no-audit --no-fund
+      - name: Apply WG-6A main Lab integration
+        run: python scripts/temp-wg6a-main-lab.py
+      - name: Build browser modules
+        run: npm run build
+      - name: Run browser regressions
+        run: npm run test:ts
+      - name: Verify committed browser output can be regenerated
+        run: test -f dist/worldgen/diagnostics/worldgenClimateLabStandalone.js
+      - name: Commit integrated primary Lab
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html src/worldgen/diagnostics/worldgenClimateLabStandalone.ts tests/wg6Drainage.test.ts tests/worldgenRewrite.test.ts dist/worldgen
+          if git diff --cached --quiet; then
+            echo 'No WG-6A main Lab changes to commit.'
+            exit 0
+          fi
+          git commit -m 'Blend WG-6A into the primary Planet Engine Lab'
+          git push origin HEAD:wg6a-main-lab-integration
