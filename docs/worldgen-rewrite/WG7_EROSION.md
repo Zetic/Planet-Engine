@@ -411,7 +411,7 @@ The final benchmark matrix was run on GitHub Actions Ubuntu 24.04 with Rust `1.9
 
 Fixed release seed `ci-wg7b-evolution`:
 
-| fine level | coarse level | plates | samples | runtime mean / median (ms) | eroded / depositional | receiver changes | max erosion / deposition (m) | mean land |Δz| (m) | sediment closure | drainage area closure | runoff closure |
+| fine level | coarse level | plates | samples | runtime mean / median (ms) | eroded / depositional | receiver changes | max erosion / deposition (m) | mean land abs Δz (m) | sediment closure | drainage area closure | runoff closure |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | L4 | L3 | 12 | 2,562 | 0.630 / 0.631 | 487 / 124 | 1 | 6.526032 / 1.146689 | 0.431530 | `3.657e-16` | `1.541e-16` | `0` |
 | L6 | L4 | 16 | 40,962 | 8.547 / 8.611 | 8,938 / 3,141 | 30 | 38.269152 / 31.045940 | 0.800932 | `1.774e-16` | `3.264e-15` | `1.942e-16` |
@@ -427,7 +427,7 @@ All three fixed-release cases selected the full `250,000 year` bounded horizon. 
 
 Fixed accepted WG-5 ancestry seed `ci-wg5-l7`, coarse L5, 24 plates:
 
-| fine level | samples | runtime mean / median (ms) | eroded / depositional | receiver changes | max erosion / deposition / |Δz| (m) | mean land |Δz| (m) | sediment closure | drainage area closure | runoff closure |
+| fine level | samples | runtime mean / median (ms) | eroded / depositional | receiver changes | max erosion / deposition / abs Δz (m) | mean land abs Δz (m) | sediment closure | drainage area closure | runoff closure |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | L6 | 40,962 | 8.730 / 8.815 | 9,139 / 3,179 | 13 | 27.247991 / 36.617950 / 36.420056 | 0.631664 | `0` | `3.115e-15` | `1.335e-15` |
 | L7 | 163,842 | 46.904 / 46.339 | 36,961 / 16,520 | 134 | 57.346347 / 102.291346 / 101.656348 | 0.784727 | `5.295e-16` | `1.438e-14` | `2.574e-15` |
