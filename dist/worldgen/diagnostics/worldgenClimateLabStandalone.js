@@ -350,6 +350,21 @@ function scalarField(result, mode, phase) {
         case 'humidity': return { values: result.specificHumidityMean, minimum: 0, maximum: 0.025, lowHue: 35, highHue: 205 };
         case 'precipitation': return { values: result.annualPrecipitationMm, minimum: 0, maximum: 2_500, lowHue: 45, highHue: 205 };
         case 'seasonal-precipitation': return { values: seasonalPhaseRate(result.precipitationPhaseRateMmYear, result.metrics.orbitalPhaseCount, result.metrics.fineSampleCount, phase, seasonalScratch), minimum: 0, maximum: 5_000, lowHue: 45, highHue: 205 };
+        case 'seasonal-realized-discharge': {
+            seasonalPhaseRate(result.seasonalPhaseRealizedDischargeM3S, result.seasonalMetrics.orbitalPhaseCount, result.seasonalMetrics.sampleCount, phase, seasonalScratch);
+            for (let index = 0; index < scalarScratch.length; index += 1)
+                scalarScratch[index] = Math.log1p(Math.max(0, seasonalScratch[index]));
+            return { values: scalarScratch, minimum: 0, maximum: Math.log1p(Math.max(1e-6, result.seasonalMetrics.maximumPhaseRealizedDischargeM3S)), lowHue: 205, highHue: 25 };
+        }
+        case 'seasonal-flow-presence': return { values: result.seasonalFlowPresenceFraction, minimum: 0, maximum: 1, lowHue: 42, highHue: 205 };
+        case 'seasonal-snow-storage': {
+            seasonalPhaseRate(result.seasonalPhaseSnowStorageMm, result.seasonalMetrics.orbitalPhaseCount, result.seasonalMetrics.sampleCount, phase, seasonalScratch);
+            for (let index = 0; index < scalarScratch.length; index += 1) {
+                const value = Math.max(0, seasonalScratch[index]);
+                scalarScratch[index] = value / (value + 500);
+            }
+            return { values: scalarScratch, minimum: 0, maximum: 1, lowHue: 225, highHue: 175 };
+        }
         case 'precip-seasonality': return { values: result.precipitationSeasonality, minimum: 0, maximum: 5, lowHue: 205, highHue: 335 };
         case 'potential-evaporation': return { values: result.potentialEvaporationMm, minimum: 0, maximum: 3_000, lowHue: 205, highHue: 20 };
         case 'moisture-balance': return { values: result.moistureBalanceMm, minimum: -2_000, maximum: 2_000, lowHue: 25, highHue: 210 };
@@ -373,6 +388,16 @@ function sampleColor(result, mode, sample, field) {
         return crustColor(result.crustKind[sample]);
     if (mode === 'structural-zones')
         return structuralColor(result.structuralZoneKind[sample]);
+    if (mode === 'seasonal-flow-regime') {
+        if (result.submergedMask[sample])
+            return '#102c43';
+        const regime = result.seasonalFlowRegime[sample];
+        if (regime === 2)
+            return '#4ea7dd';
+        if (regime === 1)
+            return '#e3a54f';
+        return '#31423c';
+    }
     if (mode === 'provenance')
         return provenanceColor(result.nearestCoarseSource[sample]);
     if (mode === 'inherited-mask')
@@ -438,7 +463,7 @@ function screenTangentDelta(position, eastValue, northValue, projection, yaw, pi
 let styleCache = { result: null, key: '', sampleBuckets: [], boundaryBuckets: [] };
 function buildStyleCache(result, mode, phase) {
     const field = scalarField(result, mode, phase);
-    const phaseKey = ['seasonal-temperature', 'seasonal-sst', 'seasonal-precipitation'].includes(mode) ? phase.toFixed(3) : 'mean';
+    const phaseKey = ['seasonal-temperature', 'seasonal-sst', 'seasonal-precipitation', 'seasonal-realized-discharge', 'seasonal-snow-storage'].includes(mode) ? phase.toFixed(3) : 'mean';
     const key = `${mode}:${phaseKey}`;
     const sampleBuckets = mode === 'mesh' ? [] : bucketize(result.metrics.fineSampleCount, sample => sampleColor(result, mode, sample, field));
     let boundaryBuckets = [];
@@ -684,7 +709,7 @@ function renderPlanet(canvas, result, projection, mode, overlays, phase, yaw, pi
         context.stroke();
         return;
     }
-    const cacheKey = `${mode}:${['seasonal-temperature', 'seasonal-sst', 'seasonal-precipitation'].includes(mode) ? phase.toFixed(3) : 'mean'}`;
+    const cacheKey = `${mode}:${['seasonal-temperature', 'seasonal-sst', 'seasonal-precipitation', 'seasonal-realized-discharge', 'seasonal-snow-storage'].includes(mode) ? phase.toFixed(3) : 'mean'}`;
     if (styleCache.result !== result || styleCache.key !== cacheKey)
         styleCache = buildStyleCache(result, mode, phase);
     const count = result.metrics.fineSampleCount;
@@ -779,6 +804,7 @@ const GENERATION_STAGE_LABELS = {
     'drainage-topology': 'Drainage topology',
     'runoff-discharge': 'Annual runoff / discharge',
     'lake-equilibrium': 'Lake equilibrium',
+    'seasonal-hydrology': 'Seasonal hydrology',
     packaging: 'Packaging / transfer',
 };
 let generationStartedAt = 0;
@@ -923,11 +949,18 @@ function showMetrics(result) {
     metric(metrics, 'WG-6C terminal realized flow', `${result.lakeMetrics.terminalRealizedDischargeM3S.toFixed(1)} m³/s`);
     metric(metrics, 'WG-6C water balance', result.lakeMetrics.waterBalanceRelativeError.toExponential(2));
     metric(metrics, 'WG-6C lake hash', result.lakeMetrics.lakeHash);
+    metric(metrics, 'WG-6D / stage', `v${result.engineVersion} · ${result.seasonalStage.id}@${result.seasonalStage.version}`);
+    metric(metrics, 'WG-6D flow regimes', `${result.seasonalMetrics.dryFlowSampleCount.toLocaleString()} dry · ${result.seasonalMetrics.intermittentFlowSampleCount.toLocaleString()} intermittent · ${result.seasonalMetrics.perennialFlowSampleCount.toLocaleString()} perennial`);
+    metric(metrics, 'WG-6D snowmelt runoff', `${(result.seasonalMetrics.snowmeltRunoffFraction * 100).toFixed(2)}% of seasonal runoff timing`);
+    metric(metrics, 'WG-6D max phase realized flow', `${result.seasonalMetrics.maximumPhaseRealizedDischargeM3S.toFixed(1)} m³/s`);
+    metric(metrics, 'WG-6D routing / water closure', `${result.seasonalMetrics.seasonalRoutingConservationRelativeError.toExponential(2)} / ${result.seasonalMetrics.seasonalWaterBalanceRelativeError.toExponential(2)}`);
+    metric(metrics, 'WG-6D lake cycle', `${result.seasonalMetrics.lakeSpinupYears} years · ${result.seasonalMetrics.finalLakeSurfaceCycleChangeM.toFixed(4)} m surface drift · ${result.seasonalMetrics.maximumSeasonalLakeLevelRangeM.toFixed(3)} m max seasonal range`);
+    metric(metrics, 'WG-6D seasonal hash', result.seasonalMetrics.seasonalHydrologyHash);
 }
 async function generatePlanet() {
     generate.disabled = true;
     startGenerationTelemetry();
-    status.textContent = 'Generating one physical planet through WG-5 coupled climate in Rust/WASM…';
+    status.textContent = 'Generating one physical planet through WG-6D seasonal hydrology in Rust/WASM…';
     try {
         const request = { seed: seed.value, coarseLevel: Number(coarseLevel.value), fineLevel: Number(fineLevel.value), plateCount: Number(plates.value) };
         const loaded = await client.generateClimate(request, handleGenerationProgress);
@@ -941,6 +974,14 @@ async function generatePlanet() {
             throw new Error('WG-6C drainage identity does not match accepted WG-6A topology.');
         if (loaded.lakeMetrics.runoffHash !== loaded.runoffMetrics.runoffHash)
             throw new Error('WG-6C runoff identity does not match accepted WG-6B runoff.');
+        if (loaded.seasonalMetrics.climateHash !== loaded.metrics.climateHash)
+            throw new Error('WG-6D climate identity does not match accepted WG-5 forcing.');
+        if (loaded.seasonalMetrics.drainageHash !== loaded.drainageMetrics.drainageHash)
+            throw new Error('WG-6D drainage identity does not match accepted WG-6A topology.');
+        if (loaded.seasonalMetrics.runoffHash !== loaded.runoffMetrics.runoffHash)
+            throw new Error('WG-6D runoff identity does not match accepted WG-6B runoff.');
+        if (loaded.seasonalMetrics.lakeHash !== loaded.lakeMetrics.lakeHash)
+            throw new Error('WG-6D lake identity does not match accepted WG-6C state.');
         current = loaded;
         buffers = { x: new Float32Array(loaded.metrics.fineSampleCount), y: new Float32Array(loaded.metrics.fineSampleCount), visible: new Uint8Array(loaded.metrics.fineSampleCount) };
         styleCache = { result: null, key: '', sampleBuckets: [], boundaryBuckets: [] };
@@ -949,9 +990,9 @@ async function generatePlanet() {
         redraw(false);
         updateAnimation();
         finishGenerationTelemetry(loaded);
-        generationStep.textContent = `${loaded.metrics.spinupYears} climate spin-up years · ${loaded.drainageMetrics.basinCount.toLocaleString()} basins · ${loaded.lakeMetrics.lakeCount.toLocaleString()} equilibrium lakes`;
+        generationStep.textContent = `${loaded.metrics.spinupYears} climate spin-up years · ${loaded.drainageMetrics.basinCount.toLocaleString()} basins · ${loaded.lakeMetrics.lakeCount.toLocaleString()} equilibrium lakes · ${loaded.seasonalMetrics.intermittentFlowSampleCount.toLocaleString()} intermittent flow cells`;
         generationTimer.textContent = formatDuration(performance.now() - generationStartedAt);
-        status.textContent = `Planet ready through WG-6C: ${loaded.metrics.fineSampleCount.toLocaleString()} samples, ${loaded.lakeMetrics.lakeCount.toLocaleString()} equilibrium lakes, max realized discharge ${loaded.lakeMetrics.maximumRealizedDischargeM3S.toFixed(1)} m³/s.`;
+        status.textContent = `Planet ready through WG-6D: ${loaded.metrics.fineSampleCount.toLocaleString()} samples, ${loaded.lakeMetrics.lakeCount.toLocaleString()} equilibrium lakes, ${loaded.seasonalMetrics.intermittentFlowSampleCount.toLocaleString()} intermittent and ${loaded.seasonalMetrics.perennialFlowSampleCount.toLocaleString()} perennial realized-flow cells.`;
     }
     catch (error) {
         if (generationTimerHandle) {
