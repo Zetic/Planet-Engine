@@ -1,7 +1,7 @@
 use crate::{
-    derive_stage_seed, ClimateGenerationDiagnostics, ClimateState, GeodesicTopology,
-    PlanetPhysicalParameters, PlanetTopology, RunoffState, StageIdentity, TopographyState,
-    WorldgenError,
+    derive_stage_seed, ClimateGenerationDiagnostics, ClimateState, DrainageState,
+    GeodesicTopology, PlanetPhysicalParameters, PlanetTopology, RunoffState, StageIdentity,
+    TopographyState, WorldgenError, INVALID_SAMPLE_ID,
 };
 
 pub const SEASONAL_HYDROLOGY_STAGE_ID: &str = "hydrology:seasonal-hydrology";
@@ -95,11 +95,15 @@ pub struct SeasonalHydrologyMetrics {
     pub sample_count: u32,
     pub orbital_phase_count: u8,
     pub maximum_phase_local_runoff_m3_s: f64,
+    pub maximum_phase_potential_discharge_m3_s: f64,
     pub snowmelt_runoff_fraction: f64,
     pub annual_mean_local_runoff_m3_s: f64,
     pub annual_local_runoff_closure_relative_error: f64,
+    pub annual_mean_terminal_potential_discharge_m3_s: f64,
+    pub seasonal_routing_conservation_relative_error: f64,
     pub seasonal_parameter_hash: u64,
     pub climate_hash: u64,
+    pub drainage_hash: u64,
     pub runoff_hash: u64,
     pub seasonal_hydrology_hash: u64,
 }
@@ -107,6 +111,15 @@ pub struct SeasonalHydrologyMetrics {
 impl SeasonalHydrologyMetrics {
     pub fn seasonal_parameter_hash_hex(&self) -> String {
         format!("{:016x}", self.seasonal_parameter_hash)
+    }
+    pub fn climate_hash_hex(&self) -> String {
+        format!("{:016x}", self.climate_hash)
+    }
+    pub fn drainage_hash_hex(&self) -> String {
+        format!("{:016x}", self.drainage_hash)
+    }
+    pub fn runoff_hash_hex(&self) -> String {
+        format!("{:016x}", self.runoff_hash)
     }
     pub fn seasonal_hydrology_hash_hex(&self) -> String {
         format!("{:016x}", self.seasonal_hydrology_hash)
@@ -123,6 +136,10 @@ pub struct SeasonalHydrologyState {
     pub phase_snowmelt_runoff_m3_s: Vec<f32>,
     /// Snow storage after each phase, in water-equivalent millimetres.
     pub phase_snow_storage_mm: Vec<f32>,
+    /// Phase-major potential discharge routed over the accepted WG-6A DAG.
+    /// This intentionally ignores WG-6C lake retention; seasonal realized
+    /// discharge is added in the next WG-6D slice.
+    pub phase_potential_discharge_m3_s: Vec<f32>,
 }
 
 fn fnv_update(mut hash: u64, bytes: &[u8]) -> u64 {
@@ -235,11 +252,74 @@ fn partition_phases(
         .sum::<f64>();
     if precipitation_total > 0.0 {
         for phase in 0..phase_count {
-            runoff_share[phase] = f64::from(precipitation_rate_mm_year[phase]) / precipitation_total;
+            runoff_share[phase] =
+                f64::from(precipitation_rate_mm_year[phase]) / precipitation_total;
         }
     } else {
         runoff_share.fill(1.0 / phase_count as f64);
     }
+}
+
+fn route_phase_discharge(
+    phase_local_runoff_m3_s: &[f32],
+    submerged_mask: &[u8],
+    receiver: &[u32],
+    drainage_order: &[u32],
+    accumulation_m3_s: &mut [f64],
+    output_m3_s: &mut [f32],
+) -> Result<(f64, f64, f64), &'static str> {
+    let count = phase_local_runoff_m3_s.len();
+    if submerged_mask.len() != count
+        || receiver.len() != count
+        || accumulation_m3_s.len() != count
+        || output_m3_s.len() != count
+    {
+        return Err("seasonal routing fields must align with the topology sample count");
+    }
+
+    accumulation_m3_s.fill(0.0);
+    for i in 0..count {
+        let local = f64::from(phase_local_runoff_m3_s[i]);
+        if !local.is_finite() || local < 0.0 {
+            return Err("seasonal local runoff must be finite and non-negative");
+        }
+        accumulation_m3_s[i] = local;
+    }
+
+    for &sample in drainage_order {
+        let i = sample as usize;
+        if i >= count || submerged_mask[i] != 0 {
+            return Err("seasonal drainage order contains an invalid land sample");
+        }
+        let downstream = receiver[i];
+        if downstream == INVALID_SAMPLE_ID {
+            continue;
+        }
+        let downstream_index = downstream as usize;
+        if downstream_index >= count {
+            return Err("seasonal receiver references a sample outside topology");
+        }
+        let accumulated = accumulation_m3_s[downstream_index] + accumulation_m3_s[i];
+        if !accumulated.is_finite() || accumulated > f32::MAX as f64 {
+            return Err("seasonal accumulated discharge exceeds representable range");
+        }
+        accumulation_m3_s[downstream_index] = accumulated;
+    }
+
+    let mut total_local_m3_s = 0.0_f64;
+    let mut terminal_m3_s = 0.0_f64;
+    let mut maximum_m3_s = 0.0_f64;
+    for i in 0..count {
+        total_local_m3_s += f64::from(phase_local_runoff_m3_s[i]);
+        let discharge = accumulation_m3_s[i];
+        maximum_m3_s = maximum_m3_s.max(discharge);
+        output_m3_s[i] = discharge as f32;
+        if submerged_mask[i] != 0 || receiver[i] == INVALID_SAMPLE_ID {
+            terminal_m3_s += discharge;
+        }
+    }
+
+    Ok((total_local_m3_s, terminal_m3_s, maximum_m3_s))
 }
 
 pub fn generate_seasonal_hydrology(
@@ -247,6 +327,7 @@ pub fn generate_seasonal_hydrology(
     topography: &TopographyState,
     climate: &ClimateState,
     climate_diagnostics: &ClimateGenerationDiagnostics,
+    drainage: &DrainageState,
     runoff: &RunoffState,
     planet: PlanetPhysicalParameters,
     request: &SeasonalHydrologyRequest,
@@ -263,15 +344,25 @@ pub fn generate_seasonal_hydrology(
     let phase_count = usize::from(climate.metrics.orbital_phase_count);
     if topography.metrics.sample_count as usize != count
         || climate.metrics.sample_count as usize != count
+        || drainage.metrics.sample_count as usize != count
         || runoff.metrics.sample_count as usize != count
     {
         return Err(WorldgenError::InvalidHydrology(
             "WG-6D inputs must align on the canonical fine topology",
         ));
     }
-    if runoff.metrics.climate_hash != climate.metrics.climate_hash {
+    if runoff.metrics.climate_hash != climate.metrics.climate_hash
+        || runoff.metrics.drainage_hash != drainage.metrics.drainage_hash
+    {
         return Err(WorldgenError::InvalidHydrology(
-            "WG-6D requires WG-6B state derived from the accepted WG-5 identity",
+            "WG-6D requires WG-6B state derived from the accepted WG-5/WG-6A identities",
+        ));
+    }
+    if drainage.receiver.len() != count
+        || drainage.drainage_order.len() != drainage.metrics.land_sample_count as usize
+    {
+        return Err(WorldgenError::InvalidHydrology(
+            "WG-6D requires a complete accepted WG-6A drainage graph",
         ));
     }
     if phase_count == 0
@@ -282,12 +373,13 @@ pub fn generate_seasonal_hydrology(
         ));
     }
 
-    let total_phase_samples = count
-        .checked_mul(phase_count)
-        .ok_or(WorldgenError::InvalidHydrology("WG-6D phase field length overflow"))?;
+    let total_phase_samples = count.checked_mul(phase_count).ok_or(
+        WorldgenError::InvalidHydrology("WG-6D phase field length overflow"),
+    )?;
     let mut phase_local_runoff_m3_s = vec![0.0_f32; total_phase_samples];
     let mut phase_snowmelt_runoff_m3_s = vec![0.0_f32; total_phase_samples];
     let mut phase_snow_storage_mm = vec![0.0_f32; total_phase_samples];
+    let mut phase_potential_discharge_m3_s = vec![0.0_f32; total_phase_samples];
     let mut sample_precipitation = vec![0.0_f32; phase_count];
     let mut runoff_share = vec![0.0_f64; phase_count];
     let mut snowmelt_share = vec![0.0_f64; phase_count];
@@ -337,7 +429,8 @@ pub fn generate_seasonal_hydrology(
     }
 
     let annual_mean_local_runoff_m3_s = local_phase_sum / phase_count as f64;
-    let annual_local_runoff_closure_relative_error = if runoff.metrics.total_local_runoff_m3_s > 0.0 {
+    let annual_local_runoff_closure_relative_error = if runoff.metrics.total_local_runoff_m3_s > 0.0
+    {
         (annual_mean_local_runoff_m3_s - runoff.metrics.total_local_runoff_m3_s).abs()
             / runoff.metrics.total_local_runoff_m3_s
     } else {
@@ -349,18 +442,73 @@ pub fn generate_seasonal_hydrology(
         0.0
     };
 
+    let mut accumulation_m3_s = vec![0.0_f64; count];
+    let mut terminal_phase_sum_m3_s = 0.0_f64;
+    let mut routed_local_phase_sum_m3_s = 0.0_f64;
+    let mut maximum_phase_potential_discharge_m3_s = 0.0_f64;
+    for phase in 0..phase_count {
+        let start = phase * count;
+        let end = start + count;
+        let (routed_local, terminal, maximum) = route_phase_discharge(
+            &phase_local_runoff_m3_s[start..end],
+            &topography.submerged_mask,
+            &drainage.receiver,
+            &drainage.drainage_order,
+            &mut accumulation_m3_s,
+            &mut phase_potential_discharge_m3_s[start..end],
+        )
+        .map_err(WorldgenError::InvalidHydrology)?;
+        routed_local_phase_sum_m3_s += routed_local;
+        terminal_phase_sum_m3_s += terminal;
+        maximum_phase_potential_discharge_m3_s =
+            maximum_phase_potential_discharge_m3_s.max(maximum);
+    }
+
+    let annual_mean_terminal_potential_discharge_m3_s =
+        terminal_phase_sum_m3_s / phase_count as f64;
+    let seasonal_routing_conservation_relative_error = if routed_local_phase_sum_m3_s > 0.0 {
+        (terminal_phase_sum_m3_s - routed_local_phase_sum_m3_s).abs()
+            / routed_local_phase_sum_m3_s
+    } else {
+        terminal_phase_sum_m3_s.abs()
+    };
+
     let stage_seed = derive_stage_seed(&request.seed, SEASONAL_HYDROLOGY_NAMESPACE);
     let seasonal_parameter_hash = request.parameters.parameter_hash();
     let mut seasonal_hydrology_hash = FNV_OFFSET_BASIS;
-    seasonal_hydrology_hash = fnv_update(seasonal_hydrology_hash, SEASONAL_HYDROLOGY_STAGE_ID.as_bytes());
-    seasonal_hydrology_hash = fnv_update(seasonal_hydrology_hash, &SEASONAL_HYDROLOGY_STAGE_VERSION.to_le_bytes());
+    seasonal_hydrology_hash = fnv_update(
+        seasonal_hydrology_hash,
+        SEASONAL_HYDROLOGY_STAGE_ID.as_bytes(),
+    );
+    seasonal_hydrology_hash = fnv_update(
+        seasonal_hydrology_hash,
+        &SEASONAL_HYDROLOGY_STAGE_VERSION.to_le_bytes(),
+    );
     seasonal_hydrology_hash = fnv_update(seasonal_hydrology_hash, &stage_seed.to_le_bytes());
-    seasonal_hydrology_hash = fnv_update(seasonal_hydrology_hash, &seasonal_parameter_hash.to_le_bytes());
-    seasonal_hydrology_hash = fnv_update(seasonal_hydrology_hash, &climate.metrics.climate_hash.to_le_bytes());
-    seasonal_hydrology_hash = fnv_update(seasonal_hydrology_hash, &runoff.metrics.runoff_hash.to_le_bytes());
-    seasonal_hydrology_hash = hash_f32_slice(seasonal_hydrology_hash, &phase_local_runoff_m3_s);
-    seasonal_hydrology_hash = hash_f32_slice(seasonal_hydrology_hash, &phase_snowmelt_runoff_m3_s);
-    seasonal_hydrology_hash = hash_f32_slice(seasonal_hydrology_hash, &phase_snow_storage_mm);
+    seasonal_hydrology_hash = fnv_update(
+        seasonal_hydrology_hash,
+        &seasonal_parameter_hash.to_le_bytes(),
+    );
+    seasonal_hydrology_hash = fnv_update(
+        seasonal_hydrology_hash,
+        &climate.metrics.climate_hash.to_le_bytes(),
+    );
+    seasonal_hydrology_hash = fnv_update(
+        seasonal_hydrology_hash,
+        &drainage.metrics.drainage_hash.to_le_bytes(),
+    );
+    seasonal_hydrology_hash = fnv_update(
+        seasonal_hydrology_hash,
+        &runoff.metrics.runoff_hash.to_le_bytes(),
+    );
+    seasonal_hydrology_hash =
+        hash_f32_slice(seasonal_hydrology_hash, &phase_local_runoff_m3_s);
+    seasonal_hydrology_hash =
+        hash_f32_slice(seasonal_hydrology_hash, &phase_snowmelt_runoff_m3_s);
+    seasonal_hydrology_hash =
+        hash_f32_slice(seasonal_hydrology_hash, &phase_snow_storage_mm);
+    seasonal_hydrology_hash =
+        hash_f32_slice(seasonal_hydrology_hash, &phase_potential_discharge_m3_s);
 
     Ok(SeasonalHydrologyState {
         stage: StageIdentity {
@@ -372,17 +520,22 @@ pub fn generate_seasonal_hydrology(
             sample_count: count as u32,
             orbital_phase_count: climate.metrics.orbital_phase_count,
             maximum_phase_local_runoff_m3_s,
+            maximum_phase_potential_discharge_m3_s,
             snowmelt_runoff_fraction,
             annual_mean_local_runoff_m3_s,
             annual_local_runoff_closure_relative_error,
+            annual_mean_terminal_potential_discharge_m3_s,
+            seasonal_routing_conservation_relative_error,
             seasonal_parameter_hash,
             climate_hash: climate.metrics.climate_hash,
+            drainage_hash: drainage.metrics.drainage_hash,
             runoff_hash: runoff.metrics.runoff_hash,
             seasonal_hydrology_hash,
         },
         phase_local_runoff_m3_s,
         phase_snowmelt_runoff_m3_s,
         phase_snow_storage_mm,
+        phase_potential_discharge_m3_s,
     })
 }
 
@@ -447,5 +600,49 @@ mod tests {
         assert_eq!(snowmelt.iter().sum::<f64>(), 0.0);
         assert_eq!(storage.iter().sum::<f64>(), 0.0);
         assert!(runoff[0] > runoff[1]);
+    }
+
+    #[test]
+    fn seasonal_routing_accumulates_each_phase_over_the_accepted_dag() {
+        let local = [2.0_f32, 3.0, 0.0];
+        let submerged = [0_u8, 0, 1];
+        let receiver = [1_u32, 2, INVALID_SAMPLE_ID];
+        let drainage_order = [0_u32, 1];
+        let mut accumulation = [0.0_f64; 3];
+        let mut output = [0.0_f32; 3];
+        let (total_local, terminal, maximum) = route_phase_discharge(
+            &local,
+            &submerged,
+            &receiver,
+            &drainage_order,
+            &mut accumulation,
+            &mut output,
+        )
+        .unwrap();
+        assert_eq!(total_local, 5.0);
+        assert_eq!(terminal, 5.0);
+        assert_eq!(maximum, 5.0);
+        assert_eq!(output, [2.0, 5.0, 5.0]);
+    }
+
+    #[test]
+    fn seasonal_routing_conserves_internal_terminal_flow() {
+        let local = [1.25_f32, 2.75, 4.0];
+        let submerged = [0_u8, 0, 0];
+        let receiver = [1_u32, INVALID_SAMPLE_ID, INVALID_SAMPLE_ID];
+        let drainage_order = [0_u32, 2, 1];
+        let mut accumulation = [0.0_f64; 3];
+        let mut output = [0.0_f32; 3];
+        let (total_local, terminal, _) = route_phase_discharge(
+            &local,
+            &submerged,
+            &receiver,
+            &drainage_order,
+            &mut accumulation,
+            &mut output,
+        )
+        .unwrap();
+        assert!((terminal - total_local).abs() < 1.0e-12);
+        assert_eq!(output, [1.25, 4.0, 4.0]);
     }
 }
