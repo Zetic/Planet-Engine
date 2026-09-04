@@ -39,12 +39,14 @@ lakes = re.search(
     r"precip_m3_s=([0-9.eE+-]+) evap_m3_s=([0-9.eE+-]+) terminal_storage_m3_s=([0-9.eE+-]+)",
     text,
 )
+flow = re.search(r"flow dry=(\d+) intermittent=(\d+) perennial=(\d+)", text)
+lake_cycle = re.search(r"lake_cycle surface_change_m=([0-9.eE+-]+)", text)
 hashes = re.search(
     r"hash seasonal=([0-9a-f]{16}) lakes=([0-9a-f]{16}) runoff=([0-9a-f]{16}) drainage=([0-9a-f]{16}) "
     r"climate=([0-9a-f]{16}) parameters=([0-9a-f]{16})",
     text,
 )
-if not header or not runoff or not potential or not realized or not lakes or not hashes:
+if not header or not runoff or not potential or not realized or not lakes or not flow or not lake_cycle or not hashes:
     raise SystemExit("WG-6D smoke output did not match the expected diagnostics contract")
 
 samples = int(header.group(1))
@@ -65,6 +67,10 @@ level_range = float(lakes.group(4))
 lake_precip = float(lakes.group(5))
 lake_evap = float(lakes.group(6))
 terminal_storage = float(lakes.group(7))
+dry_flow = int(flow.group(1))
+intermittent_flow = int(flow.group(2))
+perennial_flow = int(flow.group(3))
+surface_cycle_change_m = float(lake_cycle.group(1))
 
 if samples != 2562:
     raise SystemExit(f"WG-6D L4 smoke expected 2562 samples, got {samples}")
@@ -72,8 +78,12 @@ if phases != 24:
     raise SystemExit(f"WG-6D default Earthlike climate expected 24 orbital phases, got {phases}")
 if active_lakes <= 0:
     raise SystemExit("WG-6D fixed smoke seed must exercise at least one WG-6C lake control volume")
-if not (1 <= spinup_years <= 12):
+if not (2 <= spinup_years <= 12):
     raise SystemExit(f"WG-6D lake cycle count is outside the supported bound: {spinup_years}")
+if dry_flow + intermittent_flow + perennial_flow <= 0 or dry_flow + intermittent_flow + perennial_flow > samples:
+    raise SystemExit("WG-6D flow-regime counts must describe a nonempty subset of canonical samples")
+if intermittent_flow <= 0 or perennial_flow <= 0:
+    raise SystemExit("WG-6D fixed smoke seed must exercise both intermittent and perennial realized flow")
 
 for name, value in {
     "annual local runoff": annual_local,
@@ -86,6 +96,7 @@ for name, value in {
     "maximum phase realized discharge": realized_max,
     "seasonal water balance": water_balance_error,
     "lake cycle change": cycle_error,
+    "lake surface cycle change": surface_cycle_change_m,
     "lake level range": level_range,
     "lake precipitation": lake_precip,
     "lake evaporation": lake_evap,
@@ -106,10 +117,12 @@ if routing_error > 1.0e-10:
     raise SystemExit(f"WG-6D phase-routing conservation exceeded tolerance: {routing_error:.3e}")
 if water_balance_error > 1.0e-10:
     raise SystemExit(f"WG-6D seasonal lake/global water-balance closure exceeded tolerance: {water_balance_error:.3e}")
+if surface_cycle_change_m > 0.02 + 1.0e-12:
+    raise SystemExit(f"WG-6D seasonal lake surface cycle did not converge within 2 cm: {surface_cycle_change_m:.9f} m")
 
 print(
     f"WG-6D seasonal smoke accepted: samples={samples} phases={phases} active_lakes={active_lakes} "
-    f"snowmelt_fraction={snowmelt_fraction:.4f} realized_max_m3_s={realized_max:.3f} "
-    f"water_balance_error={water_balance_error:.3e}"
+    f"intermittent={intermittent_flow} perennial={perennial_flow} "
+    f"surface_cycle_change_m={surface_cycle_change_m:.6f} water_balance_error={water_balance_error:.3e}"
 )
 PY
