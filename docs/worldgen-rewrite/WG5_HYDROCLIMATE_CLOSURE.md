@@ -4,7 +4,7 @@ WG-5 Stage 5 closes the reduced Earth-like hydroclimate state that WG-6 hydrolog
 
 ## Closure change
 
-Stage `climate:coupled-surface@5` retains the accepted Stage-4 thermal, wind, ocean-current, moisture-transport, and precipitation equations. The physical precipitation field is intentionally unchanged by this closure pass.
+Historical Stage `climate:coupled-surface@5` retained the accepted Stage-4 thermal, wind, ocean-current, moisture-transport, and precipitation equations. Stage 6 keeps this closure model and changes its execution architecture through multiresolution climate solving.
 
 The exported land potential-evaporation diagnostic is now bounded by the same reduced latent-energy availability fraction used by ocean evaporation. Previously PET integrated unrestricted aerodynamic saturation-deficit demand on land while ocean evaporation was energy-limited. That made PET and the derived aridity index strongly resolution-sensitive even when the conserved water cycle itself had converged.
 

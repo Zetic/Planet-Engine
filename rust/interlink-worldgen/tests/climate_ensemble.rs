@@ -1,9 +1,49 @@
 use interlink_worldgen::{
-    build_icosphere, generate_coupled_climate, generate_crust_and_history,
-    generate_initial_topography, generate_lithosphere, generate_tectonics,
-    inherit_boundary_interfaces, inherit_physical_state, ClimateRequest, GeologyRequest,
-    LithosphereRequest, PlanetPhysicalParameters, TectonicsRequest, TopographyRequest,
+    build_icosphere, generate_coupled_climate, generate_coupled_climate_with_diagnostics,
+    generate_crust_and_history, generate_initial_topography, generate_lithosphere,
+    generate_tectonics, inherit_boundary_interfaces, inherit_physical_state, ClimateRequest,
+    GeologyRequest, LithosphereRequest, PlanetPhysicalParameters, TectonicsRequest,
+    TopographyRequest,
 };
+
+#[test]
+fn multiresolution_climate_is_deterministic_aligned_and_explicit() {
+    let planet = PlanetPhysicalParameters::earthlike_reference();
+    let (topology, terrain) = generated_surface("wg5-multiresolution", planet);
+    let mut request = ClimateRequest::new("wg5-multiresolution");
+    request.parameters.maximum_global_climate_level = 3;
+    let mut progress = |_completed_years: u8, _maximum_years: u8| {};
+    let (first, diagnostics) = generate_coupled_climate_with_diagnostics(
+        &topology,
+        &terrain,
+        planet,
+        &request,
+        &mut progress,
+    )
+    .unwrap();
+    let second = generate_coupled_climate(&topology, &terrain, planet, &request).unwrap();
+
+    assert_eq!(first, second);
+    assert_eq!(first.metrics.global_solver_level, 3);
+    assert_eq!(first.metrics.global_solver_sample_count, 642);
+    assert_eq!(first.metrics.sample_count, topology.metrics().sample_count);
+    assert_eq!(first.temperature_mean_k.len(), topology.positions().len());
+    assert_eq!(
+        diagnostics.precipitation_phase_rate_mm_year.len(),
+        topology.positions().len() * usize::from(first.metrics.orbital_phase_count),
+    );
+    assert_eq!(
+        first.metrics.climate_model_parameter_hash,
+        request.parameters.parameter_hash(),
+    );
+    assert!(first.metrics.moisture_budget_relative_error < 1.0e-10);
+    for (sample, submerged) in terrain.submerged_mask.iter().enumerate() {
+        if *submerged == 0 {
+            assert_eq!(first.current_east_mean_m_s[sample], 0.0);
+            assert_eq!(first.current_north_mean_m_s[sample], 0.0);
+        }
+    }
+}
 
 fn generated_surface(
     seed: &str,

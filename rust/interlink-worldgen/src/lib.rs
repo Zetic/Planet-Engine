@@ -1,6 +1,7 @@
 mod boundary_refinement;
 mod climate;
 mod climate_calibration;
+mod climate_multiresolution;
 mod coordinates;
 mod diagnostics;
 mod fields;
@@ -20,9 +21,10 @@ pub use boundary_refinement::{
     inherit_boundary_interfaces, InheritedBoundaryEdge, InheritedBoundarySet,
 };
 pub use climate::{
-    generate_coupled_climate, generate_coupled_climate_with_diagnostics,
-    ClimateGenerationDiagnostics, ClimateMetrics, ClimateParameters, ClimatePhysicalParameters,
-    ClimateRequest, ClimateState, CLIMATE_STAGE_ID, CLIMATE_STAGE_VERSION,
+    generate_coupled_climate, generate_coupled_climate_reference_with_diagnostics,
+    generate_coupled_climate_with_diagnostics, ClimateGenerationDiagnostics, ClimateMetrics,
+    ClimateParameters, ClimatePhysicalParameters, ClimateRequest, ClimateState, CLIMATE_STAGE_ID,
+    CLIMATE_STAGE_VERSION,
 };
 pub use climate_calibration::{
     build_climate_calibration_report, ClimateCalibrationReport, ClimateLatitudeBand,
@@ -69,7 +71,7 @@ pub use topology::{
     GeodesicTopology, PlanetTopology, TopologyMetrics, INVALID_SAMPLE_ID, MAX_TOPOLOGY_LEVEL,
 };
 
-pub const WORLDGEN_ENGINE_VERSION: u32 = 8;
+pub const WORLDGEN_ENGINE_VERSION: u32 = 9;
 pub const SYNTHETIC_STAGE_ID: &str = "foundation:synthetic";
 pub const SYNTHETIC_STAGE_VERSION: u32 = 1;
 const SYNTHETIC_NAMESPACE: &str = "worldgen:foundation:synthetic:v1";

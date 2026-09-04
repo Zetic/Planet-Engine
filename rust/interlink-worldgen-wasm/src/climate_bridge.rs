@@ -245,6 +245,12 @@ impl WasmWorldgenClimate {
     pub fn orbital_phase_count(&self) -> u8 {
         self.climate.metrics.orbital_phase_count
     }
+    pub fn global_solver_level(&self) -> u8 {
+        self.climate.metrics.global_solver_level
+    }
+    pub fn global_solver_sample_count(&self) -> u32 {
+        self.climate.metrics.global_solver_sample_count
+    }
     pub fn spinup_years(&self) -> u8 {
         self.climate.metrics.spinup_years
     }

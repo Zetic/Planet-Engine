@@ -47,6 +47,8 @@ export class WasmWorldgenClimate {
     geology_hash_hex(): string;
     global_evaporation_kg(): number;
     global_precipitation_kg(): number;
+    global_solver_level(): number;
+    global_solver_sample_count(): number;
     has_sea_level(): boolean;
     inheritance_hash_hex(): string;
     inherited_sample_mask(): Uint8Array;
@@ -591,6 +593,8 @@ export interface InitOutput {
     readonly wasmworldgenclimate_geology_hash_hex: (a: number) => [number, number];
     readonly wasmworldgenclimate_global_evaporation_kg: (a: number) => number;
     readonly wasmworldgenclimate_global_precipitation_kg: (a: number) => number;
+    readonly wasmworldgenclimate_global_solver_level: (a: number) => number;
+    readonly wasmworldgenclimate_global_solver_sample_count: (a: number) => number;
     readonly wasmworldgenclimate_has_sea_level: (a: number) => number;
     readonly wasmworldgenclimate_inheritance_hash_hex: (a: number) => [number, number];
     readonly wasmworldgenclimate_inherited_sample_mask: (a: number) => [number, number];

@@ -411,6 +411,20 @@ export class WasmWorldgenClimate {
         return ret;
     }
     /**
+     * @returns {number}
+     */
+    global_solver_level() {
+        const ret = wasm.wasmworldgenclimate_global_solver_level(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    global_solver_sample_count() {
+        const ret = wasm.wasmworldgenclimate_global_solver_sample_count(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
      * @returns {boolean}
      */
     has_sea_level() {

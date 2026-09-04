@@ -9,14 +9,14 @@ import {
   worldgenTopographyCommand,
 } from '../dist/worldgen/protocol.js';
 
-test('WG-4 browser contract remains available under protocol v9', () => {
-  assert.equal(WORLDGEN_PROTOCOL_VERSION, 9);
+test('WG-4 browser contract remains available under protocol v10', () => {
+  assert.equal(WORLDGEN_PROTOCOL_VERSION, 10);
   assert.equal(WORLDGEN_TOPOGRAPHY_COARSE_MAX_LEVEL, 6);
   assert.equal(WORLDGEN_TOPOGRAPHY_FINE_MAX_LEVEL, 7);
   assert.doesNotThrow(() => validateTopographyRequest({ seed: 'wg4', coarseLevel: 4, fineLevel: 7, plateCount: 18 }));
   assert.throws(() => validateTopographyRequest({ seed: '', coarseLevel: 4, fineLevel: 6, plateCount: 18 }), /seed/i);
   assert.throws(() => validateTopographyRequest({ seed: 'wg4', coarseLevel: 5, fineLevel: 4, plateCount: 18 }), /fine level/i);
-  assert.deepEqual(worldgenTopographyCommand(77, { seed: 'wg4', coarseLevel: 4, fineLevel: 6, plateCount: 18 }), { protocolVersion: 9, requestId: 77, type: 'generate-topography', payload: { seed: 'wg4', coarseLevel: 4, fineLevel: 6, plateCount: 18 } });
+  assert.deepEqual(worldgenTopographyCommand(77, { seed: 'wg4', coarseLevel: 4, fineLevel: 6, plateCount: 18 }), { protocolVersion: 10, requestId: 77, type: 'generate-topography', payload: { seed: 'wg4', coarseLevel: 4, fineLevel: 6, plateCount: 18 } });
 });
 
 test('Planet Engine Lab keeps every WG-3.75 and WG-4 view cumulatively under WG-5', () => {
