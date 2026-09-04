@@ -1,4 +1,4 @@
-export const WORLDGEN_PROTOCOL_VERSION = 12;
+export const WORLDGEN_PROTOCOL_VERSION = 13;
 export const WORLDGEN_SYNTHETIC_MAX_SAMPLES = 4_194_304;
 export const WORLDGEN_TOPOLOGY_MAX_LEVEL = 7;
 export const WORLDGEN_TECTONICS_MAX_LEVEL = 6;
@@ -565,6 +565,20 @@ export interface WorldgenClimateResult {
   runoffFraction: Float32Array;
   localRunoffM3S: Float32Array;
   potentialDischargeM3S: Float32Array;
+  lakeStage: WorldgenStageMetadata;
+  lakeMetrics: WorldgenLakeMetrics;
+  lakeId: Uint32Array;
+  lakeKind: Uint8Array;
+  lakeFraction: Float32Array;
+  lakeDepthM: Float32Array;
+  realizedDischargeM3S: Float32Array;
+  lakeDepressionIds: Uint32Array;
+  lakeKinds: Uint8Array;
+  lakeSurfaceElevationsM: Float64Array;
+  lakeAreasM2: Float64Array;
+  lakeVolumesM3: Float64Array;
+  lakeOutflowsM3S: Float64Array;
+  lakeSpillSamples: Uint32Array;
 }
 
 
@@ -600,6 +614,30 @@ export interface WorldgenRunoffMetrics {
   climateHash: string;
   drainageHash: string;
   runoffHash: string;
+}
+
+export interface WorldgenLakeMetrics {
+  sampleCount: number;
+  lakeCount: number;
+  endorheicLakeCount: number;
+  overflowingLakeCount: number;
+  terminalStorageLakeCount: number;
+  lakeSampleCount: number;
+  totalLakeAreaM2: number;
+  totalLakeVolumeM3: number;
+  maximumLakeAreaM2: number;
+  maximumLakeDepthM: number;
+  totalLakePrecipitationM3S: number;
+  totalLakeEvaporationM3S: number;
+  terminalRealizedDischargeM3S: number;
+  maximumRealizedDischargeM3S: number;
+  unreleasedStorageM3S: number;
+  waterBalanceRelativeError: number;
+  lakeParameterHash: string;
+  climateHash: string;
+  drainageHash: string;
+  runoffHash: string;
+  lakeHash: string;
 }
 
 export interface WorldgenDrainageResult {

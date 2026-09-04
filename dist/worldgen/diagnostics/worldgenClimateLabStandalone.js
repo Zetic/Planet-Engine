@@ -68,6 +68,33 @@ function geologicalBoundaryColor(regime) {
         return '#d59cff';
     return '#d7e2ef';
 }
+const LAKE_MODES = new Set(['realized-discharge', 'lake-depth', 'lake-state', 'lake-fraction']);
+function isLakeMode(mode) { return LAKE_MODES.has(mode); }
+function lakeSampleColor(result, mode, sample) {
+    if (result.submergedMask[sample])
+        return '#102c43';
+    if (mode === 'lake-state') {
+        const kind = result.lakeKind[sample];
+        if (kind === 1)
+            return '#3aa7c9';
+        if (kind === 2)
+            return '#63d0a5';
+        if (kind === 3)
+            return '#9b78d0';
+        return '#31423c';
+    }
+    if (mode === 'lake-fraction')
+        return drainageScalarColor(result.lakeFraction[sample], 210, 175);
+    if (mode === 'lake-depth') {
+        const depth = Math.max(0, result.lakeDepthM[sample]);
+        if (depth <= 0)
+            return '#31423c';
+        const maxDepth = Math.max(1, result.lakeMetrics.maximumLakeDepthM);
+        return drainageScalarColor(Math.log1p(depth) / Math.log1p(maxDepth), 220, 175);
+    }
+    const maxValue = Math.max(1e-6, result.lakeMetrics.maximumRealizedDischargeM3S);
+    return drainageScalarColor(Math.log1p(Math.max(0, result.realizedDischargeM3S[sample])) / Math.log1p(maxValue), 205, 35);
+}
 const RUNOFF_MODES = new Set(['annual-runoff', 'runoff-fraction', 'actual-et', 'potential-discharge']);
 function isRunoffMode(mode) { return RUNOFF_MODES.has(mode); }
 function runoffSampleColor(result, mode, sample) {
@@ -586,6 +613,28 @@ function renderPlanet(canvas, result, projection, mode, overlays, phase, yaw, pi
         context.lineWidth = 1;
         context.stroke();
     }
+    if (isLakeMode(mode)) {
+        const count = result.metrics.fineSampleCount;
+        const pointRadius = count > 100_000 ? 0.8 : count > 30_000 ? 1.15 : count > 5_000 ? 2 : 3;
+        const fastPoints = interactive && count > 20_000;
+        context.globalAlpha = 0.94;
+        for (let sample = 0; sample < count; sample += 1) {
+            if (!buffers.visible[sample])
+                continue;
+            context.fillStyle = lakeSampleColor(result, mode, sample);
+            const x = buffers.x[sample], y = buffers.y[sample];
+            if (fastPoints)
+                context.fillRect(x - 0.75, y - 0.75, 1.5, 1.5);
+            else {
+                context.beginPath();
+                context.arc(x, y, pointRadius, 0, TWO_PI);
+                context.fill();
+            }
+        }
+        context.globalAlpha = 1;
+        drawDiagnosticOverlays(context, result, overlays, phase, projection, yaw, pitch, width, height, buffers, animation);
+        return;
+    }
     if (isRunoffMode(mode)) {
         const count = result.metrics.fineSampleCount;
         const pointRadius = count > 100_000 ? 0.8 : count > 30_000 ? 1.15 : count > 5_000 ? 2 : 3;
@@ -727,6 +776,9 @@ const GENERATION_STAGE_LABELS = {
     'boundary-refinement': 'Boundary refinement',
     topography: 'Topography + sea level',
     'climate-spinup': 'Climate spin-up',
+    'drainage-topology': 'Drainage topology',
+    'runoff-discharge': 'Annual runoff / discharge',
+    'lake-equilibrium': 'Lake equilibrium',
     packaging: 'Packaging / transfer',
 };
 let generationStartedAt = 0;
@@ -863,6 +915,14 @@ function showMetrics(result) {
     metric(metrics, 'WG-6B max potential discharge', `${result.runoffMetrics.maximumPotentialDischargeM3S.toFixed(1)} m³/s`);
     metric(metrics, 'WG-6B discharge closure', result.runoffMetrics.dischargeConservationRelativeError.toExponential(2));
     metric(metrics, 'WG-6B runoff hash', result.runoffMetrics.runoffHash);
+    metric(metrics, 'WG-6C / stage', `v${result.engineVersion} · ${result.lakeStage.id}@${result.lakeStage.version}`);
+    metric(metrics, 'WG-6C lakes', `${result.lakeMetrics.lakeCount.toLocaleString()} total · ${result.lakeMetrics.endorheicLakeCount.toLocaleString()} endorheic · ${result.lakeMetrics.overflowingLakeCount.toLocaleString()} overflowing · ${result.lakeMetrics.terminalStorageLakeCount.toLocaleString()} terminal storage`);
+    metric(metrics, 'WG-6C lake area / volume', `${(result.lakeMetrics.totalLakeAreaM2 / 1e12).toFixed(3)} million km² · ${(result.lakeMetrics.totalLakeVolumeM3 / 1e12).toFixed(3)} thousand km³`);
+    metric(metrics, 'WG-6C deepest lake', `${result.lakeMetrics.maximumLakeDepthM.toFixed(1)} m`);
+    metric(metrics, 'WG-6C lake evaporation', `${result.lakeMetrics.totalLakeEvaporationM3S.toFixed(1)} m³/s`);
+    metric(metrics, 'WG-6C terminal realized flow', `${result.lakeMetrics.terminalRealizedDischargeM3S.toFixed(1)} m³/s`);
+    metric(metrics, 'WG-6C water balance', result.lakeMetrics.waterBalanceRelativeError.toExponential(2));
+    metric(metrics, 'WG-6C lake hash', result.lakeMetrics.lakeHash);
 }
 async function generatePlanet() {
     generate.disabled = true;
@@ -875,6 +935,12 @@ async function generatePlanet() {
             throw new Error('WG-6B climate identity does not match accepted WG-5 forcing.');
         if (loaded.runoffMetrics.drainageHash !== loaded.drainageMetrics.drainageHash)
             throw new Error('WG-6B drainage identity does not match accepted WG-6A topology.');
+        if (loaded.lakeMetrics.climateHash !== loaded.metrics.climateHash)
+            throw new Error('WG-6C climate identity does not match accepted WG-5 forcing.');
+        if (loaded.lakeMetrics.drainageHash !== loaded.drainageMetrics.drainageHash)
+            throw new Error('WG-6C drainage identity does not match accepted WG-6A topology.');
+        if (loaded.lakeMetrics.runoffHash !== loaded.runoffMetrics.runoffHash)
+            throw new Error('WG-6C runoff identity does not match accepted WG-6B runoff.');
         current = loaded;
         buffers = { x: new Float32Array(loaded.metrics.fineSampleCount), y: new Float32Array(loaded.metrics.fineSampleCount), visible: new Uint8Array(loaded.metrics.fineSampleCount) };
         styleCache = { result: null, key: '', sampleBuckets: [], boundaryBuckets: [] };
@@ -883,9 +949,9 @@ async function generatePlanet() {
         redraw(false);
         updateAnimation();
         finishGenerationTelemetry(loaded);
-        generationStep.textContent = `${loaded.metrics.spinupYears} climate spin-up years · ${loaded.drainageMetrics.basinCount.toLocaleString()} basins · ${loaded.runoffMetrics.meanLandRunoffMm.toFixed(1)} mm/yr land runoff`;
+        generationStep.textContent = `${loaded.metrics.spinupYears} climate spin-up years · ${loaded.drainageMetrics.basinCount.toLocaleString()} basins · ${loaded.lakeMetrics.lakeCount.toLocaleString()} equilibrium lakes`;
         generationTimer.textContent = formatDuration(performance.now() - generationStartedAt);
-        status.textContent = `Planet ready through WG-6B: ${loaded.metrics.fineSampleCount.toLocaleString()} samples, ${loaded.drainageMetrics.basinCount.toLocaleString()} drainage basins, max potential discharge ${loaded.runoffMetrics.maximumPotentialDischargeM3S.toFixed(1)} m³/s.`;
+        status.textContent = `Planet ready through WG-6C: ${loaded.metrics.fineSampleCount.toLocaleString()} samples, ${loaded.lakeMetrics.lakeCount.toLocaleString()} equilibrium lakes, max realized discharge ${loaded.lakeMetrics.maximumRealizedDischargeM3S.toFixed(1)} m³/s.`;
     }
     catch (error) {
         if (generationTimerHandle) {

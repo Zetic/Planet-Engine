@@ -8,6 +8,7 @@ mod drainage;
 mod fields;
 mod geology;
 mod hydroclimate;
+mod lakes;
 mod lithosphere;
 mod parameters;
 mod random;
@@ -50,6 +51,11 @@ pub use geology::{
 };
 pub use hydroclimate::{
     build_hydroclimate_closure_report, HydroclimateClosureReport, HydroclimateLatitudeBand,
+};
+pub use lakes::{
+    generate_lakes_closed_basins, LakeMetrics, LakeParameters, LakeRecord, LakeRequest, LakeState,
+    LAKE_KIND_ENDORHEIC, LAKE_KIND_NONE, LAKE_KIND_OVERFLOWING, LAKE_KIND_TERMINAL_STORAGE,
+    LAKE_STAGE_ID, LAKE_STAGE_VERSION,
 };
 pub use lithosphere::{
     generate_lithosphere, LithosphereMetrics, LithosphereRequest, LithosphericModel,

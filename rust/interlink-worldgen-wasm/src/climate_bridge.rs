@@ -1,15 +1,16 @@
 use interlink_worldgen::{
     build_icosphere, generate_coupled_climate_with_diagnostics, generate_crust_and_history,
-    generate_drainage_topology, generate_initial_topography, generate_lithosphere,
-    generate_runoff_discharge, generate_tectonics, inherit_boundary_interfaces,
-    inherit_physical_state, ClimatePhysicalParameters, ClimateRequest, ClimateState,
-    DrainageRequest, DrainageState, GeodesicTopology, GeologyRequest, InheritedBoundarySet,
-    InheritedPhysicalState, LithosphereRequest, PlanetPhysicalParameters, RunoffRequest,
-    RunoffState, TectonicsRequest, TopographyRequest, TopographyState, WORLDGEN_ENGINE_VERSION,
+    generate_drainage_topology, generate_initial_topography, generate_lakes_closed_basins,
+    generate_lithosphere, generate_runoff_discharge, generate_tectonics,
+    inherit_boundary_interfaces, inherit_physical_state, ClimatePhysicalParameters, ClimateRequest,
+    ClimateState, DrainageRequest, DrainageState, GeodesicTopology, GeologyRequest,
+    InheritedBoundarySet, InheritedPhysicalState, LakeRequest, LakeState, LithosphereRequest,
+    PlanetPhysicalParameters, RunoffRequest, RunoffState, TectonicsRequest, TopographyRequest,
+    TopographyState, WORLDGEN_ENGINE_VERSION,
 };
 use wasm_bindgen::prelude::*;
 
-const GENERATION_STAGE_COUNT: u32 = 12;
+const GENERATION_STAGE_COUNT: u32 = 13;
 
 fn report_generation_progress(
     callback: Option<&js_sys::Function>,
@@ -40,6 +41,7 @@ pub struct WasmWorldgenClimate {
     climate: ClimateState,
     drainage: DrainageState,
     runoff: RunoffState,
+    lakes: LakeState,
     planet: PlanetPhysicalParameters,
     climate_physical: ClimatePhysicalParameters,
     precipitation_phase_rate_mm_year: Vec<f32>,
@@ -177,10 +179,23 @@ impl WasmWorldgenClimate {
             &climate,
             &drainage,
             planet,
-            &RunoffRequest::new(seed),
+            &RunoffRequest::new(seed.as_str()),
         )
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
         report_generation_progress(progress, "runoff-discharge", 10, 1, 1);
+
+        report_generation_progress(progress, "lake-equilibrium", 11, 0, 1);
+        let lakes = generate_lakes_closed_basins(
+            &fine_topology,
+            &terrain,
+            &climate,
+            &drainage,
+            &runoff,
+            planet,
+            &LakeRequest::new(seed.as_str()),
+        )
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        report_generation_progress(progress, "lake-equilibrium", 11, 1, 1);
 
         Ok(Self {
             fine_topology,
@@ -190,6 +205,7 @@ impl WasmWorldgenClimate {
             climate,
             drainage,
             runoff,
+            lakes,
             planet,
             climate_physical,
             precipitation_phase_rate_mm_year,
@@ -809,5 +825,127 @@ impl WasmWorldgenClimate {
     }
     pub fn potential_discharge_m3_s(&self) -> Vec<f32> {
         self.runoff.potential_discharge_m3_s.clone()
+    }
+
+    pub fn lake_stage_id(&self) -> String {
+        self.lakes.stage.id.to_owned()
+    }
+    pub fn lake_stage_version(&self) -> u32 {
+        self.lakes.stage.version
+    }
+    pub fn lake_stage_seed_hex(&self) -> String {
+        format!("{:016x}", self.lakes.stage.derived_seed)
+    }
+    pub fn lake_hash_hex(&self) -> String {
+        self.lakes.metrics.lake_hash_hex()
+    }
+    pub fn lake_parameter_hash_hex(&self) -> String {
+        self.lakes.metrics.lake_parameter_hash_hex()
+    }
+    pub fn lake_climate_hash_hex(&self) -> String {
+        self.lakes.metrics.climate_hash_hex()
+    }
+    pub fn lake_drainage_hash_hex(&self) -> String {
+        self.lakes.metrics.drainage_hash_hex()
+    }
+    pub fn lake_runoff_hash_hex(&self) -> String {
+        self.lakes.metrics.runoff_hash_hex()
+    }
+    pub fn lake_count(&self) -> u32 {
+        self.lakes.metrics.lake_count
+    }
+    pub fn endorheic_lake_count(&self) -> u32 {
+        self.lakes.metrics.endorheic_lake_count
+    }
+    pub fn overflowing_lake_count(&self) -> u32 {
+        self.lakes.metrics.overflowing_lake_count
+    }
+    pub fn terminal_storage_lake_count(&self) -> u32 {
+        self.lakes.metrics.terminal_storage_lake_count
+    }
+    pub fn lake_sample_count(&self) -> u32 {
+        self.lakes.metrics.lake_sample_count
+    }
+    pub fn total_lake_area_m2(&self) -> f64 {
+        self.lakes.metrics.total_lake_area_m2
+    }
+    pub fn total_lake_volume_m3(&self) -> f64 {
+        self.lakes.metrics.total_lake_volume_m3
+    }
+    pub fn maximum_lake_area_m2(&self) -> f64 {
+        self.lakes.metrics.maximum_lake_area_m2
+    }
+    pub fn maximum_lake_depth_m(&self) -> f64 {
+        self.lakes.metrics.maximum_lake_depth_m
+    }
+    pub fn total_lake_precipitation_m3_s(&self) -> f64 {
+        self.lakes.metrics.total_lake_precipitation_m3_s
+    }
+    pub fn total_lake_evaporation_m3_s(&self) -> f64 {
+        self.lakes.metrics.total_lake_evaporation_m3_s
+    }
+    pub fn terminal_realized_discharge_m3_s(&self) -> f64 {
+        self.lakes.metrics.terminal_realized_discharge_m3_s
+    }
+    pub fn maximum_realized_discharge_m3_s(&self) -> f64 {
+        self.lakes.metrics.maximum_realized_discharge_m3_s
+    }
+    pub fn unreleased_storage_m3_s(&self) -> f64 {
+        self.lakes.metrics.unreleased_storage_m3_s
+    }
+    pub fn lake_water_balance_relative_error(&self) -> f64 {
+        self.lakes.metrics.water_balance_relative_error
+    }
+    pub fn lake_id(&self) -> Vec<u32> {
+        self.lakes.lake_id.clone()
+    }
+    pub fn lake_kind(&self) -> Vec<u8> {
+        self.lakes.lake_kind.clone()
+    }
+    pub fn lake_fraction(&self) -> Vec<f32> {
+        self.lakes.lake_fraction.clone()
+    }
+    pub fn lake_depth_m(&self) -> Vec<f32> {
+        self.lakes.lake_depth_m.clone()
+    }
+    pub fn realized_discharge_m3_s(&self) -> Vec<f32> {
+        self.lakes.realized_discharge_m3_s.clone()
+    }
+    pub fn lake_depression_ids(&self) -> Vec<u32> {
+        self.lakes
+            .lakes
+            .iter()
+            .map(|lake| lake.depression_id)
+            .collect()
+    }
+    pub fn lake_kinds(&self) -> Vec<u8> {
+        self.lakes.lakes.iter().map(|lake| lake.kind).collect()
+    }
+    pub fn lake_surface_elevations_m(&self) -> Vec<f64> {
+        self.lakes
+            .lakes
+            .iter()
+            .map(|lake| lake.surface_elevation_m)
+            .collect()
+    }
+    pub fn lake_areas_m2(&self) -> Vec<f64> {
+        self.lakes.lakes.iter().map(|lake| lake.area_m2).collect()
+    }
+    pub fn lake_volumes_m3(&self) -> Vec<f64> {
+        self.lakes.lakes.iter().map(|lake| lake.volume_m3).collect()
+    }
+    pub fn lake_outflows_m3_s(&self) -> Vec<f64> {
+        self.lakes
+            .lakes
+            .iter()
+            .map(|lake| lake.outflow_m3_s)
+            .collect()
+    }
+    pub fn lake_spill_samples(&self) -> Vec<u32> {
+        self.lakes
+            .lakes
+            .iter()
+            .map(|lake| lake.spill_sample)
+            .collect()
     }
 }
