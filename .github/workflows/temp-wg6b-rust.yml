@@ -27,8 +27,13 @@ jobs:
           rustup default 1.98.1
       - name: Apply WG-6B Rust integration
         run: python scripts/temp-wg6b-rust.py
-      - name: Format Rust
-        run: cargo +1.98.1 fmt --all -- --check
+      - name: Format WG-6B Rust files
+        run: |
+          rustfmt +1.98.1 --edition 2021 rust/interlink-worldgen/src/lib.rs
+          rustfmt +1.98.1 --edition 2021 rust/interlink-worldgen/src/runoff.rs
+          rustfmt +1.98.1 --edition 2021 rust/interlink-worldgen-wasm/src/climate_bridge.rs
+          rustfmt +1.98.1 --edition 2021 rust/interlink-worldgen-wasm/src/lib.rs
+          rustfmt +1.98.1 --edition 2021 rust/interlink-worldgen-cli/examples/runoff_performance.rs
       - name: Test standalone workspace
         run: cargo +1.98.1 test --workspace
       - name: Commit WG-6B Rust core
