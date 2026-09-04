@@ -34,7 +34,7 @@ pub struct TerrainEvolutionParameters {
 impl Default for TerrainEvolutionParameters {
     fn default() -> Self {
         Self {
-            maximum_geomorphic_years: 50_000.0,
+            maximum_geomorphic_years: 250_000.0,
             maximum_resolved_elevation_change_m: 120.0,
             valley_width_multiplier: 3.0,
             minimum_valley_width_m: 100.0,
@@ -719,12 +719,13 @@ mod tests {
     #[test]
     fn adaptive_horizon_caps_resolved_change_without_time_stepping() {
         let p = TerrainEvolutionParameters {
-            maximum_geomorphic_years: 50_000.0,
+            maximum_geomorphic_years: 250_000.0,
             maximum_resolved_elevation_change_m: 100.0,
             ..TerrainEvolutionParameters::default()
         };
         assert_eq!(adaptive_duration_years(0.0, p), 0.0);
-        assert!((adaptive_duration_years(0.001, p) - 50_000.0).abs() < 1.0e-9);
+        assert!((adaptive_duration_years(0.001, p) - 100_000.0).abs() < 1.0e-9);
+        assert!((adaptive_duration_years(0.0001, p) - 250_000.0).abs() < 1.0e-9);
         assert!((adaptive_duration_years(0.01, p) - 10_000.0).abs() < 1.0e-9);
     }
 
