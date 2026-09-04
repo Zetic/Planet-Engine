@@ -1,0 +1,22 @@
+name: Temporary WG-7A Benchmark
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    if: github.event.pull_request.head.ref == 'wg7a-fluvial-erosion-sediment'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.1
+      - name: Benchmark WG-7A fixed cases
+        run: |
+          set -euxo pipefail
+          cargo run --release -p interlink-worldgen-cli --example erosion_performance -- --seed ci-wg7a-erosion --coarse-level 3 --level 4 --plates 12 --runs 3
+          cargo run --release -p interlink-worldgen-cli --example erosion_performance -- --seed ci-wg7a-erosion --coarse-level 4 --level 6 --plates 16 --runs 3
+          cargo run --release -p interlink-worldgen-cli --example erosion_performance -- --seed ci-wg7a-erosion --coarse-level 5 --level 7 --plates 24 --runs 3
