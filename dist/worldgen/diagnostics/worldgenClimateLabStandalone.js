@@ -1,6 +1,6 @@
 import { createWorldgenClient } from '../worldgenClient.js';
 import { mapVectorDelta, reconstructAnnualHarmonicFromBasis } from './worldgenClimateMath.js';
-import { WORLDGEN_BOUNDARY_CONVERGENT, WORLDGEN_BOUNDARY_DIVERGENT, WORLDGEN_BOUNDARY_TRANSFORM, WORLDGEN_CRUST_CONTINENTAL, WORLDGEN_CRUST_OCEANIC, WORLDGEN_CRUST_TRANSITIONAL, WORLDGEN_GEOLOGY_CONTINENTAL_COLLISION, WORLDGEN_GEOLOGY_CONTINENTAL_RIFT, WORLDGEN_GEOLOGY_OCEANIC_RIDGE, WORLDGEN_GEOLOGY_OCEANIC_SUBDUCTION, WORLDGEN_GEOLOGY_OCEAN_CONTINENT_SUBDUCTION, WORLDGEN_GEOLOGY_TRANSFORM, WORLDGEN_GEOLOGY_TRANSITIONAL_DIVERGENCE, WORLDGEN_STRUCTURE_CONTINENTAL_MARGIN, WORLDGEN_STRUCTURE_NONE, WORLDGEN_STRUCTURE_RIFT, WORLDGEN_STRUCTURE_SUTURE, WORLDGEN_STRUCTURE_TRANSFORM, } from '../protocol.js';
+import { WORLDGEN_BOUNDARY_CONVERGENT, WORLDGEN_BOUNDARY_DIVERGENT, WORLDGEN_BOUNDARY_TRANSFORM, WORLDGEN_CRUST_CONTINENTAL, WORLDGEN_CRUST_OCEANIC, WORLDGEN_CRUST_TRANSITIONAL, WORLDGEN_GEOLOGY_CONTINENTAL_COLLISION, WORLDGEN_GEOLOGY_CONTINENTAL_RIFT, WORLDGEN_GEOLOGY_OCEANIC_RIDGE, WORLDGEN_GEOLOGY_OCEANIC_SUBDUCTION, WORLDGEN_GEOLOGY_OCEAN_CONTINENT_SUBDUCTION, WORLDGEN_GEOLOGY_TRANSFORM, WORLDGEN_GEOLOGY_TRANSITIONAL_DIVERGENCE, WORLDGEN_STRUCTURE_CONTINENTAL_MARGIN, WORLDGEN_STRUCTURE_NONE, WORLDGEN_STRUCTURE_RIFT, WORLDGEN_STRUCTURE_SUTURE, WORLDGEN_STRUCTURE_TRANSFORM, WORLDGEN_INVALID_SAMPLE_ID, } from '../protocol.js';
 const PALETTE_STEPS = 256;
 const TWO_PI = Math.PI * 2;
 function element(id) {
@@ -67,6 +67,110 @@ function geologicalBoundaryColor(regime) {
     if (regime === WORLDGEN_GEOLOGY_TRANSFORM)
         return '#d59cff';
     return '#d7e2ef';
+}
+const DRAINAGE_MODES = new Set([
+    'contributing-area',
+    'basins',
+    'flow-direction',
+    'depression-depth',
+    'depressions',
+    'escape-elevation',
+]);
+function isDrainageMode(mode) { return DRAINAGE_MODES.has(mode); }
+function discreteDrainageColor(id, saturation = 62, lightness = 53) {
+    return `hsl(${(id * 137.507764 + 32) % 360} ${saturation}% ${lightness}%)`;
+}
+function drainageScalarColor(t, lowHue, highHue) {
+    const clamped = Math.max(0, Math.min(1, t));
+    const hue = lowHue + (highHue - lowHue) * clamped;
+    return `hsl(${hue} 70% ${34 + 25 * clamped}%)`;
+}
+function drainageSampleColor(result, mode, sample) {
+    if (result.submergedMask[sample])
+        return '#102c43';
+    if (mode === 'basins' || mode === 'flow-direction') {
+        const basin = result.basinId[sample];
+        return basin === WORLDGEN_INVALID_SAMPLE_ID ? '#4c5964' : discreteDrainageColor(basin);
+    }
+    if (mode === 'depressions') {
+        const depression = result.depressionId[sample];
+        return depression === WORLDGEN_INVALID_SAMPLE_ID ? '#31423c' : discreteDrainageColor(depression, 72, 58);
+    }
+    if (mode === 'depression-depth') {
+        const depth = result.depressionDepthM[sample];
+        if (depth <= 0)
+            return '#283c34';
+        const t = Math.log10(1 + depth) / Math.log10(1 + Math.max(50, result.metrics.maximumDepressionDepthM));
+        return drainageScalarColor(t, 55, 270);
+    }
+    if (mode === 'escape-elevation') {
+        return drainageScalarColor((result.hydrologicEscapeElevationM[sample] + 500) / 5_500, 220, 20);
+    }
+    const areaKm2 = Math.max(1e-9, result.contributingAreaM2[sample] / 1e6);
+    const logArea = Math.log10(areaKm2 + 1);
+    const maxLog = Math.log10(Math.max(10, result.metrics.maximumContributingAreaM2 / 1e6) + 1);
+    return drainageScalarColor(logArea / maxLog, 225, 42);
+}
+function drawDrainageReceiverOverlay(context, result, projection, width, buffers) {
+    const targetSegments = 3_500;
+    const stride = Math.max(1, Math.floor(result.metrics.landSampleCount / targetSegments));
+    context.save();
+    context.strokeStyle = 'rgba(235,247,255,0.68)';
+    context.lineWidth = 0.75;
+    context.beginPath();
+    let accepted = 0;
+    for (let sample = 0; sample < result.metrics.sampleCount; sample += 1) {
+        if (result.submergedMask[sample] || !buffers.visible[sample])
+            continue;
+        if ((accepted++ % stride) !== 0)
+            continue;
+        const receiver = result.receiver[sample];
+        if (receiver === WORLDGEN_INVALID_SAMPLE_ID || !buffers.visible[receiver])
+            continue;
+        const ax = buffers.x[sample], bx = buffers.x[receiver];
+        if (projection === 'map' && Math.abs(ax - bx) > width * 0.45)
+            continue;
+        context.moveTo(ax, buffers.y[sample]);
+        context.lineTo(bx, buffers.y[receiver]);
+    }
+    context.stroke();
+    context.restore();
+}
+function drawDrainageOutlets(context, result, buffers) {
+    context.save();
+    context.fillStyle = 'rgba(255,255,255,0.92)';
+    for (const outlet of result.basinOutletSamples) {
+        if (outlet === WORLDGEN_INVALID_SAMPLE_ID || !buffers.visible[outlet])
+            continue;
+        context.beginPath();
+        context.arc(buffers.x[outlet], buffers.y[outlet], 2.2, 0, TWO_PI);
+        context.fill();
+    }
+    context.restore();
+}
+function renderDrainageDiagnostic(context, result, projection, mode, width, buffers, interactive) {
+    const count = result.metrics.sampleCount;
+    const pointRadius = count > 100_000 ? 0.8 : count > 30_000 ? 1.15 : count > 5_000 ? 2 : 3;
+    const fastPoints = interactive && count > 20_000;
+    context.globalAlpha = 0.94;
+    for (let sample = 0; sample < count; sample += 1) {
+        if (!buffers.visible[sample])
+            continue;
+        context.fillStyle = drainageSampleColor(result, mode, sample);
+        const x = buffers.x[sample], y = buffers.y[sample];
+        if (fastPoints)
+            context.fillRect(x - 0.75, y - 0.75, 1.5, 1.5);
+        else {
+            context.beginPath();
+            context.arc(x, y, pointRadius, 0, TWO_PI);
+            context.fill();
+        }
+    }
+    context.globalAlpha = 1;
+    if (mode === 'flow-direction')
+        drawDrainageReceiverOverlay(context, result, projection, width, buffers);
+    if (mode === 'basins')
+        drawDrainageOutlets(context, result, buffers);
 }
 function scalarColor(value, field) {
     const t = Math.max(0, Math.min(1, (value - field.minimum) / Math.max(1e-12, field.maximum - field.minimum)));
@@ -444,7 +548,7 @@ function drawDiagnosticOverlays(context, result, overlays, phase, projection, ya
     if (overlays.has('currents'))
         drawVectors(context, result, 'currents', phase, projection, yaw, pitch, width, height, buffers, animation);
 }
-function renderPlanet(canvas, result, projection, mode, overlays, phase, yaw, pitch, buffers, interactive, animation) {
+function renderPlanet(canvas, result, drainage, projection, mode, overlays, phase, yaw, pitch, buffers, interactive, animation) {
     const width = 1100;
     const height = projection === 'map' ? 550 : 760;
     if (canvas.width !== width)
@@ -463,6 +567,13 @@ function renderPlanet(canvas, result, projection, mode, overlays, phase, yaw, pi
         context.strokeStyle = '#5d7890';
         context.lineWidth = 1;
         context.stroke();
+    }
+    if (isDrainageMode(mode)) {
+        if (!drainage)
+            return;
+        renderDrainageDiagnostic(context, drainage, projection, mode, width, buffers, interactive);
+        drawDiagnosticOverlays(context, result, overlays, phase, projection, yaw, pitch, width, height, buffers, animation);
+        return;
     }
     if (mode === 'mesh') {
         context.beginPath();
@@ -559,6 +670,7 @@ const metrics = element('worldgen-metrics');
 const canvas = element('worldgen-field');
 const client = createWorldgenClient();
 let current = null;
+let currentDrainage = null;
 let buffers = null;
 let yaw = -0.65;
 let pitch = 0.25;
@@ -650,7 +762,7 @@ function updateSeasonLabel() { seasonValue.textContent = `${(orbitalPhase() * 10
 function redraw(interactive = false) {
     if (!current || !buffers)
         return;
-    renderPlanet(canvas, current, projection.value, visualization.value, selectedOverlays(), orbitalPhase(), yaw, pitch, buffers, interactive, animationPhase);
+    renderPlanet(canvas, current, currentDrainage, projection.value, visualization.value, selectedOverlays(), orbitalPhase(), yaw, pitch, buffers, interactive, animationPhase);
 }
 function scheduleRedraw(interactive) {
     if (frameRequest)
@@ -681,7 +793,7 @@ function updateAnimation() {
     if (visualization.value === 'winds' || visualization.value === 'currents' || overlays.has('winds') || overlays.has('currents'))
         animationRequest = requestAnimationFrame(vectorAnimationFrame);
 }
-function showMetrics(result) {
+function showMetrics(result, drainage) {
     metrics.replaceChildren();
     metric(metrics, 'Engine / stage', `v${result.engineVersion} · ${result.stage.id}@${result.stage.version}`);
     metric(metrics, 'Resolution', `L${result.coarseLevel} → L${result.fineLevel} · climate solved at L${result.metrics.globalSolverLevel} (${result.metrics.globalSolverSampleCount.toLocaleString()} cells)`);
@@ -701,23 +813,43 @@ function showMetrics(result) {
     metric(metrics, 'Spin-up', `${result.metrics.spinupYears} model years · ΔT ${result.metrics.finalTemperatureRmsChangeK.toFixed(3)} K RMS`);
     metric(metrics, 'Planet forcing', `${result.planet.stellarFluxWM2.toFixed(0)} W/m² · tilt ${(result.planet.axialTiltRad * 180 / Math.PI).toFixed(2)}° · e ${result.climatePhysical.orbitalEccentricity.toFixed(4)}`);
     metric(metrics, 'Land / ocean', `${(result.metrics.landAreaFraction * 100).toFixed(1)}% / ${(result.metrics.oceanAreaFraction * 100).toFixed(1)}%`);
-    metric(metrics, 'Duration', `${result.stage.durationMs.toFixed(1)} ms`);
+    metric(metrics, 'Climate duration', `${result.stage.durationMs.toFixed(1)} ms`);
+    metric(metrics, 'Hydrology / stage', `v${drainage.engineVersion} · ${drainage.stage.id}@${drainage.stage.version}`);
+    metric(metrics, 'Drainage topology', `${drainage.metrics.basinCount.toLocaleString()} basins · ${drainage.metrics.depressionCount.toLocaleString()} depressions`);
+    metric(metrics, 'Largest contributing area', `${(drainage.metrics.maximumContributingAreaM2 / 1e12).toFixed(3)} million km²`);
+    metric(metrics, 'Deepest depression', `${drainage.metrics.maximumDepressionDepthM.toFixed(1)} m`);
+    metric(metrics, 'Drainage area closure', drainage.metrics.areaConservationRelativeError.toExponential(2));
+    metric(metrics, 'Drainage hash', drainage.metrics.drainageHash);
+    metric(metrics, 'WG-4 surface identity', drainage.topographyHash === result.metrics.topographyHash ? 'Climate / drainage match' : 'MISMATCH');
 }
 async function generatePlanet() {
     generate.disabled = true;
     startGenerationTelemetry();
     status.textContent = 'Generating one physical planet through WG-5 coupled climate in Rust/WASM…';
+    currentDrainage = null;
     try {
-        const loaded = await client.generateClimate({ seed: seed.value, coarseLevel: Number(coarseLevel.value), fineLevel: Number(fineLevel.value), plateCount: Number(plates.value) }, handleGenerationProgress);
+        const request = { seed: seed.value, coarseLevel: Number(coarseLevel.value), fineLevel: Number(fineLevel.value), plateCount: Number(plates.value) };
+        const loaded = await client.generateClimate(request, handleGenerationProgress);
+        generationStage.textContent = 'WG-6A drainage topology';
+        generationStep.textContent = 'running';
+        status.textContent = 'Resolving WG-6A drainage topology on the same deterministic fine surface…';
+        const drainage = await client.generateDrainage(request);
+        if (drainage.metrics.sampleCount !== loaded.metrics.fineSampleCount)
+            throw new Error('WG-6A drainage sample count does not match the WG-5 fine surface.');
+        if (drainage.topographyHash !== loaded.metrics.topographyHash)
+            throw new Error('WG-6A drainage topography identity does not match the WG-5 physical surface.');
         current = loaded;
+        currentDrainage = drainage;
         buffers = { x: new Float32Array(loaded.metrics.fineSampleCount), y: new Float32Array(loaded.metrics.fineSampleCount), visible: new Uint8Array(loaded.metrics.fineSampleCount) };
         styleCache = { result: null, key: '', sampleBuckets: [], boundaryBuckets: [] };
         edgeOverlayCache = { result: null, coastline: new Uint32Array(0), contours: [] };
-        showMetrics(loaded);
+        showMetrics(loaded, drainage);
         redraw(false);
         updateAnimation();
         finishGenerationTelemetry(loaded);
-        status.textContent = `Planet ready through WG-5: ${loaded.metrics.fineSampleCount.toLocaleString()} samples, ${loaded.metrics.spinupYears} climate spin-up years, ${loaded.metrics.meanTemperatureK.toFixed(1)} K global mean.`;
+        generationStep.textContent = `${loaded.metrics.spinupYears} climate spin-up years · ${drainage.metrics.basinCount.toLocaleString()} drainage basins`;
+        generationTimer.textContent = formatDuration(performance.now() - generationStartedAt);
+        status.textContent = `Planet ready through WG-6A: ${loaded.metrics.fineSampleCount.toLocaleString()} samples, ${drainage.metrics.basinCount.toLocaleString()} drainage basins, area closure ${drainage.metrics.areaConservationRelativeError.toExponential(2)}.`;
     }
     catch (error) {
         if (generationTimerHandle) {

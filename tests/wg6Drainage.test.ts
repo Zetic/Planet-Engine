@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import test from 'node:test';
 import {
   WORLDGEN_DRAINAGE_COARSE_MAX_LEVEL,
@@ -43,4 +44,18 @@ test('WG-6A command uses the dedicated drainage transport contract', () => {
   assert.equal(command.requestId, 91);
   assert.equal(command.type, 'generate-drainage');
   assert.deepEqual(command.payload, payload);
+});
+
+
+test('primary Planet Engine Lab blends WG-6A into the main physical diagnostic surface', () => {
+  const page = fs.readFileSync('index.html', 'utf8');
+  const source = fs.readFileSync('src/worldgen/diagnostics/worldgenClimateLabStandalone.ts', 'utf8');
+  assert.match(page, /THROUGH WG-6A/);
+  for (const mode of ['contributing-area', 'basins', 'flow-direction', 'depression-depth', 'depressions', 'escape-elevation']) {
+    assert.match(page, new RegExp(`value=["']${mode}["']`));
+  }
+  assert.match(source, /client\.generateDrainage\(request\)/);
+  assert.match(source, /drainage\.topographyHash !== loaded\.metrics\.topographyHash/);
+  assert.match(source, /currentDrainage/);
+  assert.match(source, /renderDrainageDiagnostic/);
 });
