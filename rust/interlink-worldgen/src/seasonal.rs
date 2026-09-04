@@ -1,7 +1,8 @@
+use crate::seasonal_lakes::solve_seasonal_lake_routing;
 use crate::{
     derive_stage_seed, ClimateGenerationDiagnostics, ClimateState, DrainageState,
-    GeodesicTopology, PlanetPhysicalParameters, PlanetTopology, RunoffState, StageIdentity,
-    TopographyState, WorldgenError, INVALID_SAMPLE_ID,
+    GeodesicTopology, LakeState, PlanetPhysicalParameters, PlanetTopology, RunoffState,
+    StageIdentity, TopographyState, WorldgenError, INVALID_SAMPLE_ID,
 };
 
 pub const SEASONAL_HYDROLOGY_STAGE_ID: &str = "hydrology:seasonal-hydrology";
@@ -94,17 +95,28 @@ impl SeasonalHydrologyRequest {
 pub struct SeasonalHydrologyMetrics {
     pub sample_count: u32,
     pub orbital_phase_count: u8,
+    pub active_lake_count: u32,
     pub maximum_phase_local_runoff_m3_s: f64,
     pub maximum_phase_potential_discharge_m3_s: f64,
+    pub maximum_phase_realized_discharge_m3_s: f64,
     pub snowmelt_runoff_fraction: f64,
     pub annual_mean_local_runoff_m3_s: f64,
     pub annual_local_runoff_closure_relative_error: f64,
     pub annual_mean_terminal_potential_discharge_m3_s: f64,
     pub seasonal_routing_conservation_relative_error: f64,
+    pub annual_mean_terminal_realized_discharge_m3_s: f64,
+    pub annual_mean_lake_precipitation_m3_s: f64,
+    pub annual_mean_lake_evaporation_m3_s: f64,
+    pub annual_mean_unreleased_terminal_storage_m3_s: f64,
+    pub seasonal_water_balance_relative_error: f64,
+    pub lake_spinup_years: u8,
+    pub final_lake_cycle_relative_change: f64,
+    pub maximum_seasonal_lake_level_range_m: f64,
     pub seasonal_parameter_hash: u64,
     pub climate_hash: u64,
     pub drainage_hash: u64,
     pub runoff_hash: u64,
+    pub lake_hash: u64,
     pub seasonal_hydrology_hash: u64,
 }
 
@@ -120,6 +132,9 @@ impl SeasonalHydrologyMetrics {
     }
     pub fn runoff_hash_hex(&self) -> String {
         format!("{:016x}", self.runoff_hash)
+    }
+    pub fn lake_hash_hex(&self) -> String {
+        format!("{:016x}", self.lake_hash)
     }
     pub fn seasonal_hydrology_hash_hex(&self) -> String {
         format!("{:016x}", self.seasonal_hydrology_hash)
@@ -137,9 +152,15 @@ pub struct SeasonalHydrologyState {
     /// Snow storage after each phase, in water-equivalent millimetres.
     pub phase_snow_storage_mm: Vec<f32>,
     /// Phase-major potential discharge routed over the accepted WG-6A DAG.
-    /// This intentionally ignores WG-6C lake retention; seasonal realized
-    /// discharge is added in the next WG-6D slice.
     pub phase_potential_discharge_m3_s: Vec<f32>,
+    /// Phase-major realized discharge after dynamic WG-6C lake control volumes.
+    pub phase_realized_discharge_m3_s: Vec<f32>,
+    /// Phase-major lake surface elevation indexed by WG-6C lake-record order.
+    pub phase_lake_surface_elevation_m: Vec<f32>,
+    /// Phase-major lake area indexed by WG-6C lake-record order.
+    pub phase_lake_area_m2: Vec<f64>,
+    /// Phase-major lake volume indexed by WG-6C lake-record order.
+    pub phase_lake_volume_m3: Vec<f64>,
 }
 
 fn fnv_update(mut hash: u64, bytes: &[u8]) -> u64 {
@@ -151,6 +172,14 @@ fn fnv_update(mut hash: u64, bytes: &[u8]) -> u64 {
 }
 
 fn hash_f32_slice(mut hash: u64, values: &[f32]) -> u64 {
+    hash = fnv_update(hash, &(values.len() as u64).to_le_bytes());
+    for value in values {
+        hash = fnv_update(hash, &value.to_bits().to_le_bytes());
+    }
+    hash
+}
+
+fn hash_f64_slice(mut hash: u64, values: &[f64]) -> u64 {
     hash = fnv_update(hash, &(values.len() as u64).to_le_bytes());
     for value in values {
         hash = fnv_update(hash, &value.to_bits().to_le_bytes());
@@ -322,6 +351,7 @@ fn route_phase_discharge(
     Ok((total_local_m3_s, terminal_m3_s, maximum_m3_s))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn generate_seasonal_hydrology(
     topology: &GeodesicTopology,
     topography: &TopographyState,
@@ -329,6 +359,7 @@ pub fn generate_seasonal_hydrology(
     climate_diagnostics: &ClimateGenerationDiagnostics,
     drainage: &DrainageState,
     runoff: &RunoffState,
+    lakes: &LakeState,
     planet: PlanetPhysicalParameters,
     request: &SeasonalHydrologyRequest,
 ) -> Result<SeasonalHydrologyState, WorldgenError> {
@@ -346,6 +377,7 @@ pub fn generate_seasonal_hydrology(
         || climate.metrics.sample_count as usize != count
         || drainage.metrics.sample_count as usize != count
         || runoff.metrics.sample_count as usize != count
+        || lakes.metrics.sample_count as usize != count
     {
         return Err(WorldgenError::InvalidHydrology(
             "WG-6D inputs must align on the canonical fine topology",
@@ -356,6 +388,14 @@ pub fn generate_seasonal_hydrology(
     {
         return Err(WorldgenError::InvalidHydrology(
             "WG-6D requires WG-6B state derived from the accepted WG-5/WG-6A identities",
+        ));
+    }
+    if lakes.metrics.climate_hash != climate.metrics.climate_hash
+        || lakes.metrics.drainage_hash != drainage.metrics.drainage_hash
+        || lakes.metrics.runoff_hash != runoff.metrics.runoff_hash
+    {
+        return Err(WorldgenError::InvalidHydrology(
+            "WG-6D requires WG-6C state derived from the accepted WG-5/WG-6A/WG-6B identities",
         ));
     }
     if drainage.receiver.len() != count
@@ -473,6 +513,18 @@ pub fn generate_seasonal_hydrology(
         terminal_phase_sum_m3_s.abs()
     };
 
+    let lake_routing = solve_seasonal_lake_routing(
+        topology,
+        topography,
+        climate,
+        climate_diagnostics,
+        drainage,
+        lakes,
+        planet,
+        &phase_local_runoff_m3_s,
+    )
+    .map_err(WorldgenError::InvalidHydrology)?;
+
     let stage_seed = derive_stage_seed(&request.seed, SEASONAL_HYDROLOGY_NAMESPACE);
     let seasonal_parameter_hash = request.parameters.parameter_hash();
     let mut seasonal_hydrology_hash = FNV_OFFSET_BASIS;
@@ -501,6 +553,10 @@ pub fn generate_seasonal_hydrology(
         seasonal_hydrology_hash,
         &runoff.metrics.runoff_hash.to_le_bytes(),
     );
+    seasonal_hydrology_hash = fnv_update(
+        seasonal_hydrology_hash,
+        &lakes.metrics.lake_hash.to_le_bytes(),
+    );
     seasonal_hydrology_hash =
         hash_f32_slice(seasonal_hydrology_hash, &phase_local_runoff_m3_s);
     seasonal_hydrology_hash =
@@ -509,6 +565,48 @@ pub fn generate_seasonal_hydrology(
         hash_f32_slice(seasonal_hydrology_hash, &phase_snow_storage_mm);
     seasonal_hydrology_hash =
         hash_f32_slice(seasonal_hydrology_hash, &phase_potential_discharge_m3_s);
+    seasonal_hydrology_hash = hash_f32_slice(
+        seasonal_hydrology_hash,
+        &lake_routing.phase_realized_discharge_m3_s,
+    );
+    seasonal_hydrology_hash = hash_f32_slice(
+        seasonal_hydrology_hash,
+        &lake_routing.phase_lake_surface_elevation_m,
+    );
+    seasonal_hydrology_hash =
+        hash_f64_slice(seasonal_hydrology_hash, &lake_routing.phase_lake_area_m2);
+    seasonal_hydrology_hash =
+        hash_f64_slice(seasonal_hydrology_hash, &lake_routing.phase_lake_volume_m3);
+
+    let metrics = SeasonalHydrologyMetrics {
+        sample_count: count as u32,
+        orbital_phase_count: climate.metrics.orbital_phase_count,
+        active_lake_count: lakes.metrics.lake_count,
+        maximum_phase_local_runoff_m3_s,
+        maximum_phase_potential_discharge_m3_s,
+        maximum_phase_realized_discharge_m3_s: lake_routing.maximum_phase_realized_discharge_m3_s,
+        snowmelt_runoff_fraction,
+        annual_mean_local_runoff_m3_s,
+        annual_local_runoff_closure_relative_error,
+        annual_mean_terminal_potential_discharge_m3_s,
+        seasonal_routing_conservation_relative_error,
+        annual_mean_terminal_realized_discharge_m3_s: lake_routing
+            .annual_mean_terminal_realized_discharge_m3_s,
+        annual_mean_lake_precipitation_m3_s: lake_routing.annual_mean_lake_precipitation_m3_s,
+        annual_mean_lake_evaporation_m3_s: lake_routing.annual_mean_lake_evaporation_m3_s,
+        annual_mean_unreleased_terminal_storage_m3_s: lake_routing
+            .annual_mean_unreleased_terminal_storage_m3_s,
+        seasonal_water_balance_relative_error: lake_routing.water_balance_relative_error,
+        lake_spinup_years: lake_routing.lake_spinup_years,
+        final_lake_cycle_relative_change: lake_routing.final_lake_cycle_relative_change,
+        maximum_seasonal_lake_level_range_m: lake_routing.maximum_seasonal_lake_level_range_m,
+        seasonal_parameter_hash,
+        climate_hash: climate.metrics.climate_hash,
+        drainage_hash: drainage.metrics.drainage_hash,
+        runoff_hash: runoff.metrics.runoff_hash,
+        lake_hash: lakes.metrics.lake_hash,
+        seasonal_hydrology_hash,
+    };
 
     Ok(SeasonalHydrologyState {
         stage: StageIdentity {
@@ -516,26 +614,15 @@ pub fn generate_seasonal_hydrology(
             version: SEASONAL_HYDROLOGY_STAGE_VERSION,
             derived_seed: stage_seed,
         },
-        metrics: SeasonalHydrologyMetrics {
-            sample_count: count as u32,
-            orbital_phase_count: climate.metrics.orbital_phase_count,
-            maximum_phase_local_runoff_m3_s,
-            maximum_phase_potential_discharge_m3_s,
-            snowmelt_runoff_fraction,
-            annual_mean_local_runoff_m3_s,
-            annual_local_runoff_closure_relative_error,
-            annual_mean_terminal_potential_discharge_m3_s,
-            seasonal_routing_conservation_relative_error,
-            seasonal_parameter_hash,
-            climate_hash: climate.metrics.climate_hash,
-            drainage_hash: drainage.metrics.drainage_hash,
-            runoff_hash: runoff.metrics.runoff_hash,
-            seasonal_hydrology_hash,
-        },
+        metrics,
         phase_local_runoff_m3_s,
         phase_snowmelt_runoff_m3_s,
         phase_snow_storage_mm,
         phase_potential_discharge_m3_s,
+        phase_realized_discharge_m3_s: lake_routing.phase_realized_discharge_m3_s,
+        phase_lake_surface_elevation_m: lake_routing.phase_lake_surface_elevation_m,
+        phase_lake_area_m2: lake_routing.phase_lake_area_m2,
+        phase_lake_volume_m3: lake_routing.phase_lake_volume_m3,
     })
 }
 
