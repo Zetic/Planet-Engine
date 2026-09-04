@@ -21,25 +21,33 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+env:
+  RUST_VERSION: '1.98.1'
+  WASM_BINDGEN_VERSION: '0.2.127'
+
 jobs:
   package:
     name: Packaged WASM parity
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install Rust stable and browser target
+      - name: Install pinned Rust and browser target
         run: |
-          rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown
-          rustup default stable
+          rustup toolchain install "${RUST_VERSION}" --profile minimal --target wasm32-unknown-unknown
+          rustup default "${RUST_VERSION}"
       - name: Restore wasm-bindgen CLI cache
         id: wasm-bindgen-cache
         uses: actions/cache@v4
         with:
           path: ~/.cargo/bin/wasm-bindgen*
-          key: ${{ runner.os }}-wasm-bindgen-cli-0.2.127
+          key: ${{ runner.os }}-wasm-bindgen-cli-${{ env.WASM_BINDGEN_VERSION }}-rust-${{ env.RUST_VERSION }}
       - name: Install pinned wasm-bindgen CLI
         if: steps.wasm-bindgen-cache.outputs.cache-hit != 'true'
-        run: cargo install wasm-bindgen-cli --version 0.2.127 --locked
+        run: cargo +${RUST_VERSION} install wasm-bindgen-cli --version "${WASM_BINDGEN_VERSION}" --locked
+      - name: Record packaging toolchain
+        run: |
+          rustc --version
+          wasm-bindgen --version
       - name: Rebuild committed browser WASM package
         run: npm run build:worldgen-wasm
       - name: Verify committed WASM package parity
