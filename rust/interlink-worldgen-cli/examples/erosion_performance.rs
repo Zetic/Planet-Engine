@@ -183,10 +183,11 @@ fn main() -> Result<(), String> {
         durations_ms
     );
     println!(
-        "erosion erosive_samples={} max_effective_q_m3_s={:.6} max_slope={:.6} max_incision_m_year={:.9}",
+        "erosion erosive_samples={} max_effective_q_m3_s={:.6} max_slope={:.6} max_width_m={:.3} max_incision_m_year={:.9}",
         state.metrics.erosive_sample_count,
         state.metrics.maximum_effective_discharge_m3_s,
         state.metrics.maximum_channel_slope,
+        state.metrics.maximum_channel_width_m,
         state.metrics.maximum_incision_potential_m_per_year,
     );
     println!(

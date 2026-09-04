@@ -23,7 +23,7 @@ header = re.search(
     text,
 )
 erosion = re.search(
-    r"erosion erosive_samples=(\d+) max_effective_q_m3_s=([0-9.eE+-]+) max_slope=([0-9.eE+-]+) max_incision_m_year=([0-9.eE+-]+)",
+    r"erosion erosive_samples=(\d+) max_effective_q_m3_s=([0-9.eE+-]+) max_slope=([0-9.eE+-]+) max_width_m=([0-9.eE+-]+) max_incision_m_year=([0-9.eE+-]+)",
     text,
 )
 sediment = re.search(
@@ -45,7 +45,8 @@ phases = int(header.group(2))
 erosive_samples = int(erosion.group(1))
 max_q = float(erosion.group(2))
 max_slope = float(erosion.group(3))
-max_incision = float(erosion.group(4))
+max_width = float(erosion.group(4))
+max_incision = float(erosion.group(5))
 generated = float(sediment.group(1))
 land_dep = float(sediment.group(2))
 lake_dep = float(sediment.group(3))
@@ -66,6 +67,7 @@ if active_traps <= 0:
 for name, value in {
     "maximum effective discharge": max_q,
     "maximum channel slope": max_slope,
+    "maximum channel width": max_width,
     "maximum incision potential": max_incision,
     "generated sediment": generated,
     "land deposition": land_dep,
@@ -77,7 +79,7 @@ for name, value in {
     if not math.isfinite(value) or value < 0:
         raise SystemExit(f"WG-7A {name} must be finite and nonnegative, got {value}")
 
-if max_q <= 0 or max_slope <= 0 or max_incision <= 0:
+if max_q <= 0 or max_slope <= 0 or max_width <= 0 or max_incision <= 0:
     raise SystemExit("WG-7A Earthlike smoke must produce positive erosive discharge, slope, and incision potential")
 if max_incision > 0.010000001:
     raise SystemExit(f"WG-7A diagnostic incision exceeded the default 0.01 m/yr ceiling: {max_incision}")

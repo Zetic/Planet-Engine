@@ -23,8 +23,11 @@ pub struct FluvialErosionParameters {
     pub slope_exponent: f64,
     /// Upper bound for diagnostic incision potential before terrain mutation is introduced.
     pub maximum_incision_m_per_year: f64,
-    /// Fraction of a dual cell treated as actively channelized for sediment-production accounting.
-    pub channelized_area_fraction: f64,
+    /// Representative channel width at the reference discharge.
+    pub reference_channel_width_m: f64,
+    pub channel_width_discharge_exponent: f64,
+    pub minimum_channel_width_m: f64,
+    pub maximum_channel_width_m: f64,
     pub sediment_bulk_density_kg_m3: f64,
     /// Reference transport capacity at the reference discharge and slope.
     pub reference_transport_capacity_kg_s: f64,
@@ -41,7 +44,10 @@ impl Default for FluvialErosionParameters {
             discharge_exponent: 0.5,
             slope_exponent: 1.0,
             maximum_incision_m_per_year: 0.01,
-            channelized_area_fraction: 2.5e-4,
+            reference_channel_width_m: 20.0,
+            channel_width_discharge_exponent: 0.5,
+            minimum_channel_width_m: 1.0,
+            maximum_channel_width_m: 2_000.0,
             sediment_bulk_density_kg_m3: 1_800.0,
             reference_transport_capacity_kg_s: 50.0,
             transport_discharge_exponent: 1.2,
@@ -59,7 +65,10 @@ impl FluvialErosionParameters {
             self.discharge_exponent,
             self.slope_exponent,
             self.maximum_incision_m_per_year,
-            self.channelized_area_fraction,
+            self.reference_channel_width_m,
+            self.channel_width_discharge_exponent,
+            self.minimum_channel_width_m,
+            self.maximum_channel_width_m,
             self.sediment_bulk_density_kg_m3,
             self.reference_transport_capacity_kg_s,
             self.transport_discharge_exponent,
@@ -74,8 +83,8 @@ impl FluvialErosionParameters {
         if !(1.0..=8.0).contains(&self.effective_discharge_power) {
             return Err("WG-7A effective-discharge power must be within [1, 8]");
         }
-        if self.channelized_area_fraction > 0.1 {
-            return Err("WG-7A channelized area fraction must not exceed 0.1");
+        if self.minimum_channel_width_m > self.maximum_channel_width_m {
+            return Err("WG-7A minimum channel width must not exceed maximum channel width");
         }
         if self.maximum_incision_m_per_year > 10.0 {
             return Err("WG-7A maximum diagnostic incision must not exceed 10 m/yr");
@@ -92,7 +101,10 @@ impl FluvialErosionParameters {
             self.discharge_exponent,
             self.slope_exponent,
             self.maximum_incision_m_per_year,
-            self.channelized_area_fraction,
+            self.reference_channel_width_m,
+            self.channel_width_discharge_exponent,
+            self.minimum_channel_width_m,
+            self.maximum_channel_width_m,
             self.sediment_bulk_density_kg_m3,
             self.reference_transport_capacity_kg_s,
             self.transport_discharge_exponent,
@@ -131,6 +143,7 @@ pub struct FluvialErosionMetrics {
     pub active_lake_trap_count: u32,
     pub maximum_effective_discharge_m3_s: f64,
     pub maximum_channel_slope: f64,
+    pub maximum_channel_width_m: f64,
     pub maximum_incision_potential_m_per_year: f64,
     pub total_sediment_generated_kg_s: f64,
     pub total_land_deposition_kg_s: f64,
@@ -179,6 +192,8 @@ pub struct FluvialErosionState {
     pub effective_discharge_m3_s: Vec<f32>,
     /// Positive physical fall toward the accepted WG-6A receiver divided by edge distance.
     pub channel_slope: Vec<f32>,
+    /// Hydraulic-geometry channel width derived from effective discharge.
+    pub channel_width_m: Vec<f32>,
     /// Dimensionless inherited rock erodibility in [0.05, 1].
     pub erodibility_index: Vec<f32>,
     /// Dimensionless peak-sensitive stream-power forcing before the bounded response transform.
@@ -242,6 +257,22 @@ fn inherited_erodibility(strength: f32, weakness: f32, fabric: f32, fragmentatio
     let fragmentation = f64::from(fragmentation).clamp(0.0, 1.0);
     (0.05 + 0.35 * weakness + 0.25 * fragmentation + 0.15 * fabric + 0.20 * (1.0 - strength))
         .clamp(0.05, 1.0)
+}
+
+fn hydraulic_channel_width_m(
+    effective_discharge_m3_s: f64,
+    parameters: FluvialErosionParameters,
+) -> f64 {
+    if effective_discharge_m3_s <= 0.0 {
+        return 0.0;
+    }
+    let normalized = (effective_discharge_m3_s / parameters.reference_discharge_m3_s).max(0.0);
+    (parameters.reference_channel_width_m
+        * normalized.powf(parameters.channel_width_discharge_exponent))
+    .clamp(
+        parameters.minimum_channel_width_m,
+        parameters.maximum_channel_width_m,
+    )
 }
 
 fn bounded_incision_response(
@@ -418,6 +449,7 @@ pub fn generate_fluvial_erosion_sediment(
 
     let mut effective_discharge_m3_s = vec![0.0_f32; count];
     let mut channel_slope = vec![0.0_f32; count];
+    let mut channel_width_m = vec![0.0_f32; count];
     let mut erodibility_index = vec![0.0_f32; count];
     let mut stream_power_index = vec![0.0_f32; count];
     let mut incision_potential_m_per_year = vec![0.0_f32; count];
@@ -429,6 +461,7 @@ pub fn generate_fluvial_erosion_sediment(
     let mut erosive_sample_count = 0_u32;
     let mut maximum_effective_discharge_m3_s = 0.0_f64;
     let mut maximum_channel_slope = 0.0_f64;
+    let mut maximum_channel_width_m = 0.0_f64;
     let mut maximum_incision_potential_m_per_year = 0.0_f64;
     let mut total_sediment_generated_kg_s = 0.0_f64;
 
@@ -447,8 +480,8 @@ pub fn generate_fluvial_erosion_sediment(
         maximum_effective_discharge_m3_s = maximum_effective_discharge_m3_s.max(q_eff);
 
         let downstream = drainage.receiver[i];
-        let slope = if downstream == INVALID_SAMPLE_ID {
-            0.0
+        let (slope, segment_length_m) = if downstream == INVALID_SAMPLE_ID {
+            (0.0, 0.0)
         } else {
             let downstream_index = downstream as usize;
             if downstream_index >= count {
@@ -467,10 +500,13 @@ pub fn generate_fluvial_erosion_sediment(
             let distance_m = (arcs[edge] * planet.radius_m).max(MINIMUM_EDGE_DISTANCE_M);
             let fall_m = f64::from(topography.solid_elevation_m[i])
                 - f64::from(topography.solid_elevation_m[downstream_index]);
-            (fall_m / distance_m).max(0.0)
+            ((fall_m / distance_m).max(0.0), distance_m)
         };
         channel_slope[i] = slope as f32;
         maximum_channel_slope = maximum_channel_slope.max(slope);
+        let width_m = hydraulic_channel_width_m(q_eff, request.parameters);
+        channel_width_m[i] = width_m as f32;
+        maximum_channel_width_m = maximum_channel_width_m.max(width_m);
 
         let erodibility = inherited_erodibility(
             inherited.strength_index[i],
@@ -489,16 +525,10 @@ pub fn generate_fluvial_erosion_sediment(
             erosive_sample_count += 1;
         }
 
-        let area_m2 = topology.area_steradians(i as u32) * planet.radius_m * planet.radius_m;
-        if !area_m2.is_finite() || area_m2 <= 0.0 {
-            return Err(WorldgenError::InvalidGeomorphology(
-                "WG-7A dual-cell area must be finite and positive",
-            ));
-        }
         let incision_m_s = incision / planet.orbital_period_s;
         let supply = incision_m_s
-            * area_m2
-            * request.parameters.channelized_area_fraction
+            * segment_length_m
+            * width_m
             * request.parameters.sediment_bulk_density_kg_m3;
         if !supply.is_finite() || supply < 0.0 || supply > f32::MAX as f64 {
             return Err(WorldgenError::InvalidGeomorphology(
@@ -577,6 +607,7 @@ pub fn generate_fluvial_erosion_sediment(
     }
     fluvial_erosion_hash = hash_f32_slice(fluvial_erosion_hash, &effective_discharge_m3_s);
     fluvial_erosion_hash = hash_f32_slice(fluvial_erosion_hash, &channel_slope);
+    fluvial_erosion_hash = hash_f32_slice(fluvial_erosion_hash, &channel_width_m);
     fluvial_erosion_hash = hash_f32_slice(fluvial_erosion_hash, &erodibility_index);
     fluvial_erosion_hash = hash_f32_slice(fluvial_erosion_hash, &stream_power_index);
     fluvial_erosion_hash = hash_f32_slice(fluvial_erosion_hash, &incision_potential_m_per_year);
@@ -598,6 +629,7 @@ pub fn generate_fluvial_erosion_sediment(
             active_lake_trap_count: routing.active_lake_trap_count,
             maximum_effective_discharge_m3_s,
             maximum_channel_slope,
+            maximum_channel_width_m,
             maximum_incision_potential_m_per_year,
             total_sediment_generated_kg_s,
             total_land_deposition_kg_s: routing.total_land_deposition_kg_s,
@@ -615,6 +647,7 @@ pub fn generate_fluvial_erosion_sediment(
         },
         effective_discharge_m3_s,
         channel_slope,
+        channel_width_m,
         erodibility_index,
         stream_power_index,
         incision_potential_m_per_year,
@@ -644,6 +677,16 @@ mod tests {
         assert!(weak > strong);
         assert!((0.05..=1.0).contains(&strong));
         assert!((0.05..=1.0).contains(&weak));
+    }
+
+    #[test]
+    fn channel_width_scales_with_discharge_and_respects_bounds() {
+        let parameters = FluvialErosionParameters::default();
+        let small = hydraulic_channel_width_m(1.0, parameters);
+        let large = hydraulic_channel_width_m(10_000.0, parameters);
+        assert!(large > small);
+        assert!(small >= parameters.minimum_channel_width_m);
+        assert!(large <= parameters.maximum_channel_width_m);
     }
 
     #[test]
