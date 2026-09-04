@@ -23,7 +23,7 @@ jobs:
           fetch-depth: 0
       - name: Install pinned Rust
         run: |
-          rustup toolchain install 1.98.1 --profile minimal
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt
           rustup default 1.98.1
       - name: Apply active-depression conservation fix
         run: python scripts/temp-wg6c-conservation.py
