@@ -1,0 +1,42 @@
+name: Temporary WG-6C Precision Fix
+
+on:
+  push:
+    branches: [wg6c-lakes-closed-basins]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: temporary-wg6c-precision
+  cancel-in-progress: true
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: wg6c-lakes-closed-basins
+          fetch-depth: 0
+      - name: Install pinned Rust
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt
+          rustup default 1.98.1
+      - name: Apply precision fix
+        run: python scripts/temp-wg6c-precision.py
+      - name: Format
+        run: rustfmt +1.98.1 --edition 2021 rust/interlink-worldgen/src/lakes.rs
+      - name: Test WG-6C core
+        run: cargo +1.98.1 test -p interlink-worldgen lakes::tests
+      - name: Recheck L4 water balance
+        run: cargo +1.98.1 run --release -p interlink-worldgen-cli --example lake_performance -- --seed ci-wg6c-lakes --coarse-level 3 --level 4 --plates 12 --runs 1
+      - name: Commit precision fix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add rust/interlink-worldgen/src/lakes.rs
+          git commit -m 'Keep WG-6C equilibrium accounting in f64'
+          git push origin HEAD:wg6c-lakes-closed-basins
