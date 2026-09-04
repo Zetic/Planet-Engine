@@ -238,9 +238,7 @@ fn validate_core_inputs<T: PlanetTopology>(
     }
     if precipitation_mm.iter().any(|v| !v.is_finite() || *v < 0.0)
         || pet_mm.iter().any(|v| !v.is_finite() || *v < 0.0)
-        || local_runoff_m3_s
-            .iter()
-            .any(|v| !v.is_finite() || *v < 0.0)
+        || local_runoff_m3_s.iter().any(|v| !v.is_finite() || *v < 0.0)
     {
         return Err("WG-6C forcing must be finite and non-negative");
     }
@@ -349,7 +347,10 @@ fn solve_lakes_core<T: PlanetTopology>(
             spill_receiver[d] = r;
         }
     }
-    if spill_sample.iter().any(|sample| *sample == INVALID_SAMPLE_ID) {
+    if spill_sample
+        .iter()
+        .any(|sample| *sample == INVALID_SAMPLE_ID)
+    {
         return Err("WG-6C could not resolve a deterministic depression spill sample");
     }
 
@@ -462,10 +463,8 @@ fn solve_lakes_core<T: PlanetTopology>(
         let mut solved_below_spill = false;
 
         for (rank, &sample) in sorted.iter().enumerate() {
-            let p_flux = f64::from(precipitation_mm[sample])
-                * MM_TO_M
-                * area_m2[sample]
-                / year_seconds;
+            let p_flux =
+                f64::from(precipitation_mm[sample]) * MM_TO_M * area_m2[sample] / year_seconds;
             let e_flux = f64::from(pet_mm[sample])
                 * parameters.open_water_evaporation_scale
                 * MM_TO_M
@@ -474,9 +473,7 @@ fn solve_lakes_core<T: PlanetTopology>(
             let adjustment = p_flux - e_flux - f64::from(local_runoff_m3_s[sample]);
             let next_balance = balance + adjustment;
 
-            if balance > FLOW_EPSILON_M3_S
-                && next_balance <= FLOW_EPSILON_M3_S
-                && adjustment < 0.0
+            if balance > FLOW_EPSILON_M3_S && next_balance <= FLOW_EPSILON_M3_S && adjustment < 0.0
             {
                 let fraction = (balance / -adjustment).clamp(0.0, 1.0);
                 lake_fraction[sample] = fraction as f32;
@@ -547,11 +544,9 @@ fn solve_lakes_core<T: PlanetTopology>(
             area += area_m2[sample] * fraction;
             volume += area_m2[sample] * fraction * depth;
             maximum_depth = maximum_depth.max(depth);
-            lake_precipitation += f64::from(precipitation_mm[sample])
-                * MM_TO_M
-                * area_m2[sample]
-                * fraction
-                / year_seconds;
+            lake_precipitation +=
+                f64::from(precipitation_mm[sample]) * MM_TO_M * area_m2[sample] * fraction
+                    / year_seconds;
             lake_evaporation += f64::from(pet_mm[sample])
                 * parameters.open_water_evaporation_scale
                 * MM_TO_M
@@ -639,7 +634,10 @@ fn solve_lakes_core<T: PlanetTopology>(
 
     let total_lake_area_m2 = lakes.iter().map(|lake| lake.area_m2).sum::<f64>();
     let total_lake_volume_m3 = lakes.iter().map(|lake| lake.volume_m3).sum::<f64>();
-    let maximum_lake_area_m2 = lakes.iter().map(|lake| lake.area_m2).fold(0.0_f64, f64::max);
+    let maximum_lake_area_m2 = lakes
+        .iter()
+        .map(|lake| lake.area_m2)
+        .fold(0.0_f64, f64::max);
     let maximum_lake_depth_m = lakes
         .iter()
         .map(|lake| lake.maximum_depth_m)
@@ -661,9 +659,8 @@ fn solve_lakes_core<T: PlanetTopology>(
         .map(|i| f64::from(local_runoff_m3_s[i]) * (1.0 - f64::from(lake_fraction[i])))
         .sum::<f64>();
     let water_input = dry_land_runoff_m3_s + total_lake_precipitation_m3_s;
-    let water_output = terminal_realized_discharge_m3_s
-        + total_lake_evaporation_m3_s
-        + unreleased_storage_m3_s;
+    let water_output =
+        terminal_realized_discharge_m3_s + total_lake_evaporation_m3_s + unreleased_storage_m3_s;
     let water_balance_relative_error = if water_input > 0.0 {
         (water_input - water_output).abs() / water_input
     } else {
@@ -890,7 +887,13 @@ mod tests {
             &[0.0, 1000.0, 1000.0, 0.0, 0.0],
             &[1, 2, 3, 4, INVALID_SAMPLE_ID],
             &[0, 1, 2, 3],
-            &[INVALID_SAMPLE_ID, 0, 0, INVALID_SAMPLE_ID, INVALID_SAMPLE_ID],
+            &[
+                INVALID_SAMPLE_ID,
+                0,
+                0,
+                INVALID_SAMPLE_ID,
+                INVALID_SAMPLE_ID,
+            ],
             &[100.0, 30.0, 30.0, 10.0, 0.0],
             &[depression()],
             &[0.1, 0.0, 0.0, 0.0, 0.0],
@@ -918,7 +921,13 @@ mod tests {
             &[0.0, 100.0, 100.0, 0.0, 0.0],
             &[1, 2, 3, 4, INVALID_SAMPLE_ID],
             &[0, 1, 2, 3],
-            &[INVALID_SAMPLE_ID, 0, 0, INVALID_SAMPLE_ID, INVALID_SAMPLE_ID],
+            &[
+                INVALID_SAMPLE_ID,
+                0,
+                0,
+                INVALID_SAMPLE_ID,
+                INVALID_SAMPLE_ID,
+            ],
             &[100.0, 30.0, 30.0, 10.0, 0.0],
             &[depression()],
             &[3.0, 0.0, 0.0, 0.0, 0.0],

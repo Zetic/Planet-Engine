@@ -16,7 +16,7 @@ use interlink_worldgen::{
 };
 use wasm_bindgen::prelude::*;
 
-pub const WORLDGEN_WASM_PROTOCOL_VERSION: u32 = 12;
+pub const WORLDGEN_WASM_PROTOCOL_VERSION: u32 = 13;
 #[wasm_bindgen]
 pub fn worldgen_protocol_version() -> u32 {
     WORLDGEN_WASM_PROTOCOL_VERSION
