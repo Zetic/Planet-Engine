@@ -50,17 +50,26 @@ jobs:
           path.write_text(text.replace(bad, good, 1))
           PY
           python scripts/temp-wg7a-browser.py
+          python - <<'PY'
+          from pathlib import Path
+          for path in Path('tests').glob('*.test.ts'):
+              text = path.read_text()
+              text = text.replace('protocolVersion: 14', 'protocolVersion: 15')
+              text = text.replace('.protocolVersion, 14', '.protocolVersion, 15')
+              path.write_text(text)
+          PY
           rustfmt --edition 2021 rust/interlink-worldgen-wasm/src/climate_bridge.rs rust/interlink-worldgen-wasm/src/lib.rs
-      - name: Validate Rust and rebuild committed WASM package
+      - name: Rebuild committed WASM and browser packages
         run: |
           cargo check -p interlink-worldgen-wasm --target wasm32-unknown-unknown
           npm run build:worldgen-wasm
+          npm run build
+      - name: Test browser protocol
+        run: npm run test:ts
+      - name: Validate Rust
+        run: |
           cargo test --workspace
           bash scripts/check-wg7a-erosion.sh
-      - name: Build and test browser protocol
-        run: |
-          npm run build
-          npm run test:ts
       - name: Remove temporary tooling
         run: |
           rm -f scripts/temp-wg7a-browser.py
