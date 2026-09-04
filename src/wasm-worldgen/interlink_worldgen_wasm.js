@@ -12,6 +12,13 @@ export class WasmWorldgenClimate {
         wasm.__wbg_wasmworldgenclimate_free(ptr, 0);
     }
     /**
+     * @returns {number}
+     */
+    active_lake_trap_count() {
+        const ret = wasm.wasmworldgenclimate_active_lake_trap_count(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
      * @returns {Float32Array}
      */
     actual_evapotranspiration_mm() {
@@ -215,6 +222,24 @@ export class WasmWorldgenClimate {
     boundary_samples() {
         const ret = wasm.wasmworldgenclimate_boundary_samples(this.__wbg_ptr);
         var v1 = getArrayU32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    channel_slope() {
+        const ret = wasm.wasmworldgenclimate_channel_slope(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    channel_width_m() {
+        const ret = wasm.wasmworldgenclimate_channel_width_m(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
         return v1;
     }
@@ -565,6 +590,15 @@ export class WasmWorldgenClimate {
     /**
      * @returns {Float32Array}
      */
+    effective_discharge_m3_s() {
+        const ret = wasm.wasmworldgenclimate_effective_discharge_m3_s(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
     elevation_above_sea_level_m() {
         const ret = wasm.wasmworldgenclimate_elevation_above_sea_level_m(this.__wbg_ptr);
         var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
@@ -584,6 +618,149 @@ export class WasmWorldgenClimate {
     equivalent_global_water_depth_m() {
         const ret = wasm.wasmworldgenclimate_equivalent_global_water_depth_m(this.__wbg_ptr);
         return ret;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    erodibility_index() {
+        const ret = wasm.wasmworldgenclimate_erodibility_index(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {string}
+     */
+    erosion_drainage_hash_hex() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmworldgenclimate_erosion_drainage_hash_hex(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {string}
+     */
+    erosion_inheritance_hash_hex() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmworldgenclimate_erosion_inheritance_hash_hex(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {string}
+     */
+    erosion_lake_hash_hex() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmworldgenclimate_erosion_lake_hash_hex(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {string}
+     */
+    erosion_parameter_hash_hex() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmworldgenclimate_erosion_parameter_hash_hex(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {string}
+     */
+    erosion_seasonal_hydrology_hash_hex() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmworldgenclimate_erosion_seasonal_hydrology_hash_hex(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {string}
+     */
+    erosion_stage_id() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmworldgenclimate_erosion_stage_id(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {string}
+     */
+    erosion_stage_seed_hex() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmworldgenclimate_erosion_stage_seed_hex(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {number}
+     */
+    erosion_stage_version() {
+        const ret = wasm.wasmworldgenclimate_erosion_stage_version(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {string}
+     */
+    erosion_topography_hash_hex() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmworldgenclimate_erosion_topography_hash_hex(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {number}
+     */
+    erosive_sample_count() {
+        const ret = wasm.wasmworldgenclimate_erosive_sample_count(this.__wbg_ptr);
+        return ret >>> 0;
     }
     /**
      * @returns {Uint32Array}
@@ -644,6 +821,21 @@ export class WasmWorldgenClimate {
         let deferred1_1;
         try {
             const ret = wasm.wasmworldgenclimate_fine_topology_hash_hex(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {string}
+     */
+    fluvial_erosion_hash_hex() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmworldgenclimate_fluvial_erosion_hash_hex(this.__wbg_ptr);
             deferred1_0 = ret[0];
             deferred1_1 = ret[1];
             return getStringFromWasm0(ret[0], ret[1]);
@@ -731,6 +923,15 @@ export class WasmWorldgenClimate {
      */
     hydrologic_escape_elevation_m() {
         const ret = wasm.wasmworldgenclimate_hydrologic_escape_elevation_m(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    incision_potential_m_per_year() {
+        const ret = wasm.wasmworldgenclimate_incision_potential_m_per_year(this.__wbg_ptr);
         var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
         return v1;
@@ -1073,6 +1274,15 @@ export class WasmWorldgenClimate {
         return v1;
     }
     /**
+     * @returns {Float32Array}
+     */
+    local_sediment_supply_kg_s() {
+        const ret = wasm.wasmworldgenclimate_local_sediment_supply_kg_s(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
      * @returns {number}
      */
     longitude_of_periapsis_rad() {
@@ -1100,6 +1310,20 @@ export class WasmWorldgenClimate {
     /**
      * @returns {number}
      */
+    maximum_channel_slope() {
+        const ret = wasm.wasmworldgenclimate_maximum_channel_slope(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    maximum_channel_width_m() {
+        const ret = wasm.wasmworldgenclimate_maximum_channel_width_m(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
     maximum_contributing_area_m2() {
         const ret = wasm.wasmworldgenclimate_maximum_contributing_area_m2(this.__wbg_ptr);
         return ret;
@@ -1109,6 +1333,20 @@ export class WasmWorldgenClimate {
      */
     maximum_depression_depth_m() {
         const ret = wasm.wasmworldgenclimate_maximum_depression_depth_m(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    maximum_effective_discharge_m3_s() {
+        const ret = wasm.wasmworldgenclimate_maximum_effective_discharge_m3_s(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    maximum_incision_potential_m_per_year() {
+        const ret = wasm.wasmworldgenclimate_maximum_incision_potential_m_per_year(this.__wbg_ptr);
         return ret;
     }
     /**
@@ -1179,6 +1417,13 @@ export class WasmWorldgenClimate {
      */
     maximum_seasonal_lake_level_range_m() {
         const ret = wasm.wasmworldgenclimate_maximum_seasonal_lake_level_range_m(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    maximum_sediment_load_kg_s() {
+        const ret = wasm.wasmworldgenclimate_maximum_sediment_load_kg_s(this.__wbg_ptr);
         return ret;
     }
     /**
@@ -2038,6 +2283,40 @@ export class WasmWorldgenClimate {
         return ret;
     }
     /**
+     * @returns {number}
+     */
+    sediment_conservation_relative_error() {
+        const ret = wasm.wasmworldgenclimate_sediment_conservation_relative_error(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    sediment_deposition_kg_s() {
+        const ret = wasm.wasmworldgenclimate_sediment_deposition_kg_s(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    sediment_load_kg_s() {
+        const ret = wasm.wasmworldgenclimate_sediment_load_kg_s(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    sediment_transport_capacity_kg_s() {
+        const ret = wasm.wasmworldgenclimate_sediment_transport_capacity_kg_s(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
      * @returns {Float32Array}
      */
     snowfall_fraction() {
@@ -2121,6 +2400,15 @@ export class WasmWorldgenClimate {
     stellar_flux_w_m2() {
         const ret = wasm.wasmworldgenclimate_stellar_flux_w_m2(this.__wbg_ptr);
         return ret;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    stream_power_index() {
+        const ret = wasm.wasmworldgenclimate_stream_power_index(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
     }
     /**
      * @returns {Float32Array}
@@ -2285,6 +2573,13 @@ export class WasmWorldgenClimate {
     /**
      * @returns {number}
      */
+    total_lake_deposition_kg_s() {
+        const ret = wasm.wasmworldgenclimate_total_lake_deposition_kg_s(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
     total_lake_evaporation_m3_s() {
         const ret = wasm.wasmworldgenclimate_total_lake_evaporation_m3_s(this.__wbg_ptr);
         return ret;
@@ -2306,8 +2601,29 @@ export class WasmWorldgenClimate {
     /**
      * @returns {number}
      */
+    total_land_deposition_kg_s() {
+        const ret = wasm.wasmworldgenclimate_total_land_deposition_kg_s(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
     total_local_runoff_m3_s() {
         const ret = wasm.wasmworldgenclimate_total_local_runoff_m3_s(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    total_sediment_generated_kg_s() {
+        const ret = wasm.wasmworldgenclimate_total_sediment_generated_kg_s(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    total_terminal_ocean_deposition_kg_s() {
+        const ret = wasm.wasmworldgenclimate_total_terminal_ocean_deposition_kg_s(this.__wbg_ptr);
         return ret;
     }
     /**
