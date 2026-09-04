@@ -19,7 +19,7 @@ The drainage topology stage consumes the canonical fine-resolution physical surf
 
 - `GeodesicTopology` adjacency, dual-cell area, and center-to-center edge distance;
 - WG-4 solid elevation;
-- WG-4 land/ocean mask;
+- WG-4 land/ocean mask and solved sea level;
 - `PlanetPhysicalParameters::radius_m` for physical areas and distances.
 
 It does **not** depend on WG-5 solver internals or climate implementation details. Later WG-6 stages may consume the documented WG-5 forcing contract: precipitation, temperature, PET, moisture balance, snowfall fraction, persistent snow, and hydrologically relevant sea-ice potential.
@@ -62,7 +62,7 @@ For a dry planet with no ocean, the deterministic global minimum becomes an inte
 - explicit basin and depression summary records;
 - deterministic stage/hash metrics.
 
-`INVALID_SAMPLE_ID` marks absent receivers, basin IDs, depression IDs, or outlets where appropriate.
+`INVALID_SAMPLE_ID` marks absent receivers, basin IDs, depression IDs, or outlets where appropriate. A terminal is identified by an absent receiver; `outlet_kind` describes the resolved terminal kind for the whole contributing land path.
 
 ## Core invariants
 
@@ -94,6 +94,35 @@ WG-6A is a graph problem and must remain inexpensive. The intended operations ar
 - basin/depression labeling: `O(N + E)`.
 
 On the canonical geodesic sphere `E` is approximately `3N`. WG-6A should remain comfortably below WG-5 Stage-6 climate cost; a sustained L6 runtime above 0.5 seconds is a profiling trigger rather than an accepted architectural baseline.
+
+### Fixed release benchmark
+
+Final WG-6A semantics were measured on GitHub Actions Ubuntu with Rust `1.98.1`, optimized release builds, fixed seed `ci-wg6-drainage`, and three drainage-only timed runs after generating the upstream WG-4 surface once.
+
+| Fine level | Coarse level | Plates | Samples | Mean | Median | Basins | Depressions | Depressed samples | Area closure error | Drainage hash |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| L4 | L3 | 12 | 2,562 | 0.454 ms | 0.437 ms | 256 | 3 | 6 | `1.172e-15` | `f3363c2ae888f19f` |
+| L6 | L4 | 16 | 40,962 | 7.809 ms | 7.807 ms | 1,871 | 13 | 59 | `5.371e-15` | `fb05caac8bd88e1d` |
+| L7 | L5 | 24 | 163,842 | 33.617 ms | 33.500 ms | 4,475 | 107 | 621 | `4.082e-15` | `349c2cd272766983` |
+
+The L6 result is roughly 64 times below the 0.5-second profiling trigger. Runtime is therefore not a WG-6A architectural concern at the accepted resolution range.
+
+### Fixed-ancestry L6/L7 diagnostic
+
+A separate diagnostic held seed (`ci-wg6-l7`), coarse physical level (L5), and plate count (24) fixed while refining only the final topology from L6 to L7:
+
+| Fine level | Samples | Land area | Basins | Depressions | Depressed samples | Largest contributing area | Area closure error | Drainage hash |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| L6 | 40,962 | 141,134,347.810 km² | 1,921 | 45 | 274 | 9,629,879.474 km² | `6.421e-15` | `12f73cdeef2bd213` |
+| L7 | 163,842 | 143,517,141.575 km² | 4,466 | 96 | 1,295 | 10,064,607.961 km² | `3.048e-15` | `5de9f83c2c202f0d` |
+
+Basin/depression counts are resolution-dependent topology diagnostics, not cross-resolution equality targets: L7 resolves outlet and depression structure that does not exist as separate cells at L6. The broad largest-drainage-area signal changes by about 4.5%, while exact contributing-area conservation remains at floating-point noise at both levels.
+
+## Permanent acceptance
+
+`bash scripts/check-wg6a-drainage.sh` runs a fixed L4 Earthlike drainage case in CI and verifies the browser-independent drainage diagnostics contract, positive land/contributing area, nonempty basin topology, finite nonnegative metrics, the canonical L4 sample count, and contributing-area closure within `1e-10`.
+
+Wall-clock runtime is intentionally measured rather than hard-gated in shared CI, where runner variance would make a timing assertion flaky.
 
 ## Deferred
 
