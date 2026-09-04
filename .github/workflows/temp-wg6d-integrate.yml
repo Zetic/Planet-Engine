@@ -1,0 +1,142 @@
+name: Temporary WG-6D Integration Patch
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    if: github.event.pull_request.head.ref == 'wg6d-seasonal-hydrology'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+      - name: Apply WG-6D integration patch
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected exactly one match, found {count}: {old[:100]!r}")
+              p.write_text(text.replace(old, new, 1))
+
+          # Register and export the flow-regime contract.
+          replace_once(
+              "rust/interlink-worldgen/src/lib.rs",
+              "mod seasonal;\nmod seasonal_lakes;",
+              "mod seasonal;\nmod seasonal_flow;\nmod seasonal_lakes;",
+          )
+          replace_once(
+              "rust/interlink-worldgen/src/lib.rs",
+              "pub use seasonal::{\n    generate_seasonal_hydrology, SeasonalHydrologyMetrics, SeasonalHydrologyParameters,\n    SeasonalHydrologyRequest, SeasonalHydrologyState, SEASONAL_HYDROLOGY_STAGE_ID,\n    SEASONAL_HYDROLOGY_STAGE_VERSION,\n};\n",
+              "pub use seasonal::{\n    generate_seasonal_hydrology, SeasonalHydrologyMetrics, SeasonalHydrologyParameters,\n    SeasonalHydrologyRequest, SeasonalHydrologyState, SEASONAL_HYDROLOGY_STAGE_ID,\n    SEASONAL_HYDROLOGY_STAGE_VERSION,\n};\npub use seasonal_flow::{\n    FLOW_REGIME_INTERMITTENT, FLOW_REGIME_NONE, FLOW_REGIME_PERENNIAL,\n    SEASONAL_FLOW_PRESENCE_EPSILON_M3_S,\n};\n",
+          )
+
+          # Integrate classification into the seasonal public state and ancestry hash.
+          replace_once(
+              "rust/interlink-worldgen/src/seasonal.rs",
+              "use crate::seasonal_lakes::solve_seasonal_lake_routing;\n",
+              "use crate::seasonal_flow::classify_realized_flow;\nuse crate::seasonal_lakes::solve_seasonal_lake_routing;\n",
+          )
+          replace_once(
+              "rust/interlink-worldgen/src/seasonal.rs",
+              "    pub active_lake_count: u32,\n    pub maximum_phase_local_runoff_m3_s: f64,",
+              "    pub active_lake_count: u32,\n    pub dry_flow_sample_count: u32,\n    pub intermittent_flow_sample_count: u32,\n    pub perennial_flow_sample_count: u32,\n    pub maximum_phase_local_runoff_m3_s: f64,",
+          )
+          replace_once(
+              "rust/interlink-worldgen/src/seasonal.rs",
+              "    pub final_lake_cycle_relative_change: f64,\n    pub maximum_seasonal_lake_level_range_m: f64,",
+              "    pub final_lake_cycle_relative_change: f64,\n    pub final_lake_surface_cycle_change_m: f64,\n    pub maximum_seasonal_lake_level_range_m: f64,",
+          )
+          replace_once(
+              "rust/interlink-worldgen/src/seasonal.rs",
+              "    /// Phase-major realized discharge after dynamic WG-6C lake control volumes.\n    pub phase_realized_discharge_m3_s: Vec<f32>,\n    /// Phase-major lake surface elevation indexed by WG-6C lake-record order.",
+              "    /// Phase-major realized discharge after dynamic WG-6C lake control volumes.\n    pub phase_realized_discharge_m3_s: Vec<f32>,\n    /// Fraction of orbital phases with numerically present realized flow.\n    pub flow_presence_fraction: Vec<f32>,\n    /// 0 = no realized flow, 1 = intermittent, 2 = perennial.\n    pub flow_regime: Vec<u8>,\n    /// Phase-major lake surface elevation indexed by WG-6C lake-record order.",
+          )
+          replace_once(
+              "rust/interlink-worldgen/src/seasonal.rs",
+              "fn hash_f64_slice(mut hash: u64, values: &[f64]) -> u64 {",
+              "fn hash_u8_slice(mut hash: u64, values: &[u8]) -> u64 {\n    hash = fnv_update(hash, &(values.len() as u64).to_le_bytes());\n    fnv_update(hash, values)\n}\n\nfn hash_f64_slice(mut hash: u64, values: &[f64]) -> u64 {",
+          )
+          replace_once(
+              "rust/interlink-worldgen/src/seasonal.rs",
+              "    )\n    .map_err(WorldgenError::InvalidHydrology)?;\n\n    let stage_seed = derive_stage_seed(&request.seed, SEASONAL_HYDROLOGY_NAMESPACE);",
+              "    )\n    .map_err(WorldgenError::InvalidHydrology)?;\n\n    let flow_classification = classify_realized_flow(\n        &lake_routing.phase_realized_discharge_m3_s,\n        &topography.submerged_mask,\n        phase_count,\n    )\n    .map_err(WorldgenError::InvalidHydrology)?;\n\n    let stage_seed = derive_stage_seed(&request.seed, SEASONAL_HYDROLOGY_NAMESPACE);",
+          )
+          replace_once(
+              "rust/interlink-worldgen/src/seasonal.rs",
+              "    seasonal_hydrology_hash = hash_f32_slice(\n        seasonal_hydrology_hash,\n        &lake_routing.phase_lake_surface_elevation_m,\n    );",
+              "    seasonal_hydrology_hash = hash_f32_slice(\n        seasonal_hydrology_hash,\n        &flow_classification.presence_fraction,\n    );\n    seasonal_hydrology_hash =\n        hash_u8_slice(seasonal_hydrology_hash, &flow_classification.regime);\n    seasonal_hydrology_hash = hash_f32_slice(\n        seasonal_hydrology_hash,\n        &lake_routing.phase_lake_surface_elevation_m,\n    );",
+          )
+          replace_once(
+              "rust/interlink-worldgen/src/seasonal.rs",
+              "        active_lake_count: lakes.metrics.lake_count,\n        maximum_phase_local_runoff_m3_s,",
+              "        active_lake_count: lakes.metrics.lake_count,\n        dry_flow_sample_count: flow_classification.dry_sample_count,\n        intermittent_flow_sample_count: flow_classification.intermittent_sample_count,\n        perennial_flow_sample_count: flow_classification.perennial_sample_count,\n        maximum_phase_local_runoff_m3_s,",
+          )
+          replace_once(
+              "rust/interlink-worldgen/src/seasonal.rs",
+              "        final_lake_cycle_relative_change: lake_routing.final_lake_cycle_relative_change,\n        maximum_seasonal_lake_level_range_m: lake_routing.maximum_seasonal_lake_level_range_m,",
+              "        final_lake_cycle_relative_change: lake_routing.final_lake_cycle_relative_change,\n        final_lake_surface_cycle_change_m: lake_routing.final_lake_surface_cycle_change_m,\n        maximum_seasonal_lake_level_range_m: lake_routing.maximum_seasonal_lake_level_range_m,",
+          )
+          replace_once(
+              "rust/interlink-worldgen/src/seasonal.rs",
+              "        phase_realized_discharge_m3_s: lake_routing.phase_realized_discharge_m3_s,\n        phase_lake_surface_elevation_m: lake_routing.phase_lake_surface_elevation_m,",
+              "        phase_realized_discharge_m3_s: lake_routing.phase_realized_discharge_m3_s,\n        flow_presence_fraction: flow_classification.presence_fraction,\n        flow_regime: flow_classification.regime,\n        phase_lake_surface_elevation_m: lake_routing.phase_lake_surface_elevation_m,",
+          )
+
+          # Add a physically interpretable cycle-closure diagnostic in metres.
+          replace_once(
+              "rust/interlink-worldgen/src/seasonal_lakes.rs",
+              "    pub final_lake_cycle_relative_change: f64,\n    pub maximum_seasonal_lake_level_range_m: f64,",
+              "    pub final_lake_cycle_relative_change: f64,\n    pub final_lake_surface_cycle_change_m: f64,\n    pub maximum_seasonal_lake_level_range_m: f64,",
+          )
+          replace_once(
+              "rust/interlink-worldgen/src/seasonal_lakes.rs",
+              "    let mut final_cycle_relative_change = 0.0_f64;\n    let mut final_terminal_volume_m3 = 0.0_f64;",
+              "    let mut final_cycle_relative_change = 0.0_f64;\n    let mut final_lake_surface_cycle_change_m = 0.0_f64;\n    let mut final_terminal_volume_m3 = 0.0_f64;",
+          )
+          replace_once(
+              "rust/interlink-worldgen/src/seasonal_lakes.rs",
+              "        let mut cycle_relative_change = 0.0_f64;\n        for (lake_index, geometry) in active_lakes.iter().enumerate() {\n            let scale = geometry.maximum_volume_m3.max(1.0);\n            cycle_relative_change = cycle_relative_change.max(\n                (current_volume_m3[lake_index] - year_start_volume_m3[lake_index]).abs() / scale,\n            );\n        }\n        completed_years = year + 1;\n        final_cycle_relative_change = cycle_relative_change;",
+              "        let mut cycle_relative_change = 0.0_f64;\n        let mut lake_surface_cycle_change_m = 0.0_f64;\n        for (lake_index, geometry) in active_lakes.iter().enumerate() {\n            let scale = geometry.maximum_volume_m3.max(1.0);\n            cycle_relative_change = cycle_relative_change.max(\n                (current_volume_m3[lake_index] - year_start_volume_m3[lake_index]).abs() / scale,\n            );\n            let start_surface = surface_for_volume(\n                geometry,\n                &topography.solid_elevation_m,\n                &area_m2,\n                year_start_volume_m3[lake_index],\n            );\n            let end_surface = surface_for_volume(\n                geometry,\n                &topography.solid_elevation_m,\n                &area_m2,\n                current_volume_m3[lake_index],\n            );\n            lake_surface_cycle_change_m =\n                lake_surface_cycle_change_m.max((end_surface - start_surface).abs());\n        }\n        completed_years = year + 1;\n        final_cycle_relative_change = cycle_relative_change;\n        final_lake_surface_cycle_change_m = lake_surface_cycle_change_m;",
+          )
+          replace_once(
+              "rust/interlink-worldgen/src/seasonal_lakes.rs",
+              "        final_lake_cycle_relative_change: final_cycle_relative_change,\n        maximum_seasonal_lake_level_range_m: final_maximum_lake_level_range_m,",
+              "        final_lake_cycle_relative_change: final_cycle_relative_change,\n        final_lake_surface_cycle_change_m,\n        maximum_seasonal_lake_level_range_m: final_maximum_lake_level_range_m,",
+          )
+
+          # Surface the new diagnostics in the benchmark output without changing the existing smoke grammar.
+          replace_once(
+              "rust/interlink-worldgen-cli/examples/seasonal_performance.rs",
+              "    println!(\n        \"hash seasonal={} lakes={} runoff={} drainage={} climate={} parameters={}\",",
+              "    println!(\n        \"flow dry={} intermittent={} perennial={}\",\n        seasonal.metrics.dry_flow_sample_count,\n        seasonal.metrics.intermittent_flow_sample_count,\n        seasonal.metrics.perennial_flow_sample_count,\n    );\n    println!(\n        \"lake_cycle surface_change_m={:.9}\",\n        seasonal.metrics.final_lake_surface_cycle_change_m,\n    );\n    println!(\n        \"hash seasonal={} lakes={} runoff={} drainage={} climate={} parameters={}\",",
+          )
+
+          # The workflow is one-shot and must not remain in the final diff.
+          Path(".github/workflows/temp-wg6d-integrate.yml").unlink()
+          PY
+      - name: Install pinned Rust with rustfmt
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal --component rustfmt
+          rustup default 1.98.1
+      - name: Format and test WG-6D core
+        run: |
+          cargo fmt --all
+          cargo test -p interlink-worldgen
+          cargo run --release -p interlink-worldgen-cli --example seasonal_performance -- --seed ci-wg6c-lakes --coarse-level 3 --level 4 --plates 12 --runs 1
+          bash scripts/check-wg6d-seasonal.sh
+      - name: Commit integrated WG-6D diagnostics
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Integrate WG-6D flow regimes and cycle diagnostics"
+          git push origin HEAD:wg6d-seasonal-hydrology
