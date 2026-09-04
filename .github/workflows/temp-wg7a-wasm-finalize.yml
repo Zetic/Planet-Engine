@@ -1,0 +1,45 @@
+name: Temporary WG-7A WASM Finalize
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+env:
+  RUST_VERSION: '1.98.1'
+  WASM_BINDGEN_VERSION: '0.2.127'
+
+jobs:
+  finalize:
+    if: github.event.pull_request.head.ref == 'wg7a-fluvial-erosion-sediment'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: wg7a-fluvial-erosion-sediment
+      - name: Install pinned Rust and browser target
+        run: |
+          rustup toolchain install "${RUST_VERSION}" --profile minimal --target wasm32-unknown-unknown
+          rustup default "${RUST_VERSION}"
+      - name: Restore wasm-bindgen CLI cache
+        id: wasm-bindgen-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/wasm-bindgen*
+          key: ${{ runner.os }}-wasm-bindgen-cli-${{ env.WASM_BINDGEN_VERSION }}-rust-${{ env.RUST_VERSION }}
+      - name: Install pinned wasm-bindgen CLI
+        if: steps.wasm-bindgen-cache.outputs.cache-hit != 'true'
+        run: cargo +${RUST_VERSION} install wasm-bindgen-cli --version "${WASM_BINDGEN_VERSION}" --locked
+      - name: Rebuild committed browser WASM package
+        run: npm run build:worldgen-wasm
+      - name: Remove temporary workflow
+        run: rm -f .github/workflows/temp-wg7a-wasm-finalize.yml
+      - name: Commit packaged parity
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/wasm-worldgen .github/workflows/temp-wg7a-wasm-finalize.yml
+          git commit -m 'Rebuild packaged WASM for WG-7A core'
+          git push origin HEAD:wg7a-fluvial-erosion-sediment
