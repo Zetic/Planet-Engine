@@ -1,18 +1,18 @@
 use interlink_worldgen::{
-    build_icosphere, generate_coupled_climate_with_diagnostics, generate_crust_and_history,
-    generate_drainage_topology, generate_fluvial_erosion_sediment, generate_initial_topography,
-    generate_lakes_closed_basins, generate_lithosphere, generate_runoff_discharge,
-    generate_seasonal_hydrology, generate_tectonics, inherit_boundary_interfaces,
-    inherit_physical_state, ClimatePhysicalParameters, ClimateRequest, ClimateState,
-    DrainageRequest, DrainageState, FluvialErosionRequest, FluvialErosionState, GeodesicTopology,
-    GeologyRequest, InheritedBoundarySet, InheritedPhysicalState, LakeRequest, LakeState,
-    LithosphereRequest, PlanetPhysicalParameters, RunoffRequest, RunoffState,
-    SeasonalHydrologyRequest, SeasonalHydrologyState, TectonicsRequest, TopographyRequest,
-    TopographyState, WORLDGEN_ENGINE_VERSION,
+    build_icosphere, generate_bounded_terrain_evolution, generate_coupled_climate_with_diagnostics,
+    generate_crust_and_history, generate_drainage_topology, generate_fluvial_erosion_sediment,
+    generate_initial_topography, generate_lakes_closed_basins, generate_lithosphere,
+    generate_runoff_discharge, generate_seasonal_hydrology, generate_tectonics,
+    inherit_boundary_interfaces, inherit_physical_state, ClimatePhysicalParameters, ClimateRequest,
+    ClimateState, DrainageRequest, DrainageState, FluvialErosionRequest, FluvialErosionState,
+    GeodesicTopology, GeologyRequest, InheritedBoundarySet, InheritedPhysicalState, LakeRequest,
+    LakeState, LithosphereRequest, PlanetPhysicalParameters, RunoffRequest, RunoffState,
+    SeasonalHydrologyRequest, SeasonalHydrologyState, TectonicsRequest, TerrainEvolutionRequest,
+    TerrainEvolutionState, TopographyRequest, TopographyState, WORLDGEN_ENGINE_VERSION,
 };
 use wasm_bindgen::prelude::*;
 
-const GENERATION_STAGE_COUNT: u32 = 15;
+const GENERATION_STAGE_COUNT: u32 = 16;
 
 fn report_generation_progress(
     callback: Option<&js_sys::Function>,
@@ -46,6 +46,7 @@ pub struct WasmWorldgenClimate {
     lakes: LakeState,
     seasonal: SeasonalHydrologyState,
     erosion: FluvialErosionState,
+    evolution: TerrainEvolutionState,
     planet: PlanetPhysicalParameters,
     climate_physical: ClimatePhysicalParameters,
     precipitation_phase_rate_mm_year: Vec<f32>,
@@ -228,6 +229,20 @@ impl WasmWorldgenClimate {
         )
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
         report_generation_progress(progress, "fluvial-erosion-sediment", 13, 1, 1);
+
+        report_generation_progress(progress, "bounded-terrain-evolution", 14, 0, 1);
+        let evolution = generate_bounded_terrain_evolution(
+            &fine_topology,
+            &terrain,
+            &drainage,
+            &runoff,
+            &lakes,
+            &erosion,
+            planet,
+            &TerrainEvolutionRequest::new(seed.as_str()),
+        )
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        report_generation_progress(progress, "bounded-terrain-evolution", 14, 1, 1);
         let precipitation_phase_rate_mm_year = diagnostics.precipitation_phase_rate_mm_year;
 
         Ok(Self {
@@ -241,6 +256,7 @@ impl WasmWorldgenClimate {
             lakes,
             seasonal,
             erosion,
+            evolution,
             planet,
             climate_physical,
             precipitation_phase_rate_mm_year,
@@ -1207,5 +1223,118 @@ impl WasmWorldgenClimate {
     }
     pub fn sediment_deposition_kg_s(&self) -> Vec<f32> {
         self.erosion.sediment_deposition_kg_s.clone()
+    }
+
+    pub fn evolution_stage_id(&self) -> String {
+        self.evolution.stage.id.to_owned()
+    }
+    pub fn evolution_stage_version(&self) -> u32 {
+        self.evolution.stage.version
+    }
+    pub fn evolution_stage_seed_hex(&self) -> String {
+        format!("{:016x}", self.evolution.stage.derived_seed)
+    }
+    pub fn terrain_evolution_hash_hex(&self) -> String {
+        self.evolution.metrics.terrain_evolution_hash_hex()
+    }
+    pub fn evolution_parameter_hash_hex(&self) -> String {
+        self.evolution.metrics.evolution_parameter_hash_hex()
+    }
+    pub fn evolved_surface_hash_hex(&self) -> String {
+        self.evolution.metrics.evolved_surface_hash_hex()
+    }
+    pub fn post_erosion_drainage_hash_hex(&self) -> String {
+        self.evolution.metrics.post_erosion_drainage_hash_hex()
+    }
+    pub fn evolution_topography_hash_hex(&self) -> String {
+        format!("{:016x}", self.evolution.metrics.topography_hash)
+    }
+    pub fn evolution_drainage_hash_hex(&self) -> String {
+        format!("{:016x}", self.evolution.metrics.drainage_hash)
+    }
+    pub fn evolution_runoff_hash_hex(&self) -> String {
+        format!("{:016x}", self.evolution.metrics.runoff_hash)
+    }
+    pub fn evolution_lake_hash_hex(&self) -> String {
+        format!("{:016x}", self.evolution.metrics.lake_hash)
+    }
+    pub fn evolution_fluvial_erosion_hash_hex(&self) -> String {
+        format!("{:016x}", self.evolution.metrics.fluvial_erosion_hash)
+    }
+    pub fn geomorphic_duration_years(&self) -> f64 {
+        self.evolution.metrics.geomorphic_duration_years
+    }
+    pub fn evolved_eroded_sample_count(&self) -> u32 {
+        self.evolution.metrics.eroded_sample_count
+    }
+    pub fn evolved_depositional_sample_count(&self) -> u32 {
+        self.evolution.metrics.depositional_sample_count
+    }
+    pub fn receiver_changed_sample_count(&self) -> u32 {
+        self.evolution.metrics.receiver_changed_sample_count
+    }
+    pub fn receiver_changed_fraction(&self) -> f64 {
+        self.evolution.metrics.receiver_changed_fraction
+    }
+    pub fn maximum_applied_erosion_m(&self) -> f64 {
+        self.evolution.metrics.maximum_applied_erosion_m
+    }
+    pub fn maximum_applied_deposition_m(&self) -> f64 {
+        self.evolution.metrics.maximum_applied_deposition_m
+    }
+    pub fn maximum_absolute_terrain_change_m(&self) -> f64 {
+        self.evolution.metrics.maximum_absolute_terrain_change_m
+    }
+    pub fn mean_land_absolute_terrain_change_m(&self) -> f64 {
+        self.evolution.metrics.mean_land_absolute_terrain_change_m
+    }
+    pub fn total_applied_sediment_generated_kg_s(&self) -> f64 {
+        self.evolution.metrics.total_applied_sediment_generated_kg_s
+    }
+    pub fn evolution_total_land_deposition_kg_s(&self) -> f64 {
+        self.evolution.metrics.total_land_deposition_kg_s
+    }
+    pub fn total_lake_sink_kg_s(&self) -> f64 {
+        self.evolution.metrics.total_lake_sink_kg_s
+    }
+    pub fn total_terminal_ocean_sink_kg_s(&self) -> f64 {
+        self.evolution.metrics.total_terminal_ocean_sink_kg_s
+    }
+    pub fn evolution_sediment_conservation_relative_error(&self) -> f64 {
+        self.evolution.metrics.sediment_conservation_relative_error
+    }
+    pub fn maximum_post_erosion_potential_discharge_m3_s(&self) -> f64 {
+        self.evolution
+            .metrics
+            .maximum_post_erosion_potential_discharge_m3_s
+    }
+    pub fn post_erosion_runoff_conservation_relative_error(&self) -> f64 {
+        self.evolution
+            .metrics
+            .post_erosion_runoff_conservation_relative_error
+    }
+    pub fn evolved_solid_elevation_m(&self) -> Vec<f32> {
+        self.evolution.evolved_solid_elevation_m.clone()
+    }
+    pub fn terrain_delta_m(&self) -> Vec<f32> {
+        self.evolution.terrain_delta_m.clone()
+    }
+    pub fn applied_erosion_m(&self) -> Vec<f32> {
+        self.evolution.applied_erosion_m.clone()
+    }
+    pub fn applied_deposition_m(&self) -> Vec<f32> {
+        self.evolution.applied_deposition_m.clone()
+    }
+    pub fn receiver_changed_mask(&self) -> Vec<u8> {
+        self.evolution.receiver_changed_mask.clone()
+    }
+    pub fn post_erosion_contributing_area_m2(&self) -> Vec<f64> {
+        self.evolution
+            .post_erosion_drainage
+            .contributing_area_m2
+            .clone()
+    }
+    pub fn post_erosion_potential_discharge_m3_s(&self) -> Vec<f32> {
+        self.evolution.post_erosion_potential_discharge_m3_s.clone()
     }
 }

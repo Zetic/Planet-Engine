@@ -1,4 +1,4 @@
-export const WORLDGEN_PROTOCOL_VERSION = 15;
+export const WORLDGEN_PROTOCOL_VERSION = 16;
 export const WORLDGEN_SYNTHETIC_MAX_SAMPLES = 4_194_304;
 export const WORLDGEN_TOPOLOGY_MAX_LEVEL = 7;
 export const WORLDGEN_TECTONICS_MAX_LEVEL = 6;
@@ -603,6 +603,15 @@ export interface WorldgenClimateResult {
   sedimentTransportCapacityKgS: Float32Array;
   sedimentLoadKgS: Float32Array;
   sedimentDepositionKgS: Float32Array;
+  evolutionStage: WorldgenStageMetadata;
+  evolutionMetrics: WorldgenTerrainEvolutionMetrics;
+  evolvedSolidElevationM: Float32Array;
+  terrainDeltaM: Float32Array;
+  appliedErosionM: Float32Array;
+  appliedDepositionM: Float32Array;
+  receiverChangedMask: Uint8Array;
+  postErosionContributingAreaM2: Float64Array;
+  postErosionPotentialDischargeM3S: Float32Array;
 }
 
 
@@ -719,6 +728,35 @@ export interface WorldgenFluvialErosionMetrics {
   lakeHash: string;
   seasonalHydrologyHash: string;
   fluvialErosionHash: string;
+}
+
+export interface WorldgenTerrainEvolutionMetrics {
+  sampleCount: number;
+  geomorphicDurationYears: number;
+  erodedSampleCount: number;
+  depositionalSampleCount: number;
+  receiverChangedSampleCount: number;
+  receiverChangedFraction: number;
+  maximumAppliedErosionM: number;
+  maximumAppliedDepositionM: number;
+  maximumAbsoluteTerrainChangeM: number;
+  meanLandAbsoluteTerrainChangeM: number;
+  totalAppliedSedimentGeneratedKgS: number;
+  totalLandDepositionKgS: number;
+  totalLakeSinkKgS: number;
+  totalTerminalOceanSinkKgS: number;
+  sedimentConservationRelativeError: number;
+  maximumPostErosionPotentialDischargeM3S: number;
+  postErosionRunoffConservationRelativeError: number;
+  evolutionParameterHash: string;
+  topographyHash: string;
+  drainageHash: string;
+  runoffHash: string;
+  lakeHash: string;
+  fluvialErosionHash: string;
+  evolvedSurfaceHash: string;
+  postErosionDrainageHash: string;
+  terrainEvolutionHash: string;
 }
 
 export interface WorldgenDrainageResult {
