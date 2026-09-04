@@ -1,0 +1,82 @@
+name: Temporary WG-6B Browser Integration
+
+on:
+  push:
+    branches: [wg6b-runoff-discharge]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: temporary-wg6b-browser
+  cancel-in-progress: true
+
+env:
+  RUST_VERSION: '1.98.1'
+  WASM_BINDGEN_VERSION: '0.2.127'
+
+jobs:
+  integrate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: wg6b-runoff-discharge
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install browser dependencies
+        run: npm ci --prefer-offline --no-audit --no-fund
+      - name: Install pinned Rust and browser target
+        run: |
+          rustup toolchain install "${RUST_VERSION}" --profile minimal --target wasm32-unknown-unknown
+          rustup default "${RUST_VERSION}"
+      - name: Restore wasm-bindgen CLI cache
+        id: wasm-bindgen-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/wasm-bindgen*
+          key: ${{ runner.os }}-wasm-bindgen-cli-${{ env.WASM_BINDGEN_VERSION }}-rust-${{ env.RUST_VERSION }}
+      - name: Install pinned wasm-bindgen CLI
+        if: steps.wasm-bindgen-cache.outputs.cache-hit != 'true'
+        run: cargo +${RUST_VERSION} install wasm-bindgen-cli --version "${WASM_BINDGEN_VERSION}" --locked
+      - name: Apply WG-6B browser integration
+        run: python scripts/temp-wg6b-browser.py
+      - name: Rebuild committed browser WASM package
+        run: npm run build:worldgen-wasm
+      - name: Build browser modules
+        run: npm run build
+      - name: Run browser regressions
+        run: npm run test:ts
+      - name: Run WG-6B L4 diagnostic benchmark
+        run: cargo +${RUST_VERSION} run --release -p interlink-worldgen-cli --example runoff_performance -- --seed ci-wg6b-runoff --coarse-level 3 --level 4 --plates 12 --runs 1
+      - name: Commit cumulative WG-6B browser integration
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A \
+            index.html \
+            drainage.html \
+            worldgen-lab.html \
+            src/worldgen/protocol.ts \
+            src/worldgen/worldgenWorker.ts \
+            src/worldgen/diagnostics/worldgenClimateLabStandalone.ts \
+            src/worldgen/diagnostics/worldgenDrainageLabStandalone.ts \
+            src/wasm-worldgen \
+            dist/worldgen \
+            tests/pages.test.ts \
+            tests/wg4Topography.test.ts \
+            tests/wg5Climate.test.ts \
+            tests/wg6Drainage.test.ts \
+            tests/wg6Runoff.test.ts \
+            tests/worldgenRewrite.test.ts
+          if git diff --cached --quiet; then
+            echo 'No WG-6B browser changes to commit.'
+            exit 0
+          fi
+          git commit -m 'Expose WG-6B through the canonical Planet Engine Lab'
+          git push origin HEAD:wg6b-runoff-discharge
