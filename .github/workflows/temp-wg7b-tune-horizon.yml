@@ -1,0 +1,38 @@
+name: Temporary WG-7B Horizon Tuning
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  tune:
+    if: github.head_ref == 'wg7b-bounded-terrain-evolution'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Apply WG-7B horizon tuning
+        run: python scripts/temp-wg7b-tune-horizon.py
+      - name: Format and test core
+        run: |
+          cargo fmt --all
+          cargo test -p interlink-worldgen
+      - name: Remove temporary transformer
+        run: rm scripts/temp-wg7b-tune-horizon.py
+      - name: Commit WG-7B horizon tuning
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add rust/interlink-worldgen/src/evolution.rs scripts/temp-wg7b-tune-horizon.py
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Tune WG-7B direct geomorphic horizon"
+            git push origin HEAD:${{ github.head_ref }}
+          fi
