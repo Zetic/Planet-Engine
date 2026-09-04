@@ -116,11 +116,7 @@ fn weighted_percentile(mut values: Vec<(f64, f64)>, fraction: f64) -> f64 {
     values.last().map(|(value, _)| *value).unwrap_or(0.0)
 }
 
-fn weighted_spatial_cv(
-    topology: &GeodesicTopology,
-    indices: &[usize],
-    values: &[f32],
-) -> f64 {
+fn weighted_spatial_cv(topology: &GeodesicTopology, indices: &[usize], values: &[f32]) -> f64 {
     let mean = weighted_mean(
         topology,
         indices
@@ -381,36 +377,40 @@ pub fn build_hydroclimate_closure_report(
     let subtropical_land_precipitation_mm = latitude_mean(15.0, 35.0);
     let midlatitude_land_precipitation_mm = latitude_mean(35.0, 60.0);
     let polar_land_precipitation_mm = latitude_mean(60.0, 90.000_001);
-    let tropical_to_subtropical_land_precipitation_ratio =
-        match (tropical_land_precipitation_mm, subtropical_land_precipitation_mm) {
-            (Some(tropical), Some(subtropical)) if subtropical > 1.0e-12 => {
-                Some(tropical / subtropical)
-            }
-            _ => None,
-        };
+    let tropical_to_subtropical_land_precipitation_ratio = match (
+        tropical_land_precipitation_mm,
+        subtropical_land_precipitation_mm,
+    ) {
+        (Some(tropical), Some(subtropical)) if subtropical > 1.0e-12 => {
+            Some(tropical / subtropical)
+        }
+        _ => None,
+    };
 
-    let (no_orography_land_precipitation_rms_difference_mm, no_orography_land_precipitation_rms_fraction_of_mean) =
-        if let Some(no_orography) = no_orography_climate {
-            let rms = weighted_mean(
-                topology,
-                land_indices.iter().copied().map(|index| {
-                    let delta = f64::from(climate.annual_precipitation_mm[index])
-                        - f64::from(no_orography.annual_precipitation_mm[index]);
-                    (index, delta * delta)
-                }),
-            )
-            .unwrap_or(0.0)
-            .max(0.0)
-            .sqrt();
-            let fraction = if mean_land_precipitation_mm > 1.0e-12 {
-                rms / mean_land_precipitation_mm
-            } else {
-                0.0
-            };
-            (Some(rms), Some(fraction))
+    let (
+        no_orography_land_precipitation_rms_difference_mm,
+        no_orography_land_precipitation_rms_fraction_of_mean,
+    ) = if let Some(no_orography) = no_orography_climate {
+        let rms = weighted_mean(
+            topology,
+            land_indices.iter().copied().map(|index| {
+                let delta = f64::from(climate.annual_precipitation_mm[index])
+                    - f64::from(no_orography.annual_precipitation_mm[index]);
+                (index, delta * delta)
+            }),
+        )
+        .unwrap_or(0.0)
+        .max(0.0)
+        .sqrt();
+        let fraction = if mean_land_precipitation_mm > 1.0e-12 {
+            rms / mean_land_precipitation_mm
         } else {
-            (None, None)
+            0.0
         };
+        (Some(rms), Some(fraction))
+    } else {
+        (None, None)
+    };
 
     Ok(HydroclimateClosureReport {
         sample_count: climate.metrics.sample_count,

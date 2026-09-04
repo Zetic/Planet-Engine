@@ -65,7 +65,10 @@ impl FluvialErosionParameters {
             self.transport_discharge_exponent,
             self.transport_slope_exponent,
         ];
-        if positive.iter().any(|value| !value.is_finite() || *value <= 0.0) {
+        if positive
+            .iter()
+            .any(|value| !value.is_finite() || *value <= 0.0)
+        {
             return Err("WG-7A erosion parameters must be finite and positive");
         }
         if !(1.0..=8.0).contains(&self.effective_discharge_power) {
@@ -237,11 +240,7 @@ fn inherited_erodibility(strength: f32, weakness: f32, fabric: f32, fragmentatio
     let weakness = f64::from(weakness).clamp(0.0, 1.0);
     let fabric = f64::from(fabric).clamp(0.0, 1.0);
     let fragmentation = f64::from(fragmentation).clamp(0.0, 1.0);
-    (0.05
-        + 0.35 * weakness
-        + 0.25 * fragmentation
-        + 0.15 * fabric
-        + 0.20 * (1.0 - strength))
+    (0.05 + 0.35 * weakness + 0.25 * fragmentation + 0.15 * fabric + 0.20 * (1.0 - strength))
         .clamp(0.05, 1.0)
 }
 
@@ -441,8 +440,9 @@ pub fn generate_fluvial_erosion_sediment(
         for phase in 0..phase_count {
             phase_values.push(seasonal.phase_realized_discharge_m3_s[phase * count + i]);
         }
-        let q_eff = effective_discharge(&phase_values, request.parameters.effective_discharge_power)
-            .map_err(WorldgenError::InvalidGeomorphology)?;
+        let q_eff =
+            effective_discharge(&phase_values, request.parameters.effective_discharge_power)
+                .map_err(WorldgenError::InvalidGeomorphology)?;
         effective_discharge_m3_s[i] = q_eff as f32;
         maximum_effective_discharge_m3_s = maximum_effective_discharge_m3_s.max(q_eff);
 
@@ -484,8 +484,7 @@ pub fn generate_fluvial_erosion_sediment(
             bounded_incision_response(q_eff, slope, erodibility, request.parameters);
         stream_power_index[i] = stream_power.min(f32::MAX as f64) as f32;
         incision_potential_m_per_year[i] = incision as f32;
-        maximum_incision_potential_m_per_year =
-            maximum_incision_potential_m_per_year.max(incision);
+        maximum_incision_potential_m_per_year = maximum_incision_potential_m_per_year.max(incision);
         if incision > 0.0 {
             erosive_sample_count += 1;
         }
@@ -507,7 +506,7 @@ pub fn generate_fluvial_erosion_sediment(
             ));
         }
         local_sediment_supply_kg_s[i] = supply as f32;
-        total_sediment_generated_kg_s += supply;
+        total_sediment_generated_kg_s += f64::from(local_sediment_supply_kg_s[i]);
 
         if q_eff > 0.0 && slope > 0.0 {
             let q = (q_eff / request.parameters.reference_discharge_m3_s).max(0.0);
@@ -582,8 +581,7 @@ pub fn generate_fluvial_erosion_sediment(
     fluvial_erosion_hash = hash_f32_slice(fluvial_erosion_hash, &stream_power_index);
     fluvial_erosion_hash = hash_f32_slice(fluvial_erosion_hash, &incision_potential_m_per_year);
     fluvial_erosion_hash = hash_f32_slice(fluvial_erosion_hash, &local_sediment_supply_kg_s);
-    fluvial_erosion_hash =
-        hash_f32_slice(fluvial_erosion_hash, &sediment_transport_capacity_kg_s);
+    fluvial_erosion_hash = hash_f32_slice(fluvial_erosion_hash, &sediment_transport_capacity_kg_s);
     fluvial_erosion_hash = hash_f32_slice(fluvial_erosion_hash, &sediment_load_kg_s);
     fluvial_erosion_hash = hash_f32_slice(fluvial_erosion_hash, &sediment_deposition_kg_s);
 
@@ -679,7 +677,10 @@ mod tests {
             &mut deposition,
         )
         .unwrap();
-        let deposited = deposition.iter().map(|value| f64::from(*value)).sum::<f64>();
+        let deposited = deposition
+            .iter()
+            .map(|value| f64::from(*value))
+            .sum::<f64>();
         assert!((deposited - 10.0).abs() < 1.0e-12);
         assert!((metrics.total_lake_deposition_kg_s - 10.0).abs() < 1.0e-12);
         assert_eq!(metrics.active_lake_trap_count, 1);

@@ -155,14 +155,7 @@ fn main() -> Result<(), String> {
     for _ in 0..options.runs {
         let started = Instant::now();
         let state = generate_fluvial_erosion_sediment(
-            &fine,
-            &inherited,
-            &terrain,
-            &drainage,
-            &lakes,
-            &seasonal,
-            planet,
-            &request,
+            &fine, &inherited, &terrain, &drainage, &lakes, &seasonal, planet, &request,
         )
         .map_err(|error| error.to_string())?;
         durations_ms.push(started.elapsed().as_secs_f64() * 1_000.0);
