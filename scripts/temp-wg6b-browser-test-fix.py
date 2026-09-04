@@ -44,12 +44,15 @@ replace_required(
 replace_required(
     "tests/wg6Drainage.test.ts",
     r"  assert.match(source, /client\.generateDrainage\(request\)/);",
-    r"  assert.doesNotMatch(source, /client\.generateDrainage\(/);\n  assert.match(source, /client\.generateClimate\(request, handleGenerationProgress\)/);\n  assert.match(source, /drainageMetrics/);",
+    "  assert.doesNotMatch(source, /client\\.generateDrainage\\(/);\n"
+    "  assert.match(source, /client\\.generateClimate\\(request, handleGenerationProgress\\)/);\n"
+    "  assert.match(source, /drainageMetrics/);",
 )
 replace_required(
     "tests/wg6Drainage.test.ts",
     r"  assert.match(source, /drainage\.topographyHash !== loaded\.metrics\.topographyHash/);",
-    r"  assert.match(source, /loaded\.runoffMetrics\.climateHash !== loaded\.metrics\.climateHash/);\n  assert.match(source, /loaded\.runoffMetrics\.drainageHash !== loaded\.drainageMetrics\.drainageHash/);",
+    "  assert.match(source, /loaded\\.runoffMetrics\\.climateHash !== loaded\\.metrics\\.climateHash/);\n"
+    "  assert.match(source, /loaded\\.runoffMetrics\\.drainageHash !== loaded\\.drainageMetrics\\.drainageHash/);",
 )
 
 # The standalone drainage page/controller is intentionally gone. Keep the
