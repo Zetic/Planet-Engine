@@ -2,11 +2,11 @@ from pathlib import Path
 
 path = Path("rust/interlink-worldgen/src/evolution.rs")
 text = path.read_text()
-old = "            maximum_geomorphic_years: 50_000.0,"
-new = "            maximum_geomorphic_years: 250_000.0,"
-if text.count(old) != 1:
-    raise SystemExit(f"expected one default horizon target, found {text.count(old)}")
-text = text.replace(old, new, 1)
+old_default = "            maximum_geomorphic_years: 50_000.0,\n            maximum_resolved_elevation_change_m: 120.0,"
+new_default = "            maximum_geomorphic_years: 250_000.0,\n            maximum_resolved_elevation_change_m: 120.0,"
+if text.count(old_default) != 1:
+    raise SystemExit(f"expected one default horizon target, found {text.count(old_default)}")
+text = text.replace(old_default, new_default, 1)
 
 old_test = '''        let p = TerrainEvolutionParameters {
             maximum_geomorphic_years: 50_000.0,
