@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
 
-test('GitHub Pages root is the single cumulative Planet Engine Lab through WG-6C', () => {
+test('GitHub Pages root is the single cumulative Planet Engine Lab through WG-6D', () => {
   assert.ok(fs.existsSync('index.html'), 'Pages root requires index.html');
   assert.ok(!fs.existsSync('worldgen-lab.html'), 'secondary Lab HTML entrypoint must not exist');
   assert.ok(!fs.existsSync('drainage.html'), 'standalone drainage HTML entrypoint must not exist');
@@ -10,7 +10,7 @@ test('GitHub Pages root is the single cumulative Planet Engine Lab through WG-6C
   assert.ok(fs.existsSync('styles/worldgenLab.css'));
   const html = fs.readFileSync('index.html', 'utf8');
   assert.match(html, /PLANET ENGINE LAB/);
-  assert.match(html, /PLANET ENGINE · THROUGH WG-6C/);
+  assert.match(html, /PLANET ENGINE · THROUGH WG-6D/);
   assert.match(html, /Potential annual discharge/);
   assert.match(html, /Contributing drainage area/);
   assert.match(html, /dist\/worldgen\/diagnostics\/worldgenClimateLabStandalone\.js/);
