@@ -1,4 +1,4 @@
-export const WORLDGEN_PROTOCOL_VERSION = 11;
+export const WORLDGEN_PROTOCOL_VERSION = 12;
 export const WORLDGEN_SYNTHETIC_MAX_SAMPLES = 4_194_304;
 export const WORLDGEN_TOPOLOGY_MAX_LEVEL = 7;
 export const WORLDGEN_TECTONICS_MAX_LEVEL = 6;
@@ -540,6 +540,31 @@ export interface WorldgenClimateResult {
   snowfallFraction: Float32Array;
   persistentSnowPotential: Float32Array;
   seaIcePotential: Float32Array;
+  drainageStage: WorldgenStageMetadata;
+  drainageMetrics: WorldgenDrainageMetrics;
+  receiver: Uint32Array;
+  outletSample: Uint32Array;
+  outletKind: Uint8Array;
+  basinId: Uint32Array;
+  depressionId: Uint32Array;
+  hydrologicEscapeElevationM: Float32Array;
+  depressionDepthM: Float32Array;
+  contributingAreaM2: Float64Array;
+  drainageOrder: Uint32Array;
+  basinOutletSamples: Uint32Array;
+  basinOutletKinds: Uint8Array;
+  basinAreasM2: Float64Array;
+  depressionFloorSamples: Uint32Array;
+  depressionFloorElevationsM: Float64Array;
+  depressionSpillElevationsM: Float64Array;
+  depressionAreasM2: Float64Array;
+  runoffStage: WorldgenStageMetadata;
+  runoffMetrics: WorldgenRunoffMetrics;
+  actualEvapotranspirationMm: Float32Array;
+  localRunoffMm: Float32Array;
+  runoffFraction: Float32Array;
+  localRunoffM3S: Float32Array;
+  potentialDischargeM3S: Float32Array;
 }
 
 
@@ -556,6 +581,25 @@ export interface WorldgenDrainageMetrics {
   maximumContributingAreaM2: number;
   maximumDepressionDepthM: number;
   drainageHash: string;
+}
+
+export interface WorldgenRunoffMetrics {
+  sampleCount: number;
+  landSampleCount: number;
+  landAreaM2: number;
+  meanLandPrecipitationMm: number;
+  meanLandActualEvapotranspirationMm: number;
+  meanLandRunoffMm: number;
+  maximumLandRunoffMm: number;
+  landRunoffFraction: number;
+  totalLocalRunoffM3S: number;
+  terminalDischargeM3S: number;
+  dischargeConservationRelativeError: number;
+  maximumPotentialDischargeM3S: number;
+  runoffParameterHash: string;
+  climateHash: string;
+  drainageHash: string;
+  runoffHash: string;
 }
 
 export interface WorldgenDrainageResult {
