@@ -48,6 +48,7 @@ jobs:
         run: |
           python scripts/temp-wg6c-browser-script-fix.py
           python scripts/temp-wg6c-browser.py
+          python scripts/temp-wg6c-browser-test-fix.py
       - name: Rebuild committed browser WASM package
         run: npm run build:worldgen-wasm
       - name: Build browser modules
