@@ -1,8 +1,8 @@
 use crate::drainage::generate_drainage_from_surface;
 use crate::{
     derive_stage_seed, DrainageRequest, DrainageState, FluvialErosionState, GeodesicTopology,
-    LakeState, PlanetPhysicalParameters, PlanetTopology, RunoffState, StageIdentity, TopographyState,
-    WorldgenError, INVALID_SAMPLE_ID,
+    LakeState, PlanetPhysicalParameters, PlanetTopology, RunoffState, StageIdentity,
+    TopographyState, WorldgenError, INVALID_SAMPLE_ID,
 };
 
 pub const TERRAIN_EVOLUTION_STAGE_ID: &str = "geomorphology:bounded-terrain-evolution";
@@ -213,13 +213,15 @@ fn hash_u8_slice(mut hash: u64, values: &[u8]) -> u64 {
     fnv_update(hash, values)
 }
 
-fn adaptive_duration_years(maximum_resolved_rate_m_per_year: f64, p: TerrainEvolutionParameters) -> f64 {
+fn adaptive_duration_years(
+    maximum_resolved_rate_m_per_year: f64,
+    p: TerrainEvolutionParameters,
+) -> f64 {
     if maximum_resolved_rate_m_per_year <= 0.0 {
         return 0.0;
     }
-    p.maximum_geomorphic_years.min(
-        p.maximum_resolved_elevation_change_m / maximum_resolved_rate_m_per_year,
-    )
+    p.maximum_geomorphic_years
+        .min(p.maximum_resolved_elevation_change_m / maximum_resolved_rate_m_per_year)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -475,8 +477,7 @@ pub fn generate_bounded_terrain_evolution(
             continue;
         }
         let area_m2 = topology.area_steradians(i as u32) * planet.radius_m * planet.radius_m;
-        let deposition_rate = f64::from(provisional_routing.land_deposition_kg_s[i])
-            * year_seconds
+        let deposition_rate = f64::from(provisional_routing.land_deposition_kg_s[i]) * year_seconds
             / (area_m2 * p.deposited_sediment_density_kg_m3);
         maximum_resolved_rate_m_year = maximum_resolved_rate_m_year.max(deposition_rate);
     }
@@ -517,8 +518,8 @@ pub fn generate_bounded_terrain_evolution(
             eroded_sample_count += 1;
             maximum_applied_erosion_m = maximum_applied_erosion_m.max(erosion_depth);
             let area_m2 = topology.area_steradians(i as u32) * planet.radius_m * planet.radius_m;
-            let source = erosion_depth * area_m2 * p.eroded_material_density_kg_m3
-                / duration_seconds;
+            let source =
+                erosion_depth * area_m2 * p.eroded_material_density_kg_m3 / duration_seconds;
             applied_sediment_supply_kg_s[i] = source as f32;
             total_applied_sediment_generated_kg_s += f64::from(applied_sediment_supply_kg_s[i]);
         }
@@ -593,10 +594,22 @@ pub fn generate_bounded_terrain_evolution(
         &TERRAIN_EVOLUTION_STAGE_VERSION.to_le_bytes(),
     );
     evolved_surface_hash = fnv_update(evolved_surface_hash, &stage_seed.to_le_bytes());
-    evolved_surface_hash = fnv_update(evolved_surface_hash, &evolution_parameter_hash.to_le_bytes());
-    evolved_surface_hash = fnv_update(evolved_surface_hash, &topography.metrics.topography_hash.to_le_bytes());
-    evolved_surface_hash = fnv_update(evolved_surface_hash, &drainage.metrics.drainage_hash.to_le_bytes());
-    evolved_surface_hash = fnv_update(evolved_surface_hash, &erosion.metrics.fluvial_erosion_hash.to_le_bytes());
+    evolved_surface_hash = fnv_update(
+        evolved_surface_hash,
+        &evolution_parameter_hash.to_le_bytes(),
+    );
+    evolved_surface_hash = fnv_update(
+        evolved_surface_hash,
+        &topography.metrics.topography_hash.to_le_bytes(),
+    );
+    evolved_surface_hash = fnv_update(
+        evolved_surface_hash,
+        &drainage.metrics.drainage_hash.to_le_bytes(),
+    );
+    evolved_surface_hash = fnv_update(
+        evolved_surface_hash,
+        &erosion.metrics.fluvial_erosion_hash.to_le_bytes(),
+    );
     evolved_surface_hash = hash_f32_slice(evolved_surface_hash, &evolved_solid_elevation_m);
 
     let post_erosion_drainage = generate_drainage_from_surface(

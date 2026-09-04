@@ -6,6 +6,7 @@ mod coordinates;
 mod diagnostics;
 mod drainage;
 mod erosion;
+mod evolution;
 mod fields;
 mod geology;
 mod hydroclimate;
@@ -51,6 +52,11 @@ pub use erosion::{
     generate_fluvial_erosion_sediment, FluvialErosionMetrics, FluvialErosionParameters,
     FluvialErosionRequest, FluvialErosionState, FLUVIAL_EROSION_STAGE_ID,
     FLUVIAL_EROSION_STAGE_VERSION,
+};
+pub use evolution::{
+    generate_bounded_terrain_evolution, TerrainEvolutionMetrics, TerrainEvolutionParameters,
+    TerrainEvolutionRequest, TerrainEvolutionState, TERRAIN_EVOLUTION_STAGE_ID,
+    TERRAIN_EVOLUTION_STAGE_VERSION,
 };
 pub use fields::{DenseU16Field, MAX_SYNTHETIC_SAMPLES};
 pub use geology::{
@@ -106,7 +112,7 @@ pub use topology::{
     GeodesicTopology, PlanetTopology, TopologyMetrics, INVALID_SAMPLE_ID, MAX_TOPOLOGY_LEVEL,
 };
 
-pub const WORLDGEN_ENGINE_VERSION: u32 = 9;
+pub const WORLDGEN_ENGINE_VERSION: u32 = 10;
 pub const SYNTHETIC_STAGE_ID: &str = "foundation:synthetic";
 pub const SYNTHETIC_STAGE_VERSION: u32 = 1;
 const SYNTHETIC_NAMESPACE: &str = "worldgen:foundation:synthetic:v1";
