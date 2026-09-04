@@ -1,0 +1,28 @@
+name: Temporary WG-7B Benchmark Docs
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.head_ref == 'wg7b-bounded-terrain-evolution'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - name: Record final WG-7B benchmark matrix
+        run: python scripts/temp-wg7b-benchmark-docs.py
+      - name: Commit benchmark documentation and self-clean
+        run: |
+          rm scripts/temp-wg7b-benchmark-docs.py .github/workflows/temp-wg7b-benchmark-docs.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/worldgen-rewrite/WG7_EROSION.md docs/worldgen-rewrite/VALIDATION.md scripts/temp-wg7b-benchmark-docs.py .github/workflows/temp-wg7b-benchmark-docs.yml
+          git commit -m "Record final WG-7B benchmark matrix"
+          git push origin HEAD:${{ github.head_ref }}
