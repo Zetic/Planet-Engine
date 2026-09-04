@@ -14,6 +14,15 @@ export class WasmWorldgenClimate {
     /**
      * @returns {Float32Array}
      */
+    actual_evapotranspiration_mm() {
+        const ret = wasm.wasmworldgenclimate_actual_evapotranspiration_mm(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
     annual_mean_insolation_w_m2() {
         const ret = wasm.wasmworldgenclimate_annual_mean_insolation_w_m2(this.__wbg_ptr);
         var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
@@ -81,6 +90,42 @@ export class WasmWorldgenClimate {
     axial_tilt_rad() {
         const ret = wasm.wasmworldgenclimate_axial_tilt_rad(this.__wbg_ptr);
         return ret;
+    }
+    /**
+     * @returns {Float64Array}
+     */
+    basin_areas_m2() {
+        const ret = wasm.wasmworldgenclimate_basin_areas_m2(this.__wbg_ptr);
+        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v1;
+    }
+    /**
+     * @returns {Uint32Array}
+     */
+    basin_id() {
+        const ret = wasm.wasmworldgenclimate_basin_id(this.__wbg_ptr);
+        var v1 = getArrayU32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Uint8Array}
+     */
+    basin_outlet_kinds() {
+        const ret = wasm.wasmworldgenclimate_basin_outlet_kinds(this.__wbg_ptr);
+        var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        return v1;
+    }
+    /**
+     * @returns {Uint32Array}
+     */
+    basin_outlet_samples() {
+        const ret = wasm.wasmworldgenclimate_basin_outlet_samples(this.__wbg_ptr);
+        var v1 = getArrayU32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
     }
     /**
      * @returns {Uint32Array}
@@ -199,6 +244,15 @@ export class WasmWorldgenClimate {
         }
     }
     /**
+     * @returns {Float64Array}
+     */
+    contributing_area_m2() {
+        const ret = wasm.wasmworldgenclimate_contributing_area_m2(this.__wbg_ptr);
+        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v1;
+    }
+    /**
      * @returns {Float32Array}
      */
     crust_age_myr() {
@@ -287,6 +341,177 @@ export class WasmWorldgenClimate {
         var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
         return v1;
+    }
+    /**
+     * @returns {Float64Array}
+     */
+    depression_areas_m2() {
+        const ret = wasm.wasmworldgenclimate_depression_areas_m2(this.__wbg_ptr);
+        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    depression_depth_m() {
+        const ret = wasm.wasmworldgenclimate_depression_depth_m(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Float64Array}
+     */
+    depression_floor_elevations_m() {
+        const ret = wasm.wasmworldgenclimate_depression_floor_elevations_m(this.__wbg_ptr);
+        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v1;
+    }
+    /**
+     * @returns {Uint32Array}
+     */
+    depression_floor_samples() {
+        const ret = wasm.wasmworldgenclimate_depression_floor_samples(this.__wbg_ptr);
+        var v1 = getArrayU32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Uint32Array}
+     */
+    depression_id() {
+        const ret = wasm.wasmworldgenclimate_depression_id(this.__wbg_ptr);
+        var v1 = getArrayU32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Float64Array}
+     */
+    depression_spill_elevations_m() {
+        const ret = wasm.wasmworldgenclimate_depression_spill_elevations_m(this.__wbg_ptr);
+        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v1;
+    }
+    /**
+     * @returns {number}
+     */
+    discharge_conservation_relative_error() {
+        const ret = wasm.wasmworldgenclimate_discharge_conservation_relative_error(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    drainage_area_conservation_relative_error() {
+        const ret = wasm.wasmworldgenclimate_drainage_area_conservation_relative_error(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    drainage_basin_count() {
+        const ret = wasm.wasmworldgenclimate_drainage_basin_count(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    drainage_depression_count() {
+        const ret = wasm.wasmworldgenclimate_drainage_depression_count(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    drainage_depression_sample_count() {
+        const ret = wasm.wasmworldgenclimate_drainage_depression_sample_count(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {string}
+     */
+    drainage_hash_hex() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmworldgenclimate_drainage_hash_hex(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {number}
+     */
+    drainage_land_area_m2() {
+        const ret = wasm.wasmworldgenclimate_drainage_land_area_m2(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    drainage_land_sample_count() {
+        const ret = wasm.wasmworldgenclimate_drainage_land_sample_count(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    drainage_ocean_sample_count() {
+        const ret = wasm.wasmworldgenclimate_drainage_ocean_sample_count(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {Uint32Array}
+     */
+    drainage_order() {
+        const ret = wasm.wasmworldgenclimate_drainage_order(this.__wbg_ptr);
+        var v1 = getArrayU32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {string}
+     */
+    drainage_stage_id() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmworldgenclimate_drainage_stage_id(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {string}
+     */
+    drainage_stage_seed_hex() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmworldgenclimate_drainage_stage_seed_hex(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {number}
+     */
+    drainage_stage_version() {
+        const ret = wasm.wasmworldgenclimate_drainage_stage_version(this.__wbg_ptr);
+        return ret >>> 0;
     }
     /**
      * @returns {Float32Array}
@@ -432,6 +657,15 @@ export class WasmWorldgenClimate {
         return ret !== 0;
     }
     /**
+     * @returns {Float32Array}
+     */
+    hydrologic_escape_elevation_m() {
+        const ret = wasm.wasmworldgenclimate_hydrologic_escape_elevation_m(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
      * @returns {string}
      */
     inheritance_hash_hex() {
@@ -488,6 +722,13 @@ export class WasmWorldgenClimate {
         return ret;
     }
     /**
+     * @returns {number}
+     */
+    land_runoff_fraction() {
+        const ret = wasm.wasmworldgenclimate_land_runoff_fraction(this.__wbg_ptr);
+        return ret;
+    }
+    /**
      * @returns {string}
      */
     lithosphere_hash_hex() {
@@ -507,6 +748,24 @@ export class WasmWorldgenClimate {
      */
     local_pressure_pa() {
         const ret = wasm.wasmworldgenclimate_local_pressure_pa(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    local_runoff_m3_s() {
+        const ret = wasm.wasmworldgenclimate_local_runoff_m3_s(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    local_runoff_mm() {
+        const ret = wasm.wasmworldgenclimate_local_runoff_mm(this.__wbg_ptr);
         var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
         return v1;
@@ -539,8 +798,36 @@ export class WasmWorldgenClimate {
     /**
      * @returns {number}
      */
+    maximum_contributing_area_m2() {
+        const ret = wasm.wasmworldgenclimate_maximum_contributing_area_m2(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    maximum_depression_depth_m() {
+        const ret = wasm.wasmworldgenclimate_maximum_depression_depth_m(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    maximum_land_runoff_mm() {
+        const ret = wasm.wasmworldgenclimate_maximum_land_runoff_mm(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
     maximum_moisture_transport_substeps() {
         const ret = wasm.wasmworldgenclimate_maximum_moisture_transport_substeps(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    maximum_potential_discharge_m3_s() {
+        const ret = wasm.wasmworldgenclimate_maximum_potential_discharge_m3_s(this.__wbg_ptr);
         return ret;
     }
     /**
@@ -576,6 +863,27 @@ export class WasmWorldgenClimate {
      */
     mean_annual_precipitation_mm() {
         const ret = wasm.wasmworldgenclimate_mean_annual_precipitation_mm(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    mean_land_actual_evapotranspiration_mm() {
+        const ret = wasm.wasmworldgenclimate_mean_land_actual_evapotranspiration_mm(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    mean_land_runoff_mm() {
+        const ret = wasm.wasmworldgenclimate_mean_land_runoff_mm(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    mean_land_runoff_precipitation_mm() {
+        const ret = wasm.wasmworldgenclimate_mean_land_runoff_precipitation_mm(this.__wbg_ptr);
         return ret;
     }
     /**
@@ -765,6 +1073,24 @@ export class WasmWorldgenClimate {
         return v1;
     }
     /**
+     * @returns {Uint8Array}
+     */
+    outlet_kind() {
+        const ret = wasm.wasmworldgenclimate_outlet_kind(this.__wbg_ptr);
+        var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        return v1;
+    }
+    /**
+     * @returns {Uint32Array}
+     */
+    outlet_sample() {
+        const ret = wasm.wasmworldgenclimate_outlet_sample(this.__wbg_ptr);
+        var v1 = getArrayU32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
      * @returns {number}
      */
     p95_annual_precipitation_mm() {
@@ -830,6 +1156,15 @@ export class WasmWorldgenClimate {
     /**
      * @returns {Float32Array}
      */
+    potential_discharge_m3_s() {
+        const ret = wasm.wasmworldgenclimate_potential_discharge_m3_s(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
     potential_evaporation_mm() {
         const ret = wasm.wasmworldgenclimate_potential_evaporation_mm(this.__wbg_ptr);
         var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
@@ -860,6 +1195,15 @@ export class WasmWorldgenClimate {
     radius_m() {
         const ret = wasm.wasmworldgenclimate_radius_m(this.__wbg_ptr);
         return ret;
+    }
+    /**
+     * @returns {Uint32Array}
+     */
+    receiver() {
+        const ret = wasm.wasmworldgenclimate_receiver(this.__wbg_ptr);
+        var v1 = getArrayU32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
     }
     /**
      * @returns {number}
@@ -901,6 +1245,112 @@ export class WasmWorldgenClimate {
     rotation_period_s() {
         const ret = wasm.wasmworldgenclimate_rotation_period_s(this.__wbg_ptr);
         return ret;
+    }
+    /**
+     * @returns {string}
+     */
+    runoff_climate_hash_hex() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmworldgenclimate_runoff_climate_hash_hex(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {string}
+     */
+    runoff_drainage_hash_hex() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmworldgenclimate_runoff_drainage_hash_hex(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    runoff_fraction() {
+        const ret = wasm.wasmworldgenclimate_runoff_fraction(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {string}
+     */
+    runoff_hash_hex() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmworldgenclimate_runoff_hash_hex(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {string}
+     */
+    runoff_parameter_hash_hex() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmworldgenclimate_runoff_parameter_hash_hex(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {string}
+     */
+    runoff_stage_id() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmworldgenclimate_runoff_stage_id(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {string}
+     */
+    runoff_stage_seed_hex() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmworldgenclimate_runoff_stage_seed_hex(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {number}
+     */
+    runoff_stage_version() {
+        const ret = wasm.wasmworldgenclimate_runoff_stage_version(this.__wbg_ptr);
+        return ret >>> 0;
     }
     /**
      * @returns {number}
@@ -1141,6 +1591,20 @@ export class WasmWorldgenClimate {
         return v1;
     }
     /**
+     * @returns {number}
+     */
+    terminal_contributing_area_m2() {
+        const ret = wasm.wasmworldgenclimate_terminal_contributing_area_m2(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    terminal_discharge_m3_s() {
+        const ret = wasm.wasmworldgenclimate_terminal_discharge_m3_s(this.__wbg_ptr);
+        return ret;
+    }
+    /**
      * @returns {Float32Array}
      */
     thermal_elevation_m() {
@@ -1163,6 +1627,13 @@ export class WasmWorldgenClimate {
         } finally {
             wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
         }
+    }
+    /**
+     * @returns {number}
+     */
+    total_local_runoff_m3_s() {
+        const ret = wasm.wasmworldgenclimate_total_local_runoff_m3_s(this.__wbg_ptr);
+        return ret;
     }
     /**
      * @returns {Float32Array}

@@ -21,7 +21,6 @@ import {
   WORLDGEN_STRUCTURE_TRANSFORM,
   WORLDGEN_INVALID_SAMPLE_ID,
   type WorldgenClimateResult,
-  type WorldgenDrainageResult,
   type WorldgenGenerationProgress,
 } from '../protocol.js';
 
@@ -81,6 +80,23 @@ function geologicalBoundaryColor(regime: number): string {
 }
 
 
+const RUNOFF_MODES = new Set(['annual-runoff', 'runoff-fraction', 'actual-et', 'potential-discharge']);
+function isRunoffMode(mode: string): boolean { return RUNOFF_MODES.has(mode); }
+function runoffSampleColor(result: WorldgenClimateResult, mode: string, sample: number): string {
+  if (result.submergedMask[sample]) return '#102c43';
+  if (mode === 'runoff-fraction') return drainageScalarColor(result.runoffFraction[sample]!, 48, 205);
+  if (mode === 'actual-et') {
+    const value = Math.max(0, result.actualEvapotranspirationMm[sample]!);
+    return drainageScalarColor(value / (value + 850), 42, 168);
+  }
+  if (mode === 'annual-runoff') {
+    const maxValue = Math.max(1, result.runoffMetrics.maximumLandRunoffMm);
+    return drainageScalarColor(Math.log1p(Math.max(0, result.localRunoffMm[sample]!)) / Math.log1p(maxValue), 44, 218);
+  }
+  const maxValue = Math.max(1e-6, result.runoffMetrics.maximumPotentialDischargeM3S);
+  return drainageScalarColor(Math.log1p(Math.max(0, result.potentialDischargeM3S[sample]!)) / Math.log1p(maxValue), 215, 18);
+}
+
 const DRAINAGE_MODES = new Set([
   'contributing-area',
   'basins',
@@ -99,7 +115,7 @@ function drainageScalarColor(t: number, lowHue: number, highHue: number): string
   const hue = lowHue + (highHue - lowHue) * clamped;
   return `hsl(${hue} 70% ${34 + 25 * clamped}%)`;
 }
-function drainageSampleColor(result: WorldgenDrainageResult, mode: string, sample: number): string {
+function drainageSampleColor(result: WorldgenClimateResult, mode: string, sample: number): string {
   if (result.submergedMask[sample]) return '#102c43';
   if (mode === 'basins' || mode === 'flow-direction') {
     const basin = result.basinId[sample]!;
@@ -112,7 +128,7 @@ function drainageSampleColor(result: WorldgenDrainageResult, mode: string, sampl
   if (mode === 'depression-depth') {
     const depth = result.depressionDepthM[sample]!;
     if (depth <= 0) return '#283c34';
-    const t = Math.log10(1 + depth) / Math.log10(1 + Math.max(50, result.metrics.maximumDepressionDepthM));
+    const t = Math.log10(1 + depth) / Math.log10(1 + Math.max(50, result.drainageMetrics.maximumDepressionDepthM));
     return drainageScalarColor(t, 55, 270);
   }
   if (mode === 'escape-elevation') {
@@ -120,25 +136,25 @@ function drainageSampleColor(result: WorldgenDrainageResult, mode: string, sampl
   }
   const areaKm2 = Math.max(1e-9, result.contributingAreaM2[sample]! / 1e6);
   const logArea = Math.log10(areaKm2 + 1);
-  const maxLog = Math.log10(Math.max(10, result.metrics.maximumContributingAreaM2 / 1e6) + 1);
+  const maxLog = Math.log10(Math.max(10, result.drainageMetrics.maximumContributingAreaM2 / 1e6) + 1);
   return drainageScalarColor(logArea / maxLog, 225, 42);
 }
 
 function drawDrainageReceiverOverlay(
   context: CanvasRenderingContext2D,
-  result: WorldgenDrainageResult,
+  result: WorldgenClimateResult,
   projection: string,
   width: number,
   buffers: ProjectionBuffers,
 ): void {
   const targetSegments = 3_500;
-  const stride = Math.max(1, Math.floor(result.metrics.landSampleCount / targetSegments));
+  const stride = Math.max(1, Math.floor(result.drainageMetrics.landSampleCount / targetSegments));
   context.save();
   context.strokeStyle = 'rgba(235,247,255,0.68)';
   context.lineWidth = 0.75;
   context.beginPath();
   let accepted = 0;
-  for (let sample = 0; sample < result.metrics.sampleCount; sample += 1) {
+  for (let sample = 0; sample < result.drainageMetrics.sampleCount; sample += 1) {
     if (result.submergedMask[sample] || !buffers.visible[sample]) continue;
     if ((accepted++ % stride) !== 0) continue;
     const receiver = result.receiver[sample]!;
@@ -152,7 +168,7 @@ function drawDrainageReceiverOverlay(
   context.restore();
 }
 
-function drawDrainageOutlets(context: CanvasRenderingContext2D, result: WorldgenDrainageResult, buffers: ProjectionBuffers): void {
+function drawDrainageOutlets(context: CanvasRenderingContext2D, result: WorldgenClimateResult, buffers: ProjectionBuffers): void {
   context.save();
   context.fillStyle = 'rgba(255,255,255,0.92)';
   for (const outlet of result.basinOutletSamples) {
@@ -166,14 +182,14 @@ function drawDrainageOutlets(context: CanvasRenderingContext2D, result: Worldgen
 
 function renderDrainageDiagnostic(
   context: CanvasRenderingContext2D,
-  result: WorldgenDrainageResult,
+  result: WorldgenClimateResult,
   projection: string,
   mode: string,
   width: number,
   buffers: ProjectionBuffers,
   interactive: boolean,
 ): void {
-  const count = result.metrics.sampleCount;
+  const count = result.drainageMetrics.sampleCount;
   const pointRadius = count > 100_000 ? 0.8 : count > 30_000 ? 1.15 : count > 5_000 ? 2 : 3;
   const fastPoints = interactive && count > 20_000;
   context.globalAlpha = 0.94;
@@ -541,7 +557,7 @@ function drawDiagnosticOverlays(context: CanvasRenderingContext2D, result: World
   if (overlays.has('currents')) drawVectors(context, result, 'currents', phase, projection, yaw, pitch, width, height, buffers, animation);
 }
 
-function renderPlanet(canvas: HTMLCanvasElement, result: WorldgenClimateResult, drainage: WorldgenDrainageResult | null, projection: string, mode: string, overlays: ReadonlySet<string>, phase: number, yaw: number, pitch: number, buffers: ProjectionBuffers, interactive: boolean, animation: number): void {
+function renderPlanet(canvas: HTMLCanvasElement, result: WorldgenClimateResult, projection: string, mode: string, overlays: ReadonlySet<string>, phase: number, yaw: number, pitch: number, buffers: ProjectionBuffers, interactive: boolean, animation: number): void {
   const width = 1100;
   const height = projection === 'map' ? 550 : 760;
   if (canvas.width !== width) canvas.width = width;
@@ -554,9 +570,24 @@ function renderPlanet(canvas: HTMLCanvasElement, result: WorldgenClimateResult, 
     context.beginPath(); context.arc(width / 2, height / 2, Math.min(width, height) * 0.44, 0, TWO_PI);
     context.strokeStyle = '#5d7890'; context.lineWidth = 1; context.stroke();
   }
+  if (isRunoffMode(mode)) {
+    const count = result.metrics.fineSampleCount;
+    const pointRadius = count > 100_000 ? 0.8 : count > 30_000 ? 1.15 : count > 5_000 ? 2 : 3;
+    const fastPoints = interactive && count > 20_000;
+    context.globalAlpha = 0.94;
+    for (let sample = 0; sample < count; sample += 1) {
+      if (!buffers.visible[sample]) continue;
+      context.fillStyle = runoffSampleColor(result, mode, sample);
+      const x = buffers.x[sample]!, y = buffers.y[sample]!;
+      if (fastPoints) context.fillRect(x - 0.75, y - 0.75, 1.5, 1.5);
+      else { context.beginPath(); context.arc(x, y, pointRadius, 0, TWO_PI); context.fill(); }
+    }
+    context.globalAlpha = 1;
+    drawDiagnosticOverlays(context, result, overlays, phase, projection, yaw, pitch, width, height, buffers, animation);
+    return;
+  }
   if (isDrainageMode(mode)) {
-    if (!drainage) return;
-    renderDrainageDiagnostic(context, drainage, projection, mode, width, buffers, interactive);
+    renderDrainageDiagnostic(context, result, projection, mode, width, buffers, interactive);
     drawDiagnosticOverlays(context, result, overlays, phase, projection, yaw, pitch, width, height, buffers, animation);
     return;
   }
@@ -635,7 +666,6 @@ const metrics = element<HTMLElement>('worldgen-metrics');
 const canvas = element<HTMLCanvasElement>('worldgen-field');
 const client = createWorldgenClient();
 let current: WorldgenClimateResult | null = null;
-let currentDrainage: WorldgenDrainageResult | null = null;
 let buffers: ProjectionBuffers | null = null;
 let yaw = -0.65;
 let pitch = 0.25;
@@ -720,7 +750,7 @@ function orbitalPhase(): number { return Number(season.value) / 1000; }
 function updateSeasonLabel(): void { seasonValue.textContent = `${(orbitalPhase() * 100).toFixed(1)}% orbit`; }
 function redraw(interactive = false): void {
   if (!current || !buffers) return;
-  renderPlanet(canvas, current, currentDrainage, projection.value, visualization.value, selectedOverlays(), orbitalPhase(), yaw, pitch, buffers, interactive, animationPhase);
+  renderPlanet(canvas, current, projection.value, visualization.value, selectedOverlays(), orbitalPhase(), yaw, pitch, buffers, interactive, animationPhase);
 }
 function scheduleRedraw(interactive: boolean): void {
   if (frameRequest) return;
@@ -746,7 +776,7 @@ function updateAnimation(): void {
   const overlays = selectedOverlays();
   if (visualization.value === 'winds' || visualization.value === 'currents' || overlays.has('winds') || overlays.has('currents')) animationRequest = requestAnimationFrame(vectorAnimationFrame);
 }
-function showMetrics(result: WorldgenClimateResult, drainage: WorldgenDrainageResult): void {
+function showMetrics(result: WorldgenClimateResult): void {
   metrics.replaceChildren();
   metric(metrics, 'Engine / stage', `v${result.engineVersion} · ${result.stage.id}@${result.stage.version}`);
   metric(metrics, 'Resolution', `L${result.coarseLevel} → L${result.fineLevel} · climate solved at L${result.metrics.globalSolverLevel} (${result.metrics.globalSolverSampleCount.toLocaleString()} cells)`);
@@ -767,38 +797,37 @@ function showMetrics(result: WorldgenClimateResult, drainage: WorldgenDrainageRe
   metric(metrics, 'Planet forcing', `${result.planet.stellarFluxWM2.toFixed(0)} W/m² · tilt ${(result.planet.axialTiltRad * 180 / Math.PI).toFixed(2)}° · e ${result.climatePhysical.orbitalEccentricity.toFixed(4)}`);
   metric(metrics, 'Land / ocean', `${(result.metrics.landAreaFraction * 100).toFixed(1)}% / ${(result.metrics.oceanAreaFraction * 100).toFixed(1)}%`);
   metric(metrics, 'Climate duration', `${result.stage.durationMs.toFixed(1)} ms`);
-  metric(metrics, 'Hydrology / stage', `v${drainage.engineVersion} · ${drainage.stage.id}@${drainage.stage.version}`);
-  metric(metrics, 'Drainage topology', `${drainage.metrics.basinCount.toLocaleString()} basins · ${drainage.metrics.depressionCount.toLocaleString()} depressions`);
-  metric(metrics, 'Largest contributing area', `${(drainage.metrics.maximumContributingAreaM2 / 1e12).toFixed(3)} million km²`);
-  metric(metrics, 'Deepest depression', `${drainage.metrics.maximumDepressionDepthM.toFixed(1)} m`);
-  metric(metrics, 'Drainage area closure', drainage.metrics.areaConservationRelativeError.toExponential(2));
-  metric(metrics, 'Drainage hash', drainage.metrics.drainageHash);
-  metric(metrics, 'WG-4 surface identity', drainage.topographyHash === result.metrics.topographyHash ? 'Climate / drainage match' : 'MISMATCH');
+  metric(metrics, 'Hydrology / stage', `v${result.engineVersion} · ${result.drainageStage.id}@${result.drainageStage.version}`);
+  metric(metrics, 'Drainage topology', `${result.drainageMetrics.basinCount.toLocaleString()} basins · ${result.drainageMetrics.depressionCount.toLocaleString()} depressions`);
+  metric(metrics, 'Largest contributing area', `${(result.drainageMetrics.maximumContributingAreaM2 / 1e12).toFixed(3)} million km²`);
+  metric(metrics, 'Deepest depression', `${result.drainageMetrics.maximumDepressionDepthM.toFixed(1)} m`);
+  metric(metrics, 'Drainage area closure', result.drainageMetrics.areaConservationRelativeError.toExponential(2));
+  metric(metrics, 'Drainage hash', result.drainageMetrics.drainageHash);
+  metric(metrics, 'Hydrology identity', result.runoffMetrics.climateHash === result.metrics.climateHash && result.runoffMetrics.drainageHash === result.drainageMetrics.drainageHash ? 'WG-5 / WG-6A / WG-6B match' : 'MISMATCH');
+  metric(metrics, 'WG-6B water balance', `${result.runoffMetrics.meanLandPrecipitationMm.toFixed(1)} P · ${result.runoffMetrics.meanLandActualEvapotranspirationMm.toFixed(1)} AET · ${result.runoffMetrics.meanLandRunoffMm.toFixed(1)} runoff mm/yr`);
+  metric(metrics, 'WG-6B runoff fraction', `${(result.runoffMetrics.landRunoffFraction * 100).toFixed(1)}% of land precipitation`);
+  metric(metrics, 'WG-6B max potential discharge', `${result.runoffMetrics.maximumPotentialDischargeM3S.toFixed(1)} m³/s`);
+  metric(metrics, 'WG-6B discharge closure', result.runoffMetrics.dischargeConservationRelativeError.toExponential(2));
+  metric(metrics, 'WG-6B runoff hash', result.runoffMetrics.runoffHash);
 }
 
 async function generatePlanet(): Promise<void> {
   generate.disabled = true;
   startGenerationTelemetry();
   status.textContent = 'Generating one physical planet through WG-5 coupled climate in Rust/WASM…';
-  currentDrainage = null;
   try {
     const request = { seed: seed.value, coarseLevel: Number(coarseLevel.value), fineLevel: Number(fineLevel.value), plateCount: Number(plates.value) };
     const loaded = await client.generateClimate(request, handleGenerationProgress);
-    generationStage.textContent = 'WG-6A drainage topology';
-    generationStep.textContent = 'running';
-    status.textContent = 'Resolving WG-6A drainage topology on the same deterministic fine surface…';
-    const drainage = await client.generateDrainage(request);
-    if (drainage.metrics.sampleCount !== loaded.metrics.fineSampleCount) throw new Error('WG-6A drainage sample count does not match the WG-5 fine surface.');
-    if (drainage.topographyHash !== loaded.metrics.topographyHash) throw new Error('WG-6A drainage topography identity does not match the WG-5 physical surface.');
+    if (loaded.runoffMetrics.climateHash !== loaded.metrics.climateHash) throw new Error('WG-6B climate identity does not match accepted WG-5 forcing.');
+    if (loaded.runoffMetrics.drainageHash !== loaded.drainageMetrics.drainageHash) throw new Error('WG-6B drainage identity does not match accepted WG-6A topology.');
     current = loaded;
-    currentDrainage = drainage;
     buffers = { x: new Float32Array(loaded.metrics.fineSampleCount), y: new Float32Array(loaded.metrics.fineSampleCount), visible: new Uint8Array(loaded.metrics.fineSampleCount) };
     styleCache = { result: null, key: '', sampleBuckets: [], boundaryBuckets: [] };
     edgeOverlayCache = { result: null, coastline: new Uint32Array(0), contours: [] };
-    showMetrics(loaded, drainage); redraw(false); updateAnimation(); finishGenerationTelemetry(loaded);
-    generationStep.textContent = `${loaded.metrics.spinupYears} climate spin-up years · ${drainage.metrics.basinCount.toLocaleString()} drainage basins`;
+    showMetrics(loaded); redraw(false); updateAnimation(); finishGenerationTelemetry(loaded);
+    generationStep.textContent = `${loaded.metrics.spinupYears} climate spin-up years · ${loaded.drainageMetrics.basinCount.toLocaleString()} basins · ${loaded.runoffMetrics.meanLandRunoffMm.toFixed(1)} mm/yr land runoff`;
     generationTimer.textContent = formatDuration(performance.now() - generationStartedAt);
-    status.textContent = `Planet ready through WG-6A: ${loaded.metrics.fineSampleCount.toLocaleString()} samples, ${drainage.metrics.basinCount.toLocaleString()} drainage basins, area closure ${drainage.metrics.areaConservationRelativeError.toExponential(2)}.`;
+    status.textContent = `Planet ready through WG-6B: ${loaded.metrics.fineSampleCount.toLocaleString()} samples, ${loaded.drainageMetrics.basinCount.toLocaleString()} drainage basins, max potential discharge ${loaded.runoffMetrics.maximumPotentialDischargeM3S.toFixed(1)} m³/s.`;
   } catch (error) {
     if (generationTimerHandle) { clearInterval(generationTimerHandle); generationTimerHandle = null; }
     generationStage.textContent = 'Generation failed';

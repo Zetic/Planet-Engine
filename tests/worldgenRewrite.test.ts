@@ -53,9 +53,9 @@ import {
   worldgenTopologyCommand,
 } from '../dist/worldgen/protocol.js';
 
-const PROTOCOL = 11;
+const PROTOCOL = 12;
 
-test('Planet Engine browser protocol v11 preserves WG-0 through WG-3.75 contracts', () => {
+test('Planet Engine browser protocol v12 preserves WG-0 through WG-3.75 contracts', () => {
   assert.equal(WORLDGEN_PROTOCOL_VERSION, PROTOCOL);
   assert.equal(WORLDGEN_SYNTHETIC_MAX_SAMPLES, 4_194_304);
   assert.equal(WORLDGEN_TOPOLOGY_MAX_LEVEL, 7);
@@ -107,7 +107,7 @@ test('Planet Engine browser protocol v11 preserves WG-0 through WG-3.75 contract
   assert.throws(() => validateInheritanceRequest({ seed: 'x', coarseLevel: 5, fineLevel: 4, plateCount: 16 }), /fine level/i);
 });
 
-test('Planet Engine source stays independent from legacy gameplay world objects through WG-6A', () => {
+test('Planet Engine source stays independent from legacy gameplay world objects through WG-6B', () => {
   const files = [
     'src/worldgen/protocol.ts',
     'src/worldgen/worldgenClient.ts',
@@ -116,7 +116,6 @@ test('Planet Engine source stays independent from legacy gameplay world objects 
     'src/worldgen/diagnostics/worldgenInheritanceLabStandalone.ts',
     'src/worldgen/diagnostics/worldgenTopographyLabStandalone.ts',
     'src/worldgen/diagnostics/worldgenClimateLabStandalone.ts',
-    'src/worldgen/diagnostics/worldgenDrainageLabStandalone.ts',
   ];
   const forbidden = [/\.\.\/world\//, /Region\b/, /MapSelection\b/, /GeographyPatch\b/, /resourceNode/i];
   for (const path of files) {
@@ -133,6 +132,8 @@ test('Planet Engine source stays independent from legacy gameplay world objects 
     'rust/interlink-worldgen/src/boundary_refinement.rs',
     'rust/interlink-worldgen/src/topography.rs',
     'rust/interlink-worldgen/src/climate.rs',
+    'rust/interlink-worldgen/src/drainage.rs',
+    'rust/interlink-worldgen/src/runoff.rs',
     'rust/interlink-worldgen/tests/climate_ensemble.rs',
     'rust/interlink-worldgen-wasm/Cargo.toml',
     'rust/interlink-worldgen-cli/Cargo.toml',
