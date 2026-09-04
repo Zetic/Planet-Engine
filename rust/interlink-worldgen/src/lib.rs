@@ -5,6 +5,7 @@ mod climate_multiresolution;
 mod coordinates;
 mod diagnostics;
 mod drainage;
+mod erosion;
 mod fields;
 mod geology;
 mod hydroclimate;
@@ -45,6 +46,11 @@ pub use drainage::{
     generate_drainage_topology, DrainageBasin, DrainageDepression, DrainageMetrics,
     DrainageRequest, DrainageState, DRAINAGE_OUTLET_INTERNAL, DRAINAGE_OUTLET_NONE,
     DRAINAGE_OUTLET_OCEAN, DRAINAGE_STAGE_ID, DRAINAGE_STAGE_VERSION,
+};
+pub use erosion::{
+    generate_fluvial_erosion_sediment, FluvialErosionMetrics, FluvialErosionParameters,
+    FluvialErosionRequest, FluvialErosionState, FLUVIAL_EROSION_STAGE_ID,
+    FLUVIAL_EROSION_STAGE_VERSION,
 };
 pub use fields::{DenseU16Field, MAX_SYNTHETIC_SAMPLES};
 pub use geology::{
@@ -118,6 +124,7 @@ pub enum WorldgenError {
     InvalidTopography(&'static str),
     InvalidClimate(&'static str),
     InvalidHydrology(&'static str),
+    InvalidGeomorphology(&'static str),
 }
 impl fmt::Display for WorldgenError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -132,7 +139,8 @@ impl fmt::Display for WorldgenError {
             | Self::InvalidRefinement(message)
             | Self::InvalidTopography(message)
             | Self::InvalidClimate(message)
-            | Self::InvalidHydrology(message) => formatter.write_str(message),
+            | Self::InvalidHydrology(message)
+            | Self::InvalidGeomorphology(message) => formatter.write_str(message),
         }
     }
 }

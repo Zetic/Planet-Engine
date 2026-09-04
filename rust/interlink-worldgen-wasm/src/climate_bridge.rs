@@ -1,17 +1,18 @@
 use interlink_worldgen::{
     build_icosphere, generate_coupled_climate_with_diagnostics, generate_crust_and_history,
-    generate_drainage_topology, generate_initial_topography, generate_lakes_closed_basins,
-    generate_lithosphere, generate_runoff_discharge, generate_seasonal_hydrology,
-    generate_tectonics, inherit_boundary_interfaces, inherit_physical_state,
-    ClimatePhysicalParameters, ClimateRequest, ClimateState, DrainageRequest, DrainageState,
-    GeodesicTopology, GeologyRequest, InheritedBoundarySet, InheritedPhysicalState, LakeRequest,
-    LakeState, LithosphereRequest, PlanetPhysicalParameters, RunoffRequest, RunoffState,
+    generate_drainage_topology, generate_fluvial_erosion_sediment, generate_initial_topography,
+    generate_lakes_closed_basins, generate_lithosphere, generate_runoff_discharge,
+    generate_seasonal_hydrology, generate_tectonics, inherit_boundary_interfaces,
+    inherit_physical_state, ClimatePhysicalParameters, ClimateRequest, ClimateState,
+    DrainageRequest, DrainageState, FluvialErosionRequest, FluvialErosionState, GeodesicTopology,
+    GeologyRequest, InheritedBoundarySet, InheritedPhysicalState, LakeRequest, LakeState,
+    LithosphereRequest, PlanetPhysicalParameters, RunoffRequest, RunoffState,
     SeasonalHydrologyRequest, SeasonalHydrologyState, TectonicsRequest, TopographyRequest,
     TopographyState, WORLDGEN_ENGINE_VERSION,
 };
 use wasm_bindgen::prelude::*;
 
-const GENERATION_STAGE_COUNT: u32 = 14;
+const GENERATION_STAGE_COUNT: u32 = 15;
 
 fn report_generation_progress(
     callback: Option<&js_sys::Function>,
@@ -44,6 +45,7 @@ pub struct WasmWorldgenClimate {
     runoff: RunoffState,
     lakes: LakeState,
     seasonal: SeasonalHydrologyState,
+    erosion: FluvialErosionState,
     planet: PlanetPhysicalParameters,
     climate_physical: ClimatePhysicalParameters,
     precipitation_phase_rate_mm_year: Vec<f32>,
@@ -212,6 +214,20 @@ impl WasmWorldgenClimate {
         )
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
         report_generation_progress(progress, "seasonal-hydrology", 12, 1, 1);
+
+        report_generation_progress(progress, "fluvial-erosion-sediment", 13, 0, 1);
+        let erosion = generate_fluvial_erosion_sediment(
+            &fine_topology,
+            &inherited,
+            &terrain,
+            &drainage,
+            &lakes,
+            &seasonal,
+            planet,
+            &FluvialErosionRequest::new(seed.as_str()),
+        )
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        report_generation_progress(progress, "fluvial-erosion-sediment", 13, 1, 1);
         let precipitation_phase_rate_mm_year = diagnostics.precipitation_phase_rate_mm_year;
 
         Ok(Self {
@@ -224,6 +240,7 @@ impl WasmWorldgenClimate {
             runoff,
             lakes,
             seasonal,
+            erosion,
             planet,
             climate_physical,
             precipitation_phase_rate_mm_year,
@@ -1093,5 +1110,102 @@ impl WasmWorldgenClimate {
     }
     pub fn seasonal_phase_lake_volume_m3(&self) -> Vec<f64> {
         self.seasonal.phase_lake_volume_m3.clone()
+    }
+
+    pub fn erosion_stage_id(&self) -> String {
+        self.erosion.stage.id.to_owned()
+    }
+    pub fn erosion_stage_version(&self) -> u32 {
+        self.erosion.stage.version
+    }
+    pub fn erosion_stage_seed_hex(&self) -> String {
+        format!("{:016x}", self.erosion.stage.derived_seed)
+    }
+    pub fn fluvial_erosion_hash_hex(&self) -> String {
+        self.erosion.metrics.fluvial_erosion_hash_hex()
+    }
+    pub fn erosion_parameter_hash_hex(&self) -> String {
+        self.erosion.metrics.erosion_parameter_hash_hex()
+    }
+    pub fn erosion_inheritance_hash_hex(&self) -> String {
+        self.erosion.metrics.inheritance_hash_hex()
+    }
+    pub fn erosion_topography_hash_hex(&self) -> String {
+        self.erosion.metrics.topography_hash_hex()
+    }
+    pub fn erosion_drainage_hash_hex(&self) -> String {
+        self.erosion.metrics.drainage_hash_hex()
+    }
+    pub fn erosion_lake_hash_hex(&self) -> String {
+        self.erosion.metrics.lake_hash_hex()
+    }
+    pub fn erosion_seasonal_hydrology_hash_hex(&self) -> String {
+        self.erosion.metrics.seasonal_hydrology_hash_hex()
+    }
+    pub fn erosive_sample_count(&self) -> u32 {
+        self.erosion.metrics.erosive_sample_count
+    }
+    pub fn active_lake_trap_count(&self) -> u32 {
+        self.erosion.metrics.active_lake_trap_count
+    }
+    pub fn maximum_effective_discharge_m3_s(&self) -> f64 {
+        self.erosion.metrics.maximum_effective_discharge_m3_s
+    }
+    pub fn maximum_channel_slope(&self) -> f64 {
+        self.erosion.metrics.maximum_channel_slope
+    }
+    pub fn maximum_channel_width_m(&self) -> f64 {
+        self.erosion.metrics.maximum_channel_width_m
+    }
+    pub fn maximum_incision_potential_m_per_year(&self) -> f64 {
+        self.erosion.metrics.maximum_incision_potential_m_per_year
+    }
+    pub fn total_sediment_generated_kg_s(&self) -> f64 {
+        self.erosion.metrics.total_sediment_generated_kg_s
+    }
+    pub fn total_land_deposition_kg_s(&self) -> f64 {
+        self.erosion.metrics.total_land_deposition_kg_s
+    }
+    pub fn total_lake_deposition_kg_s(&self) -> f64 {
+        self.erosion.metrics.total_lake_deposition_kg_s
+    }
+    pub fn total_terminal_ocean_deposition_kg_s(&self) -> f64 {
+        self.erosion.metrics.total_terminal_ocean_deposition_kg_s
+    }
+    pub fn maximum_sediment_load_kg_s(&self) -> f64 {
+        self.erosion.metrics.maximum_sediment_load_kg_s
+    }
+    pub fn sediment_conservation_relative_error(&self) -> f64 {
+        self.erosion.metrics.sediment_conservation_relative_error
+    }
+    pub fn effective_discharge_m3_s(&self) -> Vec<f32> {
+        self.erosion.effective_discharge_m3_s.clone()
+    }
+    pub fn channel_slope(&self) -> Vec<f32> {
+        self.erosion.channel_slope.clone()
+    }
+    pub fn channel_width_m(&self) -> Vec<f32> {
+        self.erosion.channel_width_m.clone()
+    }
+    pub fn erodibility_index(&self) -> Vec<f32> {
+        self.erosion.erodibility_index.clone()
+    }
+    pub fn stream_power_index(&self) -> Vec<f32> {
+        self.erosion.stream_power_index.clone()
+    }
+    pub fn incision_potential_m_per_year(&self) -> Vec<f32> {
+        self.erosion.incision_potential_m_per_year.clone()
+    }
+    pub fn local_sediment_supply_kg_s(&self) -> Vec<f32> {
+        self.erosion.local_sediment_supply_kg_s.clone()
+    }
+    pub fn sediment_transport_capacity_kg_s(&self) -> Vec<f32> {
+        self.erosion.sediment_transport_capacity_kg_s.clone()
+    }
+    pub fn sediment_load_kg_s(&self) -> Vec<f32> {
+        self.erosion.sediment_load_kg_s.clone()
+    }
+    pub fn sediment_deposition_kg_s(&self) -> Vec<f32> {
+        self.erosion.sediment_deposition_kg_s.clone()
     }
 }

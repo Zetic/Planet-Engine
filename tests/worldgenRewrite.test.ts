@@ -53,9 +53,9 @@ import {
   worldgenTopologyCommand,
 } from '../dist/worldgen/protocol.js';
 
-const PROTOCOL = 14;
+const PROTOCOL = 15;
 
-test('Planet Engine browser protocol v14 preserves WG-0 through WG-3.75 contracts', () => {
+test('Planet Engine browser protocol v15 preserves WG-0 through WG-3.75 contracts', () => {
   assert.equal(WORLDGEN_PROTOCOL_VERSION, PROTOCOL);
   assert.equal(WORLDGEN_SYNTHETIC_MAX_SAMPLES, 4_194_304);
   assert.equal(WORLDGEN_TOPOLOGY_MAX_LEVEL, 7);
@@ -107,7 +107,7 @@ test('Planet Engine browser protocol v14 preserves WG-0 through WG-3.75 contract
   assert.throws(() => validateInheritanceRequest({ seed: 'x', coarseLevel: 5, fineLevel: 4, plateCount: 16 }), /fine level/i);
 });
 
-test('Planet Engine source stays independent from legacy gameplay world objects through WG-6D', () => {
+test('Planet Engine source stays independent from legacy gameplay world objects through WG-7A', () => {
   const files = [
     'src/worldgen/protocol.ts',
     'src/worldgen/worldgenClient.ts',

@@ -138,7 +138,7 @@ single downstream accumulation traversal
 potential annualized discharge
 ```
 
-The primary browser Lab obtains WG-6A and WG-6B from the same cumulative generation result as WG-5, so inspecting hydrology does not issue a second climate or drainage generation. WG-6B originally entered the cumulative browser contract at protocol version `12`; the current cumulative Lab contract is protocol version `14` through WG-6D.
+The primary browser Lab obtains WG-6A and WG-6B from the same cumulative generation result as WG-5, so inspecting hydrology does not issue a second climate or drainage generation. WG-6B originally entered the cumulative browser contract at protocol version `12`; the current cumulative Lab contract is protocol version `15` through WG-7A.
 
 ## Annual water balance
 
@@ -506,9 +506,9 @@ Wall-clock runtime is measured and documented but intentionally not hard-gated i
 
 ## Browser diagnostic surface
 
-`index.html` is the single public Planet Engine Lab entrypoint through WG-6D. The former `drainage.html` and `worldgen-lab.html` entrypoints and the standalone drainage-page controller remain removed. Browser/WASM protocol version `14` carries WG-6D in the same cumulative result as WG-5, WG-6A, WG-6B, and WG-6C, so the primary Lab still performs one matched physical generation rather than issuing a redundant hydrology request.
+`index.html` is the single public Planet Engine Lab entrypoint through WG-7A. The former `drainage.html` and `worldgen-lab.html` entrypoints and the standalone drainage-page controller remain removed. Browser/WASM protocol version `15` carries WG-7A after WG-6D in the same cumulative result as WG-5, WG-6A, WG-6B, and WG-6C, so the primary Lab still performs one matched physical generation rather than issuing a redundant hydrology or erosion request.
 
-The cumulative Lab retains all prior WG-6 diagnostics and adds:
+The cumulative Lab retains all prior WG-6 diagnostics and exposes WG-7A erosion/sediment diagnostics beside them. WG-6D adds:
 
 - seasonal realized discharge at the selected orbital phase;
 - realized-flow presence fraction;
@@ -519,4 +519,4 @@ The existing season/orbital-phase control drives the phase-indexed WG-6D fields.
 
 ## Deferred
 
-WG-6D completes the planned WG-6 generation-time surface-hydrology stack through phase runoff/discharge timing, snow accumulation/melt timing, dynamic seasonal lake storage, and dry/intermittent/perennial realized-flow classification. It does not model individual storms or flood peaks, groundwater, permanent snow/glacier mass balance, river width/depth or hydraulic geometry, floodplains/wetlands, channel migration, erosion, sediment transport, deltas, biomes, resources, or gameplay geography. Terrain response, incision, and sediment transport remain WG-7 or later stages.
+WG-6D completes the planned WG-6 generation-time surface-hydrology stack through phase runoff/discharge timing, snow accumulation/melt timing, dynamic seasonal lake storage, and dry/intermittent/perennial realized-flow classification. It does not model individual storms or flood peaks, groundwater, permanent snow/glacier mass balance, floodplains/wetlands, channel migration, deltas, biomes, resources, or gameplay geography. WG-7A now consumes this accepted hydrology to derive diagnostic hydraulic channel width, erosive forcing, incision potential, and conservative sediment transport/deposition. Applied terrain response, valley development, sedimentary fill, and drainage recalculation remain WG-7B or later stages.
