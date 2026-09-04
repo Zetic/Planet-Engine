@@ -157,3 +157,27 @@ WG-4 acceptance requires finite sample-aligned component and final elevation fie
 ## WG-5 coupled-climate gates
 
 WG-5 requires deterministic identity, annual thermal convergence, atmospheric moisture conservation, finite sample-aligned climate fields, small projected ocean divergence, and permanent L7 execution. Stage `4` additionally requires runtime moisture donor-limiter occupancy below `1%` and same-coarse L6→L7 global precipitation drift below `10%` on seed `ci-wg5-l7`, coarse L5, 24 plates. This directly guards against recurrence of the former resolution-cap-dominated single-sweep moisture routing.
+
+## WG-7A fluvial-erosion and sediment gates
+
+WG-7A is accepted as a deterministic, conservative forcing/routing stage before terrain mutation:
+
+- all WG-7A fields align on the canonical fine topology;
+- the supplied WG-6D state retains the exact accepted WG-6A drainage and WG-6C lake ancestry;
+- the complete phase-major WG-6D realized-discharge field is present and finite;
+- effective erosive discharge is peak-sensitive and deterministic across the retained seasonal hydrograph;
+- receiver slope and channel length come only from the accepted WG-6A receiver edge and immutable WG-4 solid terrain;
+- hydraulic channel width remains finite, positive for positive effective discharge, and inside the parameterized bounds;
+- inherited erodibility remains in `[0.05, 1]` and responds monotonically to the documented strength/weakness/fragmentation/fabric terms;
+- diagnostic incision is finite, nonnegative, bounded by the parameterized ceiling, and does not mutate WG-4 terrain;
+- sediment production uses receiver-segment length and discharge-derived channel width rather than dual-cell area;
+- sediment transport follows the accepted WG-6A upstream-to-downstream order;
+- every member of an active WG-6C depression acts as a complete first-pass sediment trap, preventing dry depression members from bypassing the lake control volume;
+- generated sediment closes into land, lake, and terminal/ocean deposition within `1e-10` in permanent CI;
+- the fixed-ancestry L6/L7 diagnostic is interpreted as a resolution-sensitivity check rather than per-cell equality, with accepted generated-sediment drift around 11.9% for seed `ci-wg5-l7`;
+- every public WG-7A vector and upstream ancestry identity participates in deterministic hashing;
+- browser/WASM protocol v15 carries WG-7A in the same cumulative planet result, and the primary Lab exposes the accepted WG-7A diagnostic fields without a second generation request;
+- WG-4 terrain, WG-6A receiver/depression topology, and all accepted WG-6 hydrology remain unchanged by WG-7A.
+
+`bash scripts/check-wg7a-erosion.sh` is the permanent fixed L4 acceptance path. It checks canonical dimensions, nonempty erosive behavior, finite positive forcing, deterministic hash formatting, and global sediment closure. Native unit regressions additionally cover peak-sensitive effective discharge, inherited erodibility, bounded incision, hydraulic-width scaling, complete lake-depression trapping, ocean export, and mass conservation.
+
