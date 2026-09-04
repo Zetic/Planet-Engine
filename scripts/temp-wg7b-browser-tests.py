@@ -8,6 +8,7 @@ for path in sorted(Path('tests').glob('*.test.ts')):
     updated = updated.replace('WORLDGEN_PROTOCOL_VERSION, 15', 'WORLDGEN_PROTOCOL_VERSION, 16')
     updated = updated.replace('const PROTOCOL = 15;', 'const PROTOCOL = 16;')
     updated = updated.replace('protocolVersion: 15', 'protocolVersion: 16')
+    updated = updated.replace('protocolVersion, 15', 'protocolVersion, 16')
     if updated != text:
         path.write_text(updated)
         changed += 1
