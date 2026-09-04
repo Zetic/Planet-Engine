@@ -124,17 +124,22 @@ fn dry_planet_resolves_to_an_explicit_internal_terminal() {
     assert_eq!(drainage.metrics.ocean_sample_count, 0);
     assert!(topography.submerged_mask.iter().all(|value| *value == 0));
 
-    let internal = drainage
-        .outlet_kind
+    let internal_terminals = drainage
+        .receiver
         .iter()
         .enumerate()
-        .filter(|(_, kind)| **kind == DRAINAGE_OUTLET_INTERNAL)
+        .filter(|(index, receiver)| {
+            **receiver == INVALID_SAMPLE_ID
+                && drainage.outlet_kind[*index] == DRAINAGE_OUTLET_INTERNAL
+        })
         .map(|(index, _)| index as u32)
         .collect::<Vec<_>>();
-    assert_eq!(internal.len(), 1);
+    assert_eq!(internal_terminals.len(), 1);
+    let internal = internal_terminals[0];
+    assert!(drainage.outlet_sample.iter().all(|outlet| *outlet == internal));
     assert!(drainage
-        .outlet_sample
+        .outlet_kind
         .iter()
-        .all(|outlet| *outlet == internal[0]));
+        .all(|kind| *kind == DRAINAGE_OUTLET_INTERNAL));
     assert!(drainage.metrics.area_conservation_relative_error < 1.0e-12);
 }
