@@ -107,7 +107,7 @@ test('Planet Engine browser protocol v15 preserves WG-0 through WG-3.75 contract
   assert.throws(() => validateInheritanceRequest({ seed: 'x', coarseLevel: 5, fineLevel: 4, plateCount: 16 }), /fine level/i);
 });
 
-test('Planet Engine source stays independent from legacy gameplay world objects through WG-6D', () => {
+test('Planet Engine source stays independent from legacy gameplay world objects through WG-7A', () => {
   const files = [
     'src/worldgen/protocol.ts',
     'src/worldgen/worldgenClient.ts',
