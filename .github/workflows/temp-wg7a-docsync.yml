@@ -1,0 +1,40 @@
+name: Temporary WG-7A Documentation Sync
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    if: github.event.pull_request.head.ref == 'wg7a-fluvial-erosion-sediment'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: wg7a-fluvial-erosion-sediment
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install dependencies
+        run: npm ci
+      - name: Synchronize WG-7A docs
+        run: python scripts/temp-wg7a-docsync.py
+      - name: Validate browser documentation contracts
+        run: |
+          npm run build
+          npm run test:ts
+          bash scripts/check-wg7a-erosion.sh
+      - name: Remove temporary tooling
+        run: |
+          rm -f scripts/temp-wg7a-docsync.py
+          rm -f .github/workflows/temp-wg7a-docsync.yml
+      - name: Commit WG-7A documentation sync
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Finalize WG-7A documentation contracts'
+          git push origin HEAD:wg7a-fluvial-erosion-sediment
