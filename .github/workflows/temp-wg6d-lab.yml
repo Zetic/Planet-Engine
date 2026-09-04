@@ -65,6 +65,7 @@ jobs:
               text = text.replace('PLANET ENGINE · THROUGH WG-6C', 'PLANET ENGINE · THROUGH WG-6D')
               text = text.replace('THROUGH WG-6C', 'THROUGH WG-6D')
               text = text.replace('through WG-6C', 'through WG-6D')
+              text = text.replace('WG-6B annual runoff\\/discharge, and WG-6C lake equilibrium', 'WG-6B annual runoff\\/discharge, WG-6C lake equilibrium, and WG-6D seasonal hydrology')
               path.write_text(text)
           PY
       - name: Build and validate cumulative Lab
