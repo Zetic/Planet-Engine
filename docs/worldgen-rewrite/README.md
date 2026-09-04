@@ -13,6 +13,7 @@ This directory defines the greenfield Planet Engine rewrite that runs in paralle
 - [`RESOLUTION.md`](RESOLUTION.md) — process-specific multiresolution policy.
 - [`DETERMINISM.md`](DETERMINISM.md) — generator/stage identity and random-stream isolation.
 - [`VALIDATION.md`](VALIDATION.md) — numerical, topology, and physical acceptance gates.
+- [`WG7_EROSION.md`](WG7_EROSION.md) — WG-7A fluvial erosive forcing, hydraulic channel geometry, sediment routing/conservation, and deferred terrain mutation.
 
 The complete rewrite blueprint from planning is reflected across these reviewable architecture documents.
 
@@ -95,7 +96,12 @@ WG-3.75 breaks the temporary same-resolution coupling before terrain generation:
 
 WG-3.75 is still foundation work. It generates no elevation, bathymetry, sea-level solution, climate, hydrology, erosion, resources, Regions, Features, or gameplay cutover. WG-4 consumes this accepted finer substrate instead of rerunning tectonics/geology at terrain resolution.
 
-
 ## WG-4
 
 WG-4 derives initial solid elevation, tectonic bathymetry, a deterministic vertical datum, and water-volume-conserving sea level from accepted WG-3.75 truth. See `TOPOGRAPHY.md`.
+
+## WG-7A — fluvial erosion and sediment foundation
+
+WG-7A is the first geomorphology stage after accepted hydrology. It derives peak-sensitive effective discharge from WG-6D seasonal realized flow, receiver slope and hydraulic channel width from accepted terrain/drainage geometry, lithosphere-derived erodibility, bounded diagnostic incision potential, and conservative sediment production/transport/deposition.
+
+WG-7A deliberately leaves WG-4 terrain and WG-6 drainage/hydrology unchanged. Active WG-6C lake depressions are complete first-pass sediment traps, and global generated sediment must close into land, lake, and terminal/ocean deposition. See [`WG7_EROSION.md`](WG7_EROSION.md) for the complete causality, invariants, benchmarks, browser protocol, and WG-7B deferral contract.
