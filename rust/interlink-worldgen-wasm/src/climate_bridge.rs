@@ -1,16 +1,17 @@
 use interlink_worldgen::{
     build_icosphere, generate_coupled_climate_with_diagnostics, generate_crust_and_history,
     generate_drainage_topology, generate_initial_topography, generate_lakes_closed_basins,
-    generate_lithosphere, generate_runoff_discharge, generate_tectonics,
-    inherit_boundary_interfaces, inherit_physical_state, ClimatePhysicalParameters, ClimateRequest,
-    ClimateState, DrainageRequest, DrainageState, GeodesicTopology, GeologyRequest,
-    InheritedBoundarySet, InheritedPhysicalState, LakeRequest, LakeState, LithosphereRequest,
-    PlanetPhysicalParameters, RunoffRequest, RunoffState, TectonicsRequest, TopographyRequest,
+    generate_lithosphere, generate_runoff_discharge, generate_seasonal_hydrology,
+    generate_tectonics, inherit_boundary_interfaces, inherit_physical_state,
+    ClimatePhysicalParameters, ClimateRequest, ClimateState, DrainageRequest, DrainageState,
+    GeodesicTopology, GeologyRequest, InheritedBoundarySet, InheritedPhysicalState, LakeRequest,
+    LakeState, LithosphereRequest, PlanetPhysicalParameters, RunoffRequest, RunoffState,
+    SeasonalHydrologyRequest, SeasonalHydrologyState, TectonicsRequest, TopographyRequest,
     TopographyState, WORLDGEN_ENGINE_VERSION,
 };
 use wasm_bindgen::prelude::*;
 
-const GENERATION_STAGE_COUNT: u32 = 13;
+const GENERATION_STAGE_COUNT: u32 = 14;
 
 fn report_generation_progress(
     callback: Option<&js_sys::Function>,
@@ -42,6 +43,7 @@ pub struct WasmWorldgenClimate {
     drainage: DrainageState,
     runoff: RunoffState,
     lakes: LakeState,
+    seasonal: SeasonalHydrologyState,
     planet: PlanetPhysicalParameters,
     climate_physical: ClimatePhysicalParameters,
     precipitation_phase_rate_mm_year: Vec<f32>,
@@ -160,7 +162,6 @@ impl WasmWorldgenClimate {
             &mut climate_progress,
         )
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
-        let precipitation_phase_rate_mm_year = diagnostics.precipitation_phase_rate_mm_year;
 
         report_generation_progress(progress, "drainage-topology", 9, 0, 1);
         let drainage = generate_drainage_topology(
@@ -197,6 +198,22 @@ impl WasmWorldgenClimate {
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
         report_generation_progress(progress, "lake-equilibrium", 11, 1, 1);
 
+        report_generation_progress(progress, "seasonal-hydrology", 12, 0, 1);
+        let seasonal = generate_seasonal_hydrology(
+            &fine_topology,
+            &terrain,
+            &climate,
+            &diagnostics,
+            &drainage,
+            &runoff,
+            &lakes,
+            planet,
+            &SeasonalHydrologyRequest::new(seed.as_str()),
+        )
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        report_generation_progress(progress, "seasonal-hydrology", 12, 1, 1);
+        let precipitation_phase_rate_mm_year = diagnostics.precipitation_phase_rate_mm_year;
+
         Ok(Self {
             fine_topology,
             inherited,
@@ -206,6 +223,7 @@ impl WasmWorldgenClimate {
             drainage,
             runoff,
             lakes,
+            seasonal,
             planet,
             climate_physical,
             precipitation_phase_rate_mm_year,
@@ -947,5 +965,133 @@ impl WasmWorldgenClimate {
             .iter()
             .map(|lake| lake.spill_sample)
             .collect()
+    }
+
+    pub fn seasonal_stage_id(&self) -> String {
+        self.seasonal.stage.id.to_owned()
+    }
+    pub fn seasonal_stage_version(&self) -> u32 {
+        self.seasonal.stage.version
+    }
+    pub fn seasonal_stage_seed_hex(&self) -> String {
+        format!("{:016x}", self.seasonal.stage.derived_seed)
+    }
+    pub fn seasonal_hydrology_hash_hex(&self) -> String {
+        self.seasonal.metrics.seasonal_hydrology_hash_hex()
+    }
+    pub fn seasonal_parameter_hash_hex(&self) -> String {
+        self.seasonal.metrics.seasonal_parameter_hash_hex()
+    }
+    pub fn seasonal_climate_hash_hex(&self) -> String {
+        self.seasonal.metrics.climate_hash_hex()
+    }
+    pub fn seasonal_drainage_hash_hex(&self) -> String {
+        self.seasonal.metrics.drainage_hash_hex()
+    }
+    pub fn seasonal_runoff_hash_hex(&self) -> String {
+        self.seasonal.metrics.runoff_hash_hex()
+    }
+    pub fn seasonal_lake_hash_hex(&self) -> String {
+        self.seasonal.metrics.lake_hash_hex()
+    }
+    pub fn seasonal_dry_flow_sample_count(&self) -> u32 {
+        self.seasonal.metrics.dry_flow_sample_count
+    }
+    pub fn seasonal_intermittent_flow_sample_count(&self) -> u32 {
+        self.seasonal.metrics.intermittent_flow_sample_count
+    }
+    pub fn seasonal_perennial_flow_sample_count(&self) -> u32 {
+        self.seasonal.metrics.perennial_flow_sample_count
+    }
+    pub fn maximum_phase_local_runoff_m3_s(&self) -> f64 {
+        self.seasonal.metrics.maximum_phase_local_runoff_m3_s
+    }
+    pub fn maximum_phase_potential_discharge_m3_s(&self) -> f64 {
+        self.seasonal.metrics.maximum_phase_potential_discharge_m3_s
+    }
+    pub fn maximum_phase_realized_discharge_m3_s(&self) -> f64 {
+        self.seasonal.metrics.maximum_phase_realized_discharge_m3_s
+    }
+    pub fn snowmelt_runoff_fraction(&self) -> f64 {
+        self.seasonal.metrics.snowmelt_runoff_fraction
+    }
+    pub fn annual_mean_seasonal_local_runoff_m3_s(&self) -> f64 {
+        self.seasonal.metrics.annual_mean_local_runoff_m3_s
+    }
+    pub fn annual_local_runoff_closure_relative_error(&self) -> f64 {
+        self.seasonal
+            .metrics
+            .annual_local_runoff_closure_relative_error
+    }
+    pub fn annual_mean_terminal_potential_discharge_m3_s(&self) -> f64 {
+        self.seasonal
+            .metrics
+            .annual_mean_terminal_potential_discharge_m3_s
+    }
+    pub fn seasonal_routing_conservation_relative_error(&self) -> f64 {
+        self.seasonal
+            .metrics
+            .seasonal_routing_conservation_relative_error
+    }
+    pub fn annual_mean_terminal_seasonal_realized_discharge_m3_s(&self) -> f64 {
+        self.seasonal
+            .metrics
+            .annual_mean_terminal_realized_discharge_m3_s
+    }
+    pub fn annual_mean_seasonal_lake_precipitation_m3_s(&self) -> f64 {
+        self.seasonal.metrics.annual_mean_lake_precipitation_m3_s
+    }
+    pub fn annual_mean_seasonal_lake_evaporation_m3_s(&self) -> f64 {
+        self.seasonal.metrics.annual_mean_lake_evaporation_m3_s
+    }
+    pub fn annual_mean_seasonal_unreleased_terminal_storage_m3_s(&self) -> f64 {
+        self.seasonal
+            .metrics
+            .annual_mean_unreleased_terminal_storage_m3_s
+    }
+    pub fn seasonal_water_balance_relative_error(&self) -> f64 {
+        self.seasonal.metrics.seasonal_water_balance_relative_error
+    }
+    pub fn seasonal_lake_spinup_years(&self) -> u8 {
+        self.seasonal.metrics.lake_spinup_years
+    }
+    pub fn final_lake_cycle_relative_change(&self) -> f64 {
+        self.seasonal.metrics.final_lake_cycle_relative_change
+    }
+    pub fn final_lake_surface_cycle_change_m(&self) -> f64 {
+        self.seasonal.metrics.final_lake_surface_cycle_change_m
+    }
+    pub fn maximum_seasonal_lake_level_range_m(&self) -> f64 {
+        self.seasonal.metrics.maximum_seasonal_lake_level_range_m
+    }
+    pub fn seasonal_phase_local_runoff_m3_s(&self) -> Vec<f32> {
+        self.seasonal.phase_local_runoff_m3_s.clone()
+    }
+    pub fn seasonal_phase_snowmelt_runoff_m3_s(&self) -> Vec<f32> {
+        self.seasonal.phase_snowmelt_runoff_m3_s.clone()
+    }
+    pub fn seasonal_phase_snow_storage_mm(&self) -> Vec<f32> {
+        self.seasonal.phase_snow_storage_mm.clone()
+    }
+    pub fn seasonal_phase_potential_discharge_m3_s(&self) -> Vec<f32> {
+        self.seasonal.phase_potential_discharge_m3_s.clone()
+    }
+    pub fn seasonal_phase_realized_discharge_m3_s(&self) -> Vec<f32> {
+        self.seasonal.phase_realized_discharge_m3_s.clone()
+    }
+    pub fn seasonal_flow_presence_fraction(&self) -> Vec<f32> {
+        self.seasonal.flow_presence_fraction.clone()
+    }
+    pub fn seasonal_flow_regime(&self) -> Vec<u8> {
+        self.seasonal.flow_regime.clone()
+    }
+    pub fn seasonal_phase_lake_surface_elevation_m(&self) -> Vec<f32> {
+        self.seasonal.phase_lake_surface_elevation_m.clone()
+    }
+    pub fn seasonal_phase_lake_area_m2(&self) -> Vec<f64> {
+        self.seasonal.phase_lake_area_m2.clone()
+    }
+    pub fn seasonal_phase_lake_volume_m3(&self) -> Vec<f64> {
+        self.seasonal.phase_lake_volume_m3.clone()
     }
 }

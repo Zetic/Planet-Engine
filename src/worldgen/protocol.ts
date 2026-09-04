@@ -1,4 +1,4 @@
-export const WORLDGEN_PROTOCOL_VERSION = 13;
+export const WORLDGEN_PROTOCOL_VERSION = 14;
 export const WORLDGEN_SYNTHETIC_MAX_SAMPLES = 4_194_304;
 export const WORLDGEN_TOPOLOGY_MAX_LEVEL = 7;
 export const WORLDGEN_TECTONICS_MAX_LEVEL = 6;
@@ -579,6 +579,18 @@ export interface WorldgenClimateResult {
   lakeVolumesM3: Float64Array;
   lakeOutflowsM3S: Float64Array;
   lakeSpillSamples: Uint32Array;
+  seasonalStage: WorldgenStageMetadata;
+  seasonalMetrics: WorldgenSeasonalHydrologyMetrics;
+  seasonalPhaseLocalRunoffM3S: Float32Array;
+  seasonalPhaseSnowmeltRunoffM3S: Float32Array;
+  seasonalPhaseSnowStorageMm: Float32Array;
+  seasonalPhasePotentialDischargeM3S: Float32Array;
+  seasonalPhaseRealizedDischargeM3S: Float32Array;
+  seasonalFlowPresenceFraction: Float32Array;
+  seasonalFlowRegime: Uint8Array;
+  seasonalPhaseLakeSurfaceElevationM: Float32Array;
+  seasonalPhaseLakeAreaM2: Float64Array;
+  seasonalPhaseLakeVolumeM3: Float64Array;
 }
 
 
@@ -638,6 +650,39 @@ export interface WorldgenLakeMetrics {
   drainageHash: string;
   runoffHash: string;
   lakeHash: string;
+}
+
+
+export interface WorldgenSeasonalHydrologyMetrics {
+  sampleCount: number;
+  orbitalPhaseCount: number;
+  activeLakeCount: number;
+  dryFlowSampleCount: number;
+  intermittentFlowSampleCount: number;
+  perennialFlowSampleCount: number;
+  maximumPhaseLocalRunoffM3S: number;
+  maximumPhasePotentialDischargeM3S: number;
+  maximumPhaseRealizedDischargeM3S: number;
+  snowmeltRunoffFraction: number;
+  annualMeanLocalRunoffM3S: number;
+  annualLocalRunoffClosureRelativeError: number;
+  annualMeanTerminalPotentialDischargeM3S: number;
+  seasonalRoutingConservationRelativeError: number;
+  annualMeanTerminalRealizedDischargeM3S: number;
+  annualMeanLakePrecipitationM3S: number;
+  annualMeanLakeEvaporationM3S: number;
+  annualMeanUnreleasedTerminalStorageM3S: number;
+  seasonalWaterBalanceRelativeError: number;
+  lakeSpinupYears: number;
+  finalLakeCycleRelativeChange: number;
+  finalLakeSurfaceCycleChangeM: number;
+  maximumSeasonalLakeLevelRangeM: number;
+  seasonalParameterHash: string;
+  climateHash: string;
+  drainageHash: string;
+  runoffHash: string;
+  lakeHash: string;
+  seasonalHydrologyHash: string;
 }
 
 export interface WorldgenDrainageResult {
