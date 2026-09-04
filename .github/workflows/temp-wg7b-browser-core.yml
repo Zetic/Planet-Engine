@@ -26,24 +26,30 @@ jobs:
         run: |
           rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown
           rustup default stable
+      - name: Install pinned wasm-bindgen CLI
+        run: cargo install wasm-bindgen-cli --version 0.2.127 --locked
       - name: Apply WG-7B browser core transformer
-        run: python scripts/temp-wg7b-browser-core.py
+        run: |
+          python scripts/temp-wg7b-browser-core.py
+          python scripts/temp-wg7b-browser-tests.py
       - name: Format touched Rust bridge files
         run: |
           rustfmt --edition 2021 rust/interlink-worldgen-wasm/src/lib.rs rust/interlink-worldgen-wasm/src/climate_bridge.rs
       - name: Check Rust browser bridge
         run: cargo check -p interlink-worldgen-wasm --target wasm32-unknown-unknown
+      - name: Rebuild committed browser WASM package
+        run: npm run build:worldgen-wasm
       - name: Build browser modules
         run: npm run build
       - name: Run browser regressions
         run: npm run test:ts
-      - name: Remove temporary transformer
-        run: rm scripts/temp-wg7b-browser-core.py
+      - name: Remove temporary transformers
+        run: rm scripts/temp-wg7b-browser-core.py scripts/temp-wg7b-browser-tests.py
       - name: Commit WG-7B browser core integration
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add rust/interlink-worldgen-wasm/src/lib.rs rust/interlink-worldgen-wasm/src/climate_bridge.rs src/worldgen/protocol.ts src/worldgen/worldgenWorker.ts dist/worldgen scripts/temp-wg7b-browser-core.py
+          git add rust/interlink-worldgen-wasm/src/lib.rs rust/interlink-worldgen-wasm/src/climate_bridge.rs src/worldgen/protocol.ts src/worldgen/worldgenWorker.ts src/wasm-worldgen dist/worldgen tests scripts/temp-wg7b-browser-core.py scripts/temp-wg7b-browser-tests.py
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else
