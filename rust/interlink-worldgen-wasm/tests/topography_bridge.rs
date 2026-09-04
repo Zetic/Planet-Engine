@@ -3,7 +3,7 @@ use interlink_worldgen_wasm::WasmWorldgenTopography;
 #[test]
 fn topography_bridge_exposes_physical_surface_and_water_solution() {
     let output = WasmWorldgenTopography::new("wg4-wasm".to_owned(), 3, 4, 12).unwrap();
-    assert_eq!(output.generator_version(), 9);
+    assert_eq!(output.generator_version(), 10);
     assert_eq!(output.stage_id(), "terrain:initial-topography");
     assert_eq!(output.stage_version(), 2);
     assert_eq!(output.coarse_level(), 3);
