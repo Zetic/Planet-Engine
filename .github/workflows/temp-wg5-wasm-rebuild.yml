@@ -1,0 +1,49 @@
+name: Temporary WG-5 WASM Rebuild
+
+on:
+  push:
+    branches: [wg5-performance]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: temporary-wg5-wasm-rebuild
+  cancel-in-progress: true
+
+env:
+  RUST_VERSION: '1.98.1'
+  WASM_BINDGEN_VERSION: '0.2.127'
+
+jobs:
+  rebuild:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: wg5-performance
+          fetch-depth: 0
+      - name: Install pinned Rust and browser target
+        run: |
+          rustup toolchain install "${RUST_VERSION}" --profile minimal --target wasm32-unknown-unknown
+          rustup default "${RUST_VERSION}"
+      - name: Install wasm-bindgen CLI under pinned Rust
+        run: cargo +${RUST_VERSION} install wasm-bindgen-cli --version "${WASM_BINDGEN_VERSION}" --locked --force
+      - name: Record packaging toolchain
+        run: |
+          rustc --version
+          wasm-bindgen --version
+      - name: Rebuild committed browser WASM package
+        run: npm run build:worldgen-wasm
+      - name: Commit corrected generated package if needed
+        run: |
+          if git diff --quiet -- src/wasm-worldgen; then
+            echo 'WASM package already matches pinned packaging toolchain.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/wasm-worldgen
+          git commit -m 'Rebuild WG-5 WASM reproducibly'
+          git push origin HEAD:wg5-performance
