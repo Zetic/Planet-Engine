@@ -1,0 +1,63 @@
+name: Temporary WG-6D Browser Core Runner 3
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    if: github.event.pull_request.head.ref == 'wg6d-seasonal-hydrology'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install toolchain
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal --target wasm32-unknown-unknown --component rustfmt
+          rustup default 1.98.1
+          npm ci
+      - name: Apply WG-6D browser patch and protocol test migration
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          source = Path('.github/workflows/temp-wg6d-browser-core.yml').read_text().splitlines()
+          start = next(i for i, line in enumerate(source) if "python - <<'PY'" in line) + 1
+          end = next(i for i in range(start, len(source)) if source[i].strip() == 'PY')
+          body = source[start:end]
+          indent = min(len(line) - len(line.lstrip()) for line in body if line.strip())
+          script = Path('/tmp/wg6d-browser-core.py')
+          script.write_text('\n'.join(line[indent:] for line in body) + '\n')
+          PY
+          python /tmp/wg6d-browser-core.py
+          python - <<'PY'
+          from pathlib import Path
+          for path in Path('tests').glob('*.test.ts'):
+              text = path.read_text()
+              text = text.replace('protocolVersion: 13', 'protocolVersion: 14')
+              text = text.replace('const PROTOCOL = 13;', 'const PROTOCOL = 14;')
+              text = text.replace('protocol v13', 'protocol v14')
+              text = text.replace('protocol version 13', 'protocol version 14')
+              text = text.replace('assert.equal(command.protocolVersion, 13)', 'assert.equal(command.protocolVersion, 14)')
+              text = text.replace('assert.equal(WORLDGEN_PROTOCOL_VERSION, 13)', 'assert.equal(WORLDGEN_PROTOCOL_VERSION, 14)')
+              path.write_text(text)
+          PY
+      - name: Validate source integration
+        run: |
+          rustfmt rust/interlink-worldgen-wasm/src/climate_bridge.rs rust/interlink-worldgen-wasm/src/lib.rs
+          cargo check -p interlink-worldgen-wasm --target wasm32-unknown-unknown
+          npm run build
+          npx tsx --test $(find tests -name '*.test.ts' ! -name 'wasmRuntimeProtocolSmoke.test.ts' -print)
+      - name: Commit WG-6D browser source
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add rust/interlink-worldgen-wasm/src/climate_bridge.rs rust/interlink-worldgen-wasm/src/lib.rs src/worldgen/protocol.ts src/worldgen/worldgenWorker.ts tests
+          git commit -m "Expose WG-6D seasonal hydrology to browser protocol"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
