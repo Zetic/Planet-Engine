@@ -58,6 +58,15 @@ jobs:
           });
           EOF
           sed -i 's/^          //' tests/wg6Seasonal.test.ts
+          python - <<'PY'
+          from pathlib import Path
+          for path in Path('tests').glob('*.test.ts'):
+              text = path.read_text()
+              text = text.replace('PLANET ENGINE · THROUGH WG-6C', 'PLANET ENGINE · THROUGH WG-6D')
+              text = text.replace('THROUGH WG-6C', 'THROUGH WG-6D')
+              text = text.replace('through WG-6C', 'through WG-6D')
+              path.write_text(text)
+          PY
       - name: Build and validate cumulative Lab
         run: |
           npm run build
@@ -66,6 +75,6 @@ jobs:
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add index.html src/worldgen/diagnostics/worldgenClimateLabStandalone.ts dist/worldgen/diagnostics/worldgenClimateLabStandalone.js tests/pages.test.ts tests/wg4Topography.test.ts tests/wg6Seasonal.test.ts
+          git add index.html src/worldgen/diagnostics/worldgenClimateLabStandalone.ts dist/worldgen/diagnostics/worldgenClimateLabStandalone.js tests
           git commit -m "Add WG-6D seasonal diagnostics to Planet Engine Lab"
           git push origin HEAD:${{ github.event.pull_request.head.ref }}
