@@ -26,10 +26,10 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: '22'
           cache: npm
       - name: Install browser dependencies
-        run: npm ci
+        run: npm ci --prefer-offline --no-audit --no-fund
       - name: Apply WG-6A protocol integration
         run: |
           python scripts/temp-wg6a-browser-integrate.py
