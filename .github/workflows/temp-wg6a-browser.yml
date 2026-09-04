@@ -31,7 +31,9 @@ jobs:
       - name: Install browser dependencies
         run: npm ci
       - name: Apply WG-6A protocol integration
-        run: python scripts/temp-wg6a-browser-integrate.py
+        run: |
+          python scripts/temp-wg6a-browser-integrate.py
+          python scripts/temp-wg6a-refine.py
       - name: Install pinned Rust and browser target
         run: |
           rustup toolchain install "${RUST_VERSION}" --profile minimal --target wasm32-unknown-unknown --component rustfmt
@@ -40,14 +42,14 @@ jobs:
         run: |
           cargo fmt --all
           cargo test --workspace
-      - name: Build and test browser modules
-        run: |
-          npm run build
-          npm run test:ts
       - name: Install wasm-bindgen CLI under pinned Rust
         run: cargo +${RUST_VERSION} install wasm-bindgen-cli --version "${WASM_BINDGEN_VERSION}" --locked --force
       - name: Rebuild committed browser WASM package
         run: npm run build:worldgen-wasm
+      - name: Build and test browser modules
+        run: |
+          npm run build
+          npm run test:ts
       - name: Verify WG-6A generated browser module exists
         run: test -f dist/worldgen/diagnostics/worldgenDrainageLabStandalone.js
       - name: Commit integrated WG-6A browser transport
@@ -56,7 +58,10 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add \
             src/worldgen \
+            rust/interlink-worldgen/src/drainage.rs \
+            rust/interlink-worldgen/tests/drainage_topology.rs \
             rust/interlink-worldgen-wasm/src/lib.rs \
+            docs/worldgen-rewrite/WG6_HYDROLOGY.md \
             tests \
             dist \
             src/wasm-worldgen
