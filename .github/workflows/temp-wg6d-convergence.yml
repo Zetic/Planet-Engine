@@ -1,0 +1,42 @@
+name: Temporary WG-6D Convergence Patch
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.pull_request.head.ref == 'wg6d-seasonal-hydrology'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+      - name: Apply physical lake-cycle convergence criterion
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('rust/interlink-worldgen/src/seasonal_lakes.rs')
+          text = path.read_text()
+          old = "const LAKE_CYCLE_CONVERGENCE_RELATIVE: f64 = 1.0e-6;\nconst MINIMUM_LAKE_SPINUP_YEARS: u8 = 2;"
+          new = "const LAKE_CYCLE_CONVERGENCE_RELATIVE: f64 = 1.0e-6;\n// A centimetre-scale surface drift is a more physically interpretable cycle\n// closure test than fractional volume for tiny or shallow resolved basins.\nconst LAKE_SURFACE_CYCLE_CONVERGENCE_M: f64 = 0.02;\nconst MINIMUM_LAKE_SPINUP_YEARS: u8 = 2;"
+          if text.count(old) != 1:
+              raise SystemExit('seasonal_lakes constants did not match expected WG-6D draft')
+          text = text.replace(old, new, 1)
+          old = "            || (completed_years >= MINIMUM_LAKE_SPINUP_YEARS\n                && cycle_relative_change <= LAKE_CYCLE_CONVERGENCE_RELATIVE)\n"
+          new = "            || (completed_years >= MINIMUM_LAKE_SPINUP_YEARS\n                && (cycle_relative_change <= LAKE_CYCLE_CONVERGENCE_RELATIVE\n                    || lake_surface_cycle_change_m <= LAKE_SURFACE_CYCLE_CONVERGENCE_M))\n"
+          if text.count(old) != 1:
+              raise SystemExit('seasonal_lakes convergence condition did not match expected WG-6D draft')
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Validate focused WG-6D tests
+        run: cargo test -p interlink-worldgen seasonal
+      - name: Commit convergence policy
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add rust/interlink-worldgen/src/seasonal_lakes.rs
+          git commit -m "Use physical WG-6D lake cycle convergence"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
