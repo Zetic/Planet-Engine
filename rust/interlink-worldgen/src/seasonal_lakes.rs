@@ -28,6 +28,7 @@ pub(crate) struct SeasonalLakeRoutingResult {
     pub water_balance_relative_error: f64,
     pub lake_spinup_years: u8,
     pub final_lake_cycle_relative_change: f64,
+    pub final_lake_surface_cycle_change_m: f64,
     pub maximum_seasonal_lake_level_range_m: f64,
 }
 
@@ -170,7 +171,8 @@ fn build_active_lakes(
     let mut lake_by_depression = vec![INVALID_SAMPLE_ID; drainage.depressions.len()];
     for (lake_index, record) in lake_state.lakes.iter().enumerate() {
         let depression = record.depression_id as usize;
-        if depression >= drainage.depressions.len() || lake_by_depression[depression] != INVALID_SAMPLE_ID
+        if depression >= drainage.depressions.len()
+            || lake_by_depression[depression] != INVALID_SAMPLE_ID
         {
             return Err("WG-6D requires unique WG-6C lake records on known depressions");
         }
@@ -420,6 +422,7 @@ pub(crate) fn solve_seasonal_lake_routing(
     };
     let mut completed_years = 0_u8;
     let mut final_cycle_relative_change = 0.0_f64;
+    let mut final_lake_surface_cycle_change_m = 0.0_f64;
     let mut final_terminal_volume_m3 = 0.0_f64;
     let mut final_lake_precipitation_volume_m3 = 0.0_f64;
     let mut final_lake_evaporation_volume_m3 = 0.0_f64;
@@ -510,14 +513,11 @@ pub(crate) fn solve_seasonal_lake_routing(
                         continue;
                     }
                     let precipitation_rate_mm_year = f64::from(
-                        climate_diagnostics.precipitation_phase_rate_mm_year
-                            [phase_start + sample],
+                        climate_diagnostics.precipitation_phase_rate_mm_year[phase_start + sample],
                     );
-                    precipitation_rate_m3_s += precipitation_rate_mm_year
-                        * MM_TO_M
-                        * area_m2[sample]
-                        * fraction
-                        / planet.orbital_period_s;
+                    precipitation_rate_m3_s +=
+                        precipitation_rate_mm_year * MM_TO_M * area_m2[sample] * fraction
+                            / planet.orbital_period_s;
 
                     let temperature = reconstructed_temperature(
                         climate.temperature_mean_k[sample],
@@ -529,11 +529,9 @@ pub(crate) fn solve_seasonal_lake_routing(
                     let pet_rate_mm_year = f64::from(climate.potential_evaporation_mm[sample])
                         * pet_scale
                         * geometry.evaporation_scale;
-                    evaporation_rate_m3_s += pet_rate_mm_year
-                        * MM_TO_M
-                        * area_m2[sample]
-                        * fraction
-                        / planet.orbital_period_s;
+                    evaporation_rate_m3_s +=
+                        pet_rate_mm_year * MM_TO_M * area_m2[sample] * fraction
+                            / planet.orbital_period_s;
                 }
 
                 let precipitation_volume = precipitation_rate_m3_s * phase_seconds;
@@ -541,9 +539,8 @@ pub(crate) fn solve_seasonal_lake_routing(
                 lake_precipitation_volume_m3 += precipitation_volume;
 
                 let inflow_volume = lake_inflow_m3_s[lake_index] * phase_seconds;
-                let available_volume = current_volume_m3[lake_index]
-                    + inflow_volume
-                    + precipitation_volume;
+                let available_volume =
+                    current_volume_m3[lake_index] + inflow_volume + precipitation_volume;
                 let requested_evaporation_volume = evaporation_rate_m3_s * phase_seconds;
                 let actual_evaporation_volume = requested_evaporation_volume.min(available_volume);
                 lake_evaporation_volume_m3 += actual_evaporation_volume;
@@ -600,8 +597,10 @@ pub(crate) fn solve_seasonal_lake_routing(
                     surface,
                     None,
                 );
-                minimum_lake_surface_m[lake_index] = minimum_lake_surface_m[lake_index].min(surface);
-                maximum_lake_surface_m[lake_index] = maximum_lake_surface_m[lake_index].max(surface);
+                minimum_lake_surface_m[lake_index] =
+                    minimum_lake_surface_m[lake_index].min(surface);
+                maximum_lake_surface_m[lake_index] =
+                    maximum_lake_surface_m[lake_index].max(surface);
                 let index = phase * lake_count + lake_index;
                 phase_lake_surface_elevation_m[index] = surface as f32;
                 phase_lake_area_m2[index] = area;
@@ -610,14 +609,30 @@ pub(crate) fn solve_seasonal_lake_routing(
         }
 
         let mut cycle_relative_change = 0.0_f64;
+        let mut lake_surface_cycle_change_m = 0.0_f64;
         for (lake_index, geometry) in active_lakes.iter().enumerate() {
             let scale = geometry.maximum_volume_m3.max(1.0);
             cycle_relative_change = cycle_relative_change.max(
                 (current_volume_m3[lake_index] - year_start_volume_m3[lake_index]).abs() / scale,
             );
+            let start_surface = surface_for_volume(
+                geometry,
+                &topography.solid_elevation_m,
+                &area_m2,
+                year_start_volume_m3[lake_index],
+            );
+            let end_surface = surface_for_volume(
+                geometry,
+                &topography.solid_elevation_m,
+                &area_m2,
+                current_volume_m3[lake_index],
+            );
+            lake_surface_cycle_change_m =
+                lake_surface_cycle_change_m.max((end_surface - start_surface).abs());
         }
         completed_years = year + 1;
         final_cycle_relative_change = cycle_relative_change;
+        final_lake_surface_cycle_change_m = lake_surface_cycle_change_m;
         final_start_storage_m3 = year_start_volume_m3.iter().sum::<f64>();
         final_end_storage_m3 = current_volume_m3.iter().sum::<f64>();
         final_input_volume_m3 = input_volume_m3;
@@ -669,6 +684,7 @@ pub(crate) fn solve_seasonal_lake_routing(
         water_balance_relative_error,
         lake_spinup_years: completed_years,
         final_lake_cycle_relative_change: final_cycle_relative_change,
+        final_lake_surface_cycle_change_m,
         maximum_seasonal_lake_level_range_m: final_maximum_lake_level_range_m,
     })
 }

@@ -22,7 +22,9 @@ pub(crate) fn classify_realized_flow(
     }
     let sample_count = submerged_mask.len();
     if phase_realized_discharge_m3_s.len() != sample_count * phase_count {
-        return Err("seasonal flow classification fields must align with phase/topology dimensions");
+        return Err(
+            "seasonal flow classification fields must align with phase/topology dimensions",
+        );
     }
 
     let mut presence_fraction = vec![0.0_f32; sample_count];
@@ -37,9 +39,7 @@ pub(crate) fn classify_realized_flow(
         }
         let mut wet_phases = 0_usize;
         for phase in 0..phase_count {
-            let discharge = f64::from(
-                phase_realized_discharge_m3_s[phase * sample_count + sample],
-            );
+            let discharge = f64::from(phase_realized_discharge_m3_s[phase * sample_count + sample]);
             if !discharge.is_finite() || discharge < 0.0 {
                 return Err("seasonal realized discharge must be finite and non-negative");
             }
@@ -78,10 +78,7 @@ mod tests {
         let phases = 4;
         let submerged = [0_u8, 0, 0, 1];
         let phase_major = [
-            0.0_f32, 2.0, 3.0, 9.0,
-            0.0, 0.0, 4.0, 9.0,
-            0.0, 1.0, 5.0, 9.0,
-            0.0, 0.0, 6.0, 9.0,
+            0.0_f32, 2.0, 3.0, 9.0, 0.0, 0.0, 4.0, 9.0, 0.0, 1.0, 5.0, 9.0, 0.0, 0.0, 6.0, 9.0,
         ];
         let classified = classify_realized_flow(&phase_major, &submerged, phases).unwrap();
         assert_eq!(
@@ -101,12 +98,8 @@ mod tests {
 
     #[test]
     fn numerical_traces_below_presence_epsilon_do_not_count_as_present() {
-        let classified = classify_realized_flow(
-            &[0.5e-6_f32, 2.0e-6, 0.0, 0.0],
-            &[0_u8],
-            4,
-        )
-        .unwrap();
+        let classified =
+            classify_realized_flow(&[0.5e-6_f32, 2.0e-6, 0.0, 0.0], &[0_u8], 4).unwrap();
         assert_eq!(classified.regime[0], FLOW_REGIME_INTERMITTENT);
         assert_eq!(classified.presence_fraction[0], 0.25);
     }

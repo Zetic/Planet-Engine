@@ -86,14 +86,9 @@ fn main() -> Result<(), String> {
         planet,
     )
     .map_err(|error| error.to_string())?;
-    let boundaries = inherit_boundary_interfaces(
-        &coarse,
-        &fine,
-        &tectonics,
-        &geology,
-        &inherited.plate_ids,
-    )
-    .map_err(|error| error.to_string())?;
+    let boundaries =
+        inherit_boundary_interfaces(&coarse, &fine, &tectonics, &geology, &inherited.plate_ids)
+            .map_err(|error| error.to_string())?;
     let terrain = generate_initial_topography(
         &fine,
         &inherited,

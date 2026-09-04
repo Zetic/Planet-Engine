@@ -185,13 +185,19 @@ fn main() -> Result<(), String> {
     );
     println!(
         "potential terminal_mean_m3_s={:.6} max_phase_m3_s={:.6} routing_error={:.3e}",
-        seasonal.metrics.annual_mean_terminal_potential_discharge_m3_s,
+        seasonal
+            .metrics
+            .annual_mean_terminal_potential_discharge_m3_s,
         seasonal.metrics.maximum_phase_potential_discharge_m3_s,
-        seasonal.metrics.seasonal_routing_conservation_relative_error,
+        seasonal
+            .metrics
+            .seasonal_routing_conservation_relative_error,
     );
     println!(
         "realized terminal_mean_m3_s={:.6} max_phase_m3_s={:.6} water_balance_error={:.3e}",
-        seasonal.metrics.annual_mean_terminal_realized_discharge_m3_s,
+        seasonal
+            .metrics
+            .annual_mean_terminal_realized_discharge_m3_s,
         seasonal.metrics.maximum_phase_realized_discharge_m3_s,
         seasonal.metrics.seasonal_water_balance_relative_error,
     );
@@ -204,6 +210,16 @@ fn main() -> Result<(), String> {
         seasonal.metrics.annual_mean_lake_precipitation_m3_s,
         seasonal.metrics.annual_mean_lake_evaporation_m3_s,
         seasonal.metrics.annual_mean_unreleased_terminal_storage_m3_s,
+    );
+    println!(
+        "flow dry={} intermittent={} perennial={}",
+        seasonal.metrics.dry_flow_sample_count,
+        seasonal.metrics.intermittent_flow_sample_count,
+        seasonal.metrics.perennial_flow_sample_count,
+    );
+    println!(
+        "lake_cycle surface_change_m={:.9}",
+        seasonal.metrics.final_lake_surface_cycle_change_m,
     );
     println!(
         "hash seasonal={} lakes={} runoff={} drainage={} climate={} parameters={}",
