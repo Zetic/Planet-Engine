@@ -15,6 +15,7 @@ mod random;
 mod refinement;
 mod runoff;
 mod seasonal;
+mod seasonal_lakes;
 mod tectonics;
 mod topography;
 mod topology;
