@@ -1,0 +1,31 @@
+name: Temporary WG-6C Benchmark
+
+on:
+  push:
+    branches: [wg6c-lakes-closed-basins]
+
+concurrency:
+  group: temporary-wg6c-benchmark
+  cancel-in-progress: true
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: wg6c-lakes-closed-basins
+      - name: Install pinned Rust
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal
+          rustup default 1.98.1
+      - name: WG-6C fixed release benchmarks
+        run: |
+          cargo +1.98.1 run --release -p interlink-worldgen-cli --example lake_performance -- --seed ci-wg6c-lakes --coarse-level 3 --level 4 --plates 12 --runs 3
+          cargo +1.98.1 run --release -p interlink-worldgen-cli --example lake_performance -- --seed ci-wg6c-lakes --coarse-level 4 --level 6 --plates 16 --runs 3
+          cargo +1.98.1 run --release -p interlink-worldgen-cli --example lake_performance -- --seed ci-wg6c-lakes --coarse-level 5 --level 7 --plates 24 --runs 3
+      - name: WG-6C accepted WG-5 ancestry L6/L7 diagnostic
+        run: |
+          cargo +1.98.1 run --release -p interlink-worldgen-cli --example lake_performance -- --seed ci-wg5-l7 --coarse-level 5 --level 6 --plates 24 --runs 1
+          cargo +1.98.1 run --release -p interlink-worldgen-cli --example lake_performance -- --seed ci-wg5-l7 --coarse-level 5 --level 7 --plates 24 --runs 1
