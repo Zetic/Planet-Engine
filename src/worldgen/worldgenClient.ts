@@ -1,6 +1,7 @@
 import {
   WORLDGEN_PROTOCOL_VERSION,
   validateClimateRequest,
+  validateDrainageRequest,
   validateGeologyRequest,
   validateInheritanceRequest,
   validateLithosphereRequest,
@@ -9,6 +10,7 @@ import {
   validateTectonicsRequest,
   validateTopologyRequest,
   worldgenClimateCommand,
+  worldgenDrainageCommand,
   worldgenGeologyCommand,
   worldgenInheritanceCommand,
   worldgenLithosphereCommand,
@@ -18,6 +20,8 @@ import {
   worldgenTopologyCommand,
   type WorldgenClimateRequest,
   type WorldgenClimateResult,
+  type WorldgenDrainageRequest,
+  type WorldgenDrainageResult,
   type WorldgenEvent,
   type WorldgenGenerationProgress,
   type WorldgenGeologyRequest,
@@ -36,8 +40,8 @@ import {
   type WorldgenTopologyResult,
 } from './protocol.js';
 
-type WorldgenResult = WorldgenSyntheticResult | WorldgenTopologyResult | WorldgenTectonicsResult | WorldgenGeologyResult | WorldgenLithosphereResult | WorldgenInheritanceResult | WorldgenTopographyResult | WorldgenClimateResult;
-type WorldgenRequestCommand = ReturnType<typeof worldgenSyntheticCommand> | ReturnType<typeof worldgenTopologyCommand> | ReturnType<typeof worldgenTectonicsCommand> | ReturnType<typeof worldgenGeologyCommand> | ReturnType<typeof worldgenLithosphereCommand> | ReturnType<typeof worldgenInheritanceCommand> | ReturnType<typeof worldgenTopographyCommand> | ReturnType<typeof worldgenClimateCommand>;
+type WorldgenResult = WorldgenSyntheticResult | WorldgenTopologyResult | WorldgenTectonicsResult | WorldgenGeologyResult | WorldgenLithosphereResult | WorldgenInheritanceResult | WorldgenTopographyResult | WorldgenClimateResult | WorldgenDrainageResult;
+type WorldgenRequestCommand = ReturnType<typeof worldgenSyntheticCommand> | ReturnType<typeof worldgenTopologyCommand> | ReturnType<typeof worldgenTectonicsCommand> | ReturnType<typeof worldgenGeologyCommand> | ReturnType<typeof worldgenLithosphereCommand> | ReturnType<typeof worldgenInheritanceCommand> | ReturnType<typeof worldgenTopographyCommand> | ReturnType<typeof worldgenClimateCommand> | ReturnType<typeof worldgenDrainageCommand>;
 interface PendingRequest { resolve: (result: WorldgenResult) => void; reject: (error: Error) => void; progress?: (progress: WorldgenGenerationProgress) => void; }
 
 export interface WorldgenClient {
@@ -49,6 +53,7 @@ export interface WorldgenClient {
   generateInheritance(request: WorldgenInheritanceRequest): Promise<WorldgenInheritanceResult>;
   generateTopography(request: WorldgenTopographyRequest): Promise<WorldgenTopographyResult>;
   generateClimate(request: WorldgenClimateRequest, onProgress?: (progress: WorldgenGenerationProgress) => void): Promise<WorldgenClimateResult>;
+  generateDrainage(request: WorldgenDrainageRequest): Promise<WorldgenDrainageResult>;
   dispose(): void;
 }
 
@@ -89,6 +94,7 @@ export function createWorldgenClient(): WorldgenClient {
     generateInheritance(input) { validateInheritanceRequest(input); return request<WorldgenInheritanceResult>(worldgenInheritanceCommand(nextRequestId++, input)); },
     generateTopography(input) { validateTopographyRequest(input); return request<WorldgenTopographyResult>(worldgenTopographyCommand(nextRequestId++, input)); },
     generateClimate(input, onProgress) { validateClimateRequest(input); return request<WorldgenClimateResult>(worldgenClimateCommand(nextRequestId++, input), onProgress); },
+    generateDrainage(input) { validateDrainageRequest(input); return request<WorldgenDrainageResult>(worldgenDrainageCommand(nextRequestId++, input)); },
     dispose() { if (disposed) return; disposed = true; worker.terminate(); rejectAll('Planet Engine client was disposed.'); },
   };
 }

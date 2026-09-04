@@ -21,13 +21,9 @@ fn generated(
     let coarse = build_icosphere(3).unwrap();
     let fine = build_icosphere(4).unwrap();
     let tectonics = generate_tectonics(&coarse, &TectonicsRequest::new(seed, 12), planet).unwrap();
-    let geology = generate_crust_and_history(
-        &coarse,
-        &tectonics,
-        &GeologyRequest::new(seed),
-        planet,
-    )
-    .unwrap();
+    let geology =
+        generate_crust_and_history(&coarse, &tectonics, &GeologyRequest::new(seed), planet)
+            .unwrap();
     let lithosphere = generate_lithosphere(
         &coarse,
         &tectonics,
@@ -35,23 +31,11 @@ fn generated(
         &LithosphereRequest::new(seed),
     )
     .unwrap();
-    let inherited = inherit_physical_state(
-        &fine,
-        3,
-        &tectonics,
-        &geology,
-        &lithosphere,
-        planet,
-    )
-    .unwrap();
-    let boundaries = inherit_boundary_interfaces(
-        &coarse,
-        &fine,
-        &tectonics,
-        &geology,
-        &inherited.plate_ids,
-    )
-    .unwrap();
+    let inherited =
+        inherit_physical_state(&fine, 3, &tectonics, &geology, &lithosphere, planet).unwrap();
+    let boundaries =
+        inherit_boundary_interfaces(&coarse, &fine, &tectonics, &geology, &inherited.plate_ids)
+            .unwrap();
     let topography = generate_initial_topography(
         &fine,
         &inherited,
@@ -60,13 +44,9 @@ fn generated(
         &TopographyRequest::new(seed),
     )
     .unwrap();
-    let drainage = generate_drainage_topology(
-        &fine,
-        &topography,
-        planet,
-        &DrainageRequest::new(seed),
-    )
-    .unwrap();
+    let drainage =
+        generate_drainage_topology(&fine, &topography, planet, &DrainageRequest::new(seed))
+            .unwrap();
     (fine, topography, drainage)
 }
 
@@ -75,11 +55,20 @@ fn generated_planet_drainage_is_deterministic_aligned_and_conservative() {
     let (topology_a, topography_a, drainage_a) = generated("wg6a-planet", None);
     let (_, _, drainage_b) = generated("wg6a-planet", None);
 
-    assert_eq!(drainage_a.metrics.drainage_hash, drainage_b.metrics.drainage_hash);
+    assert_eq!(
+        drainage_a.metrics.drainage_hash,
+        drainage_b.metrics.drainage_hash
+    );
     assert_eq!(drainage_a.receiver, drainage_b.receiver);
     assert_eq!(drainage_a.basin_id, drainage_b.basin_id);
-    assert_eq!(drainage_a.metrics.sample_count, topography_a.metrics.sample_count);
-    assert_eq!(drainage_a.receiver.len(), topology_a.metrics().sample_count as usize);
+    assert_eq!(
+        drainage_a.metrics.sample_count,
+        topography_a.metrics.sample_count
+    );
+    assert_eq!(
+        drainage_a.receiver.len(),
+        topology_a.metrics().sample_count as usize
+    );
     assert!(drainage_a.metrics.land_sample_count > 0);
     assert!(drainage_a.metrics.ocean_sample_count > 0);
     assert!(drainage_a.metrics.basin_count > 0);
@@ -98,11 +87,14 @@ fn generated_planet_drainage_is_deterministic_aligned_and_conservative() {
             continue;
         }
         assert_ne!(drainage_a.outlet_sample[sample], INVALID_SAMPLE_ID);
+        let outlet = drainage_a.outlet_sample[sample] as usize;
+        assert_eq!(
+            drainage_a.outlet_kind[sample],
+            drainage_a.outlet_kind[outlet]
+        );
         let receiver = drainage_a.receiver[sample];
         if receiver != INVALID_SAMPLE_ID {
-            assert!(topology_a
-                .neighbors_of(sample as u32)
-                .contains(&receiver));
+            assert!(topology_a.neighbors_of(sample as u32).contains(&receiver));
         }
     }
 }
@@ -112,8 +104,14 @@ fn changing_water_inventory_changes_outlets_without_changing_wg4_solid_surface()
     let (_, wet_topography, wet) = generated("wg6a-water", None);
     let (_, drier_topography, drier) = generated("wg6a-water", Some(7.0e20));
 
-    assert_eq!(wet_topography.solid_elevation_m, drier_topography.solid_elevation_m);
-    assert_ne!(wet_topography.submerged_mask, drier_topography.submerged_mask);
+    assert_eq!(
+        wet_topography.solid_elevation_m,
+        drier_topography.solid_elevation_m
+    );
+    assert_ne!(
+        wet_topography.submerged_mask,
+        drier_topography.submerged_mask
+    );
     assert_ne!(wet.metrics.drainage_hash, drier.metrics.drainage_hash);
     assert_ne!(wet.outlet_sample, drier.outlet_sample);
 }
@@ -136,7 +134,10 @@ fn dry_planet_resolves_to_an_explicit_internal_terminal() {
         .collect::<Vec<_>>();
     assert_eq!(internal_terminals.len(), 1);
     let internal = internal_terminals[0];
-    assert!(drainage.outlet_sample.iter().all(|outlet| *outlet == internal));
+    assert!(drainage
+        .outlet_sample
+        .iter()
+        .all(|outlet| *outlet == internal));
     assert!(drainage
         .outlet_kind
         .iter()

@@ -221,7 +221,7 @@ async function generate(): Promise<void> {
       fineLevel: Number(levelInput.value),
       plateCount: Number(platesInput.value),
     });
-    timer.textContent = `${(performance.now() - started).toFixed(1)} ms total · ${current.stage.durationMs.toFixed(1)} ms WG-6A bridge`;
+    timer.textContent = `${(performance.now() - started).toFixed(1)} ms total · ${current.stage.durationMs.toFixed(1)} ms through WG-6A`;
     status.textContent = `Generated ${current.metrics.sampleCount.toLocaleString()} drainage cells · ${current.metrics.basinCount.toLocaleString()} basins · area closure ${current.metrics.areaConservationRelativeError.toExponential(2)}`;
     showMetrics(current);
     rerender();

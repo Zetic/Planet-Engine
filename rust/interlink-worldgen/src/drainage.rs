@@ -174,6 +174,7 @@ fn priority_flood<T: PlanetTopology>(
     topology: &T,
     elevation_m: &[f32],
     submerged_mask: &[u8],
+    sea_level_m: Option<f64>,
 ) -> (Vec<f64>, Vec<u32>, Vec<u32>, Vec<u8>) {
     let count = topology.sample_count() as usize;
     let mut escape = vec![f64::INFINITY; count];
@@ -187,7 +188,7 @@ fn priority_flood<T: PlanetTopology>(
     for i in 0..count {
         if submerged_mask[i] != 0 {
             seen[i] = true;
-            escape[i] = f64::from(elevation_m[i]);
+            escape[i] = sea_level_m.unwrap_or_else(|| f64::from(elevation_m[i]));
             outlet_kind[i] = DRAINAGE_OUTLET_OCEAN;
             queue.push(FloodEntry {
                 elevation_m: escape[i],
@@ -416,11 +417,17 @@ fn solve_core<T: PlanetTopology>(
     elevation_m: &[f32],
     submerged_mask: &[u8],
     radius_m: f64,
+    sea_level_m: Option<f64>,
 ) -> Result<DrainageCore, &'static str> {
     validate_inputs(topology, elevation_m, submerged_mask, radius_m)?;
     let count = topology.sample_count() as usize;
+    if submerged_mask.iter().any(|value| *value != 0)
+        && sea_level_m.is_none_or(|value| !value.is_finite())
+    {
+        return Err("drainage ocean routing requires a finite solved sea level");
+    }
     let (escape, flood_parent, flood_rank, mut outlet_kind) =
-        priority_flood(topology, elevation_m, submerged_mask);
+        priority_flood(topology, elevation_m, submerged_mask, sea_level_m);
     let receiver = build_receivers(
         topology,
         submerged_mask,
@@ -478,16 +485,31 @@ fn solve_core<T: PlanetTopology>(
         outlet_sample[i] = resolved;
     }
 
-    let mut unique_outlets = BTreeMap::<u32, u32>::new();
     for i in 0..count {
-        if submerged_mask[i] == 0 {
-            let outlet = outlet_sample[i];
-            if !unique_outlets.contains_key(&outlet) {
-                let next = unique_outlets.len() as u32;
-                unique_outlets.insert(outlet, next);
-            }
+        if submerged_mask[i] != 0 {
+            continue;
         }
+        let outlet = outlet_sample[i];
+        let resolved_kind = outlet_kind[outlet as usize];
+        if resolved_kind == DRAINAGE_OUTLET_NONE {
+            return Err("drainage outlet kind was not resolved at terminal sample");
+        }
+        outlet_kind[i] = resolved_kind;
     }
+
+    let mut sorted_outlets = outlet_sample
+        .iter()
+        .enumerate()
+        .filter(|(sample, _)| submerged_mask[*sample] == 0)
+        .map(|(_, outlet)| *outlet)
+        .collect::<Vec<_>>();
+    sorted_outlets.sort_unstable();
+    sorted_outlets.dedup();
+    let unique_outlets = sorted_outlets
+        .into_iter()
+        .enumerate()
+        .map(|(id, outlet)| (outlet, id as u32))
+        .collect::<BTreeMap<_, _>>();
     let mut basin_id = vec![INVALID_SAMPLE_ID; count];
     let mut basins = unique_outlets
         .iter()
@@ -561,6 +583,7 @@ pub fn generate_drainage_topology(
         &topography.solid_elevation_m,
         &topography.submerged_mask,
         planet.radius_m,
+        topography.metrics.sea_level_m,
     )
     .map_err(WorldgenError::InvalidHydrology)?;
 
@@ -704,9 +727,19 @@ mod tests {
     #[test]
     fn simple_slope_routes_monotonically_to_ocean() {
         let topology = TestTopology::chain(4);
-        let result = solve_core(&topology, &[3.0, 2.0, 1.0, -1.0], &[0, 0, 0, 1], 1.0).unwrap();
+        let result = solve_core(
+            &topology,
+            &[3.0, 2.0, 1.0, -1.0],
+            &[0, 0, 0, 1],
+            1.0,
+            Some(0.0),
+        )
+        .unwrap();
         assert_eq!(result.receiver, vec![1, 2, 3, INVALID_SAMPLE_ID]);
         assert_eq!(result.outlet_sample[0], 3);
+        assert_eq!(result.outlet_kind[0], DRAINAGE_OUTLET_OCEAN);
+        assert_eq!(result.outlet_kind[1], DRAINAGE_OUTLET_OCEAN);
+        assert_eq!(result.outlet_kind[2], DRAINAGE_OUTLET_OCEAN);
         assert_eq!(result.basins.len(), 1);
         assert!(result.area_conservation_relative_error < 1.0e-12);
     }
@@ -715,7 +748,7 @@ mod tests {
     fn enclosed_bowl_records_escape_height_without_editing_physical_elevation() {
         let topology = TestTopology::chain(4);
         let elevation = [1.0, 5.0, 4.0, -1.0];
-        let result = solve_core(&topology, &elevation, &[0, 0, 0, 1], 1.0).unwrap();
+        let result = solve_core(&topology, &elevation, &[0, 0, 0, 1], 1.0, Some(0.0)).unwrap();
         assert!((result.escape_elevation_m[0] - 5.0).abs() < 1.0e-12);
         assert!((result.depression_depth_m[0] - 4.0).abs() < 1.0e-12);
         assert_eq!(result.receiver[0], 1);
@@ -727,17 +760,51 @@ mod tests {
     #[test]
     fn flat_plateau_uses_flood_rank_to_remain_acyclic() {
         let topology = TestTopology::chain(4);
-        let result = solve_core(&topology, &[2.0, 2.0, 2.0, -1.0], &[0, 0, 0, 1], 1.0).unwrap();
+        let result = solve_core(
+            &topology,
+            &[2.0, 2.0, 2.0, -1.0],
+            &[0, 0, 0, 1],
+            1.0,
+            Some(0.0),
+        )
+        .unwrap();
         assert_eq!(result.receiver, vec![1, 2, 3, INVALID_SAMPLE_ID]);
         assert_eq!(result.drainage_order, vec![0, 1, 2]);
     }
 
     #[test]
+    fn ocean_bathymetry_does_not_steer_coastal_land_routing() {
+        let topology = TestTopology {
+            neighbors: vec![vec![1, 2], vec![0], vec![0]],
+            distances: vec![vec![1.0e-3, 1.0e-3], vec![1.0e-3], vec![1.0e-3]],
+            areas: vec![1.0; 3],
+        };
+        let result = solve_core(
+            &topology,
+            &[10.0, -100.0, -5_000.0],
+            &[0, 1, 1],
+            1.0,
+            Some(0.0),
+        )
+        .unwrap();
+        assert_eq!(result.escape_elevation_m[1], 0.0);
+        assert_eq!(result.escape_elevation_m[2], 0.0);
+        assert_eq!(result.receiver[0], 1);
+        assert_eq!(result.outlet_sample[0], 1);
+        assert_eq!(result.outlet_kind[0], DRAINAGE_OUTLET_OCEAN);
+    }
+
+    #[test]
     fn dry_planet_uses_global_minimum_as_internal_terminal() {
         let topology = TestTopology::chain(4);
-        let result = solve_core(&topology, &[4.0, 3.0, 1.0, 2.0], &[0, 0, 0, 0], 1.0).unwrap();
+        let result =
+            solve_core(&topology, &[4.0, 3.0, 1.0, 2.0], &[0, 0, 0, 0], 1.0, None).unwrap();
         assert_eq!(result.receiver[2], INVALID_SAMPLE_ID);
         assert_eq!(result.outlet_kind[2], DRAINAGE_OUTLET_INTERNAL);
+        assert!(result
+            .outlet_kind
+            .iter()
+            .all(|value| *value == DRAINAGE_OUTLET_INTERNAL));
         assert!(result.outlet_sample.iter().all(|value| *value == 2));
         assert!(result.area_conservation_relative_error < 1.0e-12);
     }

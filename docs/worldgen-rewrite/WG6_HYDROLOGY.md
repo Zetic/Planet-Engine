@@ -39,7 +39,7 @@ A depression therefore remains physically present even when the routing topology
 
 ## Priority-Flood escape topology
 
-Ocean cells are terminal outlets. The graph is flooded outward from terminal outlets in increasing escape elevation. Each visited land sample records:
+Ocean cells are terminal outlets. They enter Priority-Flood at the solved sea-surface elevation, not at bathymetric seafloor elevation, so deep offshore relief cannot steer coastal drainage. The graph is flooded outward from terminal outlets in increasing escape elevation. Each visited land sample records:
 
 - minimum hydrologic escape elevation;
 - deterministic flood parent;
@@ -52,8 +52,8 @@ For a dry planet with no ocean, the deterministic global minimum becomes an inte
 `DrainageState` exposes:
 
 - `receiver`: one downstream neighbor per non-terminal land sample;
-- `outlet_sample` and `outlet_kind`;
-- `basin_id`;
+- `outlet_sample` and resolved `outlet_kind` for every land sample;
+- canonical `basin_id`, assigned by ascending terminal outlet sample;
 - `depression_id`;
 - `hydrologic_escape_elevation_m`;
 - `depression_depth_m`;
