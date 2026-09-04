@@ -1,0 +1,68 @@
+name: Temporary WG-6A Browser Integration
+
+on:
+  push:
+    branches: [wg6-drainage-topology]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: temporary-wg6a-browser
+  cancel-in-progress: true
+
+env:
+  RUST_VERSION: '1.98.1'
+  WASM_BINDGEN_VERSION: '0.2.127'
+
+jobs:
+  integrate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: wg6-drainage-topology
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install browser dependencies
+        run: npm ci
+      - name: Apply WG-6A protocol integration
+        run: python scripts/temp-wg6a-browser-integrate.py
+      - name: Install pinned Rust and browser target
+        run: |
+          rustup toolchain install "${RUST_VERSION}" --profile minimal --target wasm32-unknown-unknown --component rustfmt
+          rustup default "${RUST_VERSION}"
+      - name: Format and test Rust workspace
+        run: |
+          cargo fmt --all
+          cargo test --workspace
+      - name: Build and test browser modules
+        run: |
+          npm run build
+          npm run test:ts
+      - name: Install wasm-bindgen CLI under pinned Rust
+        run: cargo +${RUST_VERSION} install wasm-bindgen-cli --version "${WASM_BINDGEN_VERSION}" --locked --force
+      - name: Rebuild committed browser WASM package
+        run: npm run build:worldgen-wasm
+      - name: Verify WG-6A generated browser module exists
+        run: test -f dist/worldgen/diagnostics/worldgenDrainageLabStandalone.js
+      - name: Commit integrated WG-6A browser transport
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            src/worldgen \
+            rust/interlink-worldgen-wasm/src/lib.rs \
+            tests \
+            dist \
+            src/wasm-worldgen
+          if git diff --cached --quiet; then
+            echo 'No browser integration changes to commit.'
+            exit 0
+          fi
+          git commit -m 'Wire WG-6A browser drainage diagnostics'
+          git push origin HEAD:wg6-drainage-topology
