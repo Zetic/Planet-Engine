@@ -1,4 +1,4 @@
-name: Temporary WG-6B Benchmark
+name: Temporary WG-6B Fixed-Ancestry Diagnostic
 
 on:
   push:
@@ -20,12 +20,7 @@ jobs:
         run: |
           rustup toolchain install 1.98.1 --profile minimal
           rustup default 1.98.1
-      - name: WG-6B fixed release benchmarks
+      - name: WG-6B accepted WG-5 ancestry L6/L7 diagnostic
         run: |
-          cargo +1.98.1 run --release -p interlink-worldgen-cli --example runoff_performance -- --seed ci-wg6b-runoff --coarse-level 3 --level 4 --plates 12 --runs 3
-          cargo +1.98.1 run --release -p interlink-worldgen-cli --example runoff_performance -- --seed ci-wg6b-runoff --coarse-level 4 --level 6 --plates 16 --runs 3
-          cargo +1.98.1 run --release -p interlink-worldgen-cli --example runoff_performance -- --seed ci-wg6b-runoff --coarse-level 5 --level 7 --plates 24 --runs 3
-      - name: WG-6B fixed-ancestry L6/L7 diagnostic
-        run: |
-          cargo +1.98.1 run --release -p interlink-worldgen-cli --example runoff_performance -- --seed ci-wg6b-l7 --coarse-level 5 --level 6 --plates 24 --runs 1
-          cargo +1.98.1 run --release -p interlink-worldgen-cli --example runoff_performance -- --seed ci-wg6b-l7 --coarse-level 5 --level 7 --plates 24 --runs 1
+          cargo +1.98.1 run --release -p interlink-worldgen-cli --example runoff_performance -- --seed ci-wg5-l7 --coarse-level 5 --level 6 --plates 24 --runs 1
+          cargo +1.98.1 run --release -p interlink-worldgen-cli --example runoff_performance -- --seed ci-wg5-l7 --coarse-level 5 --level 7 --plates 24 --runs 1
