@@ -1,0 +1,52 @@
+name: Temporary WG-7B Benchmark Matrix
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  benchmark:
+    if: github.head_ref == 'wg7b-bounded-terrain-evolution'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: release-l4
+            seed: ci-wg7b-evolution
+            coarse: 3
+            level: 4
+            plates: 12
+          - label: release-l6
+            seed: ci-wg7b-evolution
+            coarse: 4
+            level: 6
+            plates: 16
+          - label: release-l7
+            seed: ci-wg7b-evolution
+            coarse: 5
+            level: 7
+            plates: 24
+          - label: ancestry-l6
+            seed: ci-wg5-l7
+            coarse: 5
+            level: 6
+            plates: 24
+          - label: ancestry-l7
+            seed: ci-wg5-l7
+            coarse: 5
+            level: 7
+            plates: 24
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run ${{ matrix.label }}
+        run: |
+          cargo run --release -p interlink-worldgen-cli --example terrain_evolution_performance -- \
+            --seed "${{ matrix.seed }}" \
+            --coarse-level "${{ matrix.coarse }}" \
+            --level "${{ matrix.level }}" \
+            --plates "${{ matrix.plates }}" \
+            --runs 3
