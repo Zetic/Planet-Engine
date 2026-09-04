@@ -204,4 +204,4 @@ WG-7B is accepted as one deterministic bounded terrain-response pass after the s
 - protocol v16 transports the WG-7B state in the same cumulative planet request, and the primary Lab verifies exact WG-4/WG-6/WG-7A ancestry before displaying the evolved state;
 - deterministic WG-7B hashing covers the evolved surface, applied erosion/deposition ledgers, receiver-change mask, post-erosion drainage identity, post-erosion discharge, parameters, and accepted upstream identities.
 
-`bash scripts/check-wg7b-evolution.sh` is the permanent fixed L4 acceptance path. Final L4/L6/L7 and fixed-ancestry L6/L7 benchmark values are recorded in `WG7_EROSION.md` after the exact-head benchmark matrix.
+`bash scripts/check-wg7b-evolution.sh` is the permanent fixed L4 acceptance path. Final L4/L6/L7 and fixed-ancestry L6/L7 benchmark values from benchmark run `33923547403` are recorded in `WG7_EROSION.md`.
