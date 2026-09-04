@@ -13,20 +13,10 @@ fn continental_crust_partition_is_inherited_truth_not_a_present_day_plate_count_
         .expect("10-plate tectonics");
     let tectonics_22 = generate_tectonics(&topology, &TectonicsRequest::new(seed, 22), parameters)
         .expect("22-plate tectonics");
-    let geology_10 = generate_crust_and_history(
-        &topology,
-        &tectonics_10,
-        &GeologyRequest::new(seed),
-        parameters,
-    )
-    .expect("10-plate geology");
-    let geology_22 = generate_crust_and_history(
-        &topology,
-        &tectonics_22,
-        &GeologyRequest::new(seed),
-        parameters,
-    )
-    .expect("22-plate geology");
+    let geology_10 = generate_crust_and_history(&topology, &tectonics_10, &GeologyRequest::new(seed), parameters)
+        .expect("10-plate geology");
+    let geology_22 = generate_crust_and_history(&topology, &tectonics_22, &GeologyRequest::new(seed), parameters)
+        .expect("22-plate geology");
 
     assert_eq!(
         geology_10.crust_kind,
