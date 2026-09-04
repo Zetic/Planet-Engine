@@ -44,6 +44,8 @@ jobs:
           cargo run -p interlink-worldgen-cli -- topography --seed ci-wg4 --coarse-level 4 --level 6 --plates 18
           cargo run -p interlink-worldgen-cli -- climate --seed ci-wg5 --coarse-level 3 --level 4 --plates 12
           cargo run -p interlink-worldgen-cli -- profile
+      - name: Smoke-test WG-6A drainage topology
+        run: bash scripts/check-wg6a-drainage.sh
       - name: Smoke-test WG-5 calibration report
         run: cargo run --release -p interlink-worldgen-cli --example climate_calibration -- --seed ci-wg5-calibration --coarse-level 3 --level 4 --plates 12 --skip-orography-intervention
       - name: Smoke-test WG-5 hydroclimate closure
