@@ -1,0 +1,30 @@
+name: Temporary WG-6D Documentation Finalize
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.event.pull_request.head.ref == 'wg6d-seasonal-hydrology'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+      - name: Finalize WG-6 hydrology documentation
+        run: |
+          python scripts/temp-wg6d-docs-finalize.py
+          grep -q 'hydrology:seasonal-hydrology@1' docs/worldgen-rewrite/WG6_HYDROLOGY.md
+          grep -q 'Browser/WASM protocol version `14`' docs/worldgen-rewrite/WG6_HYDROLOGY.md
+          grep -q 'scripts/check-wg6d-seasonal.sh' docs/worldgen-rewrite/WG6_HYDROLOGY.md
+          grep -q 'WG-7 or later stages' docs/worldgen-rewrite/WG6_HYDROLOGY.md
+      - name: Commit documentation
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add docs/worldgen-rewrite/WG6_HYDROLOGY.md
+          git commit -m "Finalize WG-6D hydrology documentation"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
