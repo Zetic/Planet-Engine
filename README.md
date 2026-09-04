@@ -2,7 +2,7 @@
 
 Planet Engine is the standalone deterministic planetary physical-world generator for Project Interlink.
 
-The engine owns canonical spherical topology, macro tectonics, crust and geological history, lithospheric mechanics and tectonic refinement, multiresolution physical inheritance, initial physical topography/bathymetry, coupled planetary climate, planetary physical profiles, native diagnostics, browser/WASM transport, and the standalone Planet Engine Lab.
+The engine owns canonical spherical topology, macro tectonics, crust and geological history, lithospheric mechanics and tectonic refinement, multiresolution physical inheritance, initial physical topography/bathymetry, coupled planetary climate, hydrology through equilibrium lakes and realized annual discharge, planetary physical profiles, native diagnostics, browser/WASM transport, and the single cumulative Planet Engine Lab.
 
 ## Current physical pipeline
 
@@ -23,10 +23,16 @@ WG-4 initial physical topography
           ↓
 WG-5 coupled planetary climate
           ↓
-WG-6 hydrology (next)
+WG-6A drainage topology and depressions
+          ↓
+WG-6B annual runoff and potential discharge
+          ↓
+WG-6C equilibrium lakes and realized discharge
 ```
 
 WG-5 derives deterministic seasonal insolation, temperature and pressure, rotation-sensitive prevailing winds, mass-projected wind-driven surface-ocean circulation, sea-surface temperature and conservative ocean heat transport, atmospheric moisture, precipitation, aridity, and snow/sea-ice potential from the accepted WG-4 physical planet. Orbital phases are generation-time climatology samples; the Lab season slider reconstructs stored seasonal harmonics and does not run a live climate simulation.
+
+WG-6A derives deterministic terrain-following drainage receivers, contributing area, depression membership, and hydrologic escape geometry from WG-4 terrain. WG-6B combines WG-5 precipitation/PET with that topology to derive annual actual evapotranspiration, runoff, and potential discharge. WG-6C then solves generation-time equilibrium lake states for active depressions, retaining water in endorheic basins and releasing only solved overflow into a separate realized-discharge field. WG-6B potential discharge remains available as a diagnostic.
 
 Gameplay Regions, Features, resource nodes, selection, factories, and the industrial runtime are intentionally outside this repository.
 
@@ -37,8 +43,8 @@ Gameplay Regions, Features, resource nodes, selection, factories, and the indust
 - `rust/interlink-worldgen-cli` — native diagnostics and benchmarks.
 - `src/worldgen` — browser protocol, Worker/client transport, and diagnostics.
 - `src/wasm-worldgen` — committed packaged Planet Engine WASM assets.
-- `worldgen-lab.html` — standalone cumulative browser diagnostic lab.
-- `docs/worldgen-rewrite` — architecture, determinism, resolution, geology, lithosphere, topography, climate, parameters, and validation contracts.
+- `index.html` — single cumulative Planet Engine Lab entrypoint.
+- `docs/worldgen-rewrite` — architecture, determinism, resolution, geology, lithosphere, topography, climate, hydrology, parameters, and validation contracts.
 
 ## Development
 
