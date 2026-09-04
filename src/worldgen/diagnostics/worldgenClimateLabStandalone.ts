@@ -429,7 +429,7 @@ function sampleColor(result: WorldgenClimateResult, mode: string, sample: number
   }
   if (mode === 'provenance') return provenanceColor(result.nearestCoarseSource[sample]!);
   if (mode === 'inherited-mask') return result.inheritedSampleMask[sample] ? '#f4e27a' : '#5794c8';
-  if (EROSION_MODES.has(mode) && result.submergedMask[sample]) return '#102c43';
+  if (EROSION_MODES.has(mode) && mode !== 'erosion-sediment-deposition' && result.submergedMask[sample]) return '#102c43';
   if (field) return scalarColor(field.values[sample]!, field);
   return '#8297aa';
 }

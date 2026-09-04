@@ -32,4 +32,5 @@ test('WG-7A cumulative browser contract is protocol v15 and single-request', () 
   assert.match(lab, /WG-7A sediment closure/);
   assert.match(lab, /erosionMetrics\.seasonalHydrologyHash/);
   assert.match(lab, /erosionMetrics\.topographyHash/);
+  assert.match(lab, /mode !== 'erosion-sediment-deposition'/);
 });
