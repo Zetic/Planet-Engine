@@ -116,9 +116,13 @@ fn main() -> Result<(), String> {
                 .map_err(|error| error.to_string())?,
         )
     };
-    let report =
-        build_hydroclimate_closure_report(&fine, &terrain, &climate, no_orography.as_ref())
-            .map_err(|error| error.to_string())?;
+    let report = build_hydroclimate_closure_report(
+        &fine,
+        &terrain,
+        &climate,
+        no_orography.as_ref(),
+    )
+    .map_err(|error| error.to_string())?;
 
     println!("WG-5 hydroclimate closure");
     println!(
@@ -140,11 +144,13 @@ fn main() -> Result<(), String> {
     );
     println!(
         "land_seasonality p50={:.6} p95={:.6}",
-        report.land_precipitation_seasonality_p50, report.land_precipitation_seasonality_p95
+        report.land_precipitation_seasonality_p50,
+        report.land_precipitation_seasonality_p95
     );
     println!(
         "land_pet_mm mean={:.3} p95={:.3}",
-        report.mean_land_potential_evaporation_mm, report.land_potential_evaporation_p95_mm
+        report.mean_land_potential_evaporation_mm,
+        report.land_potential_evaporation_p95_mm
     );
     println!(
         "land_aridity p05={:.6} p50={:.6} p95={:.6} below_0_2={:.6} below_0_5={:.6} at_least_1={:.6}",
