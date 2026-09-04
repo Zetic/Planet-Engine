@@ -12,6 +12,7 @@ mod lithosphere;
 mod parameters;
 mod random;
 mod refinement;
+mod runoff;
 mod tectonics;
 mod topography;
 mod topology;
@@ -62,6 +63,10 @@ pub use refinement::{
     refine_scalar_f32, refine_scalar_f32_with_domains, refine_scalar_f64, refine_vector3_f64,
     InheritedPhysicalState, RefinementMap, RefinementMetrics, MULTIRES_STAGE_ID,
     MULTIRES_STAGE_VERSION,
+};
+pub use runoff::{
+    generate_runoff_discharge, RunoffMetrics, RunoffParameters, RunoffRequest, RunoffState,
+    RUNOFF_STAGE_ID, RUNOFF_STAGE_VERSION,
 };
 pub use tectonics::{
     generate_tectonics, PlateBoundaryEdge, PlateBoundaryKind, TectonicMetrics, TectonicModel,

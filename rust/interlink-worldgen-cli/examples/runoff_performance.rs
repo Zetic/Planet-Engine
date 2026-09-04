@@ -24,7 +24,9 @@ fn parse_value<T: std::str::FromStr>(args: &[String], name: &str, default: T) ->
     let Some(value) = args.get(index + 1) else {
         return Err(format!("missing value after {name}"));
     };
-    value.parse::<T>().map_err(|_| format!("invalid value for {name}: {value}"))
+    value
+        .parse::<T>()
+        .map_err(|_| format!("invalid value for {name}: {value}"))
 }
 
 fn parse_options() -> Result<Options, String> {
@@ -85,14 +87,9 @@ fn main() -> Result<(), String> {
         planet,
     )
     .map_err(|error| error.to_string())?;
-    let boundaries = inherit_boundary_interfaces(
-        &coarse,
-        &fine,
-        &tectonics,
-        &geology,
-        &inherited.plate_ids,
-    )
-    .map_err(|error| error.to_string())?;
+    let boundaries =
+        inherit_boundary_interfaces(&coarse, &fine, &tectonics, &geology, &inherited.plate_ids)
+            .map_err(|error| error.to_string())?;
     let terrain = generate_initial_topography(
         &fine,
         &inherited,
@@ -121,15 +118,9 @@ fn main() -> Result<(), String> {
     let mut last = None;
     for _ in 0..options.runs {
         let started = Instant::now();
-        let runoff = generate_runoff_discharge(
-            &fine,
-            &terrain,
-            &climate,
-            &drainage,
-            planet,
-            &request,
-        )
-        .map_err(|error| error.to_string())?;
+        let runoff =
+            generate_runoff_discharge(&fine, &terrain, &climate, &drainage, planet, &request)
+                .map_err(|error| error.to_string())?;
         durations_ms.push(started.elapsed().as_secs_f64() * 1_000.0);
         last = Some(runoff);
     }

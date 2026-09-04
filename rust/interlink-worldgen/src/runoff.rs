@@ -149,8 +149,7 @@ fn budyko_actual_evapotranspiration(precipitation: f64, pet: f64, omega: f64) ->
         return 0.0;
     }
     let aridity = pet / precipitation;
-    let aet_fraction =
-        1.0 + aridity - (1.0 + aridity.powf(omega)).powf(1.0 / omega);
+    let aet_fraction = 1.0 + aridity - (1.0 + aridity.powf(omega)).powf(1.0 / omega);
     (precipitation * aet_fraction).clamp(0.0, precipitation.min(pet))
 }
 
@@ -239,7 +238,7 @@ fn solve_runoff_core<T: PlanetTopology>(
     let mut local_runoff_mm = vec![0.0_f32; count];
     let mut runoff_fraction = vec![0.0_f32; count];
     let mut local_runoff_m3_s = vec![0.0_f32; count];
-    let mut potential_discharge_m3_s = vec![0.0_f32; count];
+    let mut potential_discharge_accum_m3_s = vec![0.0_f64; count];
 
     let mut land_area_m2 = 0.0;
     let mut precipitation_area_sum_mm_m2 = 0.0;
@@ -271,7 +270,7 @@ fn solve_runoff_core<T: PlanetTopology>(
         local_runoff_mm[i] = runoff as f32;
         runoff_fraction[i] = fraction as f32;
         local_runoff_m3_s[i] = local_m3_s as f32;
-        potential_discharge_m3_s[i] = local_m3_s as f32;
+        potential_discharge_accum_m3_s[i] = local_m3_s;
 
         land_area_m2 += area_m2;
         precipitation_area_sum_mm_m2 += precipitation * area_m2;
@@ -288,18 +287,17 @@ fn solve_runoff_core<T: PlanetTopology>(
             continue;
         }
         let ri = r as usize;
-        let accumulated = f64::from(potential_discharge_m3_s[ri])
-            + f64::from(potential_discharge_m3_s[i]);
+        let accumulated = potential_discharge_accum_m3_s[ri] + potential_discharge_accum_m3_s[i];
         if !accumulated.is_finite() || accumulated > f32::MAX as f64 {
             return Err("runoff accumulated discharge exceeds representable range");
         }
-        potential_discharge_m3_s[ri] = accumulated as f32;
+        potential_discharge_accum_m3_s[ri] = accumulated;
     }
 
     let mut terminal_discharge_m3_s = 0.0_f64;
     let mut maximum_potential_discharge_m3_s = 0.0_f64;
     for i in 0..count {
-        let discharge = f64::from(potential_discharge_m3_s[i]);
+        let discharge = potential_discharge_accum_m3_s[i];
         maximum_potential_discharge_m3_s = maximum_potential_discharge_m3_s.max(discharge);
         if submerged_mask[i] != 0 || receiver[i] == INVALID_SAMPLE_ID {
             terminal_discharge_m3_s += discharge;
@@ -310,6 +308,11 @@ fn solve_runoff_core<T: PlanetTopology>(
     } else {
         terminal_discharge_m3_s.abs()
     };
+
+    let potential_discharge_m3_s = potential_discharge_accum_m3_s
+        .into_iter()
+        .map(|value| value as f32)
+        .collect();
 
     Ok(RunoffCore {
         actual_evapotranspiration_mm,
@@ -558,7 +561,10 @@ mod tests {
         )
         .unwrap();
         assert!(core.local_runoff_m3_s.iter().all(|value| *value == 0.0));
-        assert!(core.potential_discharge_m3_s.iter().all(|value| *value == 0.0));
+        assert!(core
+            .potential_discharge_m3_s
+            .iter()
+            .all(|value| *value == 0.0));
         assert_eq!(core.discharge_conservation_relative_error, 0.0);
     }
 }

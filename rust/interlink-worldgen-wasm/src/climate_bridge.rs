@@ -1,14 +1,15 @@
 use interlink_worldgen::{
     build_icosphere, generate_coupled_climate_with_diagnostics, generate_crust_and_history,
-    generate_initial_topography, generate_lithosphere, generate_tectonics,
-    inherit_boundary_interfaces, inherit_physical_state, ClimatePhysicalParameters, ClimateRequest,
-    ClimateState, GeodesicTopology, GeologyRequest, InheritedBoundarySet, InheritedPhysicalState,
-    LithosphereRequest, PlanetPhysicalParameters, TectonicsRequest, TopographyRequest,
-    TopographyState, WORLDGEN_ENGINE_VERSION,
+    generate_drainage_topology, generate_initial_topography, generate_lithosphere,
+    generate_runoff_discharge, generate_tectonics, inherit_boundary_interfaces,
+    inherit_physical_state, ClimatePhysicalParameters, ClimateRequest, ClimateState,
+    DrainageRequest, DrainageState, GeodesicTopology, GeologyRequest, InheritedBoundarySet,
+    InheritedPhysicalState, LithosphereRequest, PlanetPhysicalParameters, RunoffRequest,
+    RunoffState, TectonicsRequest, TopographyRequest, TopographyState, WORLDGEN_ENGINE_VERSION,
 };
 use wasm_bindgen::prelude::*;
 
-const GENERATION_STAGE_COUNT: u32 = 10;
+const GENERATION_STAGE_COUNT: u32 = 12;
 
 fn report_generation_progress(
     callback: Option<&js_sys::Function>,
@@ -37,6 +38,8 @@ pub struct WasmWorldgenClimate {
     boundaries: InheritedBoundarySet,
     terrain: TopographyState,
     climate: ClimateState,
+    drainage: DrainageState,
+    runoff: RunoffState,
     planet: PlanetPhysicalParameters,
     climate_physical: ClimatePhysicalParameters,
     precipitation_phase_rate_mm_year: Vec<f32>,
@@ -129,7 +132,7 @@ impl WasmWorldgenClimate {
         )
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
         report_generation_progress(progress, "topography", 7, 1, 1);
-        let climate_request = ClimateRequest::new(seed);
+        let climate_request = ClimateRequest::new(seed.as_str());
         let climate_physical = climate_request.physical;
         report_generation_progress(
             progress,
@@ -157,12 +160,36 @@ impl WasmWorldgenClimate {
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
         let precipitation_phase_rate_mm_year = diagnostics.precipitation_phase_rate_mm_year;
 
+        report_generation_progress(progress, "drainage-topology", 9, 0, 1);
+        let drainage = generate_drainage_topology(
+            &fine_topology,
+            &terrain,
+            planet,
+            &DrainageRequest::new(seed.as_str()),
+        )
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        report_generation_progress(progress, "drainage-topology", 9, 1, 1);
+
+        report_generation_progress(progress, "runoff-discharge", 10, 0, 1);
+        let runoff = generate_runoff_discharge(
+            &fine_topology,
+            &terrain,
+            &climate,
+            &drainage,
+            planet,
+            &RunoffRequest::new(seed),
+        )
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        report_generation_progress(progress, "runoff-discharge", 10, 1, 1);
+
         Ok(Self {
             fine_topology,
             inherited,
             boundaries,
             terrain,
             climate,
+            drainage,
+            runoff,
             planet,
             climate_physical,
             precipitation_phase_rate_mm_year,
@@ -599,5 +626,188 @@ impl WasmWorldgenClimate {
     }
     pub fn sea_ice_potential(&self) -> Vec<f32> {
         self.climate.sea_ice_potential.clone()
+    }
+
+    pub fn drainage_stage_id(&self) -> String {
+        self.drainage.stage.id.to_owned()
+    }
+    pub fn drainage_stage_version(&self) -> u32 {
+        self.drainage.stage.version
+    }
+    pub fn drainage_stage_seed_hex(&self) -> String {
+        format!("{:016x}", self.drainage.stage.derived_seed)
+    }
+    pub fn drainage_hash_hex(&self) -> String {
+        self.drainage.metrics.drainage_hash_hex()
+    }
+    pub fn drainage_land_sample_count(&self) -> u32 {
+        self.drainage.metrics.land_sample_count
+    }
+    pub fn drainage_ocean_sample_count(&self) -> u32 {
+        self.drainage.metrics.ocean_sample_count
+    }
+    pub fn drainage_basin_count(&self) -> u32 {
+        self.drainage.metrics.basin_count
+    }
+    pub fn drainage_depression_count(&self) -> u32 {
+        self.drainage.metrics.depression_count
+    }
+    pub fn drainage_depression_sample_count(&self) -> u32 {
+        self.drainage.metrics.depression_sample_count
+    }
+    pub fn drainage_land_area_m2(&self) -> f64 {
+        self.drainage.metrics.land_area_m2
+    }
+    pub fn terminal_contributing_area_m2(&self) -> f64 {
+        self.drainage.metrics.terminal_contributing_area_m2
+    }
+    pub fn drainage_area_conservation_relative_error(&self) -> f64 {
+        self.drainage.metrics.area_conservation_relative_error
+    }
+    pub fn maximum_contributing_area_m2(&self) -> f64 {
+        self.drainage.metrics.maximum_contributing_area_m2
+    }
+    pub fn maximum_depression_depth_m(&self) -> f64 {
+        self.drainage.metrics.maximum_depression_depth_m
+    }
+    pub fn receiver(&self) -> Vec<u32> {
+        self.drainage.receiver.clone()
+    }
+    pub fn outlet_sample(&self) -> Vec<u32> {
+        self.drainage.outlet_sample.clone()
+    }
+    pub fn outlet_kind(&self) -> Vec<u8> {
+        self.drainage.outlet_kind.clone()
+    }
+    pub fn basin_id(&self) -> Vec<u32> {
+        self.drainage.basin_id.clone()
+    }
+    pub fn depression_id(&self) -> Vec<u32> {
+        self.drainage.depression_id.clone()
+    }
+    pub fn hydrologic_escape_elevation_m(&self) -> Vec<f32> {
+        self.drainage.hydrologic_escape_elevation_m.clone()
+    }
+    pub fn depression_depth_m(&self) -> Vec<f32> {
+        self.drainage.depression_depth_m.clone()
+    }
+    pub fn contributing_area_m2(&self) -> Vec<f64> {
+        self.drainage.contributing_area_m2.clone()
+    }
+    pub fn drainage_order(&self) -> Vec<u32> {
+        self.drainage.drainage_order.clone()
+    }
+    pub fn basin_outlet_samples(&self) -> Vec<u32> {
+        self.drainage
+            .basins
+            .iter()
+            .map(|basin| basin.outlet_sample)
+            .collect()
+    }
+    pub fn basin_outlet_kinds(&self) -> Vec<u8> {
+        self.drainage
+            .basins
+            .iter()
+            .map(|basin| basin.outlet_kind)
+            .collect()
+    }
+    pub fn basin_areas_m2(&self) -> Vec<f64> {
+        self.drainage
+            .basins
+            .iter()
+            .map(|basin| basin.area_m2)
+            .collect()
+    }
+    pub fn depression_floor_samples(&self) -> Vec<u32> {
+        self.drainage
+            .depressions
+            .iter()
+            .map(|depression| depression.floor_sample)
+            .collect()
+    }
+    pub fn depression_floor_elevations_m(&self) -> Vec<f64> {
+        self.drainage
+            .depressions
+            .iter()
+            .map(|depression| depression.floor_elevation_m)
+            .collect()
+    }
+    pub fn depression_spill_elevations_m(&self) -> Vec<f64> {
+        self.drainage
+            .depressions
+            .iter()
+            .map(|depression| depression.spill_elevation_m)
+            .collect()
+    }
+    pub fn depression_areas_m2(&self) -> Vec<f64> {
+        self.drainage
+            .depressions
+            .iter()
+            .map(|depression| depression.area_m2)
+            .collect()
+    }
+
+    pub fn runoff_stage_id(&self) -> String {
+        self.runoff.stage.id.to_owned()
+    }
+    pub fn runoff_stage_version(&self) -> u32 {
+        self.runoff.stage.version
+    }
+    pub fn runoff_stage_seed_hex(&self) -> String {
+        format!("{:016x}", self.runoff.stage.derived_seed)
+    }
+    pub fn runoff_hash_hex(&self) -> String {
+        self.runoff.metrics.runoff_hash_hex()
+    }
+    pub fn runoff_parameter_hash_hex(&self) -> String {
+        self.runoff.metrics.runoff_parameter_hash_hex()
+    }
+    pub fn runoff_climate_hash_hex(&self) -> String {
+        self.runoff.metrics.climate_hash_hex()
+    }
+    pub fn runoff_drainage_hash_hex(&self) -> String {
+        self.runoff.metrics.drainage_hash_hex()
+    }
+    pub fn mean_land_runoff_precipitation_mm(&self) -> f64 {
+        self.runoff.metrics.mean_land_precipitation_mm
+    }
+    pub fn mean_land_actual_evapotranspiration_mm(&self) -> f64 {
+        self.runoff.metrics.mean_land_actual_evapotranspiration_mm
+    }
+    pub fn mean_land_runoff_mm(&self) -> f64 {
+        self.runoff.metrics.mean_land_runoff_mm
+    }
+    pub fn maximum_land_runoff_mm(&self) -> f64 {
+        self.runoff.metrics.maximum_land_runoff_mm
+    }
+    pub fn land_runoff_fraction(&self) -> f64 {
+        self.runoff.metrics.land_runoff_fraction
+    }
+    pub fn total_local_runoff_m3_s(&self) -> f64 {
+        self.runoff.metrics.total_local_runoff_m3_s
+    }
+    pub fn terminal_discharge_m3_s(&self) -> f64 {
+        self.runoff.metrics.terminal_discharge_m3_s
+    }
+    pub fn discharge_conservation_relative_error(&self) -> f64 {
+        self.runoff.metrics.discharge_conservation_relative_error
+    }
+    pub fn maximum_potential_discharge_m3_s(&self) -> f64 {
+        self.runoff.metrics.maximum_potential_discharge_m3_s
+    }
+    pub fn actual_evapotranspiration_mm(&self) -> Vec<f32> {
+        self.runoff.actual_evapotranspiration_mm.clone()
+    }
+    pub fn local_runoff_mm(&self) -> Vec<f32> {
+        self.runoff.local_runoff_mm.clone()
+    }
+    pub fn runoff_fraction(&self) -> Vec<f32> {
+        self.runoff.runoff_fraction.clone()
+    }
+    pub fn local_runoff_m3_s(&self) -> Vec<f32> {
+        self.runoff.local_runoff_m3_s.clone()
+    }
+    pub fn potential_discharge_m3_s(&self) -> Vec<f32> {
+        self.runoff.potential_discharge_m3_s.clone()
     }
 }
