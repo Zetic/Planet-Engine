@@ -1,4 +1,4 @@
-export const WORLDGEN_PROTOCOL_VERSION = 9;
+export const WORLDGEN_PROTOCOL_VERSION = 10;
 export const WORLDGEN_SYNTHETIC_MAX_SAMPLES = 4_194_304;
 export const WORLDGEN_TOPOLOGY_MAX_LEVEL = 7;
 export const WORLDGEN_TECTONICS_MAX_LEVEL = 6;
@@ -389,6 +389,8 @@ export interface WorldgenClimateMetrics {
   plateCount: number;
   fineBoundaryEdgeCount: number;
   orbitalPhaseCount: number;
+  globalSolverLevel: number;
+  globalSolverSampleCount: number;
   spinupYears: number;
   meanTemperatureK: number;
   minimumTemperatureK: number;

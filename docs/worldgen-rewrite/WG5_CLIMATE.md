@@ -1,6 +1,6 @@
 # WG-5 Coupled Planetary Climate
 
-WG-5 converts the accepted WG-4 physical surface into a deterministic climatology. It is a generation-time physical solve, not a perpetual post-generation weather simulation. The current climate algorithm is stage version `4`. Stage `3` rebuilt the reduced thermal budget; stage `4` rebuilds atmospheric moisture transport, evaporation, and convergence precipitation while preserving the accepted stage-3 thermal model.
+WG-5 converts the accepted WG-4 physical surface into a deterministic climatology. It is a generation-time physical solve, not a perpetual post-generation weather simulation. The current algorithm is stage version `6`. Stage `5` closed potential evaporation and aridity; Stage `6` preserves that accepted physical model while solving broad climate on a coarse global mesh and applying deterministic fine-grid corrections.
 
 ## Causal pipeline
 
@@ -54,7 +54,7 @@ The accepted `PlanetPhysicalParameters` remains the WG-3.75/WG-4 profile contrac
 - reduced atmospheric shortwave reflectivity;
 - reduced longwave optical depth.
 
-`ClimateParameters` separately owns numerical/model choices such as surface-albedo shortwave coupling, land/ocean thermal response, atmospheric heat diffusivity and solver iterations, air-sea exchange and mixed-layer depth, wind response, current coupling, ocean diffusion/advection, moisture transport, condensation, and orographic precipitation.
+`ClimateParameters` separately owns numerical/model choices such as the maximum global climate-solver level, surface-albedo shortwave coupling, land/ocean thermal response, atmospheric heat diffusivity and solver iterations, air-sea exchange and mixed-layer depth, wind response, current coupling, ocean diffusion/advection, moisture transport, condensation, and orographic precipitation.
 
 ## Seasonal solve
 
@@ -79,7 +79,7 @@ WG-5 does not own weather systems, storms, cloud microphysics, 3-D atmosphere, d
 
 ## Resolution
 
-The intended quality target remains L7 (~163,842 global samples / ~56 km characteristic Earth-like spacing), with lower levels used for CI and browser diagnostics. L8 remains a later profiling candidate rather than a requirement for WG-5 acceptance.
+The canonical quality target remains L7 (~163,842 output samples / ~56 km characteristic Earth-like spacing). Stage 6 solves broad coupled climate at no more than L5 by default, then reconstructs L6/L7 fields and applies local topographic, radiative, pressure, wind-drag, orographic, PET, coastline, and ocean-mask corrections. `ClimateMetrics` exposes the global solver level and cell count separately from the canonical output count. L8 remains a later profiling candidate rather than a requirement for WG-5 acceptance.
 
 ## Acceptance and diagnostics hardening
 

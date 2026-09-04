@@ -1,11 +1,11 @@
 use crate::{
     derive_stage_seed, tangent_basis, GeodesicTopology, PlanetPhysicalParameters, StageIdentity,
-    TopographyState, WorldgenError,
+    TopographyState, WorldgenError, MAX_TOPOLOGY_LEVEL,
 };
 
 const CLIMATE_NAMESPACE: &str = "climate:v1";
 pub const CLIMATE_STAGE_ID: &str = "climate:coupled-surface";
-pub const CLIMATE_STAGE_VERSION: u32 = 5;
+pub const CLIMATE_STAGE_VERSION: u32 = 6;
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 const STEFAN_BOLTZMANN: f64 = 5.670_374_419e-8;
@@ -96,6 +96,7 @@ impl Default for ClimatePhysicalParameters {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ClimateParameters {
+    pub maximum_global_climate_level: u8,
     pub orbital_phase_count: u8,
     pub minimum_spinup_years: u8,
     pub maximum_spinup_years: u8,
@@ -142,6 +143,7 @@ pub struct ClimateParameters {
 impl Default for ClimateParameters {
     fn default() -> Self {
         Self {
+            maximum_global_climate_level: 5,
             orbital_phase_count: 24,
             minimum_spinup_years: 4,
             maximum_spinup_years: 10,
@@ -189,6 +191,9 @@ impl Default for ClimateParameters {
 
 impl ClimateParameters {
     pub fn validate(&self) -> Result<(), &'static str> {
+        if self.maximum_global_climate_level > MAX_TOPOLOGY_LEVEL {
+            return Err("maximum global climate level exceeds the supported topology limit");
+        }
         if !(4..=48).contains(&self.orbital_phase_count) {
             return Err("climate orbital phase count must be from 4 through 48");
         }
@@ -277,6 +282,7 @@ impl ClimateParameters {
 
     pub fn parameter_hash(&self) -> u64 {
         let mut hash = FNV_OFFSET_BASIS;
+        hash = fnv_update(hash, &[self.maximum_global_climate_level]);
         hash = fnv_update(hash, &[self.orbital_phase_count]);
         hash = fnv_update(hash, &[self.minimum_spinup_years]);
         hash = fnv_update(hash, &[self.maximum_spinup_years]);
@@ -358,6 +364,8 @@ pub struct ClimateGenerationDiagnostics {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ClimateMetrics {
     pub sample_count: u32,
+    pub global_solver_level: u8,
+    pub global_solver_sample_count: u32,
     pub orbital_phase_count: u8,
     pub spinup_years: u8,
     pub mean_temperature_k: f64,
@@ -517,12 +525,12 @@ struct ScalarGradientTerm {
 }
 
 #[derive(Clone, Debug)]
-struct ScalarGradientGeometry {
+pub(crate) struct ScalarGradientGeometry {
     offsets: Vec<usize>,
     terms: Vec<ScalarGradientTerm>,
 }
 
-fn build_scalar_gradient_geometry(
+pub(crate) fn build_scalar_gradient_geometry(
     topology: &GeodesicTopology,
     radius_m: f64,
     east_bases: &[[f64; 3]],
@@ -570,7 +578,7 @@ fn build_scalar_gradient_geometry(
     ScalarGradientGeometry { offsets, terms }
 }
 
-fn scalar_gradient_cached(
+pub(crate) fn scalar_gradient_cached(
     topology: &GeodesicTopology,
     geometry: &ScalarGradientGeometry,
     values: &[f64],
@@ -1656,16 +1664,9 @@ pub fn generate_coupled_climate(
     planet: PlanetPhysicalParameters,
     request: &ClimateRequest,
 ) -> Result<ClimateState, WorldgenError> {
-    let mut progress = |_completed_years: u8, _maximum_years: u8| {};
-    let (climate, _) = generate_coupled_climate_internal(
-        topology,
-        terrain,
-        planet,
-        request,
-        false,
-        &mut progress,
-    )?;
-    Ok(climate)
+    crate::climate_multiresolution::generate_multiresolution_climate(
+        topology, terrain, planet, request,
+    )
 }
 
 pub fn generate_coupled_climate_with_diagnostics(
@@ -1675,10 +1676,23 @@ pub fn generate_coupled_climate_with_diagnostics(
     request: &ClimateRequest,
     progress: &mut dyn FnMut(u8, u8),
 ) -> Result<(ClimateState, ClimateGenerationDiagnostics), WorldgenError> {
-    generate_coupled_climate_internal(topology, terrain, planet, request, true, progress)
+    crate::climate_multiresolution::generate_multiresolution_climate_with_diagnostics(
+        topology, terrain, planet, request, progress,
+    )
 }
 
-fn generate_coupled_climate_internal(
+#[doc(hidden)]
+pub fn generate_coupled_climate_reference_with_diagnostics(
+    topology: &GeodesicTopology,
+    terrain: &TopographyState,
+    planet: PlanetPhysicalParameters,
+    request: &ClimateRequest,
+    progress: &mut dyn FnMut(u8, u8),
+) -> Result<(ClimateState, ClimateGenerationDiagnostics), WorldgenError> {
+    generate_coupled_climate_reference_internal(topology, terrain, planet, request, true, progress)
+}
+
+pub(crate) fn generate_coupled_climate_reference_internal(
     topology: &GeodesicTopology,
     terrain: &TopographyState,
     planet: PlanetPhysicalParameters,
@@ -2632,6 +2646,8 @@ fn generate_coupled_climate_internal(
 
     let metrics = ClimateMetrics {
         sample_count: sample_count as u32,
+        global_solver_level: topology.level(),
+        global_solver_sample_count: sample_count as u32,
         orbital_phase_count: parameters.orbital_phase_count,
         spinup_years,
         mean_temperature_k: mean_temperature,
@@ -2737,6 +2753,10 @@ mod tests {
         );
         assert_eq!(physical.parameter_hash_hex().len(), 16);
         assert_eq!(model.parameter_hash_hex().len(), 16);
+        assert_eq!(model.maximum_global_climate_level, 5);
+        let mut full_resolution = model;
+        full_resolution.maximum_global_climate_level = 7;
+        assert_ne!(model.parameter_hash(), full_resolution.parameter_hash());
     }
 
     #[test]

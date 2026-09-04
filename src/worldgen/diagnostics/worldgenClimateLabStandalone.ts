@@ -626,7 +626,7 @@ function updateAnimation(): void {
 function showMetrics(result: WorldgenClimateResult): void {
   metrics.replaceChildren();
   metric(metrics, 'Engine / stage', `v${result.engineVersion} · ${result.stage.id}@${result.stage.version}`);
-  metric(metrics, 'Resolution', `L${result.coarseLevel} → L${result.fineLevel}`);
+  metric(metrics, 'Resolution', `L${result.coarseLevel} → L${result.fineLevel} · climate solved at L${result.metrics.globalSolverLevel} (${result.metrics.globalSolverSampleCount.toLocaleString()} cells)`);
   metric(metrics, 'Samples / phases', `${result.metrics.fineSampleCount.toLocaleString()} · ${result.metrics.orbitalPhaseCount}`);
   metric(metrics, 'Climate hash', result.metrics.climateHash);
   metric(metrics, 'Topography hash', result.metrics.topographyHash);
