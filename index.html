@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Planet Engine · Through WG-6B</title>
+  <title>Planet Engine · Through WG-6C</title>
   <link rel="stylesheet" href="styles/base.css">
   <link rel="stylesheet" href="styles/worldgenLab.css">
 </head>
@@ -11,14 +11,14 @@
   <main class="worldgen-lab">
     <header class="worldgen-lab-header">
       <div>
-        <p class="worldgen-lab-kicker">PLANET ENGINE · THROUGH WG-6B</p>
+        <p class="worldgen-lab-kicker">PLANET ENGINE · THROUGH WG-6C</p>
         <h1>PLANET ENGINE LAB</h1>
-        <p>Generate one deterministic physical planet through WG-6B, then inspect topology, tectonics, geology, lithosphere, topography, climate, and terrain-driven drainage from one matched physical surface.</p>
+        <p>Generate one deterministic physical planet through WG-6C, then inspect topology, tectonics, geology, lithosphere, topography, climate, and terrain-driven drainage from one matched physical surface.</p>
       </div>
     </header>
 
     <section class="worldgen-lab-controls" aria-label="Planet generation controls">
-      <label>Seed <input id="worldgen-seed" type="text" value="interlink-wg6b"></label>
+      <label>Seed <input id="worldgen-seed" type="text" value="interlink-wg6c"></label>
       <label>Coarse physical level <input id="worldgen-coarse-level" type="number" min="0" max="6" value="4"></label>
       <label>Fine planet level <input id="worldgen-level" type="number" min="0" max="7" value="6"></label>
       <label>Plate count <input id="worldgen-plates" type="number" min="4" max="48" value="16"></label>
@@ -36,6 +36,12 @@
         <div class="worldgen-lab-diagnostic-controls">
           <label>Diagnostic
             <select id="worldgen-visualization">
+          <optgroup label="Hydrology · Lakes / realized flow (WG-6C)">
+            <option value="realized-discharge">Realized annual discharge</option>
+            <option value="lake-depth">Equilibrium lake depth</option>
+            <option value="lake-state">Lake state</option>
+            <option value="lake-fraction">Lake surface fraction</option>
+          </optgroup>
           <optgroup label="Hydrology · Runoff / discharge (WG-6B)">
             <option value="potential-discharge">Potential annual discharge</option>
             <option value="annual-runoff">Annual runoff depth</option>
@@ -166,10 +172,10 @@
         <div id="worldgen-metrics" class="worldgen-lab-metrics"></div>
       </div>
       <div class="worldgen-lab-note">
-        <strong>Current physical frontier: WG-6B</strong>
-        <p>One generation runs the accepted topology, tectonic, geological, lithospheric, multiresolution inheritance, WG-4 topography, WG-5 coupled climate, WG-6A drainage topology, and WG-6B annual runoff/discharge in one cumulative Rust/WASM result. WG-6B is required to reference the exact accepted WG-5 climate and WG-6A drainage identities.</p>
-        <p>Overlays remain independent of the selected diagnostic, so drainage basins and contributing area can be compared directly against topographic contours, coastlines, tectonic boundaries, winds, and currents. Seasonal precipitation displays the retained final spin-up-year orbital phases; WG-6A remains terrain-only; WG-6B consumes the accepted annual precipitation and PET forcing to produce actual evapotranspiration, runoff, and potential routed discharge.</p>
-        <p>The physical surface remains pre-erosional. Lake water balance and spill activation, seasonal discharge, river incision, sediment transport, glacier flow, detailed lithology, resource deposits, Regions, Features, and gameplay integration remain downstream.</p>
+        <strong>Current physical frontier: WG-6C</strong>
+        <p>One generation runs the accepted topology, tectonic, geological, lithospheric, multiresolution inheritance, WG-4 topography, WG-5 coupled climate, WG-6A drainage topology, WG-6B annual runoff/discharge, and WG-6C lake equilibrium in one cumulative Rust/WASM result. WG-6C is required to reference the exact accepted WG-5, WG-6A, and WG-6B identities.</p>
+        <p>Overlays remain independent of the selected diagnostic, so drainage basins and contributing area can be compared directly against topographic contours, coastlines, tectonic boundaries, winds, and currents. Seasonal precipitation displays the retained final spin-up-year orbital phases; WG-6A remains terrain-only; WG-6B produces potential routed discharge; WG-6C closes depression water balance into dry basins, endorheic lakes, or overflowing lakes and exposes realized discharge.</p>
+        <p>The physical surface remains pre-erosional. Seasonal discharge and snowmelt timing, river incision, sediment transport, glacier flow, detailed lithology, resource deposits, Regions, Features, and gameplay integration remain downstream.</p>
       </div>
     </section>
   </main>
