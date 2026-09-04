@@ -14,6 +14,7 @@ mod parameters;
 mod random;
 mod refinement;
 mod runoff;
+mod seasonal;
 mod tectonics;
 mod topography;
 mod topology;
@@ -73,6 +74,11 @@ pub use refinement::{
 pub use runoff::{
     generate_runoff_discharge, RunoffMetrics, RunoffParameters, RunoffRequest, RunoffState,
     RUNOFF_STAGE_ID, RUNOFF_STAGE_VERSION,
+};
+pub use seasonal::{
+    generate_seasonal_hydrology, SeasonalHydrologyMetrics, SeasonalHydrologyParameters,
+    SeasonalHydrologyRequest, SeasonalHydrologyState, SEASONAL_HYDROLOGY_STAGE_ID,
+    SEASONAL_HYDROLOGY_STAGE_VERSION,
 };
 pub use tectonics::{
     generate_tectonics, PlateBoundaryEdge, PlateBoundaryKind, TectonicMetrics, TectonicModel,
