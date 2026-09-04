@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Planet Engine · WG-5 Lab</title>
+  <title>Planet Engine · Through WG-6A</title>
   <link rel="stylesheet" href="styles/base.css">
   <link rel="stylesheet" href="styles/worldgenLab.css">
 </head>
@@ -11,14 +11,14 @@
   <main class="worldgen-lab">
     <header class="worldgen-lab-header">
       <div>
-        <p class="worldgen-lab-kicker">PLANET ENGINE · THROUGH WG-5</p>
+        <p class="worldgen-lab-kicker">PLANET ENGINE · THROUGH WG-6A</p>
         <h1>PLANET ENGINE LAB</h1>
-        <p>Generate one deterministic physical planet through WG-5, then inspect topology, tectonics, geology, lithosphere, topography, seasonal climate, winds, surface currents, and moisture from the same result.</p>
+        <p>Generate one deterministic physical planet through WG-6A, then inspect topology, tectonics, geology, lithosphere, topography, climate, and terrain-driven drainage from one matched physical surface.</p>
       </div>
     </header>
 
     <section class="worldgen-lab-controls" aria-label="Planet generation controls">
-      <label>Seed <input id="worldgen-seed" type="text" value="interlink-wg5"></label>
+      <label>Seed <input id="worldgen-seed" type="text" value="interlink-wg6a"></label>
       <label>Coarse physical level <input id="worldgen-coarse-level" type="number" min="0" max="6" value="4"></label>
       <label>Fine planet level <input id="worldgen-level" type="number" min="0" max="7" value="6"></label>
       <label>Plate count <input id="worldgen-plates" type="number" min="4" max="48" value="16"></label>
@@ -36,6 +36,14 @@
         <div class="worldgen-lab-diagnostic-controls">
           <label>Diagnostic
             <select id="worldgen-visualization">
+          <optgroup label="Hydrology · Drainage topology (WG-6A)">
+            <option value="contributing-area">Contributing drainage area</option>
+            <option value="basins">Drainage basins / outlets</option>
+            <option value="flow-direction">Flow receivers</option>
+            <option value="depression-depth">Depression depth</option>
+            <option value="depressions">Depression regions</option>
+            <option value="escape-elevation">Hydrologic escape elevation</option>
+          </optgroup>
           <optgroup label="Climate · Radiation / temperature (WG-5)">
             <option value="temperature">Annual mean temperature</option>
             <option value="seasonal-temperature">Seasonal temperature</option>
@@ -152,10 +160,10 @@
         <div id="worldgen-metrics" class="worldgen-lab-metrics"></div>
       </div>
       <div class="worldgen-lab-note">
-        <strong>Current physical frontier: WG-5</strong>
-        <p>One generation runs the accepted topology, tectonic, geological, lithospheric, multiresolution inheritance, WG-4 topography, and WG-5 coupled-climate pipeline. Every diagnostic mode inspects that same generated planet.</p>
-        <p>Overlays are independent of the selected diagnostic, so climate fields can be compared directly against topographic contours, coastlines, boundaries, winds, and currents. Seasonal precipitation displays the retained final spin-up-year orbital phases; annual precipitation seasonality remains an annual summary statistic.</p>
-        <p>The physical surface remains pre-erosional. Drainage, river incision, sediment transport, glacier flow, detailed lithology, resource deposits, Regions, Features, and gameplay integration remain downstream.</p>
+        <strong>Current physical frontier: WG-6A</strong>
+        <p>One generation runs the accepted topology, tectonic, geological, lithospheric, multiresolution inheritance, WG-4 topography, WG-5 coupled climate, and WG-6A drainage topology. Climate and drainage are required to resolve to the same deterministic WG-4 topography identity before the Lab accepts the result.</p>
+        <p>Overlays remain independent of the selected diagnostic, so drainage basins and contributing area can be compared directly against topographic contours, coastlines, tectonic boundaries, winds, and currents. Seasonal precipitation displays the retained final spin-up-year orbital phases; WG-6A itself remains terrain-only and does not consume rainfall yet.</p>
+        <p>The physical surface remains pre-erosional. Runoff and river discharge, lake water balance, river incision, sediment transport, glacier flow, detailed lithology, resource deposits, Regions, Features, and gameplay integration remain downstream.</p>
       </div>
     </section>
   </main>

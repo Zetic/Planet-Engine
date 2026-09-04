@@ -107,7 +107,7 @@ test('Planet Engine browser protocol v11 preserves WG-0 through WG-3.75 contract
   assert.throws(() => validateInheritanceRequest({ seed: 'x', coarseLevel: 5, fineLevel: 4, plateCount: 16 }), /fine level/i);
 });
 
-test('Planet Engine source stays independent from legacy gameplay world objects through WG-5', () => {
+test('Planet Engine source stays independent from legacy gameplay world objects through WG-6A', () => {
   const files = [
     'src/worldgen/protocol.ts',
     'src/worldgen/worldgenClient.ts',
@@ -116,6 +116,7 @@ test('Planet Engine source stays independent from legacy gameplay world objects 
     'src/worldgen/diagnostics/worldgenInheritanceLabStandalone.ts',
     'src/worldgen/diagnostics/worldgenTopographyLabStandalone.ts',
     'src/worldgen/diagnostics/worldgenClimateLabStandalone.ts',
+    'src/worldgen/diagnostics/worldgenDrainageLabStandalone.ts',
   ];
   const forbidden = [/\.\.\/world\//, /Region\b/, /MapSelection\b/, /GeographyPatch\b/, /resourceNode/i];
   for (const path of files) {
