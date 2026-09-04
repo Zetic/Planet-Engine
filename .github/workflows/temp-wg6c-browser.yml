@@ -45,7 +45,9 @@ jobs:
         if: steps.wasm-bindgen-cache.outputs.cache-hit != 'true'
         run: cargo +${RUST_VERSION} install wasm-bindgen-cli --version "${WASM_BINDGEN_VERSION}" --locked
       - name: Apply WG-6C browser integration
-        run: python scripts/temp-wg6c-browser.py
+        run: |
+          python scripts/temp-wg6c-browser-script-fix.py
+          python scripts/temp-wg6c-browser.py
       - name: Rebuild committed browser WASM package
         run: npm run build:worldgen-wasm
       - name: Build browser modules
