@@ -441,7 +441,7 @@ fn solve_lakes_core<T: PlanetTopology>(
 
     let mut lake_id = vec![INVALID_SAMPLE_ID; count];
     let mut lake_kind = vec![LAKE_KIND_NONE; count];
-    let mut lake_fraction = vec![0.0_f32; count];
+    let mut lake_fraction_exact = vec![0.0_f64; count];
     let mut lake_depth_m = vec![0.0_f32; count];
     let mut lake_records_by_depression = vec![None::<LakeRecord>; depression_count];
 
@@ -476,7 +476,7 @@ fn solve_lakes_core<T: PlanetTopology>(
             if balance > FLOW_EPSILON_M3_S && next_balance <= FLOW_EPSILON_M3_S && adjustment < 0.0
             {
                 let fraction = (balance / -adjustment).clamp(0.0, 1.0);
-                lake_fraction[sample] = fraction as f32;
+                lake_fraction_exact[sample] = fraction;
                 let lower = f64::from(elevation_m[sample]);
                 let upper = sorted
                     .get(rank + 1)
@@ -490,7 +490,7 @@ fn solve_lakes_core<T: PlanetTopology>(
                 break;
             }
 
-            lake_fraction[sample] = 1.0;
+            lake_fraction_exact[sample] = 1.0;
             balance = next_balance;
             if balance <= FLOW_EPSILON_M3_S {
                 surface_elevation_m = sorted
@@ -533,7 +533,7 @@ fn solve_lakes_core<T: PlanetTopology>(
         let mut lake_precipitation = 0.0_f64;
         let mut lake_evaporation = 0.0_f64;
         for &sample in &members[d] {
-            let fraction = f64::from(lake_fraction[sample]);
+            let fraction = lake_fraction_exact[sample];
             if fraction <= 0.0 {
                 continue;
             }
@@ -600,12 +600,12 @@ fn solve_lakes_core<T: PlanetTopology>(
     for i in 0..count {
         if submerged_mask[i] == 0 {
             realized_accum_m3_s[i] +=
-                f64::from(local_runoff_m3_s[i]) * (1.0 - f64::from(lake_fraction[i]));
+                f64::from(local_runoff_m3_s[i]) * (1.0 - lake_fraction_exact[i]);
         }
     }
     for &sample in drainage_order {
         let i = sample as usize;
-        if lake_fraction[i] > 0.0 {
+        if lake_fraction_exact[i] > 0.0 {
             continue;
         }
         let r = receiver[i];
@@ -620,13 +620,13 @@ fn solve_lakes_core<T: PlanetTopology>(
     for i in 0..count {
         maximum_realized_discharge_m3_s =
             maximum_realized_discharge_m3_s.max(realized_accum_m3_s[i]);
-        if lake_fraction[i] <= 0.0 {
+        if lake_fraction_exact[i] <= 0.0 {
             realized_discharge_m3_s[i] = realized_accum_m3_s[i] as f32;
         }
         if submerged_mask[i] != 0
             || (submerged_mask[i] == 0
                 && receiver[i] == INVALID_SAMPLE_ID
-                && lake_fraction[i] <= 0.0)
+                && lake_fraction_exact[i] <= 0.0)
         {
             terminal_realized_discharge_m3_s += realized_accum_m3_s[i];
         }
@@ -656,7 +656,7 @@ fn solve_lakes_core<T: PlanetTopology>(
         .sum::<f64>();
     let dry_land_runoff_m3_s = (0..count)
         .filter(|i| submerged_mask[*i] == 0)
-        .map(|i| f64::from(local_runoff_m3_s[i]) * (1.0 - f64::from(lake_fraction[i])))
+        .map(|i| f64::from(local_runoff_m3_s[i]) * (1.0 - lake_fraction_exact[i]))
         .sum::<f64>();
     let water_input = dry_land_runoff_m3_s + total_lake_precipitation_m3_s;
     let water_output =
@@ -666,6 +666,11 @@ fn solve_lakes_core<T: PlanetTopology>(
     } else {
         water_output.abs()
     };
+
+    let lake_fraction = lake_fraction_exact
+        .iter()
+        .map(|value| *value as f32)
+        .collect::<Vec<_>>();
 
     Ok(LakeCore {
         lake_id,
