@@ -1,0 +1,33 @@
+name: Temporary WG-6D Browser Core Fix
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.event.pull_request.head.ref == 'wg6d-seasonal-hydrology'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+      - name: Install rustfmt in integration workflow
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('.github/workflows/temp-wg6d-browser-core.yml')
+          text = path.read_text()
+          old = 'rustup toolchain install 1.98.1 --profile minimal --target wasm32-unknown-unknown'
+          new = 'rustup toolchain install 1.98.1 --profile minimal --target wasm32-unknown-unknown --component rustfmt'
+          if text.count(old) != 1:
+              raise SystemExit('expected one Rust toolchain line')
+          path.write_text(text.replace(old, new, 1))
+          PY
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .github/workflows/temp-wg6d-browser-core.yml
+          git commit -m "Install rustfmt for WG-6D browser integration"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
