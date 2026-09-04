@@ -1,0 +1,44 @@
+name: Temporary WG-7A Conservation Finalizer
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.event.pull_request.head.ref == 'wg7a-fluvial-erosion-sediment'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: wg7a-fluvial-erosion-sediment
+      - uses: dtolnay/rust-toolchain@1.98.1
+        with:
+          components: rustfmt
+      - name: Tighten sediment conservation accounting
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('rust/interlink-worldgen/src/erosion.rs')
+          text = path.read_text()
+          old = '        total_sediment_generated_kg_s += supply;\n'
+          new = '        total_sediment_generated_kg_s += f64::from(local_sediment_supply_kg_s[i]);\n'
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one sediment generated accumulation, found {text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+          cargo fmt --all
+          cargo test -p interlink-worldgen erosion::tests --lib
+      - name: Remove temporary WG-7A workflows
+        run: |
+          rm -f .github/workflows/temp-wg7a-benchmark.yml
+          rm -f .github/workflows/temp-wg7a-tighten.yml
+      - name: Commit conservation correction
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Tighten WG-7A sediment conservation'
+          git push origin HEAD:wg7a-fluvial-erosion-sediment
