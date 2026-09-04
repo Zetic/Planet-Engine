@@ -1,0 +1,121 @@
+name: Temporary WG-6D Browser Core
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    if: github.event.pull_request.head.ref == 'wg6d-seasonal-hydrology'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install Rust and dependencies
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal --target wasm32-unknown-unknown
+          rustup default 1.98.1
+          npm ci
+      - name: Integrate WG-6D through Rust WASM bridge and browser protocol
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if text.count(old) != 1:
+                  raise SystemExit(f'{path}: expected exactly one match, found {text.count(old)}')
+              p.write_text(text.replace(old, new, 1))
+
+          bridge = 'rust/interlink-worldgen-wasm/src/climate_bridge.rs'
+          replace_once(
+              bridge,
+              '    generate_lithosphere, generate_runoff_discharge, generate_tectonics,\n',
+              '    generate_lithosphere, generate_runoff_discharge, generate_seasonal_hydrology,\n    generate_tectonics,\n',
+          )
+          replace_once(
+              bridge,
+              '    PlanetPhysicalParameters, RunoffRequest, RunoffState, TectonicsRequest, TopographyRequest,\n    TopographyState, WORLDGEN_ENGINE_VERSION,\n',
+              '    PlanetPhysicalParameters, RunoffRequest, RunoffState, SeasonalHydrologyRequest,\n    SeasonalHydrologyState, TectonicsRequest, TopographyRequest, TopographyState,\n    WORLDGEN_ENGINE_VERSION,\n',
+          )
+          replace_once(bridge, 'const GENERATION_STAGE_COUNT: u32 = 13;', 'const GENERATION_STAGE_COUNT: u32 = 14;')
+          replace_once(bridge, '    lakes: LakeState,\n    planet: PlanetPhysicalParameters,', '    lakes: LakeState,\n    seasonal: SeasonalHydrologyState,\n    planet: PlanetPhysicalParameters,')
+          replace_once(
+              bridge,
+              '        .map_err(|error| JsValue::from_str(&error.to_string()))?;\n        let precipitation_phase_rate_mm_year = diagnostics.precipitation_phase_rate_mm_year;\n\n        report_generation_progress(progress, "drainage-topology", 9, 0, 1);',
+              '        .map_err(|error| JsValue::from_str(&error.to_string()))?;\n\n        report_generation_progress(progress, "drainage-topology", 9, 0, 1);',
+          )
+          replace_once(
+              bridge,
+              '        report_generation_progress(progress, "lake-equilibrium", 11, 1, 1);\n\n        Ok(Self {',
+              '''        report_generation_progress(progress, "lake-equilibrium", 11, 1, 1);\n\n        report_generation_progress(progress, "seasonal-hydrology", 12, 0, 1);\n        let seasonal = generate_seasonal_hydrology(\n            &fine_topology,\n            &terrain,\n            &climate,\n            &diagnostics,\n            &drainage,\n            &runoff,\n            &lakes,\n            planet,\n            &SeasonalHydrologyRequest::new(seed.as_str()),\n        )\n        .map_err(|error| JsValue::from_str(&error.to_string()))?;\n        report_generation_progress(progress, "seasonal-hydrology", 12, 1, 1);\n        let precipitation_phase_rate_mm_year = diagnostics.precipitation_phase_rate_mm_year;\n\n        Ok(Self {''',
+          )
+          replace_once(bridge, '            runoff,\n            lakes,\n            planet,', '            runoff,\n            lakes,\n            seasonal,\n            planet,')
+          seasonal_methods = '''\n\n    pub fn seasonal_stage_id(&self) -> String { self.seasonal.stage.id.to_owned() }\n    pub fn seasonal_stage_version(&self) -> u32 { self.seasonal.stage.version }\n    pub fn seasonal_stage_seed_hex(&self) -> String { format!("{:016x}", self.seasonal.stage.derived_seed) }\n    pub fn seasonal_hydrology_hash_hex(&self) -> String { self.seasonal.metrics.seasonal_hydrology_hash_hex() }\n    pub fn seasonal_parameter_hash_hex(&self) -> String { self.seasonal.metrics.seasonal_parameter_hash_hex() }\n    pub fn seasonal_climate_hash_hex(&self) -> String { self.seasonal.metrics.climate_hash_hex() }\n    pub fn seasonal_drainage_hash_hex(&self) -> String { self.seasonal.metrics.drainage_hash_hex() }\n    pub fn seasonal_runoff_hash_hex(&self) -> String { self.seasonal.metrics.runoff_hash_hex() }\n    pub fn seasonal_lake_hash_hex(&self) -> String { self.seasonal.metrics.lake_hash_hex() }\n    pub fn seasonal_dry_flow_sample_count(&self) -> u32 { self.seasonal.metrics.dry_flow_sample_count }\n    pub fn seasonal_intermittent_flow_sample_count(&self) -> u32 { self.seasonal.metrics.intermittent_flow_sample_count }\n    pub fn seasonal_perennial_flow_sample_count(&self) -> u32 { self.seasonal.metrics.perennial_flow_sample_count }\n    pub fn maximum_phase_local_runoff_m3_s(&self) -> f64 { self.seasonal.metrics.maximum_phase_local_runoff_m3_s }\n    pub fn maximum_phase_potential_discharge_m3_s(&self) -> f64 { self.seasonal.metrics.maximum_phase_potential_discharge_m3_s }\n    pub fn maximum_phase_realized_discharge_m3_s(&self) -> f64 { self.seasonal.metrics.maximum_phase_realized_discharge_m3_s }\n    pub fn snowmelt_runoff_fraction(&self) -> f64 { self.seasonal.metrics.snowmelt_runoff_fraction }\n    pub fn annual_mean_seasonal_local_runoff_m3_s(&self) -> f64 { self.seasonal.metrics.annual_mean_local_runoff_m3_s }\n    pub fn annual_local_runoff_closure_relative_error(&self) -> f64 { self.seasonal.metrics.annual_local_runoff_closure_relative_error }\n    pub fn annual_mean_terminal_potential_discharge_m3_s(&self) -> f64 { self.seasonal.metrics.annual_mean_terminal_potential_discharge_m3_s }\n    pub fn seasonal_routing_conservation_relative_error(&self) -> f64 { self.seasonal.metrics.seasonal_routing_conservation_relative_error }\n    pub fn annual_mean_terminal_seasonal_realized_discharge_m3_s(&self) -> f64 { self.seasonal.metrics.annual_mean_terminal_realized_discharge_m3_s }\n    pub fn annual_mean_seasonal_lake_precipitation_m3_s(&self) -> f64 { self.seasonal.metrics.annual_mean_lake_precipitation_m3_s }\n    pub fn annual_mean_seasonal_lake_evaporation_m3_s(&self) -> f64 { self.seasonal.metrics.annual_mean_lake_evaporation_m3_s }\n    pub fn annual_mean_seasonal_unreleased_terminal_storage_m3_s(&self) -> f64 { self.seasonal.metrics.annual_mean_unreleased_terminal_storage_m3_s }\n    pub fn seasonal_water_balance_relative_error(&self) -> f64 { self.seasonal.metrics.seasonal_water_balance_relative_error }\n    pub fn seasonal_lake_spinup_years(&self) -> u8 { self.seasonal.metrics.lake_spinup_years }\n    pub fn final_lake_cycle_relative_change(&self) -> f64 { self.seasonal.metrics.final_lake_cycle_relative_change }\n    pub fn final_lake_surface_cycle_change_m(&self) -> f64 { self.seasonal.metrics.final_lake_surface_cycle_change_m }\n    pub fn maximum_seasonal_lake_level_range_m(&self) -> f64 { self.seasonal.metrics.maximum_seasonal_lake_level_range_m }\n    pub fn seasonal_phase_local_runoff_m3_s(&self) -> Vec<f32> { self.seasonal.phase_local_runoff_m3_s.clone() }\n    pub fn seasonal_phase_snowmelt_runoff_m3_s(&self) -> Vec<f32> { self.seasonal.phase_snowmelt_runoff_m3_s.clone() }\n    pub fn seasonal_phase_snow_storage_mm(&self) -> Vec<f32> { self.seasonal.phase_snow_storage_mm.clone() }\n    pub fn seasonal_phase_potential_discharge_m3_s(&self) -> Vec<f32> { self.seasonal.phase_potential_discharge_m3_s.clone() }\n    pub fn seasonal_phase_realized_discharge_m3_s(&self) -> Vec<f32> { self.seasonal.phase_realized_discharge_m3_s.clone() }\n    pub fn seasonal_flow_presence_fraction(&self) -> Vec<f32> { self.seasonal.flow_presence_fraction.clone() }\n    pub fn seasonal_flow_regime(&self) -> Vec<u8> { self.seasonal.flow_regime.clone() }\n    pub fn seasonal_phase_lake_surface_elevation_m(&self) -> Vec<f32> { self.seasonal.phase_lake_surface_elevation_m.clone() }\n    pub fn seasonal_phase_lake_area_m2(&self) -> Vec<f64> { self.seasonal.phase_lake_area_m2.clone() }\n    pub fn seasonal_phase_lake_volume_m3(&self) -> Vec<f64> { self.seasonal.phase_lake_volume_m3.clone() }\n'''
+          replace_once(
+              bridge,
+              '''    pub fn lake_spill_samples(&self) -> Vec<u32> {\n        self.lakes\n            .lakes\n            .iter()\n            .map(|lake| lake.spill_sample)\n            .collect()\n    }\n}\n''',
+              '''    pub fn lake_spill_samples(&self) -> Vec<u32> {\n        self.lakes\n            .lakes\n            .iter()\n            .map(|lake| lake.spill_sample)\n            .collect()\n    }''' + seasonal_methods + '}\n',
+          )
+
+          replace_once('rust/interlink-worldgen-wasm/src/lib.rs', 'pub const WORLDGEN_WASM_PROTOCOL_VERSION: u32 = 13;', 'pub const WORLDGEN_WASM_PROTOCOL_VERSION: u32 = 14;')
+
+          protocol = 'src/worldgen/protocol.ts'
+          replace_once(protocol, 'export const WORLDGEN_PROTOCOL_VERSION = 13;', 'export const WORLDGEN_PROTOCOL_VERSION = 14;')
+          seasonal_interface = '''\nexport interface WorldgenSeasonalHydrologyMetrics {\n  sampleCount: number;\n  orbitalPhaseCount: number;\n  activeLakeCount: number;\n  dryFlowSampleCount: number;\n  intermittentFlowSampleCount: number;\n  perennialFlowSampleCount: number;\n  maximumPhaseLocalRunoffM3S: number;\n  maximumPhasePotentialDischargeM3S: number;\n  maximumPhaseRealizedDischargeM3S: number;\n  snowmeltRunoffFraction: number;\n  annualMeanLocalRunoffM3S: number;\n  annualLocalRunoffClosureRelativeError: number;\n  annualMeanTerminalPotentialDischargeM3S: number;\n  seasonalRoutingConservationRelativeError: number;\n  annualMeanTerminalRealizedDischargeM3S: number;\n  annualMeanLakePrecipitationM3S: number;\n  annualMeanLakeEvaporationM3S: number;\n  annualMeanUnreleasedTerminalStorageM3S: number;\n  seasonalWaterBalanceRelativeError: number;\n  lakeSpinupYears: number;\n  finalLakeCycleRelativeChange: number;\n  finalLakeSurfaceCycleChangeM: number;\n  maximumSeasonalLakeLevelRangeM: number;\n  seasonalParameterHash: string;\n  climateHash: string;\n  drainageHash: string;\n  runoffHash: string;\n  lakeHash: string;\n  seasonalHydrologyHash: string;\n}\n\n'''
+          replace_once(protocol, 'export interface WorldgenDrainageResult {', seasonal_interface + 'export interface WorldgenDrainageResult {')
+          replace_once(
+              protocol,
+              '  lakeOutflowsM3S: Float64Array;\n  lakeSpillSamples: Uint32Array;\n}',
+              '''  lakeOutflowsM3S: Float64Array;\n  lakeSpillSamples: Uint32Array;\n  seasonalStage: WorldgenStageMetadata;\n  seasonalMetrics: WorldgenSeasonalHydrologyMetrics;\n  seasonalPhaseLocalRunoffM3S: Float32Array;\n  seasonalPhaseSnowmeltRunoffM3S: Float32Array;\n  seasonalPhaseSnowStorageMm: Float32Array;\n  seasonalPhasePotentialDischargeM3S: Float32Array;\n  seasonalPhaseRealizedDischargeM3S: Float32Array;\n  seasonalFlowPresenceFraction: Float32Array;\n  seasonalFlowRegime: Uint8Array;\n  seasonalPhaseLakeSurfaceElevationM: Float32Array;\n  seasonalPhaseLakeAreaM2: Float64Array;\n  seasonalPhaseLakeVolumeM3: Float64Array;\n}''',
+          )
+
+          worker = 'src/worldgen/worldgenWorker.ts'
+          seasonal_wasm = '''  seasonal_stage_id(): string; seasonal_stage_version(): number; seasonal_stage_seed_hex(): string; seasonal_hydrology_hash_hex(): string; seasonal_parameter_hash_hex(): string; seasonal_climate_hash_hex(): string; seasonal_drainage_hash_hex(): string; seasonal_runoff_hash_hex(): string; seasonal_lake_hash_hex(): string;\n  seasonal_dry_flow_sample_count(): number; seasonal_intermittent_flow_sample_count(): number; seasonal_perennial_flow_sample_count(): number; maximum_phase_local_runoff_m3_s(): number; maximum_phase_potential_discharge_m3_s(): number; maximum_phase_realized_discharge_m3_s(): number; snowmelt_runoff_fraction(): number; annual_mean_seasonal_local_runoff_m3_s(): number; annual_local_runoff_closure_relative_error(): number; annual_mean_terminal_potential_discharge_m3_s(): number; seasonal_routing_conservation_relative_error(): number; annual_mean_terminal_seasonal_realized_discharge_m3_s(): number; annual_mean_seasonal_lake_precipitation_m3_s(): number; annual_mean_seasonal_lake_evaporation_m3_s(): number; annual_mean_seasonal_unreleased_terminal_storage_m3_s(): number; seasonal_water_balance_relative_error(): number; seasonal_lake_spinup_years(): number; final_lake_cycle_relative_change(): number; final_lake_surface_cycle_change_m(): number; maximum_seasonal_lake_level_range_m(): number;\n  seasonal_phase_local_runoff_m3_s(): Float32Array; seasonal_phase_snowmelt_runoff_m3_s(): Float32Array; seasonal_phase_snow_storage_mm(): Float32Array; seasonal_phase_potential_discharge_m3_s(): Float32Array; seasonal_phase_realized_discharge_m3_s(): Float32Array; seasonal_flow_presence_fraction(): Float32Array; seasonal_flow_regime(): Uint8Array; seasonal_phase_lake_surface_elevation_m(): Float32Array; seasonal_phase_lake_area_m2(): Float64Array; seasonal_phase_lake_volume_m3(): Float64Array;\n'''
+          replace_once(worker, '  lake_depression_ids(): Uint32Array; lake_kinds(): Uint8Array; lake_surface_elevations_m(): Float64Array; lake_areas_m2(): Float64Array; lake_volumes_m3(): Float64Array; lake_outflows_m3_s(): Float64Array; lake_spill_samples(): Uint32Array;\n  free(): void;', '  lake_depression_ids(): Uint32Array; lake_kinds(): Uint8Array; lake_surface_elevations_m(): Float64Array; lake_areas_m2(): Float64Array; lake_volumes_m3(): Float64Array; lake_outflows_m3_s(): Float64Array; lake_spill_samples(): Uint32Array;\n' + seasonal_wasm + '  free(): void;')
+          replace_once(worker, "    progress('packaging', 12, 13, 0, 1);", "    progress('packaging', 13, 14, 0, 1);")
+          replace_once(worker, "    progress('packaging', 12, 13, 1, 1);", "    progress('packaging', 13, 14, 1, 1);")
+          replace_once(
+              worker,
+              '    const lakeDepressionIds = output.lake_depression_ids(); const lakeKinds = output.lake_kinds(); const lakeSurfaceElevationsM = output.lake_surface_elevations_m(); const lakeAreasM2 = output.lake_areas_m2(); const lakeVolumesM3 = output.lake_volumes_m3(); const lakeOutflowsM3S = output.lake_outflows_m3_s(); const lakeSpillSamples = output.lake_spill_samples();',
+              '''    const lakeDepressionIds = output.lake_depression_ids(); const lakeKinds = output.lake_kinds(); const lakeSurfaceElevationsM = output.lake_surface_elevations_m(); const lakeAreasM2 = output.lake_areas_m2(); const lakeVolumesM3 = output.lake_volumes_m3(); const lakeOutflowsM3S = output.lake_outflows_m3_s(); const lakeSpillSamples = output.lake_spill_samples();\n    const seasonalPhaseLocalRunoffM3S = output.seasonal_phase_local_runoff_m3_s(); const seasonalPhaseSnowmeltRunoffM3S = output.seasonal_phase_snowmelt_runoff_m3_s(); const seasonalPhaseSnowStorageMm = output.seasonal_phase_snow_storage_mm(); const seasonalPhasePotentialDischargeM3S = output.seasonal_phase_potential_discharge_m3_s(); const seasonalPhaseRealizedDischargeM3S = output.seasonal_phase_realized_discharge_m3_s(); const seasonalFlowPresenceFraction = output.seasonal_flow_presence_fraction(); const seasonalFlowRegime = output.seasonal_flow_regime(); const seasonalPhaseLakeSurfaceElevationM = output.seasonal_phase_lake_surface_elevation_m(); const seasonalPhaseLakeAreaM2 = output.seasonal_phase_lake_area_m2(); const seasonalPhaseLakeVolumeM3 = output.seasonal_phase_lake_volume_m3();''',
+          )
+          replace_once(
+              worker,
+              '      lakeId, lakeKind, lakeFraction, lakeDepthM, realizedDischargeM3S, lakeDepressionIds, lakeKinds, lakeSurfaceElevationsM, lakeAreasM2, lakeVolumesM3, lakeOutflowsM3S, lakeSpillSamples,\n    };',
+              '''      lakeId, lakeKind, lakeFraction, lakeDepthM, realizedDischargeM3S, lakeDepressionIds, lakeKinds, lakeSurfaceElevationsM, lakeAreasM2, lakeVolumesM3, lakeOutflowsM3S, lakeSpillSamples,\n      seasonalStage: { id: output.seasonal_stage_id(), version: output.seasonal_stage_version(), stageSeed: output.seasonal_stage_seed_hex(), durationMs: 0 },\n      seasonalMetrics: { sampleCount: output.fine_sample_count(), orbitalPhaseCount: output.orbital_phase_count(), activeLakeCount: output.lake_count(), dryFlowSampleCount: output.seasonal_dry_flow_sample_count(), intermittentFlowSampleCount: output.seasonal_intermittent_flow_sample_count(), perennialFlowSampleCount: output.seasonal_perennial_flow_sample_count(), maximumPhaseLocalRunoffM3S: output.maximum_phase_local_runoff_m3_s(), maximumPhasePotentialDischargeM3S: output.maximum_phase_potential_discharge_m3_s(), maximumPhaseRealizedDischargeM3S: output.maximum_phase_realized_discharge_m3_s(), snowmeltRunoffFraction: output.snowmelt_runoff_fraction(), annualMeanLocalRunoffM3S: output.annual_mean_seasonal_local_runoff_m3_s(), annualLocalRunoffClosureRelativeError: output.annual_local_runoff_closure_relative_error(), annualMeanTerminalPotentialDischargeM3S: output.annual_mean_terminal_potential_discharge_m3_s(), seasonalRoutingConservationRelativeError: output.seasonal_routing_conservation_relative_error(), annualMeanTerminalRealizedDischargeM3S: output.annual_mean_terminal_seasonal_realized_discharge_m3_s(), annualMeanLakePrecipitationM3S: output.annual_mean_seasonal_lake_precipitation_m3_s(), annualMeanLakeEvaporationM3S: output.annual_mean_seasonal_lake_evaporation_m3_s(), annualMeanUnreleasedTerminalStorageM3S: output.annual_mean_seasonal_unreleased_terminal_storage_m3_s(), seasonalWaterBalanceRelativeError: output.seasonal_water_balance_relative_error(), lakeSpinupYears: output.seasonal_lake_spinup_years(), finalLakeCycleRelativeChange: output.final_lake_cycle_relative_change(), finalLakeSurfaceCycleChangeM: output.final_lake_surface_cycle_change_m(), maximumSeasonalLakeLevelRangeM: output.maximum_seasonal_lake_level_range_m(), seasonalParameterHash: output.seasonal_parameter_hash_hex(), climateHash: output.seasonal_climate_hash_hex(), drainageHash: output.seasonal_drainage_hash_hex(), runoffHash: output.seasonal_runoff_hash_hex(), lakeHash: output.seasonal_lake_hash_hex(), seasonalHydrologyHash: output.seasonal_hydrology_hash_hex() },\n      seasonalPhaseLocalRunoffM3S, seasonalPhaseSnowmeltRunoffM3S, seasonalPhaseSnowStorageMm, seasonalPhasePotentialDischargeM3S, seasonalPhaseRealizedDischargeM3S, seasonalFlowPresenceFraction, seasonalFlowRegime, seasonalPhaseLakeSurfaceElevationM, seasonalPhaseLakeAreaM2, seasonalPhaseLakeVolumeM3,\n    };''',
+          )
+          replace_once(
+              worker,
+              'result.lakeVolumesM3.buffer, result.lakeOutflowsM3S.buffer, result.lakeSpillSamples.buffer]); return;',
+              'result.lakeVolumesM3.buffer, result.lakeOutflowsM3S.buffer, result.lakeSpillSamples.buffer, result.seasonalPhaseLocalRunoffM3S.buffer, result.seasonalPhaseSnowmeltRunoffM3S.buffer, result.seasonalPhaseSnowStorageMm.buffer, result.seasonalPhasePotentialDischargeM3S.buffer, result.seasonalPhaseRealizedDischargeM3S.buffer, result.seasonalFlowPresenceFraction.buffer, result.seasonalFlowRegime.buffer, result.seasonalPhaseLakeSurfaceElevationM.buffer, result.seasonalPhaseLakeAreaM2.buffer, result.seasonalPhaseLakeVolumeM3.buffer]); return;',
+          )
+
+          for path in Path('tests').glob('*.test.ts'):
+              text = path.read_text()
+              text = text.replace('WORLDGEN_PROTOCOL_VERSION, 13', 'WORLDGEN_PROTOCOL_VERSION, 14')
+              text = text.replace('protocol v13', 'protocol v14')
+              text = text.replace('protocol version 13', 'protocol version 14')
+              path.write_text(text)
+          PY
+      - name: Validate Rust bridge and browser build
+        run: |
+          rustfmt rust/interlink-worldgen-wasm/src/climate_bridge.rs rust/interlink-worldgen-wasm/src/lib.rs
+          cargo check -p interlink-worldgen-wasm --target wasm32-unknown-unknown
+          npm run build
+          npm run test:ts
+      - name: Commit WG-6D browser core
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add rust/interlink-worldgen-wasm/src/climate_bridge.rs rust/interlink-worldgen-wasm/src/lib.rs src/worldgen/protocol.ts src/worldgen/worldgenWorker.ts tests
+          git commit -m "Expose WG-6D seasonal hydrology to browser protocol"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
