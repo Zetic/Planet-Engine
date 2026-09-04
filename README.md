@@ -59,6 +59,7 @@ npm install
 npm run build
 npm run test:ts
 cargo test --workspace
+bash scripts/check-wg7a-erosion.sh
 npm run worldgen:inheritance
 npm run worldgen:topography
 npm run worldgen:climate
