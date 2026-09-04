@@ -1,6 +1,7 @@
 import {
   WORLDGEN_PROTOCOL_VERSION,
   validateClimateRequest,
+  validateDrainageRequest,
   validateGeologyRequest,
   validateInheritanceRequest,
   validateLithosphereRequest,
@@ -12,6 +13,7 @@ import {
   type WorldgenCommand,
   type WorldgenErrorEvent,
   type WorldgenGeneratedClimateEvent,
+  type WorldgenGeneratedDrainageEvent,
   type WorldgenGeneratedGeologyEvent,
   type WorldgenGenerationProgressEvent,
   type WorldgenGenerationTiming,
@@ -22,6 +24,7 @@ import {
   type WorldgenGeneratedTectonicsEvent,
   type WorldgenGeneratedTopologyEvent,
   type WorldgenGeologyResult,
+  type WorldgenDrainageResult,
   type WorldgenInheritanceResult,
   type WorldgenLithosphereResult,
   type WorldgenSyntheticResult,
@@ -94,6 +97,21 @@ interface WasmClimate {
   annual_mean_insolation_w_m2(): Float32Array; seasonal_insolation_amplitude_w_m2(): Float32Array; temperature_mean_k(): Float32Array; temperature_annual_cos_k(): Float32Array; temperature_annual_sin_k(): Float32Array; temperature_min_k(): Float32Array; temperature_max_k(): Float32Array; local_pressure_pa(): Float32Array; wind_east_mean_m_s(): Float32Array; wind_north_mean_m_s(): Float32Array; wind_east_annual_cos_m_s(): Float32Array; wind_east_annual_sin_m_s(): Float32Array; wind_north_annual_cos_m_s(): Float32Array; wind_north_annual_sin_m_s(): Float32Array; sea_surface_temperature_mean_k(): Float32Array; sea_surface_temperature_annual_cos_k(): Float32Array; sea_surface_temperature_annual_sin_k(): Float32Array; current_east_mean_m_s(): Float32Array; current_north_mean_m_s(): Float32Array; current_east_annual_cos_m_s(): Float32Array; current_east_annual_sin_m_s(): Float32Array; current_north_annual_cos_m_s(): Float32Array; current_north_annual_sin_m_s(): Float32Array; current_speed_mean_m_s(): Float32Array; ocean_heat_transport_index(): Float32Array; specific_humidity_mean(): Float32Array; annual_precipitation_mm(): Float32Array; precipitation_phase_rate_mm_year(): Float32Array; precipitation_seasonality(): Float32Array; potential_evaporation_mm(): Float32Array; moisture_balance_mm(): Float32Array; aridity_index(): Float32Array; snowfall_fraction(): Float32Array; persistent_snow_potential(): Float32Array; sea_ice_potential(): Float32Array;
   free(): void;
 }
+
+interface WasmDrainage {
+  generator_version(): number; stage_id(): string; stage_version(): number; stage_seed_hex(): string;
+  coarse_level(): number; fine_level(): number; sample_count(): number; plate_count(): number;
+  drainage_hash_hex(): string; topography_hash_hex(): string; topology_hash_hex(): string; planet_parameter_hash_hex(): string;
+  land_sample_count(): number; ocean_sample_count(): number; basin_count(): number; depression_count(): number; depression_sample_count(): number;
+  land_area_m2(): number; terminal_contributing_area_m2(): number; area_conservation_relative_error(): number; maximum_contributing_area_m2(): number; maximum_depression_depth_m(): number;
+  positions(): Float64Array; faces(): Uint32Array; neighbor_offsets(): Uint32Array; neighbors(): Uint32Array;
+  solid_elevation_m(): Float32Array; elevation_above_sea_level_m(): Float32Array; submerged_mask(): Uint8Array;
+  receiver(): Uint32Array; outlet_sample(): Uint32Array; outlet_kind(): Uint8Array; basin_id(): Uint32Array; depression_id(): Uint32Array;
+  hydrologic_escape_elevation_m(): Float32Array; depression_depth_m(): Float32Array; contributing_area_m2(): Float64Array; drainage_order(): Uint32Array;
+  basin_outlet_samples(): Uint32Array; basin_outlet_kinds(): Uint8Array; basin_areas_m2(): Float64Array;
+  depression_floor_samples(): Uint32Array; depression_floor_elevations_m(): Float64Array; depression_spill_elevations_m(): Float64Array; depression_areas_m2(): Float64Array;
+  free(): void;
+}
 interface WorldgenWasmModule {
   default(): Promise<unknown>;
   worldgen_protocol_version(): number;
@@ -106,10 +124,11 @@ interface WorldgenWasmModule {
   WasmWorldgenInheritance: new (seed: string, coarseLevel: number, fineLevel: number, plateCount: number) => WasmInheritance;
   WasmWorldgenTopography: new (seed: string, coarseLevel: number, fineLevel: number, plateCount: number) => WasmTopography;
   WasmWorldgenClimate: new (seed: string, coarseLevel: number, fineLevel: number, plateCount: number, progress?: (stageId: string, stageIndex: number, stageCount: number, completed: number, total: number) => void) => WasmClimate;
+  WasmWorldgenDrainage: new (seed: string, coarseLevel: number, fineLevel: number, plateCount: number) => WasmDrainage;
 }
 interface WorldgenWorkerScope {
   addEventListener(type: 'message', listener: (event: MessageEvent<WorldgenCommand>) => void): void;
-  postMessage(message: WorldgenGeneratedSyntheticEvent | WorldgenGeneratedTopologyEvent | WorldgenGeneratedTectonicsEvent | WorldgenGeneratedGeologyEvent | WorldgenGeneratedLithosphereEvent | WorldgenGeneratedInheritanceEvent | WorldgenGeneratedTopographyEvent | WorldgenGeneratedClimateEvent | WorldgenGenerationProgressEvent | WorldgenErrorEvent, transfer?: Transferable[]): void;
+  postMessage(message: WorldgenGeneratedSyntheticEvent | WorldgenGeneratedTopologyEvent | WorldgenGeneratedTectonicsEvent | WorldgenGeneratedGeologyEvent | WorldgenGeneratedLithosphereEvent | WorldgenGeneratedInheritanceEvent | WorldgenGeneratedTopographyEvent | WorldgenGeneratedClimateEvent | WorldgenGeneratedDrainageEvent | WorldgenGenerationProgressEvent | WorldgenErrorEvent, transfer?: Transferable[]): void;
 }
 
 const workerScope = self as unknown as WorldgenWorkerScope;
@@ -299,6 +318,34 @@ async function generateClimate(command: Extract<WorldgenCommand, { type: 'genera
   } finally { output.free(); }
 }
 
+
+async function generateDrainage(command: Extract<WorldgenCommand, { type: 'generate-drainage' }>): Promise<WorldgenDrainageResult> {
+  validateDrainageRequest(command.payload);
+  const module = await loadWorldgenWasm();
+  const startedAt = nowMs();
+  const output = new module.WasmWorldgenDrainage(command.payload.seed, command.payload.coarseLevel, command.payload.fineLevel, command.payload.plateCount);
+  try {
+    const positions = output.positions(); const faces = output.faces(); const neighborOffsets = output.neighbor_offsets(); const neighbors = output.neighbors();
+    const solidElevationM = output.solid_elevation_m(); const elevationAboveSeaLevelM = output.elevation_above_sea_level_m(); const submergedMask = output.submerged_mask();
+    const receiver = output.receiver(); const outletSample = output.outlet_sample(); const outletKind = output.outlet_kind(); const basinId = output.basin_id(); const depressionId = output.depression_id();
+    const hydrologicEscapeElevationM = output.hydrologic_escape_elevation_m(); const depressionDepthM = output.depression_depth_m(); const contributingAreaM2 = output.contributing_area_m2(); const drainageOrder = output.drainage_order();
+    const basinOutletSamples = output.basin_outlet_samples(); const basinOutletKinds = output.basin_outlet_kinds(); const basinAreasM2 = output.basin_areas_m2();
+    const depressionFloorSamples = output.depression_floor_samples(); const depressionFloorElevationsM = output.depression_floor_elevations_m(); const depressionSpillElevationsM = output.depression_spill_elevations_m(); const depressionAreasM2 = output.depression_areas_m2();
+    return {
+      engineVersion: output.generator_version(), coarseLevel: output.coarse_level(), fineLevel: output.fine_level(),
+      stage: { id: output.stage_id(), version: output.stage_version(), stageSeed: output.stage_seed_hex(), durationMs: Math.max(0, nowMs() - startedAt) },
+      metrics: {
+        sampleCount: output.sample_count(), landSampleCount: output.land_sample_count(), oceanSampleCount: output.ocean_sample_count(), basinCount: output.basin_count(), depressionCount: output.depression_count(), depressionSampleCount: output.depression_sample_count(),
+        landAreaM2: output.land_area_m2(), terminalContributingAreaM2: output.terminal_contributing_area_m2(), areaConservationRelativeError: output.area_conservation_relative_error(), maximumContributingAreaM2: output.maximum_contributing_area_m2(), maximumDepressionDepthM: output.maximum_depression_depth_m(), drainageHash: output.drainage_hash_hex(),
+      },
+      topographyHash: output.topography_hash_hex(), topologyHash: output.topology_hash_hex(), planetParameterHash: output.planet_parameter_hash_hex(),
+      positions, faces, neighborOffsets, neighbors, solidElevationM, elevationAboveSeaLevelM, submergedMask,
+      receiver, outletSample, outletKind, basinId, depressionId, hydrologicEscapeElevationM, depressionDepthM, contributingAreaM2, drainageOrder,
+      basinOutletSamples, basinOutletKinds, basinAreasM2, depressionFloorSamples, depressionFloorElevationsM, depressionSpillElevationsM, depressionAreasM2,
+    };
+  } finally { output.free(); }
+}
+
 workerScope.addEventListener('message', async messageEvent => {
   const command = messageEvent.data;
   try {
@@ -321,6 +368,10 @@ workerScope.addEventListener('message', async messageEvent => {
     if (command.type === 'generate-topography') {
       const result = await generateTopography(command);
       workerScope.postMessage({ protocolVersion: WORLDGEN_PROTOCOL_VERSION, requestId: command.requestId, type: 'generated-topography', payload: result }, [result.positions.buffer, result.faces.buffer, result.neighborOffsets.buffer, result.neighbors.buffer, result.plateIds.buffer, result.crustKind.buffer, result.nearestCoarseSource.buffer, result.inheritedSampleMask.buffer, result.crustAgeMyr.buffer, result.crustThicknessKm.buffer, result.orogenicHistory.buffer, result.ridgeHistory.buffer, result.trenchHistory.buffer, result.strengthIndex.buffer, result.weaknessIndex.buffer, result.mantleDynamicSupportIndex.buffer, result.structuralZoneKind.buffer, result.fragmentationPropensity.buffer, result.kinematicDomainIds.buffer, result.boundarySamples.buffer, result.boundaryKinds.buffer, result.geologicalBoundaryRegimes.buffer, result.boundaryCoarseSourceIndices.buffer, result.isostaticElevationM.buffer, result.thermalElevationM.buffer, result.orogenicElevationM.buffer, result.ridgeElevationM.buffer, result.riftBasinElevationM.buffer, result.trenchElevationM.buffer, result.arcElevationM.buffer, result.mantleDynamicElevationM.buffer, result.solidElevationM.buffer, result.elevationAboveSeaLevelM.buffer, result.waterDepthM.buffer, result.submergedMask.buffer]); return;
+    }
+    if (command.type === 'generate-drainage') {
+      const result = await generateDrainage(command);
+      workerScope.postMessage({ protocolVersion: WORLDGEN_PROTOCOL_VERSION, requestId: command.requestId, type: 'generated-drainage', payload: result }, [result.positions.buffer, result.faces.buffer, result.neighborOffsets.buffer, result.neighbors.buffer, result.solidElevationM.buffer, result.elevationAboveSeaLevelM.buffer, result.submergedMask.buffer, result.receiver.buffer, result.outletSample.buffer, result.outletKind.buffer, result.basinId.buffer, result.depressionId.buffer, result.hydrologicEscapeElevationM.buffer, result.depressionDepthM.buffer, result.contributingAreaM2.buffer, result.drainageOrder.buffer, result.basinOutletSamples.buffer, result.basinOutletKinds.buffer, result.basinAreasM2.buffer, result.depressionFloorSamples.buffer, result.depressionFloorElevationsM.buffer, result.depressionSpillElevationsM.buffer, result.depressionAreasM2.buffer]); return;
     }
     if (command.type === 'generate-climate') {
       const result = await generateClimate(command);

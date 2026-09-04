@@ -1,4 +1,4 @@
-import { WORLDGEN_PROTOCOL_VERSION, validateClimateRequest, validateGeologyRequest, validateInheritanceRequest, validateLithosphereRequest, validateSyntheticRequest, validateTopographyRequest, validateTectonicsRequest, validateTopologyRequest, worldgenClimateCommand, worldgenGeologyCommand, worldgenInheritanceCommand, worldgenLithosphereCommand, worldgenSyntheticCommand, worldgenTopographyCommand, worldgenTectonicsCommand, worldgenTopologyCommand, } from './protocol.js';
+import { WORLDGEN_PROTOCOL_VERSION, validateClimateRequest, validateDrainageRequest, validateGeologyRequest, validateInheritanceRequest, validateLithosphereRequest, validateSyntheticRequest, validateTopographyRequest, validateTectonicsRequest, validateTopologyRequest, worldgenClimateCommand, worldgenDrainageCommand, worldgenGeologyCommand, worldgenInheritanceCommand, worldgenLithosphereCommand, worldgenSyntheticCommand, worldgenTopographyCommand, worldgenTectonicsCommand, worldgenTopologyCommand, } from './protocol.js';
 export function createWorldgenClient() {
     const workerUrl = new URL('./worldgenWorker.js', import.meta.url);
     workerUrl.searchParams.set('v', String(WORLDGEN_PROTOCOL_VERSION));
@@ -40,6 +40,7 @@ export function createWorldgenClient() {
         generateInheritance(input) { validateInheritanceRequest(input); return request(worldgenInheritanceCommand(nextRequestId++, input)); },
         generateTopography(input) { validateTopographyRequest(input); return request(worldgenTopographyCommand(nextRequestId++, input)); },
         generateClimate(input, onProgress) { validateClimateRequest(input); return request(worldgenClimateCommand(nextRequestId++, input), onProgress); },
+        generateDrainage(input) { validateDrainageRequest(input); return request(worldgenDrainageCommand(nextRequestId++, input)); },
         dispose() { if (disposed)
             return; disposed = true; worker.terminate(); rejectAll('Planet Engine client was disposed.'); },
     };

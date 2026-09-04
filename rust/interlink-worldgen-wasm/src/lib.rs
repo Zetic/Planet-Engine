@@ -1,5 +1,7 @@
 mod climate_bridge;
 pub use climate_bridge::WasmWorldgenClimate;
+mod drainage_bridge;
+pub use drainage_bridge::WasmWorldgenDrainage;
 mod inheritance_bridge;
 pub use inheritance_bridge::WasmWorldgenInheritance;
 mod topography_bridge;
@@ -14,7 +16,7 @@ use interlink_worldgen::{
 };
 use wasm_bindgen::prelude::*;
 
-pub const WORLDGEN_WASM_PROTOCOL_VERSION: u32 = 10;
+pub const WORLDGEN_WASM_PROTOCOL_VERSION: u32 = 11;
 #[wasm_bindgen]
 pub fn worldgen_protocol_version() -> u32 {
     WORLDGEN_WASM_PROTOCOL_VERSION
