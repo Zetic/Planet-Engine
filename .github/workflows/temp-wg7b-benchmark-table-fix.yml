@@ -1,0 +1,28 @@
+name: Temporary WG-7B Benchmark Table Fix
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.head_ref == 'wg7b-bounded-terrain-evolution'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - name: Fix benchmark table headings
+        run: python scripts/temp-wg7b-benchmark-table-fix.py
+      - name: Commit heading fix and self-clean
+        run: |
+          rm scripts/temp-wg7b-benchmark-table-fix.py .github/workflows/temp-wg7b-benchmark-table-fix.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/worldgen-rewrite/WG7_EROSION.md scripts/temp-wg7b-benchmark-table-fix.py .github/workflows/temp-wg7b-benchmark-table-fix.yml
+          git commit -m "Fix WG-7B benchmark table headings"
+          git push origin HEAD:${{ github.head_ref }}
