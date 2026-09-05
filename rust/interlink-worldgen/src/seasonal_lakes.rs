@@ -11,7 +11,7 @@ const LAKE_CYCLE_CONVERGENCE_RELATIVE: f64 = 1.0e-6;
 // closure test than fractional volume for tiny or shallow resolved basins.
 const LAKE_SURFACE_CYCLE_CONVERGENCE_M: f64 = 0.02;
 const MINIMUM_LAKE_SPINUP_YEARS: u8 = 2;
-const MAXIMUM_LAKE_SPINUP_YEARS: u8 = 12;
+pub(crate) const DEFAULT_MAXIMUM_LAKE_SPINUP_YEARS: u8 = 12;
 const EVAPORATION_WEIGHT_FLOOR_K: f64 = 250.0;
 
 #[derive(Debug)]
@@ -345,6 +345,7 @@ pub(crate) fn solve_seasonal_lake_routing(
     lake_state: &LakeState,
     planet: PlanetPhysicalParameters,
     phase_local_runoff_m3_s: &[f32],
+    maximum_lake_spinup_years: u8,
 ) -> Result<SeasonalLakeRoutingResult, &'static str> {
     let count = topology.sample_count() as usize;
     let phase_count = usize::from(climate.metrics.orbital_phase_count);
@@ -421,10 +422,13 @@ pub(crate) fn solve_seasonal_lake_routing(
     let mut realized_accum_m3_s = vec![0.0_f64; count];
     let mut lake_inflow_m3_s = vec![0.0_f64; lake_count];
 
+    if maximum_lake_spinup_years == 0 {
+        return Err("WG-6D maximum lake spinup years must be positive");
+    }
     let maximum_spinup_years = if lake_count == 0 {
         1
     } else {
-        MAXIMUM_LAKE_SPINUP_YEARS
+        maximum_lake_spinup_years
     };
     let mut completed_years = 0_u8;
     let mut final_cycle_relative_change = 0.0_f64;

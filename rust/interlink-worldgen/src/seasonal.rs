@@ -1,5 +1,5 @@
 use crate::seasonal_flow::classify_realized_flow;
-use crate::seasonal_lakes::solve_seasonal_lake_routing;
+use crate::seasonal_lakes::{solve_seasonal_lake_routing, DEFAULT_MAXIMUM_LAKE_SPINUP_YEARS};
 use crate::{
     derive_stage_seed, ClimateGenerationDiagnostics, ClimateState, DrainageState, GeodesicTopology,
     LakeState, PlanetPhysicalParameters, PlanetTopology, RunoffState, StageIdentity,
@@ -399,6 +399,7 @@ pub fn generate_seasonal_hydrology(
         lakes,
         planet,
         request,
+        DEFAULT_MAXIMUM_LAKE_SPINUP_YEARS,
     )
 }
 
@@ -414,6 +415,7 @@ pub(crate) fn generate_seasonal_hydrology_from_surface(
     lakes: &LakeState,
     planet: PlanetPhysicalParameters,
     request: &SeasonalHydrologyRequest,
+    maximum_lake_spinup_years: u8,
 ) -> Result<SeasonalHydrologyState, WorldgenError> {
     planet
         .validate()
@@ -578,6 +580,7 @@ pub(crate) fn generate_seasonal_hydrology_from_surface(
         lakes,
         planet,
         &phase_local_runoff_m3_s,
+        maximum_lake_spinup_years,
     )
     .map_err(WorldgenError::InvalidHydrology)?;
 

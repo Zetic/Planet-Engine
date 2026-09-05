@@ -19,6 +19,7 @@ pub struct PostErosionHydrologyParameters {
     pub runoff: RunoffParameters,
     pub lakes: LakeParameters,
     pub seasonal: SeasonalHydrologyParameters,
+    pub maximum_lake_spinup_years: u8,
 }
 
 impl Default for PostErosionHydrologyParameters {
@@ -27,6 +28,7 @@ impl Default for PostErosionHydrologyParameters {
             runoff: RunoffParameters::default(),
             lakes: LakeParameters::default(),
             seasonal: SeasonalHydrologyParameters::default(),
+            maximum_lake_spinup_years: 24,
         }
     }
 }
@@ -36,6 +38,9 @@ impl PostErosionHydrologyParameters {
         self.runoff.validate()?;
         self.lakes.validate()?;
         self.seasonal.validate()?;
+        if !(2..=48).contains(&self.maximum_lake_spinup_years) {
+            return Err("WG-7C maximum lake spinup years must be within [2, 48]");
+        }
         Ok(())
     }
 
@@ -43,7 +48,8 @@ impl PostErosionHydrologyParameters {
         let mut hash = FNV_OFFSET_BASIS;
         hash = fnv_update(hash, &self.runoff.parameter_hash().to_le_bytes());
         hash = fnv_update(hash, &self.lakes.parameter_hash().to_le_bytes());
-        fnv_update(hash, &self.seasonal.parameter_hash().to_le_bytes())
+        hash = fnv_update(hash, &self.seasonal.parameter_hash().to_le_bytes());
+        fnv_update(hash, &[self.maximum_lake_spinup_years])
     }
 
     pub fn parameter_hash_hex(&self) -> String {
@@ -279,6 +285,7 @@ pub fn generate_post_erosion_hydrology(
         &reconciled_lakes,
         planet,
         &seasonal_request,
+        request.parameters.maximum_lake_spinup_years,
     )?;
     if reconciled_seasonal.stage.derived_seed != pre_erosion_seasonal.stage.derived_seed {
         return Err(WorldgenError::InvalidHydrology(
@@ -456,6 +463,9 @@ mod tests {
         assert_ne!(base.parameter_hash(), changed.parameter_hash());
         changed = base;
         changed.seasonal.degree_day_melt_mm_per_k_day = 4.0;
+        assert_ne!(base.parameter_hash(), changed.parameter_hash());
+        changed = base;
+        changed.maximum_lake_spinup_years = 32;
         assert_ne!(base.parameter_hash(), changed.parameter_hash());
     }
 }

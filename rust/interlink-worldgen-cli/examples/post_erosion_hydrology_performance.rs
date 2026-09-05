@@ -5,8 +5,8 @@ use interlink_worldgen::{
     generate_post_erosion_hydrology, generate_runoff_discharge, generate_seasonal_hydrology,
     generate_tectonics, inherit_boundary_interfaces, inherit_physical_state, ClimateRequest,
     DrainageRequest, FluvialErosionRequest, GeologyRequest, LakeRequest, LithosphereRequest,
-    PlanetPhysicalParameters, PostErosionHydrologyRequest, RunoffRequest,
-    SeasonalHydrologyRequest, TectonicsRequest, TerrainEvolutionRequest, TopographyRequest,
+    PlanetPhysicalParameters, PostErosionHydrologyRequest, RunoffRequest, SeasonalHydrologyRequest,
+    TectonicsRequest, TerrainEvolutionRequest, TopographyRequest,
 };
 use std::env;
 use std::time::Instant;
@@ -236,12 +236,17 @@ fn main() -> Result<(), String> {
         state.metrics.reconciled_runoff_conservation_relative_error,
         state.metrics.reconciled_lake_water_balance_relative_error,
         state.metrics.reconciled_seasonal_routing_relative_error,
-        state.metrics.reconciled_seasonal_water_balance_relative_error,
+        state
+            .metrics
+            .reconciled_seasonal_water_balance_relative_error,
     );
     println!(
-        "seasonal lakes={} spinup={} flow_dry={} intermittent={} perennial={}",
+        "seasonal lakes={} spinup={} surface_drift_m={:.9} relative_cycle={:.9e} max_range_m={:.6} flow_dry={} intermittent={} perennial={}",
         state.reconciled_seasonal.metrics.active_lake_count,
         state.reconciled_seasonal.metrics.lake_spinup_years,
+        state.reconciled_seasonal.metrics.final_lake_surface_cycle_change_m,
+        state.reconciled_seasonal.metrics.final_lake_cycle_relative_change,
+        state.reconciled_seasonal.metrics.maximum_seasonal_lake_level_range_m,
         state.reconciled_seasonal.metrics.dry_flow_sample_count,
         state.reconciled_seasonal.metrics.intermittent_flow_sample_count,
         state.reconciled_seasonal.metrics.perennial_flow_sample_count,

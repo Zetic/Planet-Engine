@@ -38,7 +38,9 @@ closure = re.search(
     text,
 )
 seasonal = re.search(
-    r"seasonal lakes=(\d+) spinup=(\d+) flow_dry=(\d+) intermittent=(\d+) perennial=(\d+)",
+    r"seasonal lakes=(\d+) spinup=(\d+) surface_drift_m=([0-9.eE+-]+) "
+    r"relative_cycle=([0-9.eE+-]+) max_range_m=([0-9.eE+-]+) "
+    r"flow_dry=(\d+) intermittent=(\d+) perennial=(\d+)",
     text,
 )
 hashes = re.search(
@@ -66,9 +68,12 @@ routing_closure = float(closure.group(3))
 seasonal_closure = float(closure.group(4))
 seasonal_lakes = int(seasonal.group(1))
 spinup = int(seasonal.group(2))
-dry = int(seasonal.group(3))
-intermittent = int(seasonal.group(4))
-perennial = int(seasonal.group(5))
+surface_drift = float(seasonal.group(3))
+relative_cycle = float(seasonal.group(4))
+max_range = float(seasonal.group(5))
+dry = int(seasonal.group(6))
+intermittent = int(seasonal.group(7))
+perennial = int(seasonal.group(8))
 
 if samples != 2562:
     raise SystemExit(f"WG-7C L4 smoke expected 2562 samples, got {samples}")
@@ -80,8 +85,12 @@ if not (0 <= kind_changed <= samples and 0 <= added <= samples and 0 <= removed 
     raise SystemExit("WG-7C lake-change counts are outside sample bounds")
 if not (0 <= regime_changed <= samples):
     raise SystemExit("WG-7C flow-regime change count is outside sample bounds")
-if not (1 <= spinup <= 12):
-    raise SystemExit(f"WG-7C reconciled seasonal spinup is outside [1, 12]: {spinup}")
+if not (1 <= spinup <= 24):
+    raise SystemExit(f"WG-7C reconciled seasonal spinup is outside [1, 24]: {spinup}")
+if not math.isfinite(surface_drift) or surface_drift < 0.0 or surface_drift > 0.0200001:
+    raise SystemExit(f"WG-7C reconciled seasonal lake surface cycle did not converge: {surface_drift:.9f} m")
+if not math.isfinite(relative_cycle) or relative_cycle < 0.0 or not math.isfinite(max_range) or max_range < 0.0:
+    raise SystemExit("WG-7C reconciled lake cycle diagnostics must be finite and nonnegative")
 if dry + intermittent + perennial > samples:
     raise SystemExit("WG-7C reconciled flow counts exceed sample count")
 if intermittent <= 0 or perennial <= 0:
