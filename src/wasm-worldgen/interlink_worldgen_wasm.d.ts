@@ -1134,6 +1134,7 @@ export interface InitOutput {
     readonly wasmworldgenclimate_plate_count: (a: number) => number;
     readonly wasmworldgenclimate_plate_ids: (a: number) => [number, number];
     readonly wasmworldgenclimate_positions: (a: number) => [number, number];
+    readonly wasmworldgenclimate_post_erosion_contributing_area_m2: (a: number) => [number, number];
     readonly wasmworldgenclimate_post_erosion_drainage_hash_hex: (a: number) => [number, number];
     readonly wasmworldgenclimate_post_erosion_hydrology_hash_hex: (a: number) => [number, number];
     readonly wasmworldgenclimate_post_erosion_lake_count: (a: number) => number;
@@ -1673,7 +1674,6 @@ export interface InitOutput {
     readonly wasmworldgentopography_generator_version: (a: number) => number;
     readonly wasmworldgentopology_generator_version: (a: number) => number;
     readonly wasmworldgentopography_has_sea_level: (a: number) => number;
-    readonly wasmworldgenclimate_post_erosion_contributing_area_m2: (a: number) => [number, number];
     readonly wasmworldgenlithosphere_level: (a: number) => number;
     readonly wasmworldgenlithosphere_plate_count: (a: number) => number;
     readonly wasmworldgentectonics_level: (a: number) => number;

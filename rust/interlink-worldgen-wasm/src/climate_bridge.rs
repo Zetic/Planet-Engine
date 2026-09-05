@@ -775,35 +775,23 @@ impl WasmWorldgenClimate {
         )
     }
     pub fn drainage_hash_hex(&self) -> String {
-        self.evolution
-            .post_erosion_drainage
-            .metrics
-            .drainage_hash_hex()
+        self.infill.post_infill_drainage.metrics.drainage_hash_hex()
     }
     pub fn drainage_land_sample_count(&self) -> u32 {
-        self.evolution
-            .post_erosion_drainage
-            .metrics
-            .land_sample_count
+        self.infill.post_infill_drainage.metrics.land_sample_count
     }
     pub fn drainage_ocean_sample_count(&self) -> u32 {
-        self.evolution
-            .post_erosion_drainage
-            .metrics
-            .ocean_sample_count
+        self.infill.post_infill_drainage.metrics.ocean_sample_count
     }
     pub fn drainage_basin_count(&self) -> u32 {
         self.infill.post_infill_drainage.metrics.basin_count
     }
     pub fn drainage_depression_count(&self) -> u32 {
-        self.evolution
-            .post_erosion_drainage
-            .metrics
-            .depression_count
+        self.infill.post_infill_drainage.metrics.depression_count
     }
     pub fn drainage_depression_sample_count(&self) -> u32 {
-        self.evolution
-            .post_erosion_drainage
+        self.infill
+            .post_infill_drainage
             .metrics
             .depression_sample_count
     }
@@ -811,26 +799,26 @@ impl WasmWorldgenClimate {
         self.infill.post_infill_drainage.metrics.land_area_m2
     }
     pub fn terminal_contributing_area_m2(&self) -> f64 {
-        self.evolution
-            .post_erosion_drainage
+        self.infill
+            .post_infill_drainage
             .metrics
             .terminal_contributing_area_m2
     }
     pub fn drainage_area_conservation_relative_error(&self) -> f64 {
-        self.evolution
-            .post_erosion_drainage
+        self.infill
+            .post_infill_drainage
             .metrics
             .area_conservation_relative_error
     }
     pub fn maximum_contributing_area_m2(&self) -> f64 {
-        self.evolution
-            .post_erosion_drainage
+        self.infill
+            .post_infill_drainage
             .metrics
             .maximum_contributing_area_m2
     }
     pub fn maximum_depression_depth_m(&self) -> f64 {
-        self.evolution
-            .post_erosion_drainage
+        self.infill
+            .post_infill_drainage
             .metrics
             .maximum_depression_depth_m
     }
@@ -850,20 +838,17 @@ impl WasmWorldgenClimate {
         self.infill.post_infill_drainage.depression_id.clone()
     }
     pub fn hydrologic_escape_elevation_m(&self) -> Vec<f32> {
-        self.evolution
-            .post_erosion_drainage
+        self.infill
+            .post_infill_drainage
             .hydrologic_escape_elevation_m
             .clone()
     }
     pub fn depression_depth_m(&self) -> Vec<f32> {
-        self.evolution
-            .post_erosion_drainage
-            .depression_depth_m
-            .clone()
+        self.infill.post_infill_drainage.depression_depth_m.clone()
     }
     pub fn contributing_area_m2(&self) -> Vec<f64> {
-        self.evolution
-            .post_erosion_drainage
+        self.infill
+            .post_infill_drainage
             .contributing_area_m2
             .clone()
     }
@@ -871,56 +856,56 @@ impl WasmWorldgenClimate {
         self.infill.post_infill_drainage.drainage_order.clone()
     }
     pub fn basin_outlet_samples(&self) -> Vec<u32> {
-        self.evolution
-            .post_erosion_drainage
+        self.infill
+            .post_infill_drainage
             .basins
             .iter()
             .map(|basin| basin.outlet_sample)
             .collect()
     }
     pub fn basin_outlet_kinds(&self) -> Vec<u8> {
-        self.evolution
-            .post_erosion_drainage
+        self.infill
+            .post_infill_drainage
             .basins
             .iter()
             .map(|basin| basin.outlet_kind)
             .collect()
     }
     pub fn basin_areas_m2(&self) -> Vec<f64> {
-        self.evolution
-            .post_erosion_drainage
+        self.infill
+            .post_infill_drainage
             .basins
             .iter()
             .map(|basin| basin.area_m2)
             .collect()
     }
     pub fn depression_floor_samples(&self) -> Vec<u32> {
-        self.evolution
-            .post_erosion_drainage
+        self.infill
+            .post_infill_drainage
             .depressions
             .iter()
             .map(|depression| depression.floor_sample)
             .collect()
     }
     pub fn depression_floor_elevations_m(&self) -> Vec<f64> {
-        self.evolution
-            .post_erosion_drainage
+        self.infill
+            .post_infill_drainage
             .depressions
             .iter()
             .map(|depression| depression.floor_elevation_m)
             .collect()
     }
     pub fn depression_spill_elevations_m(&self) -> Vec<f64> {
-        self.evolution
-            .post_erosion_drainage
+        self.infill
+            .post_infill_drainage
             .depressions
             .iter()
             .map(|depression| depression.spill_elevation_m)
             .collect()
     }
     pub fn depression_areas_m2(&self) -> Vec<f64> {
-        self.evolution
-            .post_erosion_drainage
+        self.infill
+            .post_infill_drainage
             .depressions
             .iter()
             .map(|depression| depression.area_m2)

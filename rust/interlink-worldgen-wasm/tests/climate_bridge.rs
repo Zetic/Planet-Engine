@@ -48,4 +48,19 @@ fn climate_bridge_exposes_coupled_climate_and_accepted_surface() {
     assert!(output.orbital_eccentricity() > 0.0);
     assert!(output.atmospheric_mean_molar_mass_kg_per_mol() > 0.0);
     assert!(output.atmospheric_shortwave_reflectivity() > 0.0);
+
+    // Canonical hydrology exposed to the browser must be one coherent WG-7D final state.
+    assert_eq!(
+        output.drainage_hash_hex(),
+        output.infill_post_infill_drainage_hash_hex()
+    );
+    assert_eq!(
+        output.runoff_drainage_hash_hex(),
+        output.drainage_hash_hex()
+    );
+    assert_eq!(output.lake_drainage_hash_hex(), output.drainage_hash_hex());
+    assert_eq!(
+        output.seasonal_drainage_hash_hex(),
+        output.drainage_hash_hex()
+    );
 }
