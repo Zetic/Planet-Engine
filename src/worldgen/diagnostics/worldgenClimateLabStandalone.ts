@@ -1021,10 +1021,9 @@ async function generatePlanet(): Promise<void> {
     if (loaded.seasonalMetrics.lakeHash !== loaded.lakeMetrics.lakeHash) throw new Error('WG-6D lake identity does not match accepted WG-6C state.');
     if (loaded.erosionMetrics.inheritanceHash !== loaded.metrics.inheritanceHash) throw new Error('WG-7A inheritance identity does not match accepted fine physical state.');
     if (loaded.erosionMetrics.topographyHash !== loaded.metrics.topographyHash) throw new Error('WG-7A topography identity does not match accepted WG-4 terrain.');
-    if (loaded.erosionMetrics.drainageHash !== loaded.drainageMetrics.drainageHash) throw new Error('WG-7A drainage identity does not match accepted WG-6A topology.');
-    if (loaded.erosionMetrics.lakeHash !== loaded.lakeMetrics.lakeHash) throw new Error('WG-7A lake identity does not match accepted WG-6C state.');
-    if (loaded.erosionMetrics.seasonalHydrologyHash !== loaded.reconciliationMetrics.preErosionSeasonalHash) throw new Error('WG-7A seasonal identity does not match WG-7C pre-erosion WG-6D ancestry.');
+    if (loaded.erosionMetrics.drainageHash !== loaded.reconciliationMetrics.preErosionDrainageHash) throw new Error('WG-7A drainage identity does not match WG-7C pre-erosion WG-6A ancestry.');
     if (loaded.erosionMetrics.lakeHash !== loaded.reconciliationMetrics.preErosionLakeHash) throw new Error('WG-7A lake identity does not match WG-7C pre-erosion WG-6C ancestry.');
+    if (loaded.erosionMetrics.seasonalHydrologyHash !== loaded.reconciliationMetrics.preErosionSeasonalHash) throw new Error('WG-7A seasonal identity does not match WG-7C pre-erosion WG-6D ancestry.');
     if (loaded.evolutionMetrics.topographyHash !== loaded.metrics.topographyHash) throw new Error('WG-7B topography identity does not match accepted WG-4 terrain.');
     if (loaded.evolutionMetrics.drainageHash !== loaded.reconciliationMetrics.preErosionDrainageHash) throw new Error('WG-7B drainage identity does not match WG-7C pre-erosion WG-6A ancestry.');
     if (loaded.evolutionMetrics.runoffHash !== loaded.reconciliationMetrics.preErosionRunoffHash) throw new Error('WG-7B runoff identity does not match WG-7C pre-erosion WG-6B ancestry.');
@@ -1043,7 +1042,7 @@ async function generatePlanet(): Promise<void> {
     showMetrics(loaded); redraw(false); updateAnimation(); finishGenerationTelemetry(loaded);
     generationStep.textContent = `${loaded.metrics.spinupYears} climate spin-up years · ${loaded.drainageMetrics.basinCount.toLocaleString()} basins · ${loaded.lakeMetrics.lakeCount.toLocaleString()} equilibrium lakes · ${loaded.evolutionMetrics.receiverChangedSampleCount.toLocaleString()} receivers changed after evolution`;
     generationTimer.textContent = formatDuration(performance.now() - generationStartedAt);
-    status.textContent = `Planet ready through WG-7B: ${loaded.metrics.fineSampleCount.toLocaleString()} samples, ${loaded.evolutionMetrics.erodedSampleCount.toLocaleString()} evolved erosion cells, ${loaded.evolutionMetrics.receiverChangedSampleCount.toLocaleString()} drainage receivers changed, mean land |Δz| ${loaded.evolutionMetrics.meanLandAbsoluteTerrainChangeM.toFixed(3)} m, sediment closure ${loaded.evolutionMetrics.sedimentConservationRelativeError.toExponential(2)}.`;
+    status.textContent = `Planet ready through WG-7C: ${loaded.metrics.fineSampleCount.toLocaleString()} samples, ${loaded.evolutionMetrics.erodedSampleCount.toLocaleString()} evolved erosion cells, ${loaded.evolutionMetrics.receiverChangedSampleCount.toLocaleString()} drainage receivers changed, mean land |Δz| ${loaded.evolutionMetrics.meanLandAbsoluteTerrainChangeM.toFixed(3)} m, sediment closure ${loaded.evolutionMetrics.sedimentConservationRelativeError.toExponential(2)}.`;
   } catch (error) {
     if (generationTimerHandle) { clearInterval(generationTimerHandle); generationTimerHandle = null; }
     generationStage.textContent = 'Generation failed';
