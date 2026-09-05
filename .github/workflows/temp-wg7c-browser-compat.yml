@@ -25,10 +25,17 @@ jobs:
               s = path.read_text()
               updated = s
               updated = updated.replace('assert.equal(WORLDGEN_PROTOCOL_VERSION, 16);', 'assert.equal(WORLDGEN_PROTOCOL_VERSION, 17);')
+              updated = updated.replace('protocolVersion: 16', 'protocolVersion: 17')
+              updated = updated.replace('command.protocolVersion, 16', 'command.protocolVersion, 17')
+              updated = updated.replace('const PROTOCOL = 16;', 'const PROTOCOL = 17;')
               updated = updated.replace('protocol v16', 'protocol v17')
               updated = updated.replace('THROUGH WG-7B', 'THROUGH WG-7C')
               updated = updated.replace('through WG-7B', 'through WG-7C')
               updated = updated.replace('Current physical frontier: WG-7B', 'Current physical frontier: WG-7C')
+              updated = updated.replace(
+                  'WG-7A fluvial erosion\\/sediment diagnostics, and WG-7B bounded terrain evolution/i',
+                  'WG-7A fluvial erosion\\/sediment diagnostics, WG-7B bounded terrain evolution, and WG-7C post-erosion hydrology reconciliation/i',
+              )
               if updated != s:
                   path.write_text(updated)
                   changed.append(str(path))
