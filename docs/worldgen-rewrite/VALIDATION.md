@@ -176,8 +176,32 @@ WG-7A is accepted as a deterministic, conservative forcing/routing stage before 
 - generated sediment closes into land, lake, and terminal/ocean deposition within `1e-10` in permanent CI;
 - the fixed-ancestry L6/L7 diagnostic is interpreted as a resolution-sensitivity check rather than per-cell equality, with accepted generated-sediment drift around 11.9% for seed `ci-wg5-l7`;
 - every public WG-7A vector and upstream ancestry identity participates in deterministic hashing;
-- browser/WASM protocol v15 carries WG-7A in the same cumulative planet result, and the primary Lab exposes the accepted WG-7A diagnostic fields without a second generation request;
+- browser/WASM protocol v16 carries WG-7A and WG-7B in the same cumulative planet result, and the primary Lab exposes the accepted WG-7A diagnostic fields without a second generation request;
 - WG-4 terrain, WG-6A receiver/depression topology, and all accepted WG-6 hydrology remain unchanged by WG-7A.
 
 `bash scripts/check-wg7a-erosion.sh` is the permanent fixed L4 acceptance path. It checks canonical dimensions, nonempty erosive behavior, finite positive forcing, deterministic hash formatting, and global sediment closure. Native unit regressions additionally cover peak-sensitive effective discharge, inherited erodibility, bounded incision, hydraulic-width scaling, complete lake-depression trapping, ocean export, and mass conservation.
 
+
+
+## WG-7B bounded terrain-evolution gates
+
+WG-7B is accepted as one deterministic bounded terrain-response pass after the stable WG-7A forcing stage:
+
+- all WG-7B inputs and outputs align on the canonical fine topology;
+- WG-4 topography, WG-6A drainage, WG-6B runoff, WG-6C lake, and WG-7A erosion identities must match exactly before mutation begins;
+- WG-4 solid terrain identity, sea level, and submerged/ocean mask remain immutable upstream truth;
+- channel incision is converted through receiver-segment length and a bounded valley footprint before becoming cell-average terrain lowering;
+- the selected direct geomorphic horizon is positive for the fixed smoke case, no greater than `250,000 years` by default, and is shortened when required to respect the default `120 m` resolved elevation-change cap;
+- fixed-smoke erosion and ordinary land deposition are both nonempty;
+- actual applied sediment production is recomputed from bounded applied erosion volume;
+- applied sediment closes into ordinary land deposition, complete active-lake-depression sinks, and terminal/ocean sinks within `1e-10`;
+- only ordinary land deposition changes terrain in WG-7B v1; lake and terminal/ocean sinks remain explicit unresolved construction sinks;
+- drainage is rebuilt exactly once on the evolved surface using the fixed WG-4 ocean mask;
+- rebuilt drainage area closes within `1e-10`;
+- the accepted WG-6B local runoff field is rerouted once over the rebuilt drainage DAG without rerunning climate, lake equilibrium, or seasonal hydrology;
+- post-erosion runoff closes within `1e-10`;
+- receiver changes are explicitly diagnosed rather than inferred from visual inspection;
+- protocol v16 transports the WG-7B state in the same cumulative planet request, and the primary Lab verifies exact WG-4/WG-6/WG-7A ancestry before displaying the evolved state;
+- deterministic WG-7B hashing covers the evolved surface, applied erosion/deposition ledgers, receiver-change mask, post-erosion drainage identity, post-erosion discharge, parameters, and accepted upstream identities.
+
+`bash scripts/check-wg7b-evolution.sh` is the permanent fixed L4 acceptance path. Final L4/L6/L7 and fixed-ancestry L6/L7 benchmark values from benchmark run `33923547403` are recorded in `WG7_EROSION.md`.

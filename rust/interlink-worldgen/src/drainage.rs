@@ -564,26 +564,31 @@ fn solve_core<T: PlanetTopology>(
     })
 }
 
-pub fn generate_drainage_topology(
+pub(crate) fn generate_drainage_from_surface(
     topology: &GeodesicTopology,
-    topography: &TopographyState,
+    solid_elevation_m: &[f32],
+    submerged_mask: &[u8],
+    sea_level_m: Option<f64>,
+    source_surface_hash: u64,
     planet: PlanetPhysicalParameters,
     request: &DrainageRequest,
 ) -> Result<DrainageState, WorldgenError> {
     planet
         .validate()
         .map_err(WorldgenError::InvalidParameters)?;
-    if topography.metrics.sample_count != topology.sample_count() {
+    if solid_elevation_m.len() != topology.sample_count() as usize
+        || submerged_mask.len() != topology.sample_count() as usize
+    {
         return Err(WorldgenError::InvalidHydrology(
-            "drainage topography must align with canonical topology",
+            "drainage surface must align with canonical topology",
         ));
     }
     let core = solve_core(
         topology,
-        &topography.solid_elevation_m,
-        &topography.submerged_mask,
+        solid_elevation_m,
+        submerged_mask,
         planet.radius_m,
-        topography.metrics.sea_level_m,
+        sea_level_m,
     )
     .map_err(WorldgenError::InvalidHydrology)?;
 
@@ -593,10 +598,7 @@ pub fn generate_drainage_topology(
     drainage_hash = fnv_update(drainage_hash, &DRAINAGE_STAGE_VERSION.to_le_bytes());
     drainage_hash = fnv_update(drainage_hash, &stage_seed.to_le_bytes());
     drainage_hash = fnv_update(drainage_hash, &planet.parameter_hash().to_le_bytes());
-    drainage_hash = fnv_update(
-        drainage_hash,
-        &topography.metrics.topography_hash.to_le_bytes(),
-    );
+    drainage_hash = fnv_update(drainage_hash, &source_surface_hash.to_le_bytes());
     for &value in &core.receiver {
         drainage_hash = fnv_update(drainage_hash, &value.to_le_bytes());
     }
@@ -626,11 +628,7 @@ pub fn generate_drainage_topology(
         .iter()
         .copied()
         .fold(0.0_f64, f64::max);
-    let land_sample_count = topography
-        .submerged_mask
-        .iter()
-        .filter(|value| **value == 0)
-        .count() as u32;
+    let land_sample_count = submerged_mask.iter().filter(|value| **value == 0).count() as u32;
     let ocean_sample_count = topology.sample_count() - land_sample_count;
 
     Ok(DrainageState {
@@ -673,6 +671,28 @@ pub fn generate_drainage_topology(
         basins: core.basins,
         depressions: core.depressions,
     })
+}
+
+pub fn generate_drainage_topology(
+    topology: &GeodesicTopology,
+    topography: &TopographyState,
+    planet: PlanetPhysicalParameters,
+    request: &DrainageRequest,
+) -> Result<DrainageState, WorldgenError> {
+    if topography.metrics.sample_count != topology.sample_count() {
+        return Err(WorldgenError::InvalidHydrology(
+            "drainage topography must align with canonical topology",
+        ));
+    }
+    generate_drainage_from_surface(
+        topology,
+        &topography.solid_elevation_m,
+        &topography.submerged_mask,
+        topography.metrics.sea_level_m,
+        topography.metrics.topography_hash,
+        planet,
+        request,
+    )
 }
 
 #[cfg(test)]

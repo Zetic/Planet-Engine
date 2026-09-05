@@ -2,7 +2,7 @@
 
 Planet Engine is the standalone deterministic planetary physical-world generator for Project Interlink.
 
-The engine owns canonical spherical topology, macro tectonics, crust and geological history, lithospheric mechanics and tectonic refinement, multiresolution physical inheritance, initial physical topography/bathymetry, coupled planetary climate, hydrology through seasonal realized discharge and dynamic lake storage, diagnostic fluvial erosion and conservative sediment routing, planetary physical profiles, native diagnostics, browser/WASM transport, and the single cumulative Planet Engine Lab.
+The engine owns canonical spherical topology, macro tectonics, crust and geological history, lithospheric mechanics and tectonic refinement, multiresolution physical inheritance, initial physical topography/bathymetry, coupled planetary climate, hydrology through seasonal realized discharge and dynamic lake storage, diagnostic fluvial erosion, conservative sediment routing, bounded terrain evolution with one post-erosion drainage rebuild, planetary physical profiles, native diagnostics, browser/WASM transport, and the single cumulative Planet Engine Lab.
 
 ## Current physical pipeline
 
@@ -32,13 +32,17 @@ WG-6C equilibrium lakes and realized discharge
 WG-6D seasonal hydrology
           ↓
 WG-7A fluvial erosion and sediment diagnostics
+          ↓
+WG-7B bounded terrain evolution + rebuilt drainage
 ```
 
 WG-5 derives deterministic seasonal insolation, temperature and pressure, rotation-sensitive prevailing winds, mass-projected wind-driven surface-ocean circulation, sea-surface temperature and conservative ocean heat transport, atmospheric moisture, precipitation, aridity, and snow/sea-ice potential from the accepted WG-4 physical planet. Orbital phases are generation-time climatology samples; the Lab season slider reconstructs stored seasonal harmonics and does not run a live climate simulation.
 
 WG-6A derives deterministic terrain-following drainage receivers, contributing area, depression membership, and hydrologic escape geometry from WG-4 terrain. WG-6B combines WG-5 precipitation/PET with that topology to derive annual actual evapotranspiration, runoff, and potential discharge. WG-6C solves generation-time equilibrium lake states for active depressions, retaining water in endorheic basins and releasing only solved overflow into a separate realized-discharge field. WG-6D redistributes the accepted WG-6B annual runoff across retained WG-5 orbital phases, carries snow accumulation and degree-day melt timing, routes phase potential discharge over the accepted WG-6A DAG, advances WG-6C lake control volumes through the seasonal cycle, and classifies realized flow as dry, intermittent, or perennial. WG-6B potential and WG-6C annual realized discharge remain available as diagnostics beside the seasonal fields.
 
-WG-7A consumes the accepted WG-6D phase realized-discharge field, immutable WG-4 terrain, WG-6A receiver topology, WG-6C lake control volumes, and inherited lithospheric mechanics to derive peak-sensitive effective discharge, channel slope and hydraulic width, erodibility, bounded incision potential, sediment production, transport capacity, routed load, and deposition. Active lake depressions are complete first-pass sediment traps and generated sediment is conserved into land, lake, and terminal/ocean deposition. WG-7A is deliberately diagnostic and non-mutating: applied incision, valley development, sedimentary fill, and drainage recalculation are deferred to WG-7B.
+WG-7A consumes the accepted WG-6D phase realized-discharge field, immutable WG-4 terrain, WG-6A receiver topology, WG-6C lake control volumes, and inherited lithospheric mechanics to derive peak-sensitive effective discharge, channel slope and hydraulic width, erodibility, bounded incision potential, sediment production, transport capacity, routed load, and deposition. Active lake depressions are complete first-pass sediment traps and generated sediment is conserved into land, lake, and terminal/ocean deposition. WG-7A remains the immutable forcing/sediment foundation consumed by WG-7B.
+
+WG-7B applies WG-7A incision over a bounded channel/valley footprint to a distinct evolved terrain state, chooses one adaptive direct geomorphic horizon capped by resolved elevation change, recomputes sediment from the actually applied erosion volume, and conserves that mass into ordinary land deposition plus lake and terminal/ocean sinks. It then rebuilds WG-6A drainage exactly once on the evolved surface and reroutes accepted WG-6B local runoff over that new DAG. WG-4 identity and its ocean mask remain unchanged; WG-5 climate, WG-6C lake equilibrium, and WG-6D seasonal hydrology are not iterated in WG-7B v1.
 
 Gameplay Regions, Features, resource nodes, selection, factories, and the industrial runtime are intentionally outside this repository.
 
@@ -60,6 +64,7 @@ npm run build
 npm run test:ts
 cargo test --workspace
 bash scripts/check-wg7a-erosion.sh
+bash scripts/check-wg7b-evolution.sh
 npm run worldgen:inheritance
 npm run worldgen:topography
 npm run worldgen:climate

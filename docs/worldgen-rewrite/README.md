@@ -13,7 +13,7 @@ This directory defines the greenfield Planet Engine rewrite that runs in paralle
 - [`RESOLUTION.md`](RESOLUTION.md) — process-specific multiresolution policy.
 - [`DETERMINISM.md`](DETERMINISM.md) — generator/stage identity and random-stream isolation.
 - [`VALIDATION.md`](VALIDATION.md) — numerical, topology, and physical acceptance gates.
-- [`WG7_EROSION.md`](WG7_EROSION.md) — WG-7A fluvial erosive forcing, hydraulic channel geometry, sediment routing/conservation, and deferred terrain mutation.
+- [`WG7_EROSION.md`](WG7_EROSION.md) — WG-7A fluvial forcing/sediment conservation plus WG-7B bounded terrain evolution, applied sediment mass, and post-erosion drainage rebuild.
 
 The complete rewrite blueprint from planning is reflected across these reviewable architecture documents.
 
@@ -104,4 +104,8 @@ WG-4 derives initial solid elevation, tectonic bathymetry, a deterministic verti
 
 WG-7A is the first geomorphology stage after accepted hydrology. It derives peak-sensitive effective discharge from WG-6D seasonal realized flow, receiver slope and hydraulic channel width from accepted terrain/drainage geometry, lithosphere-derived erodibility, bounded diagnostic incision potential, and conservative sediment production/transport/deposition.
 
-WG-7A deliberately leaves WG-4 terrain and WG-6 drainage/hydrology unchanged. Active WG-6C lake depressions are complete first-pass sediment traps, and global generated sediment must close into land, lake, and terminal/ocean deposition. See [`WG7_EROSION.md`](WG7_EROSION.md) for the complete causality, invariants, benchmarks, browser protocol, and WG-7B deferral contract.
+WG-7A deliberately leaves WG-4 terrain and WG-6 drainage/hydrology unchanged. Active WG-6C lake depressions are complete first-pass sediment traps, and global generated sediment must close into land, lake, and terminal/ocean deposition.
+
+## WG-7B — bounded terrain evolution and drainage rebuild
+
+WG-7B consumes the accepted WG-7A forcing as immutable input, converts channel incision into bounded cell-average valley erosion, chooses one adaptive direct geomorphic horizon, applies ordinary land deposition from a conservative sediment ledger, creates a distinct evolved solid surface, rebuilds drainage exactly once, and reroutes accepted WG-6B local runoff over the rebuilt DAG. The WG-4 ocean mask remains fixed and WG-5/WG-6 seasonal physics are not rerun inside the stage. See [`WG7_EROSION.md`](WG7_EROSION.md) for the complete causality, invariants, browser contract, benchmarks, and deferred feedback processes.
