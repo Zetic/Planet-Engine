@@ -11,7 +11,7 @@ import {
 } from '../dist/worldgen/protocol.js';
 
 test('WG-6A browser protocol is versioned and bounded', () => {
-  assert.equal(WORLDGEN_PROTOCOL_VERSION, 16);
+  assert.equal(WORLDGEN_PROTOCOL_VERSION, 17);
   assert.equal(WORLDGEN_DRAINAGE_COARSE_MAX_LEVEL, 6);
   assert.equal(WORLDGEN_DRAINAGE_FINE_MAX_LEVEL, 7);
   assert.equal(WORLDGEN_INVALID_SAMPLE_ID, 0xffff_ffff);
@@ -50,7 +50,7 @@ test('WG-6A command uses the dedicated drainage transport contract', () => {
 test('primary Planet Engine Lab blends WG-6A into the main physical diagnostic surface', () => {
   const page = fs.readFileSync('index.html', 'utf8');
   const source = fs.readFileSync('src/worldgen/diagnostics/worldgenClimateLabStandalone.ts', 'utf8');
-  assert.match(page, /THROUGH WG-7B/);
+  assert.match(page, /THROUGH WG-7C/);
   for (const mode of ['contributing-area', 'basins', 'flow-direction', 'depression-depth', 'depressions', 'escape-elevation']) {
     assert.match(page, new RegExp(`value=["']${mode}["']`));
   }

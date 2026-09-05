@@ -11,7 +11,7 @@ import {
 import { mapVectorDelta, reconstructAnnualHarmonic } from '../dist/worldgen/diagnostics/worldgenClimateMath.js';
 
 test('WG-5 browser protocol is versioned and bounded', () => {
-  assert.equal(WORLDGEN_PROTOCOL_VERSION, 16);
+  assert.equal(WORLDGEN_PROTOCOL_VERSION, 17);
   assert.equal(WORLDGEN_CLIMATE_COARSE_MAX_LEVEL, 6);
   assert.equal(WORLDGEN_CLIMATE_FINE_MAX_LEVEL, 7);
   const request = { seed: 'wg5-browser', coarseLevel: 3, fineLevel: 4, plateCount: 12 };
