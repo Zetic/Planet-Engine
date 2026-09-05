@@ -1026,6 +1026,13 @@ export class WasmWorldgenClimate {
         }
     }
     /**
+     * @returns {number}
+     */
+    flow_regime_changed_sample_count() {
+        const ret = wasm.wasmworldgenclimate_flow_regime_changed_sample_count(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
      * @returns {string}
      */
     fluvial_erosion_hash_hex() {
@@ -1190,6 +1197,13 @@ export class WasmWorldgenClimate {
         return v1;
     }
     /**
+     * @returns {number}
+     */
+    lake_added_sample_count() {
+        const ret = wasm.wasmworldgenclimate_lake_added_sample_count(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
      * @returns {Float64Array}
      */
     lake_areas_m2() {
@@ -1296,6 +1310,13 @@ export class WasmWorldgenClimate {
         return v1;
     }
     /**
+     * @returns {number}
+     */
+    lake_kind_changed_sample_count() {
+        const ret = wasm.wasmworldgenclimate_lake_kind_changed_sample_count(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
      * @returns {Uint8Array}
      */
     lake_kinds() {
@@ -1327,6 +1348,13 @@ export class WasmWorldgenClimate {
         } finally {
             wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
         }
+    }
+    /**
+     * @returns {number}
+     */
+    lake_removed_sample_count() {
+        const ret = wasm.wasmworldgenclimate_lake_removed_sample_count(this.__wbg_ptr);
+        return ret >>> 0;
     }
     /**
      * @returns {string}
@@ -1510,6 +1538,27 @@ export class WasmWorldgenClimate {
         var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
         return v1;
+    }
+    /**
+     * @returns {number}
+     */
+    maximum_absolute_annual_realized_discharge_change_m3_s() {
+        const ret = wasm.wasmworldgenclimate_maximum_absolute_annual_realized_discharge_change_m3_s(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    maximum_absolute_flow_presence_change() {
+        const ret = wasm.wasmworldgenclimate_maximum_absolute_flow_presence_change(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    maximum_absolute_lake_depth_change_m() {
+        const ret = wasm.wasmworldgenclimate_maximum_absolute_lake_depth_change_m(this.__wbg_ptr);
+        return ret;
     }
     /**
      * @returns {number}
@@ -2020,6 +2069,28 @@ export class WasmWorldgenClimate {
         }
     }
     /**
+     * @returns {string}
+     */
+    post_erosion_hydrology_hash_hex() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmworldgenclimate_post_erosion_hydrology_hash_hex(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {number}
+     */
+    post_erosion_lake_count() {
+        const ret = wasm.wasmworldgenclimate_post_erosion_lake_count(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
      * @returns {Float32Array}
      */
     post_erosion_potential_discharge_m3_s() {
@@ -2052,6 +2123,13 @@ export class WasmWorldgenClimate {
         var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
         return v1;
+    }
+    /**
+     * @returns {number}
+     */
+    pre_erosion_lake_count() {
+        const ret = wasm.wasmworldgenclimate_pre_erosion_lake_count(this.__wbg_ptr);
+        return ret >>> 0;
     }
     /**
      * @returns {Float32Array}
@@ -2118,6 +2196,311 @@ export class WasmWorldgenClimate {
     receiver_changed_sample_count() {
         const ret = wasm.wasmworldgenclimate_receiver_changed_sample_count(this.__wbg_ptr);
         return ret >>> 0;
+    }
+    /**
+     * @returns {number}
+     */
+    reconciled_lake_water_balance_relative_error() {
+        const ret = wasm.wasmworldgenclimate_reconciled_lake_water_balance_relative_error(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    reconciled_runoff_conservation_relative_error() {
+        const ret = wasm.wasmworldgenclimate_reconciled_runoff_conservation_relative_error(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    reconciled_seasonal_routing_relative_error() {
+        const ret = wasm.wasmworldgenclimate_reconciled_seasonal_routing_relative_error(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    reconciled_seasonal_water_balance_relative_error() {
+        const ret = wasm.wasmworldgenclimate_reconciled_seasonal_water_balance_relative_error(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    reconciliation_annual_realized_discharge_delta_m3_s() {
+        const ret = wasm.wasmworldgenclimate_reconciliation_annual_realized_discharge_delta_m3_s(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {string}
+     */
+    reconciliation_climate_hash_hex() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmworldgenclimate_reconciliation_climate_hash_hex(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {string}
+     */
+    reconciliation_evolved_surface_hash_hex() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmworldgenclimate_reconciliation_evolved_surface_hash_hex(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    reconciliation_flow_presence_delta() {
+        const ret = wasm.wasmworldgenclimate_reconciliation_flow_presence_delta(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Uint8Array}
+     */
+    reconciliation_flow_regime_changed_mask() {
+        const ret = wasm.wasmworldgenclimate_reconciliation_flow_regime_changed_mask(this.__wbg_ptr);
+        var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    reconciliation_lake_depth_delta_m() {
+        const ret = wasm.wasmworldgenclimate_reconciliation_lake_depth_delta_m(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Uint8Array}
+     */
+    reconciliation_lake_kind_changed_mask() {
+        const ret = wasm.wasmworldgenclimate_reconciliation_lake_kind_changed_mask(this.__wbg_ptr);
+        var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        return v1;
+    }
+    /**
+     * @returns {string}
+     */
+    reconciliation_parameter_hash_hex() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmworldgenclimate_reconciliation_parameter_hash_hex(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {string}
+     */
+    reconciliation_post_erosion_drainage_hash_hex() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmworldgenclimate_reconciliation_post_erosion_drainage_hash_hex(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {string}
+     */
+    reconciliation_pre_erosion_drainage_hash_hex() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmworldgenclimate_reconciliation_pre_erosion_drainage_hash_hex(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {string}
+     */
+    reconciliation_pre_erosion_lake_hash_hex() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmworldgenclimate_reconciliation_pre_erosion_lake_hash_hex(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {string}
+     */
+    reconciliation_pre_erosion_runoff_hash_hex() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmworldgenclimate_reconciliation_pre_erosion_runoff_hash_hex(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {string}
+     */
+    reconciliation_pre_erosion_seasonal_hash_hex() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmworldgenclimate_reconciliation_pre_erosion_seasonal_hash_hex(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {string}
+     */
+    reconciliation_reconciled_lake_hash_hex() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmworldgenclimate_reconciliation_reconciled_lake_hash_hex(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {string}
+     */
+    reconciliation_reconciled_runoff_hash_hex() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmworldgenclimate_reconciliation_reconciled_runoff_hash_hex(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {string}
+     */
+    reconciliation_reconciled_seasonal_hash_hex() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmworldgenclimate_reconciliation_reconciled_seasonal_hash_hex(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {string}
+     */
+    reconciliation_stage_id() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmworldgenclimate_reconciliation_stage_id(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {string}
+     */
+    reconciliation_stage_seed_hex() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmworldgenclimate_reconciliation_stage_seed_hex(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {number}
+     */
+    reconciliation_stage_version() {
+        const ret = wasm.wasmworldgenclimate_reconciliation_stage_version(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * @returns {string}
+     */
+    reconciliation_terrain_evolution_hash_hex() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmworldgenclimate_reconciliation_terrain_evolution_hash_hex(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {string}
+     */
+    reconciliation_topography_hash_hex() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmworldgenclimate_reconciliation_topography_hash_hex(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
     }
     /**
      * @returns {number}
