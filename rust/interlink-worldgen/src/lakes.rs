@@ -709,6 +709,34 @@ pub fn generate_lakes_closed_basins(
     planet: PlanetPhysicalParameters,
     request: &LakeRequest,
 ) -> Result<LakeState, WorldgenError> {
+    if topography.metrics.sample_count != topology.sample_count() {
+        return Err(WorldgenError::InvalidHydrology(
+            "WG-6C topography must align on the canonical fine topology",
+        ));
+    }
+    generate_lakes_closed_basins_from_surface(
+        topology,
+        &topography.solid_elevation_m,
+        &topography.submerged_mask,
+        climate,
+        drainage,
+        runoff,
+        planet,
+        request,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn generate_lakes_closed_basins_from_surface(
+    topology: &GeodesicTopology,
+    solid_elevation_m: &[f32],
+    submerged_mask: &[u8],
+    climate: &ClimateState,
+    drainage: &DrainageState,
+    runoff: &RunoffState,
+    planet: PlanetPhysicalParameters,
+    request: &LakeRequest,
+) -> Result<LakeState, WorldgenError> {
     planet
         .validate()
         .map_err(WorldgenError::InvalidParameters)?;
@@ -717,7 +745,8 @@ pub fn generate_lakes_closed_basins(
         .validate()
         .map_err(WorldgenError::InvalidHydrology)?;
     let count = topology.sample_count();
-    if topography.metrics.sample_count != count
+    if solid_elevation_m.len() != count as usize
+        || submerged_mask.len() != count as usize
         || climate.metrics.sample_count != count
         || drainage.metrics.sample_count != count
         || runoff.metrics.sample_count != count
@@ -736,8 +765,8 @@ pub fn generate_lakes_closed_basins(
 
     let core = solve_lakes_core(
         topology,
-        &topography.solid_elevation_m,
-        &topography.submerged_mask,
+        solid_elevation_m,
+        submerged_mask,
         &climate.annual_precipitation_mm,
         &climate.potential_evaporation_mm,
         &drainage.receiver,

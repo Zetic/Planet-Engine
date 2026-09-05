@@ -14,6 +14,7 @@ mod lakes;
 mod lithosphere;
 mod parameters;
 mod random;
+mod reconciliation;
 mod refinement;
 mod runoff;
 mod seasonal;
@@ -79,6 +80,11 @@ pub use lithosphere::{
 };
 pub use parameters::PlanetPhysicalParameters;
 pub use random::derive_stage_seed;
+pub use reconciliation::{
+    generate_post_erosion_hydrology, PostErosionHydrologyMetrics, PostErosionHydrologyParameters,
+    PostErosionHydrologyRequest, PostErosionHydrologyState, POST_EROSION_HYDROLOGY_STAGE_ID,
+    POST_EROSION_HYDROLOGY_STAGE_VERSION,
+};
 pub use refinement::{
     build_refinement_map, inherit_physical_state, refine_categorical_u16, refine_categorical_u8,
     refine_scalar_f32, refine_scalar_f32_with_domains, refine_scalar_f64, refine_vector3_f64,
