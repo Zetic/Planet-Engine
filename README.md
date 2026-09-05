@@ -2,7 +2,7 @@
 
 Planet Engine is the standalone deterministic planetary physical-world generator for Project Interlink.
 
-The engine owns canonical spherical topology, macro tectonics, crust and geological history, lithospheric mechanics and tectonic refinement, multiresolution physical inheritance, initial physical topography/bathymetry, coupled planetary climate, hydrology through seasonal realized discharge and dynamic lake storage, diagnostic fluvial erosion, conservative sediment routing, bounded terrain evolution with one post-erosion drainage rebuild, planetary physical profiles, native diagnostics, browser/WASM transport, and the single cumulative Planet Engine Lab.
+The engine owns canonical spherical topology, macro tectonics, crust and geological history, lithospheric mechanics and tectonic refinement, multiresolution physical inheritance, initial physical topography/bathymetry, coupled planetary climate, hydrology through seasonal realized discharge and dynamic lake storage, diagnostic fluvial erosion, conservative sediment routing, bounded terrain evolution with one post-erosion drainage rebuild, final post-erosion hydrology reconciliation, planetary physical profiles, native diagnostics, browser/WASM transport, and the single cumulative Planet Engine Lab.
 
 ## Current physical pipeline
 
@@ -34,6 +34,8 @@ WG-6D seasonal hydrology
 WG-7A fluvial erosion and sediment diagnostics
           ↓
 WG-7B bounded terrain evolution + rebuilt drainage
+          ↓
+WG-7C post-erosion hydrology reconciliation
 ```
 
 WG-5 derives deterministic seasonal insolation, temperature and pressure, rotation-sensitive prevailing winds, mass-projected wind-driven surface-ocean circulation, sea-surface temperature and conservative ocean heat transport, atmospheric moisture, precipitation, aridity, and snow/sea-ice potential from the accepted WG-4 physical planet. Orbital phases are generation-time climatology samples; the Lab season slider reconstructs stored seasonal harmonics and does not run a live climate simulation.
@@ -43,6 +45,8 @@ WG-6A derives deterministic terrain-following drainage receivers, contributing a
 WG-7A consumes the accepted WG-6D phase realized-discharge field, immutable WG-4 terrain, WG-6A receiver topology, WG-6C lake control volumes, and inherited lithospheric mechanics to derive peak-sensitive effective discharge, channel slope and hydraulic width, erodibility, bounded incision potential, sediment production, transport capacity, routed load, and deposition. Active lake depressions are complete first-pass sediment traps and generated sediment is conserved into land, lake, and terminal/ocean deposition. WG-7A remains the immutable forcing/sediment foundation consumed by WG-7B.
 
 WG-7B applies WG-7A incision over a bounded channel/valley footprint to a distinct evolved terrain state, chooses one adaptive direct geomorphic horizon capped by resolved elevation change, recomputes sediment from the actually applied erosion volume, and conserves that mass into ordinary land deposition plus lake and terminal/ocean sinks. It then rebuilds WG-6A drainage exactly once on the evolved surface and reroutes accepted WG-6B local runoff over that new DAG. WG-4 identity and its ocean mask remain unchanged; WG-5 climate, WG-6C lake equilibrium, and WG-6D seasonal hydrology are not iterated in WG-7B v1.
+
+WG-7C closes that deliberate one-stage feedback gap without introducing a climate/terrain iteration loop. It keeps WG-4 sea level/ocean mask and WG-5 climate immutable, rebinds the exact accepted WG-6B local runoff field to the WG-7B drainage graph, recomputes WG-6C lake equilibrium on evolved solid elevation, and reruns WG-6D seasonal lake/realized-flow dynamics. Browser/WASM transport exposes the reconciled drainage/runoff/lake/seasonal state as final hydrology and retains only compact pre/post identities and delta fields rather than a second full seasonal phase state.
 
 Gameplay Regions, Features, resource nodes, selection, factories, and the industrial runtime are intentionally outside this repository.
 
@@ -65,6 +69,7 @@ npm run test:ts
 cargo test --workspace
 bash scripts/check-wg7a-erosion.sh
 bash scripts/check-wg7b-evolution.sh
+bash scripts/check-wg7c-reconciliation.sh
 npm run worldgen:inheritance
 npm run worldgen:topography
 npm run worldgen:climate

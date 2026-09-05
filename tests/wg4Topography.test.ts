@@ -9,26 +9,26 @@ import {
   worldgenTopographyCommand,
 } from '../dist/worldgen/protocol.js';
 
-test('WG-4 browser contract remains available under protocol v16', () => {
-  assert.equal(WORLDGEN_PROTOCOL_VERSION, 16);
+test('WG-4 browser contract remains available under protocol v17', () => {
+  assert.equal(WORLDGEN_PROTOCOL_VERSION, 17);
   assert.equal(WORLDGEN_TOPOGRAPHY_COARSE_MAX_LEVEL, 6);
   assert.equal(WORLDGEN_TOPOGRAPHY_FINE_MAX_LEVEL, 7);
   assert.doesNotThrow(() => validateTopographyRequest({ seed: 'wg4', coarseLevel: 4, fineLevel: 7, plateCount: 18 }));
   assert.throws(() => validateTopographyRequest({ seed: '', coarseLevel: 4, fineLevel: 6, plateCount: 18 }), /seed/i);
   assert.throws(() => validateTopographyRequest({ seed: 'wg4', coarseLevel: 5, fineLevel: 4, plateCount: 18 }), /fine level/i);
-  assert.deepEqual(worldgenTopographyCommand(77, { seed: 'wg4', coarseLevel: 4, fineLevel: 6, plateCount: 18 }), { protocolVersion: 16, requestId: 77, type: 'generate-topography', payload: { seed: 'wg4', coarseLevel: 4, fineLevel: 6, plateCount: 18 } });
+  assert.deepEqual(worldgenTopographyCommand(77, { seed: 'wg4', coarseLevel: 4, fineLevel: 6, plateCount: 18 }), { protocolVersion: 17, requestId: 77, type: 'generate-topography', payload: { seed: 'wg4', coarseLevel: 4, fineLevel: 6, plateCount: 18 } });
 });
 
-test('Planet Engine Lab keeps every WG-3.75 and WG-4 view cumulatively through WG-7B', () => {
+test('Planet Engine Lab keeps every WG-3.75 and WG-4 view cumulatively through WG-7C', () => {
   const html = fs.readFileSync('index.html', 'utf8');
-  assert.match(html, /PLANET ENGINE · THROUGH WG-7B/);
+  assert.match(html, /PLANET ENGINE · THROUGH WG-7C/);
   assert.match(html, />Generate Planet</);
   for (const term of [
     'Elevation above sea level', 'Bathymetry', 'Isostatic support', 'Oceanic thermal subsidence', 'Orogenic / collision uplift', 'Ridge relief', 'Rift / basin subsidence', 'Trench relief', 'Volcanic arc relief',
     'Inherited coarse samples', 'Nearest coarse provenance', 'Boundary provenance', 'Macro plate ownership', 'Refined kinematic domains', 'Fine tectonic boundaries', 'Fine geological regimes',
     'Crust type', 'Crust age', 'Crust thickness', 'Orogenic history', 'Ridge history', 'Trench history', 'Lithospheric strength', 'Lithospheric weakness', 'Structural zone type', 'Fragmentation propensity', 'Fine topology mesh',
   ]) assert.match(html, new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
-  assert.match(html, /one generation runs the accepted topology, tectonic, geological, lithospheric, multiresolution inheritance, WG-4 topography, WG-5 coupled climate, WG-6A drainage topology, WG-6B annual runoff\/discharge, WG-6C lake equilibrium, WG-6D seasonal hydrology, WG-7A fluvial erosion\/sediment diagnostics, and WG-7B bounded terrain evolution/i);
+  assert.match(html, /one generation runs the accepted topology, tectonic, geological, lithospheric, multiresolution inheritance, WG-4 topography, WG-5 coupled climate, WG-6A drainage topology, WG-6B annual runoff\/discharge, WG-6C lake equilibrium, WG-6D seasonal hydrology, WG-7A fluvial erosion\/sediment diagnostics, WG-7B bounded terrain evolution, and WG-7C post-erosion hydrology reconciliation/i);
   assert.doesNotMatch(html, /resource node|Region Inspector|NAV/);
 });
 

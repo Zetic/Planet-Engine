@@ -1,6 +1,6 @@
 use crate::{
     ClimateGenerationDiagnostics, ClimateState, DrainageState, GeodesicTopology, LakeState,
-    PlanetPhysicalParameters, PlanetTopology, TopographyState, INVALID_SAMPLE_ID,
+    PlanetPhysicalParameters, PlanetTopology, INVALID_SAMPLE_ID,
 };
 use std::collections::BTreeSet;
 
@@ -11,7 +11,7 @@ const LAKE_CYCLE_CONVERGENCE_RELATIVE: f64 = 1.0e-6;
 // closure test than fractional volume for tiny or shallow resolved basins.
 const LAKE_SURFACE_CYCLE_CONVERGENCE_M: f64 = 0.02;
 const MINIMUM_LAKE_SPINUP_YEARS: u8 = 2;
-const MAXIMUM_LAKE_SPINUP_YEARS: u8 = 12;
+pub(crate) const DEFAULT_MAXIMUM_LAKE_SPINUP_YEARS: u8 = 12;
 const EVAPORATION_WEIGHT_FLOOR_K: f64 = 250.0;
 
 #[derive(Debug)]
@@ -163,14 +163,18 @@ fn find_downstream_active_lake(
 
 #[allow(clippy::too_many_arguments)]
 fn build_active_lakes(
-    topography: &TopographyState,
+    solid_elevation_m: &[f32],
+    submerged_mask: &[u8],
     climate: &ClimateState,
     drainage: &DrainageState,
     lake_state: &LakeState,
     area_m2: &[f64],
     year_seconds: f64,
 ) -> Result<(Vec<ActiveLakeGeometry>, Vec<u32>, Vec<usize>), &'static str> {
-    let count = topography.metrics.sample_count as usize;
+    let count = solid_elevation_m.len();
+    if submerged_mask.len() != count {
+        return Err("WG-6D seasonal lake surface fields must align");
+    }
     let mut lake_by_depression = vec![INVALID_SAMPLE_ID; drainage.depressions.len()];
     for (lake_index, record) in lake_state.lakes.iter().enumerate() {
         let depression = record.depression_id as usize;
@@ -201,8 +205,8 @@ fn build_active_lakes(
         let depression = &drainage.depressions[record.depression_id as usize];
         let mut sorted_members = members[lake_index].clone();
         sorted_members.sort_by(|a, b| {
-            f64::from(topography.solid_elevation_m[*a])
-                .total_cmp(&f64::from(topography.solid_elevation_m[*b]))
+            f64::from(solid_elevation_m[*a])
+                .total_cmp(&f64::from(solid_elevation_m[*b]))
                 .then_with(|| a.cmp(b))
         });
         if sorted_members.is_empty() {
@@ -218,7 +222,7 @@ fn build_active_lakes(
         };
         geometry.maximum_volume_m3 = geometry_at_surface(
             &geometry,
-            &topography.solid_elevation_m,
+            &solid_elevation_m,
             area_m2,
             geometry.spill_elevation_m,
             None,
@@ -250,7 +254,7 @@ fn build_active_lakes(
         let target = find_downstream_active_lake(
             geometry.spill_receiver,
             &active_lake_for_sample,
-            &topography.submerged_mask,
+            &submerged_mask,
             &drainage.receiver,
         )?;
         if target == lake_index as u32 {
@@ -333,17 +337,21 @@ fn route_lake_outflow(
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn solve_seasonal_lake_routing(
     topology: &GeodesicTopology,
-    topography: &TopographyState,
+    solid_elevation_m: &[f32],
+    submerged_mask: &[u8],
     climate: &ClimateState,
     climate_diagnostics: &ClimateGenerationDiagnostics,
     drainage: &DrainageState,
     lake_state: &LakeState,
     planet: PlanetPhysicalParameters,
     phase_local_runoff_m3_s: &[f32],
+    maximum_lake_spinup_years: u8,
 ) -> Result<SeasonalLakeRoutingResult, &'static str> {
     let count = topology.sample_count() as usize;
     let phase_count = usize::from(climate.metrics.orbital_phase_count);
-    if phase_count == 0
+    if solid_elevation_m.len() != count
+        || submerged_mask.len() != count
+        || phase_count == 0
         || phase_local_runoff_m3_s.len() != count * phase_count
         || climate_diagnostics.precipitation_phase_rate_mm_year.len() != count * phase_count
         || drainage.receiver.len() != count
@@ -355,7 +363,7 @@ pub(crate) fn solve_seasonal_lake_routing(
 
     let mut area_m2 = vec![0.0_f64; count];
     for i in 0..count {
-        if topography.submerged_mask[i] == 0 {
+        if submerged_mask[i] == 0 {
             area_m2[i] = topology.area_steradians(i as u32) * planet.radius_m * planet.radius_m;
             if !area_m2[i].is_finite() || area_m2[i] <= 0.0 {
                 return Err("WG-6D land cell area must be finite and positive");
@@ -364,7 +372,8 @@ pub(crate) fn solve_seasonal_lake_routing(
     }
 
     let (active_lakes, active_lake_for_sample, lake_order) = build_active_lakes(
-        topography,
+        solid_elevation_m,
+        submerged_mask,
         climate,
         drainage,
         lake_state,
@@ -384,15 +393,10 @@ pub(crate) fn solve_seasonal_lake_routing(
         let annual_surface = lake_state.lakes[lake_index]
             .surface_elevation_m
             .min(geometry.spill_elevation_m);
-        current_volume_m3[lake_index] = geometry_at_surface(
-            geometry,
-            &topography.solid_elevation_m,
-            &area_m2,
-            annual_surface,
-            None,
-        )
-        .1
-        .clamp(0.0, geometry.maximum_volume_m3);
+        current_volume_m3[lake_index] =
+            geometry_at_surface(geometry, &solid_elevation_m, &area_m2, annual_surface, None)
+                .1
+                .clamp(0.0, geometry.maximum_volume_m3);
     }
 
     let mut pet_weight_mean = vec![1.0_f64; count];
@@ -418,10 +422,13 @@ pub(crate) fn solve_seasonal_lake_routing(
     let mut realized_accum_m3_s = vec![0.0_f64; count];
     let mut lake_inflow_m3_s = vec![0.0_f64; lake_count];
 
+    if maximum_lake_spinup_years == 0 {
+        return Err("WG-6D maximum lake spinup years must be positive");
+    }
     let maximum_spinup_years = if lake_count == 0 {
         1
     } else {
-        MAXIMUM_LAKE_SPINUP_YEARS
+        maximum_lake_spinup_years
     };
     let mut completed_years = 0_u8;
     let mut final_cycle_relative_change = 0.0_f64;
@@ -450,7 +457,7 @@ pub(crate) fn solve_seasonal_lake_routing(
         for phase in 0..phase_count {
             fill_lake_fractions(
                 &active_lakes,
-                &topography.solid_elevation_m,
+                &solid_elevation_m,
                 &area_m2,
                 &current_volume_m3,
                 &mut lake_fraction,
@@ -461,7 +468,7 @@ pub(crate) fn solve_seasonal_lake_routing(
             let phase_start = phase * count;
             let mut dry_local_rate_m3_s = 0.0_f64;
             for i in 0..count {
-                if topography.submerged_mask[i] != 0 {
+                if submerged_mask[i] != 0 {
                     continue;
                 }
                 let local = f64::from(phase_local_runoff_m3_s[phase_start + i]);
@@ -496,8 +503,8 @@ pub(crate) fn solve_seasonal_lake_routing(
             let mut terminal_rate_m3_s = 0.0_f64;
             for i in 0..count {
                 let active_lake = active_lake_for_sample[i] != INVALID_SAMPLE_ID;
-                if topography.submerged_mask[i] != 0
-                    || (topography.submerged_mask[i] == 0
+                if submerged_mask[i] != 0
+                    || (submerged_mask[i] == 0
                         && drainage.receiver[i] == INVALID_SAMPLE_ID
                         && !active_lake)
                 {
@@ -558,7 +565,7 @@ pub(crate) fn solve_seasonal_lake_routing(
                             geometry.spill_receiver,
                             outflow_m3_s,
                             &active_lake_for_sample,
-                            &topography.submerged_mask,
+                            &submerged_mask,
                             &drainage.receiver,
                             &mut realized_accum_m3_s,
                             &mut lake_inflow_m3_s,
@@ -589,17 +596,12 @@ pub(crate) fn solve_seasonal_lake_routing(
             for (lake_index, geometry) in active_lakes.iter().enumerate() {
                 let surface = surface_for_volume(
                     geometry,
-                    &topography.solid_elevation_m,
+                    &solid_elevation_m,
                     &area_m2,
                     current_volume_m3[lake_index],
                 );
-                let (area, volume) = geometry_at_surface(
-                    geometry,
-                    &topography.solid_elevation_m,
-                    &area_m2,
-                    surface,
-                    None,
-                );
+                let (area, volume) =
+                    geometry_at_surface(geometry, &solid_elevation_m, &area_m2, surface, None);
                 minimum_lake_surface_m[lake_index] =
                     minimum_lake_surface_m[lake_index].min(surface);
                 maximum_lake_surface_m[lake_index] =
@@ -620,13 +622,13 @@ pub(crate) fn solve_seasonal_lake_routing(
             );
             let start_surface = surface_for_volume(
                 geometry,
-                &topography.solid_elevation_m,
+                &solid_elevation_m,
                 &area_m2,
                 year_start_volume_m3[lake_index],
             );
             let end_surface = surface_for_volume(
                 geometry,
-                &topography.solid_elevation_m,
+                &solid_elevation_m,
                 &area_m2,
                 current_volume_m3[lake_index],
             );

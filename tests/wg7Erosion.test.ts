@@ -3,8 +3,8 @@ import fs from 'node:fs';
 import test from 'node:test';
 import { WORLDGEN_PROTOCOL_VERSION } from '../dist/worldgen/protocol.js';
 
-test('WG-7A cumulative browser contract is protocol v16 and single-request', () => {
-  assert.equal(WORLDGEN_PROTOCOL_VERSION, 16);
+test('WG-7A cumulative browser contract is protocol v17 and single-request', () => {
+  assert.equal(WORLDGEN_PROTOCOL_VERSION, 17);
   const protocol = fs.readFileSync('src/worldgen/protocol.ts', 'utf8');
   const worker = fs.readFileSync('src/worldgen/worldgenWorker.ts', 'utf8');
   const bridge = fs.readFileSync('rust/interlink-worldgen-wasm/src/climate_bridge.rs', 'utf8');
@@ -28,7 +28,7 @@ test('WG-7A cumulative browser contract is protocol v16 and single-request', () 
     assert.match(html, new RegExp(mode));
     assert.match(lab, new RegExp(mode));
   }
-  assert.match(html, /Current physical frontier: WG-7B/);
+  assert.match(html, /Current physical frontier: WG-7C/);
   assert.match(lab, /WG-7A sediment closure/);
   assert.match(lab, /erosionMetrics\.seasonalHydrologyHash/);
   assert.match(lab, /erosionMetrics\.topographyHash/);

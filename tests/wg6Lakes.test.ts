@@ -3,8 +3,8 @@ import fs from 'node:fs';
 import test from 'node:test';
 import { WORLDGEN_PROTOCOL_VERSION } from '../dist/worldgen/protocol.js';
 
-test('WG-6C cumulative browser contract is protocol v16 and single-request', () => {
-  assert.equal(WORLDGEN_PROTOCOL_VERSION, 16);
+test('WG-6C cumulative browser contract is protocol v17 and single-request', () => {
+  assert.equal(WORLDGEN_PROTOCOL_VERSION, 17);
   const protocol = fs.readFileSync('src/worldgen/protocol.ts', 'utf8');
   const worker = fs.readFileSync('src/worldgen/worldgenWorker.ts', 'utf8');
   const lab = fs.readFileSync('src/worldgen/diagnostics/worldgenClimateLabStandalone.ts', 'utf8');

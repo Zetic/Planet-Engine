@@ -332,6 +332,134 @@ fn solve_runoff_core<T: PlanetTopology>(
     })
 }
 
+pub(crate) fn rebind_runoff_to_drainage(
+    accepted: &RunoffState,
+    submerged_mask: &[u8],
+    drainage: &DrainageState,
+    planet: PlanetPhysicalParameters,
+) -> Result<RunoffState, WorldgenError> {
+    planet
+        .validate()
+        .map_err(WorldgenError::InvalidParameters)?;
+    let count = accepted.metrics.sample_count as usize;
+    if count == 0
+        || submerged_mask.len() != count
+        || drainage.metrics.sample_count as usize != count
+        || drainage.receiver.len() != count
+        || accepted.actual_evapotranspiration_mm.len() != count
+        || accepted.local_runoff_mm.len() != count
+        || accepted.runoff_fraction.len() != count
+        || accepted.local_runoff_m3_s.len() != count
+    {
+        return Err(WorldgenError::InvalidHydrology(
+            "reconciled runoff inputs must align with the accepted topology",
+        ));
+    }
+    if accepted.metrics.land_sample_count != drainage.metrics.land_sample_count {
+        return Err(WorldgenError::InvalidHydrology(
+            "reconciled runoff requires the fixed accepted land/ocean mask",
+        ));
+    }
+
+    let mut accumulated = vec![0.0_f64; count];
+    let mut total_local_runoff_m3_s = 0.0_f64;
+    for i in 0..count {
+        if submerged_mask[i] != 0 {
+            continue;
+        }
+        let value = f64::from(accepted.local_runoff_m3_s[i]);
+        if !value.is_finite() || value < 0.0 {
+            return Err(WorldgenError::InvalidHydrology(
+                "accepted local runoff must be finite and non-negative",
+            ));
+        }
+        accumulated[i] = value;
+        total_local_runoff_m3_s += value;
+    }
+    for &sample in &drainage.drainage_order {
+        let i = sample as usize;
+        if i >= count || submerged_mask[i] != 0 {
+            return Err(WorldgenError::InvalidHydrology(
+                "reconciled runoff drainage order contains an invalid land sample",
+            ));
+        }
+        let downstream = drainage.receiver[i];
+        if downstream != INVALID_SAMPLE_ID {
+            let downstream_index = downstream as usize;
+            if downstream_index >= count {
+                return Err(WorldgenError::InvalidHydrology(
+                    "reconciled runoff receiver leaves the canonical topology",
+                ));
+            }
+            accumulated[downstream_index] += accumulated[i];
+        }
+    }
+
+    let mut terminal_discharge_m3_s = 0.0_f64;
+    let mut maximum_potential_discharge_m3_s = 0.0_f64;
+    for i in 0..count {
+        maximum_potential_discharge_m3_s = maximum_potential_discharge_m3_s.max(accumulated[i]);
+        if submerged_mask[i] != 0 || drainage.receiver[i] == INVALID_SAMPLE_ID {
+            terminal_discharge_m3_s += accumulated[i];
+        }
+    }
+    let discharge_conservation_relative_error = if total_local_runoff_m3_s > 0.0 {
+        (terminal_discharge_m3_s - total_local_runoff_m3_s).abs() / total_local_runoff_m3_s
+    } else {
+        terminal_discharge_m3_s.abs()
+    };
+    let potential_discharge_m3_s = accumulated
+        .into_iter()
+        .map(|value| value as f32)
+        .collect::<Vec<_>>();
+
+    let mut runoff_hash = FNV_OFFSET_BASIS;
+    runoff_hash = fnv_update(runoff_hash, RUNOFF_STAGE_ID.as_bytes());
+    runoff_hash = fnv_update(runoff_hash, &RUNOFF_STAGE_VERSION.to_le_bytes());
+    runoff_hash = fnv_update(runoff_hash, &accepted.stage.derived_seed.to_le_bytes());
+    runoff_hash = fnv_update(runoff_hash, &planet.parameter_hash().to_le_bytes());
+    runoff_hash = fnv_update(
+        runoff_hash,
+        &accepted.metrics.runoff_parameter_hash.to_le_bytes(),
+    );
+    runoff_hash = fnv_update(runoff_hash, &accepted.metrics.climate_hash.to_le_bytes());
+    runoff_hash = fnv_update(runoff_hash, &drainage.metrics.drainage_hash.to_le_bytes());
+    runoff_hash = hash_f32_slice(runoff_hash, &accepted.actual_evapotranspiration_mm);
+    runoff_hash = hash_f32_slice(runoff_hash, &accepted.local_runoff_mm);
+    runoff_hash = hash_f32_slice(runoff_hash, &accepted.runoff_fraction);
+    runoff_hash = hash_f32_slice(runoff_hash, &accepted.local_runoff_m3_s);
+    runoff_hash = hash_f32_slice(runoff_hash, &potential_discharge_m3_s);
+
+    Ok(RunoffState {
+        stage: accepted.stage.clone(),
+        metrics: RunoffMetrics {
+            sample_count: accepted.metrics.sample_count,
+            land_sample_count: accepted.metrics.land_sample_count,
+            land_area_m2: accepted.metrics.land_area_m2,
+            mean_land_precipitation_mm: accepted.metrics.mean_land_precipitation_mm,
+            mean_land_actual_evapotranspiration_mm: accepted
+                .metrics
+                .mean_land_actual_evapotranspiration_mm,
+            mean_land_runoff_mm: accepted.metrics.mean_land_runoff_mm,
+            maximum_land_runoff_mm: accepted.metrics.maximum_land_runoff_mm,
+            land_runoff_fraction: accepted.metrics.land_runoff_fraction,
+            total_local_runoff_m3_s,
+            terminal_discharge_m3_s,
+            discharge_conservation_relative_error,
+            maximum_potential_discharge_m3_s,
+            runoff_parameter_hash: accepted.metrics.runoff_parameter_hash,
+            climate_hash: accepted.metrics.climate_hash,
+            drainage_hash: drainage.metrics.drainage_hash,
+            runoff_hash,
+        },
+        actual_evapotranspiration_mm: accepted.actual_evapotranspiration_mm.clone(),
+        local_runoff_mm: accepted.local_runoff_mm.clone(),
+        runoff_fraction: accepted.runoff_fraction.clone(),
+        local_runoff_m3_s: accepted.local_runoff_m3_s.clone(),
+        potential_discharge_m3_s,
+    })
+}
+
 pub fn generate_runoff_discharge(
     topology: &GeodesicTopology,
     topography: &TopographyState,

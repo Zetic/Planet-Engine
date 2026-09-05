@@ -1,5 +1,5 @@
 use crate::seasonal_flow::classify_realized_flow;
-use crate::seasonal_lakes::solve_seasonal_lake_routing;
+use crate::seasonal_lakes::{solve_seasonal_lake_routing, DEFAULT_MAXIMUM_LAKE_SPINUP_YEARS};
 use crate::{
     derive_stage_seed, ClimateGenerationDiagnostics, ClimateState, DrainageState, GeodesicTopology,
     LakeState, PlanetPhysicalParameters, PlanetTopology, RunoffState, StageIdentity,
@@ -383,6 +383,40 @@ pub fn generate_seasonal_hydrology(
     planet: PlanetPhysicalParameters,
     request: &SeasonalHydrologyRequest,
 ) -> Result<SeasonalHydrologyState, WorldgenError> {
+    if topography.metrics.sample_count != topology.sample_count() {
+        return Err(WorldgenError::InvalidHydrology(
+            "WG-6D topography must align on the canonical fine topology",
+        ));
+    }
+    generate_seasonal_hydrology_from_surface(
+        topology,
+        &topography.solid_elevation_m,
+        &topography.submerged_mask,
+        climate,
+        climate_diagnostics,
+        drainage,
+        runoff,
+        lakes,
+        planet,
+        request,
+        DEFAULT_MAXIMUM_LAKE_SPINUP_YEARS,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn generate_seasonal_hydrology_from_surface(
+    topology: &GeodesicTopology,
+    solid_elevation_m: &[f32],
+    submerged_mask: &[u8],
+    climate: &ClimateState,
+    climate_diagnostics: &ClimateGenerationDiagnostics,
+    drainage: &DrainageState,
+    runoff: &RunoffState,
+    lakes: &LakeState,
+    planet: PlanetPhysicalParameters,
+    request: &SeasonalHydrologyRequest,
+    maximum_lake_spinup_years: u8,
+) -> Result<SeasonalHydrologyState, WorldgenError> {
     planet
         .validate()
         .map_err(WorldgenError::InvalidParameters)?;
@@ -393,7 +427,8 @@ pub fn generate_seasonal_hydrology(
 
     let count = topology.sample_count() as usize;
     let phase_count = usize::from(climate.metrics.orbital_phase_count);
-    if topography.metrics.sample_count as usize != count
+    if solid_elevation_m.len() != count
+        || submerged_mask.len() != count
         || climate.metrics.sample_count as usize != count
         || drainage.metrics.sample_count as usize != count
         || runoff.metrics.sample_count as usize != count
@@ -455,7 +490,7 @@ pub fn generate_seasonal_hydrology(
     let mut maximum_phase_local_runoff_m3_s = 0.0_f64;
 
     for sample in 0..count {
-        if topography.submerged_mask[sample] != 0 {
+        if submerged_mask[sample] != 0 {
             continue;
         }
         for phase in 0..phase_count {
@@ -514,7 +549,7 @@ pub fn generate_seasonal_hydrology(
         let end = start + count;
         let (routed_local, terminal, maximum) = route_phase_discharge(
             &phase_local_runoff_m3_s[start..end],
-            &topography.submerged_mask,
+            &submerged_mask,
             &drainage.receiver,
             &drainage.drainage_order,
             &mut accumulation_m3_s,
@@ -537,19 +572,21 @@ pub fn generate_seasonal_hydrology(
 
     let lake_routing = solve_seasonal_lake_routing(
         topology,
-        topography,
+        solid_elevation_m,
+        submerged_mask,
         climate,
         climate_diagnostics,
         drainage,
         lakes,
         planet,
         &phase_local_runoff_m3_s,
+        maximum_lake_spinup_years,
     )
     .map_err(WorldgenError::InvalidHydrology)?;
 
     let flow_classification = classify_realized_flow(
         &lake_routing.phase_realized_discharge_m3_s,
-        &topography.submerged_mask,
+        &submerged_mask,
         phase_count,
     )
     .map_err(WorldgenError::InvalidHydrology)?;

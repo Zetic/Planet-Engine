@@ -1,4 +1,4 @@
-export const WORLDGEN_PROTOCOL_VERSION = 16;
+export const WORLDGEN_PROTOCOL_VERSION = 17;
 export const WORLDGEN_SYNTHETIC_MAX_SAMPLES = 4_194_304;
 export const WORLDGEN_TOPOLOGY_MAX_LEVEL = 7;
 export const WORLDGEN_TECTONICS_MAX_LEVEL = 6;
@@ -461,6 +461,37 @@ export interface WorldgenClimatePhysicalProfile {
   atmosphericLongwaveOpticalDepth: number;
 }
 
+export interface WorldgenPostErosionHydrologyMetrics {
+  sampleCount: number;
+  preErosionLakeCount: number;
+  postErosionLakeCount: number;
+  lakeKindChangedSampleCount: number;
+  lakeAddedSampleCount: number;
+  lakeRemovedSampleCount: number;
+  flowRegimeChangedSampleCount: number;
+  maximumAbsoluteLakeDepthChangeM: number;
+  maximumAbsoluteAnnualRealizedDischargeChangeM3S: number;
+  maximumAbsoluteFlowPresenceChange: number;
+  reconciledRunoffConservationRelativeError: number;
+  reconciledLakeWaterBalanceRelativeError: number;
+  reconciledSeasonalRoutingRelativeError: number;
+  reconciledSeasonalWaterBalanceRelativeError: number;
+  reconciliationParameterHash: string;
+  topographyHash: string;
+  climateHash: string;
+  preErosionDrainageHash: string;
+  preErosionRunoffHash: string;
+  preErosionLakeHash: string;
+  preErosionSeasonalHash: string;
+  terrainEvolutionHash: string;
+  evolvedSurfaceHash: string;
+  postErosionDrainageHash: string;
+  reconciledRunoffHash: string;
+  reconciledLakeHash: string;
+  reconciledSeasonalHash: string;
+  postErosionHydrologyHash: string;
+}
+
 export interface WorldgenClimateResult {
   engineVersion: number;
   coarseLevel: number;
@@ -612,6 +643,13 @@ export interface WorldgenClimateResult {
   receiverChangedMask: Uint8Array;
   postErosionContributingAreaM2: Float64Array;
   postErosionPotentialDischargeM3S: Float32Array;
+  reconciliationStage: WorldgenStageMetadata;
+  reconciliationMetrics: WorldgenPostErosionHydrologyMetrics;
+  lakeKindChangedMask: Uint8Array;
+  lakeDepthDeltaM: Float32Array;
+  annualRealizedDischargeDeltaM3S: Float32Array;
+  flowRegimeChangedMask: Uint8Array;
+  flowPresenceDelta: Float32Array;
 }
 
 
