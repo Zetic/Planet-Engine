@@ -167,7 +167,14 @@ fn main() -> Result<(), String> {
     for _ in 0..options.runs {
         let started = Instant::now();
         let state = generate_bounded_terrain_evolution(
-            &fine, &terrain, &drainage, &runoff, &lakes, &erosion, planet, &request,
+            &fine,
+            &terrain,
+            &drainage,
+            &runoff,
+            &lakes,
+            &erosion,
+            planet,
+            &request,
         )
         .map_err(|error| error.to_string())?;
         durations_ms.push(started.elapsed().as_secs_f64() * 1_000.0);
@@ -227,9 +234,7 @@ fn main() -> Result<(), String> {
     println!(
         "runoff max_post_q_m3_s={:.6} closure={:.3e}",
         state.metrics.maximum_post_erosion_potential_discharge_m3_s,
-        state
-            .metrics
-            .post_erosion_runoff_conservation_relative_error,
+        state.metrics.post_erosion_runoff_conservation_relative_error,
     );
     println!(
         "hash evolution={} surface={} post_drainage={} erosion={} parameters={}",
