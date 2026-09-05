@@ -39,6 +39,21 @@ jobs:
       - run: npm ci
       - name: Apply WG-7D cumulative browser integration
         run: python3 scripts/temp-wg7d-browser-integration.py
+      - name: Route canonical hydrology getters to WG-7D final state
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('rust/interlink-worldgen-wasm/src/climate_bridge.rs')
+          text = path.read_text()
+          replacements = {
+              'self.reconciliation.reconciled_runoff': 'self.infill.reconciled_runoff',
+              'self.reconciliation.reconciled_lakes': 'self.infill.reconciled_lakes',
+              'self.reconciliation.reconciled_seasonal': 'self.infill.reconciled_seasonal',
+          }
+          for old, new in replacements.items():
+              text = text.replace(old, new)
+          path.write_text(text)
+          PY
       - name: Format and test Rust workspace
         run: |
           cargo fmt --all
