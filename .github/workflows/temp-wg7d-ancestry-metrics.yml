@@ -1,0 +1,28 @@
+name: Temporary WG-7D Ancestry Metrics
+
+on:
+  push:
+    branches:
+      - wg7d-lake-sediment-infill
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: wg7d-lake-sediment-infill
+      - run: python3 scripts/temp-wg7d-ancestry-metrics.py
+      - run: cargo fmt --all
+      - run: cargo test -p interlink-worldgen
+      - name: Commit ancestry metrics
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/temp-wg7d-ancestry-metrics.yml scripts/temp-wg7d-ancestry-metrics.py
+          git add rust/interlink-worldgen/src/infill.rs
+          git commit -m "WG-7D: retain pre-infill hydrology ancestry"
+          git push origin HEAD:wg7d-lake-sediment-infill
