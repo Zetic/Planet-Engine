@@ -39,6 +39,8 @@ jobs:
       - run: npm ci
       - name: Apply WG-7D cumulative browser integration
         run: python3 scripts/temp-wg7d-browser-integration.py
+      - name: Migrate browser acceptance contract to protocol v18
+        run: python3 scripts/temp-wg7d-browser-test-migration.py
       - name: Route canonical hydrology getters to WG-7D final state
         run: |
           python3 - <<'PY'
@@ -85,7 +87,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git rm .github/workflows/temp-wg7d-browser-integration.yml scripts/temp-wg7d-browser-integration.py
+          git rm .github/workflows/temp-wg7d-browser-integration.yml scripts/temp-wg7d-browser-integration.py scripts/temp-wg7d-browser-test-migration.py
           git rm -f wg7d-test-failure.log || true
           git add -A
           git commit -m "WG-7D: expose final post-infill world through WASM"
