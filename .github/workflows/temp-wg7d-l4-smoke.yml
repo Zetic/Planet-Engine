@@ -1,0 +1,26 @@
+name: Temporary WG-7D L4 Smoke
+
+on:
+  push:
+    branches:
+      - wg7d-lake-sediment-infill
+
+permissions:
+  contents: write
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: wg7d-lake-sediment-infill
+      - name: Run WG-7D L4 physical case
+        run: cargo run --release -p interlink-worldgen-cli --example lake_sediment_infill_performance -- --seed ci-wg7d-lake-infill --coarse-level 3 --level 4 --plates 12 --runs 1
+      - name: Remove temporary workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/temp-wg7d-l4-smoke.yml
+          git commit -m "WG-7D: remove temporary L4 smoke workflow"
+          git push origin HEAD:wg7d-lake-sediment-infill
