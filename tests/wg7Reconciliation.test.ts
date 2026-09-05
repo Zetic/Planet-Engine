@@ -27,6 +27,9 @@ test('WG-7C cumulative browser contract is protocol v17 and memory-conscious', (
   }
   assert.match(html, /Current physical frontier: WG-7C/);
   assert.match(lab, /WG-7C reconciliation hash/);
+  assert.match(lab, /erosionMetrics\.drainageHash !== loaded\.reconciliationMetrics\.preErosionDrainageHash/);
+  assert.match(lab, /erosionMetrics\.lakeHash !== loaded\.reconciliationMetrics\.preErosionLakeHash/);
+  assert.doesNotMatch(lab, /erosionMetrics\.drainageHash !== loaded\.drainageMetrics\.drainageHash/);
   assert.match(lab, /reconciliationMetrics\.preErosionSeasonalHash/);
   assert.match(lab, /reconciliationMetrics\.reconciledSeasonalHash/);
 });
