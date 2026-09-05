@@ -1,0 +1,33 @@
+name: Temporary WG-7D Fill Rounding Fix
+
+on:
+  push:
+    branches:
+      - wg7d-lake-sediment-infill
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: wg7d-lake-sediment-infill
+      - name: Apply conservative f32 fill quantization
+        run: python3 scripts/temp-wg7d-rounding-fix.py
+      - name: Format and test core
+        run: |
+          cargo fmt --all
+          cargo test -p interlink-worldgen
+      - name: Run nontrivial L4 lake-infill case
+        run: cargo run --release -p interlink-worldgen-cli --example lake_sediment_infill_performance -- --seed ci-wg7b-evolution --coarse-level 3 --level 4 --plates 12 --runs 3
+      - name: Commit fix and clean temporary files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/temp-wg7d-rounding-fix.yml .github/workflows/temp-wg7d-physical-cases.yml scripts/temp-wg7d-rounding-fix.py
+          git add rust/interlink-worldgen/src/infill.rs
+          git commit -m "WG-7D: conserve quantized lake infill volume"
+          git push origin HEAD:wg7d-lake-sediment-infill
