@@ -1,0 +1,141 @@
+name: Temporary WG-7C Reconciled Lake Spinup
+
+on:
+  push:
+    branches: [wg7c-post-erosion-hydrology]
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: wg7c-post-erosion-hydrology
+      - name: Install Rust stable
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - name: Add WG-7C-specific seasonal spinup bound
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          # Seasonal lake kernel accepts a caller-provided bound. Existing WG-6D remains exactly 12 years.
+          p = Path('rust/interlink-worldgen/src/seasonal_lakes.rs')
+          s = p.read_text()
+          s = s.replace(
+              'const MAXIMUM_LAKE_SPINUP_YEARS: u8 = 12;',
+              'pub(crate) const DEFAULT_MAXIMUM_LAKE_SPINUP_YEARS: u8 = 12;',
+              1,
+          )
+          old = '''    planet: PlanetPhysicalParameters,\n    phase_local_runoff_m3_s: &[f32],\n) -> Result<SeasonalLakeRoutingResult, &'static str> {'''
+          new = '''    planet: PlanetPhysicalParameters,\n    phase_local_runoff_m3_s: &[f32],\n    maximum_lake_spinup_years: u8,\n) -> Result<SeasonalLakeRoutingResult, &'static str> {'''
+          if old not in s: raise SystemExit('seasonal lake solve signature target missing')
+          s = s.replace(old, new, 1)
+          s = s.replace(
+              '''    let maximum_spinup_years = if lake_count == 0 {\n        1\n    } else {\n        MAXIMUM_LAKE_SPINUP_YEARS\n    };''',
+              '''    if maximum_lake_spinup_years == 0 {\n        return Err("WG-6D maximum lake spinup years must be positive");\n    }\n    let maximum_spinup_years = if lake_count == 0 {\n        1\n    } else {\n        maximum_lake_spinup_years\n    };''',
+              1,
+          )
+          p.write_text(s)
+
+          # Existing WG-6D wrapper passes its historical 12-year bound; WG-7C can request more.
+          p = Path('rust/interlink-worldgen/src/seasonal.rs')
+          s = p.read_text()
+          s = s.replace(
+              'use crate::seasonal_lakes::solve_seasonal_lake_routing;',
+              'use crate::seasonal_lakes::{solve_seasonal_lake_routing, DEFAULT_MAXIMUM_LAKE_SPINUP_YEARS};',
+              1,
+          )
+          old_call = '''        planet,\n        request,\n    )\n}'''
+          new_call = '''        planet,\n        request,\n        DEFAULT_MAXIMUM_LAKE_SPINUP_YEARS,\n    )\n}'''
+          if old_call not in s: raise SystemExit('public seasonal wrapper call target missing')
+          s = s.replace(old_call, new_call, 1)
+          old_sig = '''    planet: PlanetPhysicalParameters,\n    request: &SeasonalHydrologyRequest,\n) -> Result<SeasonalHydrologyState, WorldgenError> {\n    planet'''
+          new_sig = '''    planet: PlanetPhysicalParameters,\n    request: &SeasonalHydrologyRequest,\n    maximum_lake_spinup_years: u8,\n) -> Result<SeasonalHydrologyState, WorldgenError> {\n    planet'''
+          if old_sig not in s: raise SystemExit('surface seasonal helper signature target missing')
+          s = s.replace(old_sig, new_sig, 1)
+          old_solve = '''        planet,\n        &phase_local_runoff_m3_s,\n    )'''
+          new_solve = '''        planet,\n        &phase_local_runoff_m3_s,\n        maximum_lake_spinup_years,\n    )'''
+          if old_solve not in s: raise SystemExit('seasonal lake solve call target missing')
+          s = s.replace(old_solve, new_solve, 1)
+          p.write_text(s)
+
+          # WG-7C owns a larger bound because evolved lake geometry can need extra orbital cycles.
+          p = Path('rust/interlink-worldgen/src/reconciliation.rs')
+          s = p.read_text()
+          s = s.replace(
+              '''    pub seasonal: SeasonalHydrologyParameters,\n}''',
+              '''    pub seasonal: SeasonalHydrologyParameters,\n    pub maximum_lake_spinup_years: u8,\n}''',
+              1,
+          )
+          s = s.replace(
+              '''            seasonal: SeasonalHydrologyParameters::default(),\n        }''',
+              '''            seasonal: SeasonalHydrologyParameters::default(),\n            maximum_lake_spinup_years: 24,\n        }''',
+              1,
+          )
+          s = s.replace(
+              '''        self.seasonal.validate()?;\n        Ok(())''',
+              '''        self.seasonal.validate()?;\n        if !(2..=48).contains(&self.maximum_lake_spinup_years) {\n            return Err("WG-7C maximum lake spinup years must be within [2, 48]");\n        }\n        Ok(())''',
+              1,
+          )
+          old_hash = '''        hash = fnv_update(hash, &self.lakes.parameter_hash().to_le_bytes());\n        fnv_update(hash, &self.seasonal.parameter_hash().to_le_bytes())'''
+          new_hash = '''        hash = fnv_update(hash, &self.lakes.parameter_hash().to_le_bytes());\n        hash = fnv_update(hash, &self.seasonal.parameter_hash().to_le_bytes());\n        fnv_update(hash, &[self.maximum_lake_spinup_years])'''
+          if old_hash not in s: raise SystemExit('WG-7C parameter hash target missing')
+          s = s.replace(old_hash, new_hash, 1)
+          old_reconcile_call = '''        planet,\n        &seasonal_request,\n    )?;'''
+          new_reconcile_call = '''        planet,\n        &seasonal_request,\n        request.parameters.maximum_lake_spinup_years,\n    )?;'''
+          if old_reconcile_call not in s: raise SystemExit('WG-7C seasonal call target missing')
+          s = s.replace(old_reconcile_call, new_reconcile_call, 1)
+          # Extend parameter hash regression.
+          test_anchor = '''        changed = base;\n        changed.seasonal.degree_day_melt_mm_per_k_day = 4.0;\n        assert_ne!(base.parameter_hash(), changed.parameter_hash());'''
+          test_new = test_anchor + '''\n        changed = base;\n        changed.maximum_lake_spinup_years = 32;\n        assert_ne!(base.parameter_hash(), changed.parameter_hash());'''
+          if test_anchor not in s: raise SystemExit('WG-7C parameter test target missing')
+          s = s.replace(test_anchor, test_new, 1)
+          p.write_text(s)
+
+          # Make cycle convergence visible in the permanent benchmark harness.
+          p = Path('rust/interlink-worldgen-cli/examples/post_erosion_hydrology_performance.rs')
+          s = p.read_text()
+          old = '''        "seasonal lakes={} spinup={} flow_dry={} intermittent={} perennial={}",\n        state.reconciled_seasonal.metrics.active_lake_count,\n        state.reconciled_seasonal.metrics.lake_spinup_years,\n        state.reconciled_seasonal.metrics.dry_flow_sample_count,\n        state.reconciled_seasonal.metrics.intermittent_flow_sample_count,\n        state.reconciled_seasonal.metrics.perennial_flow_sample_count,\n'''
+          new = '''        "seasonal lakes={} spinup={} surface_drift_m={:.9} relative_cycle={:.9e} max_range_m={:.6} flow_dry={} intermittent={} perennial={}",\n        state.reconciled_seasonal.metrics.active_lake_count,\n        state.reconciled_seasonal.metrics.lake_spinup_years,\n        state.reconciled_seasonal.metrics.final_lake_surface_cycle_change_m,\n        state.reconciled_seasonal.metrics.final_lake_cycle_relative_change,\n        state.reconciled_seasonal.metrics.maximum_seasonal_lake_level_range_m,\n        state.reconciled_seasonal.metrics.dry_flow_sample_count,\n        state.reconciled_seasonal.metrics.intermittent_flow_sample_count,\n        state.reconciled_seasonal.metrics.perennial_flow_sample_count,\n'''
+          if old not in s: raise SystemExit('benchmark seasonal line target missing')
+          p.write_text(s.replace(old, new, 1))
+
+          # Permanent smoke now enforces the same physical surface-cycle criterion as WG-6D.
+          p = Path('scripts/check-wg7c-reconciliation.sh')
+          s = p.read_text()
+          old = '''seasonal = re.search(\n    r"seasonal lakes=(\\d+) spinup=(\\d+) flow_dry=(\\d+) intermittent=(\\d+) perennial=(\\d+)",\n    text,\n)'''
+          new = '''seasonal = re.search(\n    r"seasonal lakes=(\\d+) spinup=(\\d+) surface_drift_m=([0-9.eE+-]+) "\n    r"relative_cycle=([0-9.eE+-]+) max_range_m=([0-9.eE+-]+) "\n    r"flow_dry=(\\d+) intermittent=(\\d+) perennial=(\\d+)",\n    text,\n)'''
+          if old not in s: raise SystemExit('smoke seasonal regex target missing')
+          s = s.replace(old, new, 1)
+          old_parse = '''seasonal_lakes = int(seasonal.group(1))\nspinup = int(seasonal.group(2))\ndry = int(seasonal.group(3))\nintermittent = int(seasonal.group(4))\nperennial = int(seasonal.group(5))'''
+          new_parse = '''seasonal_lakes = int(seasonal.group(1))\nspinup = int(seasonal.group(2))\nsurface_drift = float(seasonal.group(3))\nrelative_cycle = float(seasonal.group(4))\nmax_range = float(seasonal.group(5))\ndry = int(seasonal.group(6))\nintermittent = int(seasonal.group(7))\nperennial = int(seasonal.group(8))'''
+          if old_parse not in s: raise SystemExit('smoke seasonal parse target missing')
+          s = s.replace(old_parse, new_parse, 1)
+          s = s.replace('''if not (1 <= spinup <= 12):\n    raise SystemExit(f"WG-7C reconciled seasonal spinup is outside [1, 12]: {spinup}")''',
+                        '''if not (1 <= spinup <= 24):\n    raise SystemExit(f"WG-7C reconciled seasonal spinup is outside [1, 24]: {spinup}")\nif not math.isfinite(surface_drift) or surface_drift < 0.0 or surface_drift > 0.0200001:\n    raise SystemExit(f"WG-7C reconciled seasonal lake surface cycle did not converge: {surface_drift:.9f} m")\nif not math.isfinite(relative_cycle) or relative_cycle < 0.0 or not math.isfinite(max_range) or max_range < 0.0:\n    raise SystemExit("WG-7C reconciled lake cycle diagnostics must be finite and nonnegative")''', 1)
+          p.write_text(s)
+          PY
+          rustfmt --edition 2021 \
+            rust/interlink-worldgen/src/seasonal_lakes.rs \
+            rust/interlink-worldgen/src/seasonal.rs \
+            rust/interlink-worldgen/src/reconciliation.rs \
+            rust/interlink-worldgen-cli/examples/post_erosion_hydrology_performance.rs
+      - name: Test core
+        run: cargo test -p interlink-worldgen
+      - name: Check fixed L4 acceptance
+        run: bash scripts/check-wg7c-reconciliation.sh
+      - name: Check accepted-ancestry L7 convergence
+        run: cargo run --release -p interlink-worldgen-cli --example post_erosion_hydrology_performance -- --seed ci-wg5-l7 --coarse-level 5 --level 7 --plates 24 --runs 1
+      - name: Commit and self-clean
+        run: |
+          rm .github/workflows/temp-wg7c-spinup.yml
+          git config user.name "Zetic"
+          git config user.email "105380590+Zetic@users.noreply.github.com"
+          git add -A
+          git commit -m "WG-7C: extend reconciled seasonal lake convergence"
+          git push origin HEAD:wg7c-post-erosion-hydrology
