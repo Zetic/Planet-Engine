@@ -10,6 +10,7 @@ mod evolution;
 mod fields;
 mod geology;
 mod hydroclimate;
+mod infill;
 mod lakes;
 mod lithosphere;
 mod parameters;
@@ -67,6 +68,11 @@ pub use geology::{
 };
 pub use hydroclimate::{
     build_hydroclimate_closure_report, HydroclimateClosureReport, HydroclimateLatitudeBand,
+};
+pub use infill::{
+    generate_lake_sediment_infill, LakeSedimentInfillMetrics, LakeSedimentInfillParameters,
+    LakeSedimentInfillRequest, LakeSedimentInfillState, LAKE_SEDIMENT_INFILL_STAGE_ID,
+    LAKE_SEDIMENT_INFILL_STAGE_VERSION,
 };
 pub use lakes::{
     generate_lakes_closed_basins, LakeMetrics, LakeParameters, LakeRecord, LakeRequest, LakeState,

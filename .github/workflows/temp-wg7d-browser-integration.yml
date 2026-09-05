@@ -1,0 +1,92 @@
+# Activated by this push to complete WG-7D browser integration.
+name: Temporary WG-7D Browser Integration
+
+on:
+  push:
+    branches: [wg7d-lake-sediment-infill]
+
+permissions:
+  contents: write
+
+env:
+  RUST_VERSION: '1.98.1'
+  WASM_BINDGEN_VERSION: '0.2.127'
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: wg7d-lake-sediment-infill
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install pinned Rust and browser target
+        run: |
+          rustup toolchain install "${RUST_VERSION}" --profile minimal --component rustfmt --target wasm32-unknown-unknown
+          rustup default "${RUST_VERSION}"
+      - name: Restore wasm-bindgen CLI cache
+        id: wasm-bindgen-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/wasm-bindgen*
+          key: ${{ runner.os }}-wasm-bindgen-cli-${{ env.WASM_BINDGEN_VERSION }}-rust-${{ env.RUST_VERSION }}
+      - name: Install pinned wasm-bindgen CLI
+        if: steps.wasm-bindgen-cache.outputs.cache-hit != 'true'
+        run: cargo +${RUST_VERSION} install wasm-bindgen-cli --version "${WASM_BINDGEN_VERSION}" --locked
+      - run: npm ci
+      - name: Apply WG-7D cumulative browser integration
+        run: python3 scripts/temp-wg7d-browser-integration.py
+      - name: Route canonical hydrology getters to WG-7D final state
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('rust/interlink-worldgen-wasm/src/climate_bridge.rs')
+          text = path.read_text()
+          for field in ('reconciled_runoff', 'reconciled_lakes', 'reconciled_seasonal'):
+              text, count = re.subn(
+                  rf'self\.reconciliation\s*\.\s*{field}',
+                  f'self.infill.{field}',
+                  text,
+              )
+              if count == 0:
+                  raise RuntimeError(f'expected at least one canonical getter reference for {field}')
+          path.write_text(text)
+          PY
+      - name: Format and test Rust workspace
+        run: |
+          cargo fmt --all
+          cargo test --workspace
+      - name: Build committed WASM package
+        run: npm run build:worldgen-wasm
+      - name: Build browser modules
+        run: npm run build
+      - name: Run browser regressions
+        run: |
+          set -o pipefail
+          if ! npm run test:ts 2>&1 | tee /tmp/wg7d-test-ts.log; then
+            if [[ ! -f wg7d-test-failure.log ]]; then
+              git config user.name "github-actions[bot]"
+              git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+              cp /tmp/wg7d-test-ts.log wg7d-test-failure.log
+              git add wg7d-test-failure.log
+              git commit -m "chore: capture WG-7D browser regression failure"
+              git push origin HEAD:wg7d-lake-sediment-infill
+            fi
+            exit 1
+          fi
+      - name: Run WG-7D physical acceptance
+        run: bash scripts/check-wg7d-lake-infill.sh
+      - name: Commit integration and remove temporary machinery
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/temp-wg7d-browser-integration.yml scripts/temp-wg7d-browser-integration.py
+          git rm -f wg7d-test-failure.log || true
+          git add -A
+          git commit -m "WG-7D: expose final post-infill world through WASM"
+          git push origin HEAD:wg7d-lake-sediment-infill
