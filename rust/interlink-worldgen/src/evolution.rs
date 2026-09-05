@@ -187,6 +187,7 @@ pub struct TerrainEvolutionState {
 struct AppliedSedimentRouting {
     load_kg_s: Vec<f32>,
     land_deposition_kg_s: Vec<f32>,
+    lake_sink_kg_s_by_depression: Vec<f64>,
     total_land_deposition_kg_s: f64,
     total_lake_sink_kg_s: f64,
     total_terminal_ocean_sink_kg_s: f64,
@@ -245,6 +246,7 @@ fn route_applied_sediment(
     let mut incoming = vec![0.0_f64; count];
     let mut load_kg_s = vec![0.0_f32; count];
     let mut land_deposition_kg_s = vec![0.0_f32; count];
+    let mut lake_sink_kg_s_by_depression = vec![0.0_f64; active_lake_depression.len()];
     let mut total_land_deposition_kg_s = 0.0_f64;
     let mut total_lake_sink_kg_s = 0.0_f64;
     let mut total_terminal_ocean_sink_kg_s = 0.0_f64;
@@ -270,6 +272,7 @@ fn route_applied_sediment(
             && active_lake_depression[depression as usize];
         if active_lake {
             total_lake_sink_kg_s += available;
+            lake_sink_kg_s_by_depression[depression as usize] += available;
             continue;
         }
 
@@ -298,10 +301,68 @@ fn route_applied_sediment(
     Ok(AppliedSedimentRouting {
         load_kg_s,
         land_deposition_kg_s,
+        lake_sink_kg_s_by_depression,
         total_land_deposition_kg_s,
         total_lake_sink_kg_s,
         total_terminal_ocean_sink_kg_s,
     })
+}
+
+pub(crate) fn reconstruct_applied_lake_sediment_delivery_kg_s(
+    topography: &TopographyState,
+    drainage: &DrainageState,
+    lakes: &LakeState,
+    erosion: &FluvialErosionState,
+    evolution: &TerrainEvolutionState,
+) -> Result<Vec<f64>, WorldgenError> {
+    let count = topography.solid_elevation_m.len();
+    if topography.submerged_mask.len() != count
+        || drainage.receiver.len() != count
+        || drainage.depression_id.len() != count
+        || erosion.sediment_transport_capacity_kg_s.len() != count
+        || evolution.applied_sediment_supply_kg_s.len() != count
+    {
+        return Err(WorldgenError::InvalidGeomorphology(
+            "WG-7D lake-delivery reconstruction fields must align",
+        ));
+    }
+    if evolution.metrics.drainage_hash != drainage.metrics.drainage_hash
+        || evolution.metrics.lake_hash != lakes.metrics.lake_hash
+        || evolution.metrics.fluvial_erosion_hash != erosion.metrics.fluvial_erosion_hash
+    {
+        return Err(WorldgenError::InvalidGeomorphology(
+            "WG-7D lake-delivery reconstruction requires exact WG-7B ancestry",
+        ));
+    }
+
+    let mut active_lake_depression = vec![false; drainage.depressions.len()];
+    for lake in &lakes.lakes {
+        let depression = lake.depression_id as usize;
+        if depression >= active_lake_depression.len() {
+            return Err(WorldgenError::InvalidGeomorphology(
+                "WG-7D historical lake references an unknown accepted depression",
+            ));
+        }
+        active_lake_depression[depression] = true;
+    }
+    let routing = route_applied_sediment(
+        &evolution.applied_sediment_supply_kg_s,
+        &erosion.sediment_transport_capacity_kg_s,
+        &topography.submerged_mask,
+        &drainage.receiver,
+        &drainage.drainage_order,
+        &drainage.depression_id,
+        &active_lake_depression,
+    )
+    .map_err(WorldgenError::InvalidGeomorphology)?;
+    let expected = evolution.metrics.total_lake_sink_kg_s;
+    let tolerance = 1.0e-9_f64.max(expected.abs() * 1.0e-12);
+    if (routing.total_lake_sink_kg_s - expected).abs() > tolerance {
+        return Err(WorldgenError::InvalidGeomorphology(
+            "WG-7D reconstructed lake sediment does not match accepted WG-7B sink ledger",
+        ));
+    }
+    Ok(routing.lake_sink_kg_s_by_depression)
 }
 
 fn reroute_local_runoff(

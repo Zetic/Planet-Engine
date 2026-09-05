@@ -1,11 +1,12 @@
 use interlink_worldgen::{
     build_icosphere, generate_bounded_terrain_evolution, generate_coupled_climate_with_diagnostics,
     generate_crust_and_history, generate_drainage_topology, generate_fluvial_erosion_sediment,
-    generate_initial_topography, generate_lakes_closed_basins, generate_lithosphere,
-    generate_runoff_discharge, generate_seasonal_hydrology, generate_tectonics,
-    inherit_boundary_interfaces, inherit_physical_state, ClimateRequest, DrainageRequest,
-    FluvialErosionRequest, GeologyRequest, LakeRequest, LithosphereRequest,
-    PlanetPhysicalParameters, RunoffRequest, SeasonalHydrologyRequest, TectonicsRequest,
+    generate_initial_topography, generate_lake_sediment_infill, generate_lakes_closed_basins,
+    generate_lithosphere, generate_post_erosion_hydrology, generate_runoff_discharge,
+    generate_seasonal_hydrology, generate_tectonics, inherit_boundary_interfaces,
+    inherit_physical_state, ClimateRequest, DrainageRequest, FluvialErosionRequest, GeologyRequest,
+    LakeRequest, LakeSedimentInfillRequest, LithosphereRequest, PlanetPhysicalParameters,
+    PostErosionHydrologyRequest, RunoffRequest, SeasonalHydrologyRequest, TectonicsRequest,
     TerrainEvolutionRequest, TopographyRequest,
 };
 use std::env;
@@ -39,7 +40,7 @@ fn parse_options() -> Result<Options, String> {
         .position(|arg| arg == "--seed")
         .and_then(|index| args.get(index + 1))
         .cloned()
-        .unwrap_or_else(|| "ci-wg7b-evolution".to_owned());
+        .unwrap_or_else(|| "ci-wg7d-lake-infill".to_owned());
     let options = Options {
         seed,
         coarse_level: parse_value(&args, "--coarse-level", 3_u8)?,
@@ -160,26 +161,61 @@ fn main() -> Result<(), String> {
         &FluvialErosionRequest::new(options.seed.as_str()),
     )
     .map_err(|error| error.to_string())?;
-    let request = TerrainEvolutionRequest::new(options.seed.as_str());
+    let evolution = generate_bounded_terrain_evolution(
+        &fine,
+        &terrain,
+        &drainage,
+        &runoff,
+        &lakes,
+        &erosion,
+        planet,
+        &TerrainEvolutionRequest::new(options.seed.as_str()),
+    )
+    .map_err(|error| error.to_string())?;
+    let reconciliation = generate_post_erosion_hydrology(
+        &fine,
+        &terrain,
+        &climate,
+        &climate_diagnostics,
+        &drainage,
+        &runoff,
+        &lakes,
+        &seasonal,
+        &evolution,
+        planet,
+        &PostErosionHydrologyRequest::new(options.seed.as_str()),
+    )
+    .map_err(|error| error.to_string())?;
+    let request = LakeSedimentInfillRequest::new(options.seed.as_str());
 
     let mut durations_ms = Vec::with_capacity(options.runs as usize);
     let mut last = None;
     for _ in 0..options.runs {
         let started = Instant::now();
-        let state = generate_bounded_terrain_evolution(
-            &fine, &terrain, &drainage, &runoff, &lakes, &erosion, planet, &request,
+        let state = generate_lake_sediment_infill(
+            &fine,
+            &terrain,
+            &climate,
+            &climate_diagnostics,
+            &drainage,
+            &lakes,
+            &erosion,
+            &evolution,
+            &reconciliation,
+            planet,
+            &request,
         )
         .map_err(|error| error.to_string())?;
         durations_ms.push(started.elapsed().as_secs_f64() * 1_000.0);
         last = Some(state);
     }
-    let state = last.expect("at least one WG-7B benchmark run");
+    let state = last.expect("at least one WG-7D benchmark run");
     let mean_ms = durations_ms.iter().sum::<f64>() / durations_ms.len() as f64;
     let mut sorted = durations_ms.clone();
     sorted.sort_by(f64::total_cmp);
     let median_ms = sorted[sorted.len() / 2];
 
-    println!("WG-7B bounded fluvial terrain evolution benchmark");
+    println!("WG-7D lake sediment infill benchmark");
     println!(
         "seed={} coarse_level={} level={} plates={} samples={} runs={}",
         options.seed,
@@ -194,50 +230,59 @@ fn main() -> Result<(), String> {
         durations_ms
     );
     println!(
-        "terrain duration_years={:.3} eroded_samples={} depositional_samples={} receiver_changed={} receiver_changed_fraction={:.9}",
+        "infill horizon_years={:.3} historical_traps={} filled_depressions={} filled_samples={} capacity_limited={} max_fill_m={:.6}",
         state.metrics.geomorphic_duration_years,
-        state.metrics.eroded_sample_count,
-        state.metrics.depositional_sample_count,
-        state.metrics.receiver_changed_sample_count,
-        state.metrics.receiver_changed_fraction,
+        state.metrics.historical_lake_trap_count,
+        state.metrics.filled_depression_count,
+        state.metrics.filled_sample_count,
+        state.metrics.capacity_limited_depression_count,
+        state.metrics.maximum_fill_depth_m,
     );
     println!(
-        "change max_erosion_m={:.6} max_deposition_m={:.6} max_abs_m={:.6} mean_land_abs_m={:.6}",
-        state.metrics.maximum_applied_erosion_m,
-        state.metrics.maximum_applied_deposition_m,
-        state.metrics.maximum_absolute_terrain_change_m,
-        state.metrics.mean_land_absolute_terrain_change_m,
-    );
-    println!(
-        "sediment generated_kg_s={:.6} land_deposition_kg_s={:.6} lake_sink_kg_s={:.6} terminal_ocean_sink_kg_s={:.6} closure={:.3e}",
-        state.metrics.total_applied_sediment_generated_kg_s,
-        state.metrics.total_land_deposition_kg_s,
-        state.metrics.total_lake_sink_kg_s,
-        state.metrics.total_terminal_ocean_sink_kg_s,
+        "sediment delivered_kg_s={:.6} applied_equivalent_kg_s={:.6} unapplied_kg_s={:.6} volume_m3={:.6e} closure={:.3e}",
+        state.metrics.total_historical_lake_delivery_kg_s,
+        state.metrics.total_applied_lake_fill_equivalent_kg_s,
+        state.metrics.total_unapplied_lake_sediment_kg_s,
+        state.metrics.total_applied_lake_fill_volume_m3,
         state.metrics.sediment_conservation_relative_error,
     );
     println!(
-        "drainage basins_before={} basins_after={} depressions_before={} depressions_after={} area_closure={:.3e}",
-        drainage.metrics.basin_count,
-        state.post_erosion_drainage.metrics.basin_count,
-        drainage.metrics.depression_count,
-        state.post_erosion_drainage.metrics.depression_count,
-        state.post_erosion_drainage.metrics.area_conservation_relative_error,
+        "lakes pre={} post={} drainage_depressions={} -> {}",
+        state.metrics.pre_infill_lake_count,
+        state.metrics.post_infill_lake_count,
+        evolution.post_erosion_drainage.metrics.depression_count,
+        state.post_infill_drainage.metrics.depression_count,
     );
     println!(
-        "runoff max_post_q_m3_s={:.6} closure={:.3e}",
-        state.metrics.maximum_post_erosion_potential_discharge_m3_s,
+        "closure runoff={:.3e} lake={:.3e} seasonal_routing={:.3e} seasonal_water={:.3e}",
+        state.metrics.post_infill_runoff_conservation_relative_error,
+        state.metrics.post_infill_lake_water_balance_relative_error,
+        state.metrics.post_infill_seasonal_routing_relative_error,
         state
             .metrics
-            .post_erosion_runoff_conservation_relative_error,
+            .post_infill_seasonal_water_balance_relative_error,
     );
     println!(
-        "hash evolution={} surface={} post_drainage={} erosion={} parameters={}",
-        state.metrics.terrain_evolution_hash_hex(),
-        state.metrics.evolved_surface_hash_hex(),
-        state.metrics.post_erosion_drainage_hash_hex(),
-        erosion.metrics.fluvial_erosion_hash_hex(),
-        state.metrics.evolution_parameter_hash_hex(),
+        "seasonal spinup={} surface_drift_m={:.9} max_range_m={:.6}",
+        state.reconciled_seasonal.metrics.lake_spinup_years,
+        state
+            .reconciled_seasonal
+            .metrics
+            .final_lake_surface_cycle_change_m,
+        state
+            .reconciled_seasonal
+            .metrics
+            .maximum_seasonal_lake_level_range_m,
+    );
+    println!(
+        "hash infill={} surface={} drainage={} runoff={:016x} lake={:016x} seasonal={:016x} parameters={}",
+        state.metrics.lake_sediment_infill_hash_hex(),
+        state.metrics.post_infill_surface_hash_hex(),
+        state.metrics.post_infill_drainage_hash_hex(),
+        state.metrics.post_infill_runoff_hash,
+        state.metrics.post_infill_lake_hash,
+        state.metrics.post_infill_seasonal_hash,
+        state.metrics.infill_parameter_hash_hex(),
     );
     Ok(())
 }

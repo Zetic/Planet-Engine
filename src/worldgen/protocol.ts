@@ -1,4 +1,4 @@
-export const WORLDGEN_PROTOCOL_VERSION = 17;
+export const WORLDGEN_PROTOCOL_VERSION = 18;
 export const WORLDGEN_SYNTHETIC_MAX_SAMPLES = 4_194_304;
 export const WORLDGEN_TOPOLOGY_MAX_LEVEL = 7;
 export const WORLDGEN_TECTONICS_MAX_LEVEL = 6;
@@ -492,6 +492,46 @@ export interface WorldgenPostErosionHydrologyMetrics {
   postErosionHydrologyHash: string;
 }
 
+export interface WorldgenLakeSedimentInfillMetrics {
+  sampleCount: number;
+  geomorphicDurationYears: number;
+  historicalLakeTrapCount: number;
+  filledDepressionCount: number;
+  filledSampleCount: number;
+  capacityLimitedDepressionCount: number;
+  maximumFillDepthM: number;
+  totalHistoricalLakeDeliveryKgS: number;
+  totalAppliedLakeFillEquivalentKgS: number;
+  totalUnappliedLakeSedimentKgS: number;
+  totalAppliedLakeFillVolumeM3: number;
+  sedimentConservationRelativeError: number;
+  preInfillLakeCount: number;
+  postInfillLakeCount: number;
+  postInfillRunoffConservationRelativeError: number;
+  postInfillLakeWaterBalanceRelativeError: number;
+  postInfillSeasonalRoutingRelativeError: number;
+  postInfillSeasonalWaterBalanceRelativeError: number;
+  infillParameterHash: string;
+  topographyHash: string;
+  climateHash: string;
+  preErosionDrainageHash: string;
+  preErosionLakeHash: string;
+  fluvialErosionHash: string;
+  terrainEvolutionHash: string;
+  postErosionHydrologyHash: string;
+  inputEvolvedSurfaceHash: string;
+  preInfillDrainageHash: string;
+  preInfillRunoffHash: string;
+  preInfillLakeHash: string;
+  preInfillSeasonalHash: string;
+  postInfillSurfaceHash: string;
+  postInfillDrainageHash: string;
+  postInfillRunoffHash: string;
+  postInfillLakeHash: string;
+  postInfillSeasonalHash: string;
+  lakeSedimentInfillHash: string;
+}
+
 export interface WorldgenClimateResult {
   engineVersion: number;
   coarseLevel: number;
@@ -650,6 +690,10 @@ export interface WorldgenClimateResult {
   annualRealizedDischargeDeltaM3S: Float32Array;
   flowRegimeChangedMask: Uint8Array;
   flowPresenceDelta: Float32Array;
+  infillStage: WorldgenStageMetadata;
+  infillMetrics: WorldgenLakeSedimentInfillMetrics;
+  postInfillSolidElevationM: Float32Array;
+  lakeFillDepthM: Float32Array;
 }
 
 

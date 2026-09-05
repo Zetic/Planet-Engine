@@ -80,6 +80,7 @@ function geologicalBoundaryColor(regime: number): string {
 }
 
 
+const INFILL_MODES = new Set(['infill-solid-elevation', 'infill-fill-depth']);
 const RECONCILIATION_MODES = new Set(['reconciliation-lake-depth-delta', 'reconciliation-lake-change', 'reconciliation-realized-discharge-delta', 'reconciliation-flow-presence-delta', 'reconciliation-flow-regime-change']);
 const EVOLUTION_MODES = new Set(['evolution-solid-elevation', 'evolution-terrain-delta', 'evolution-applied-erosion', 'evolution-applied-deposition', 'evolution-receiver-change', 'evolution-contributing-area', 'evolution-potential-discharge']);
 const EROSION_MODES = new Set(['erosion-effective-discharge', 'erosion-channel-slope', 'erosion-channel-width', 'erosion-erodibility', 'erosion-incision-potential', 'erosion-sediment-supply', 'erosion-sediment-load', 'erosion-sediment-deposition']);
@@ -259,6 +260,17 @@ function hypsometricColor(result: WorldgenClimateResult, sample: number): string
   if (elevation < 5_000) return '#9b9290';
   return '#e6ebed';
 }
+function evolvedHypsometricColor(result: WorldgenClimateResult, sample: number): string {
+  if (result.submergedMask[sample]) return hypsometricColor(result, sample);
+  const elevation = result.postInfillSolidElevationM[sample]! - result.metrics.seaLevelM;
+  if (elevation < 100) return '#456f3d';
+  if (elevation < 400) return '#608448';
+  if (elevation < 1_000) return '#829955';
+  if (elevation < 2_000) return '#9b875b';
+  if (elevation < 3_500) return '#80664f';
+  if (elevation < 5_000) return '#918a88';
+  return '#e4e9ec';
+}
 function bucketize(count: number, colorAt: (index: number) => string): DrawBucket[] {
   const buckets = new Map<string, number[]>();
   for (let index = 0; index < count; index += 1) {
@@ -395,6 +407,8 @@ function scalarField(result: WorldgenClimateResult, mode: string, phase: number)
       for (let index = 0; index < scalarScratch.length; index += 1) scalarScratch[index] = result.flowRegimeChangedMask[index]!;
       return { values: scalarScratch, minimum: 0, maximum: 1, lowHue: 210, highHue: 5 };
     }
+    case 'infill-solid-elevation': return { values: result.postInfillSolidElevationM, minimum: -12_000, maximum: 8_000, lowHue: 225, highHue: 25 };
+    case 'infill-fill-depth': return { values: result.lakeFillDepthM, minimum: 0, maximum: Math.max(0.01, result.infillMetrics.maximumFillDepthM), lowHue: 205, highHue: 35 };
     case 'evolution-solid-elevation': return { values: result.evolvedSolidElevationM, minimum: -12_000, maximum: 8_000, lowHue: 225, highHue: 25 };
     case 'evolution-terrain-delta': {
       const bound = Math.max(0.01, result.evolutionMetrics.maximumAbsoluteTerrainChangeM);
@@ -460,6 +474,7 @@ function scalarField(result: WorldgenClimateResult, mode: string, phase: number)
   }
 }
 function sampleColor(result: WorldgenClimateResult, mode: string, sample: number, field: ScalarField | null): string {
+  if (mode === 'physical-world') return evolvedHypsometricColor(result, sample);
   if (mode === 'physical-elevation' || mode === 'winds' || mode === 'currents') return hypsometricColor(result, sample);
   if (mode === 'land-water') return result.submergedMask[sample] ? '#214d7a' : '#a99b72';
   if (mode === 'plates' || mode === 'tectonic-boundaries' || mode === 'geological-boundaries' || mode === 'boundary-provenance') return plateColor(result.plateIds[sample]!);
@@ -590,14 +605,19 @@ type EdgeOverlayCache = {
   result: WorldgenClimateResult | null;
   coastline: Uint32Array;
   contours: Array<{ level: number; pairs: Uint32Array }>;
+  evolvedContours: Array<{ level: number; pairs: Uint32Array }>;
+  basinDivides: Uint32Array;
+  riverBuckets: Array<{ regime: number; widthBucket: number; pairs: Uint32Array }>;
 };
-let edgeOverlayCache: EdgeOverlayCache = { result: null, coastline: new Uint32Array(0), contours: [] };
+let edgeOverlayCache: EdgeOverlayCache = { result: null, coastline: new Uint32Array(0), contours: [], evolvedContours: [], basinDivides: new Uint32Array(0), riverBuckets: [] };
 const TOPOGRAPHIC_CONTOURS_M = [500, 1_000, 2_000, 3_000, 4_500] as const;
 
 function ensureEdgeOverlayCache(result: WorldgenClimateResult): EdgeOverlayCache {
   if (edgeOverlayCache.result === result) return edgeOverlayCache;
   const coastline: number[] = [];
+  const basinDivides: number[] = [];
   const contourPairs = TOPOGRAPHIC_CONTOURS_M.map(() => [] as number[]);
+  const evolvedContourPairs = TOPOGRAPHIC_CONTOURS_M.map(() => [] as number[]);
   for (let a = 0; a < result.metrics.fineSampleCount; a += 1) {
     const start = result.neighborOffsets[a]!;
     const end = result.neighborOffsets[a + 1]!;
@@ -606,18 +626,47 @@ function ensureEdgeOverlayCache(result: WorldgenClimateResult): EdgeOverlayCache
       if (b <= a) continue;
       if (result.submergedMask[a] !== result.submergedMask[b]) coastline.push(a, b);
       if (result.submergedMask[a] || result.submergedMask[b]) continue;
+      const basinA = result.basinId[a]!;
+      const basinB = result.basinId[b]!;
+      if (basinA !== WORLDGEN_INVALID_SAMPLE_ID && basinB !== WORLDGEN_INVALID_SAMPLE_ID && basinA !== basinB) basinDivides.push(a, b);
       const ea = result.elevationAboveSeaLevelM[a]!;
       const eb = result.elevationAboveSeaLevelM[b]!;
+      const evolvedA = result.postInfillSolidElevationM[a]! - result.metrics.seaLevelM;
+      const evolvedB = result.postInfillSolidElevationM[b]! - result.metrics.seaLevelM;
       for (let levelIndex = 0; levelIndex < TOPOGRAPHIC_CONTOURS_M.length; levelIndex += 1) {
         const level = TOPOGRAPHIC_CONTOURS_M[levelIndex]!;
         if ((ea < level && eb >= level) || (eb < level && ea >= level)) contourPairs[levelIndex]!.push(a, b);
+        if ((evolvedA < level && evolvedB >= level) || (evolvedB < level && evolvedA >= level)) evolvedContourPairs[levelIndex]!.push(a, b);
       }
     }
+  }
+  const riverBuckets = new Map<string, { regime: number; widthBucket: number; pairs: number[] }>();
+  const maximumFlow = Math.max(1, result.lakeMetrics.maximumRealizedDischargeM3S);
+  const maximumLogFlow = Math.log1p(maximumFlow);
+  for (let sample = 0; sample < result.metrics.fineSampleCount; sample += 1) {
+    if (result.submergedMask[sample]) continue;
+    const downstream = result.receiver[sample]!;
+    if (downstream === WORLDGEN_INVALID_SAMPLE_ID || downstream >= result.metrics.fineSampleCount) continue;
+    const discharge = Math.max(0, result.realizedDischargeM3S[sample]!);
+    const regime = result.seasonalFlowRegime[sample]!;
+    if (discharge < 1 || regime === 0) continue;
+    const normalized = Math.log1p(discharge) / maximumLogFlow;
+    const widthBucket = Math.max(0, Math.min(5, Math.floor(normalized * 6)));
+    const key = `${regime}:${widthBucket}`;
+    let bucket = riverBuckets.get(key);
+    if (!bucket) {
+      bucket = { regime, widthBucket, pairs: [] };
+      riverBuckets.set(key, bucket);
+    }
+    bucket.pairs.push(sample, downstream);
   }
   edgeOverlayCache = {
     result,
     coastline: Uint32Array.from(coastline),
     contours: TOPOGRAPHIC_CONTOURS_M.map((level, index) => ({ level, pairs: Uint32Array.from(contourPairs[index]!) })),
+    evolvedContours: TOPOGRAPHIC_CONTOURS_M.map((level, index) => ({ level, pairs: Uint32Array.from(evolvedContourPairs[index]!) })),
+    basinDivides: Uint32Array.from(basinDivides),
+    riverBuckets: Array.from(riverBuckets.values(), bucket => ({ regime: bucket.regime, widthBucket: bucket.widthBucket, pairs: Uint32Array.from(bucket.pairs) })),
   };
   return edgeOverlayCache;
 }
@@ -664,6 +713,49 @@ function drawBoundaryOverlay(context: CanvasRenderingContext2D, result: Worldgen
   context.restore();
 }
 
+function drawFinalLakeOverlay(context: CanvasRenderingContext2D, result: WorldgenClimateResult, buffers: ProjectionBuffers): void {
+  const count = result.metrics.fineSampleCount;
+  const radius = count > 100_000 ? 1.0 : count > 30_000 ? 1.45 : 2.2;
+  context.save();
+  for (let sample = 0; sample < count; sample += 1) {
+    if (!buffers.visible[sample] || result.submergedMask[sample] || result.lakeFraction[sample]! <= 0.01) continue;
+    const depth = Math.max(0, result.lakeDepthM[sample]!);
+    const alpha = Math.max(0.48, Math.min(0.94, 0.55 + Math.log1p(depth) / 14));
+    context.fillStyle = `rgba(65,174,224,${alpha})`;
+    context.beginPath();
+    context.arc(buffers.x[sample]!, buffers.y[sample]!, radius, 0, TWO_PI);
+    context.fill();
+  }
+  context.restore();
+}
+
+function drawCryosphereOverlay(context: CanvasRenderingContext2D, result: WorldgenClimateResult, buffers: ProjectionBuffers): void {
+  const count = result.metrics.fineSampleCount;
+  const radius = count > 100_000 ? 0.9 : count > 30_000 ? 1.25 : 1.9;
+  context.save();
+  for (let sample = 0; sample < count; sample += 1) {
+    if (!buffers.visible[sample]) continue;
+    const potential = result.submergedMask[sample] ? result.seaIcePotential[sample]! : result.persistentSnowPotential[sample]!;
+    if (potential < 0.2) continue;
+    const alpha = Math.min(0.82, 0.18 + potential * 0.64);
+    context.fillStyle = result.submergedMask[sample] ? `rgba(190,229,244,${alpha})` : `rgba(245,248,250,${alpha})`;
+    context.beginPath();
+    context.arc(buffers.x[sample]!, buffers.y[sample]!, radius, 0, TWO_PI);
+    context.fill();
+  }
+  context.restore();
+}
+
+function drawFinalRiverOverlay(context: CanvasRenderingContext2D, edgeCache: EdgeOverlayCache, buffers: ProjectionBuffers, projection: string, width: number): void {
+  const ordered = [...edgeCache.riverBuckets].sort((a, b) => a.widthBucket - b.widthBucket);
+  for (const bucket of ordered) {
+    const perennial = bucket.regime === 2;
+    const alpha = perennial ? 0.78 + bucket.widthBucket * 0.035 : 0.46 + bucket.widthBucket * 0.04;
+    const stroke = perennial ? `rgba(65,177,236,${Math.min(0.98, alpha)})` : `rgba(99,188,224,${Math.min(0.82, alpha)})`;
+    strokeSamplePairs(context, bucket.pairs, buffers, projection, width, stroke, 0.55 + bucket.widthBucket * 0.42);
+  }
+}
+
 function drawDiagnosticOverlays(context: CanvasRenderingContext2D, result: WorldgenClimateResult, overlays: ReadonlySet<string>, phase: number, projection: string, yaw: number, pitch: number, width: number, height: number, buffers: ProjectionBuffers, animation: number): void {
   if (overlays.size === 0) return;
   const edgeCache = ensureEdgeOverlayCache(result);
@@ -673,7 +765,17 @@ function drawDiagnosticOverlays(context: CanvasRenderingContext2D, result: World
       strokeSamplePairs(context, edgeCache.contours[index]!.pairs, buffers, projection, width, `rgba(245,248,252,${alphas[index]!})`, index >= 3 ? 1.1 : 0.8);
     }
   }
-  if (overlays.has('coastline')) strokeSamplePairs(context, edgeCache.coastline, buffers, projection, width, 'rgba(225,236,246,0.78)', 1.15);
+  if (overlays.has('evolved-topography')) {
+    const alphas = [0.20, 0.28, 0.38, 0.50, 0.64];
+    for (let index = 0; index < edgeCache.evolvedContours.length; index += 1) {
+      strokeSamplePairs(context, edgeCache.evolvedContours[index]!.pairs, buffers, projection, width, `rgba(238,242,235,${alphas[index]!})`, index >= 3 ? 1.05 : 0.78);
+    }
+  }
+  if (overlays.has('coastline')) strokeSamplePairs(context, edgeCache.coastline, buffers, projection, width, 'rgba(225,236,246,0.84)', 1.2);
+  if (overlays.has('basin-divides')) strokeSamplePairs(context, edgeCache.basinDivides, buffers, projection, width, 'rgba(236,207,132,0.34)', 0.7);
+  if (overlays.has('cryosphere')) drawCryosphereOverlay(context, result, buffers);
+  if (overlays.has('final-lakes')) drawFinalLakeOverlay(context, result, buffers);
+  if (overlays.has('final-rivers')) drawFinalRiverOverlay(context, edgeCache, buffers, projection, width);
   if (overlays.has('tectonic-boundaries')) drawBoundaryOverlay(context, result, 'tectonic-boundaries', projection, width, buffers);
   if (overlays.has('geological-boundaries')) drawBoundaryOverlay(context, result, 'geological-boundaries', projection, width, buffers);
   if (overlays.has('winds')) drawVectors(context, result, 'winds', phase, projection, yaw, pitch, width, height, buffers, animation);
@@ -789,6 +891,7 @@ const coarseLevel = element<HTMLInputElement>('worldgen-coarse-level');
 const fineLevel = element<HTMLInputElement>('worldgen-level');
 const plates = element<HTMLInputElement>('worldgen-plates');
 const projection = element<HTMLSelectElement>('worldgen-projection');
+const preset = element<HTMLSelectElement>('worldgen-preset');
 const visualization = element<HTMLSelectElement>('worldgen-visualization');
 const season = element<HTMLInputElement>('worldgen-season');
 const seasonValue = element<HTMLElement>('worldgen-season-value');
@@ -831,6 +934,7 @@ const GENERATION_STAGE_LABELS: Record<string, string> = {
   'fluvial-erosion-sediment': 'Fluvial erosion / sediment',
   'bounded-terrain-evolution': 'Bounded terrain evolution',
   'post-erosion-hydrology': 'Post-erosion hydrology reconciliation',
+  'lake-sediment-infill': 'Lake sediment infill / final hydrology',
   packaging: 'Packaging / transfer',
 };
 let generationStartedAt = 0;
@@ -844,6 +948,25 @@ function updateOverlaySummary(): void {
   if (selected.length === 0) overlaySummary.textContent = 'None';
   else if (selected.length === 1) overlaySummary.textContent = selected[0]!.dataset.label ?? selected[0]!.value;
   else overlaySummary.textContent = `${selected.length} selected`;
+}
+
+type ViewPreset = { mode: string; overlays: string[] };
+const VIEW_PRESETS: Record<string, ViewPreset> = {
+  'physical-world': { mode: 'physical-world', overlays: ['evolved-topography', 'coastline', 'final-rivers', 'final-lakes', 'cryosphere'] },
+  'hydrologic-atlas': { mode: 'physical-world', overlays: ['evolved-topography', 'coastline', 'final-rivers', 'final-lakes', 'basin-divides'] },
+  'seasonal-world': { mode: 'seasonal-realized-discharge', overlays: ['evolved-topography', 'coastline', 'final-lakes', 'winds'] },
+  'geomorphic-processes': { mode: 'evolution-terrain-delta', overlays: ['evolved-topography', 'coastline', 'final-rivers', 'final-lakes', 'tectonic-boundaries'] },
+};
+function applyViewPreset(name: string): void {
+  const definition = VIEW_PRESETS[name];
+  if (!definition) return;
+  visualization.value = definition.mode;
+  const wanted = new Set(definition.overlays);
+  for (const input of overlayInputs) input.checked = wanted.has(input.value);
+  styleCache = { result: null, key: '', sampleBuckets: [], boundaryBuckets: [] };
+  updateOverlaySummary();
+  redraw(false);
+  updateAnimation();
 }
 function formatDuration(ms: number): string {
   if (ms < 1_000) return `${ms.toFixed(0)} ms`;
@@ -1000,13 +1123,23 @@ function showMetrics(result: WorldgenClimateResult): void {
   metric(metrics, 'WG-7C seasonal routing / water closure', `${result.reconciliationMetrics.reconciledSeasonalRoutingRelativeError.toExponential(2)} / ${result.reconciliationMetrics.reconciledSeasonalWaterBalanceRelativeError.toExponential(2)}`);
   metric(metrics, 'WG-7C reconciled hashes', `${result.reconciliationMetrics.reconciledRunoffHash} / ${result.reconciliationMetrics.reconciledLakeHash} / ${result.reconciliationMetrics.reconciledSeasonalHash}`);
   metric(metrics, 'WG-7C reconciliation hash', result.reconciliationMetrics.postErosionHydrologyHash);
+  metric(metrics, 'WG-7D / stage', `v${result.engineVersion} · ${result.infillStage.id}@${result.infillStage.version}`);
+  metric(metrics, 'WG-7D infill horizon', `${result.infillMetrics.geomorphicDurationYears.toFixed(0)} y · ${result.infillMetrics.historicalLakeTrapCount.toLocaleString()} historical traps`);
+  metric(metrics, 'WG-7D filled depressions / samples', `${result.infillMetrics.filledDepressionCount.toLocaleString()} / ${result.infillMetrics.filledSampleCount.toLocaleString()} · ${result.infillMetrics.capacityLimitedDepressionCount.toLocaleString()} capacity-limited`);
+  metric(metrics, 'WG-7D max fill', `${result.infillMetrics.maximumFillDepthM.toFixed(3)} m`);
+  metric(metrics, 'WG-7D sediment delivery', `${result.infillMetrics.totalHistoricalLakeDeliveryKgS.toFixed(1)} kg/s · applied ${result.infillMetrics.totalAppliedLakeFillEquivalentKgS.toFixed(1)} · unapplied ${result.infillMetrics.totalUnappliedLakeSedimentKgS.toFixed(1)}`);
+  metric(metrics, 'WG-7D lake count', `${result.infillMetrics.preInfillLakeCount.toLocaleString()} → ${result.infillMetrics.postInfillLakeCount.toLocaleString()}`);
+  metric(metrics, 'WG-7D sediment closure', result.infillMetrics.sedimentConservationRelativeError.toExponential(2));
+  metric(metrics, 'WG-7D final hydro closure', `runoff ${result.infillMetrics.postInfillRunoffConservationRelativeError.toExponential(2)} · lake ${result.infillMetrics.postInfillLakeWaterBalanceRelativeError.toExponential(2)} · seasonal ${result.infillMetrics.postInfillSeasonalWaterBalanceRelativeError.toExponential(2)}`);
+  metric(metrics, 'WG-7D surface / drainage hash', `${result.infillMetrics.postInfillSurfaceHash} / ${result.infillMetrics.postInfillDrainageHash}`);
+  metric(metrics, 'WG-7D infill hash', result.infillMetrics.lakeSedimentInfillHash);
 }
 
 
 async function generatePlanet(): Promise<void> {
   generate.disabled = true;
   startGenerationTelemetry();
-  status.textContent = 'Generating one physical planet through WG-7B bounded terrain evolution in Rust/WASM…';
+  status.textContent = 'Generating one physical planet through WG-7D lake sediment infill in Rust/WASM…';
   try {
     const request = { seed: seed.value, coarseLevel: Number(coarseLevel.value), fineLevel: Number(fineLevel.value), plateCount: Number(plates.value) };
     const loaded = await client.generateClimate(request, handleGenerationProgress);
@@ -1031,18 +1164,26 @@ async function generatePlanet(): Promise<void> {
     if (loaded.evolutionMetrics.fluvialErosionHash !== loaded.erosionMetrics.fluvialErosionHash) throw new Error('WG-7B erosion identity does not match accepted WG-7A forcing.');
     if (loaded.reconciliationMetrics.topographyHash !== loaded.metrics.topographyHash || loaded.reconciliationMetrics.climateHash !== loaded.metrics.climateHash) throw new Error('WG-7C immutable WG-4/WG-5 ancestry mismatch.');
     if (loaded.reconciliationMetrics.terrainEvolutionHash !== loaded.evolutionMetrics.terrainEvolutionHash || loaded.reconciliationMetrics.evolvedSurfaceHash !== loaded.evolutionMetrics.evolvedSurfaceHash) throw new Error('WG-7C WG-7B terrain ancestry mismatch.');
-    if (loaded.reconciliationMetrics.postErosionDrainageHash !== loaded.drainageMetrics.drainageHash) throw new Error('WG-7C final drainage identity mismatch.');
-    if (loaded.reconciliationMetrics.reconciledRunoffHash !== loaded.runoffMetrics.runoffHash) throw new Error('WG-7C final runoff identity mismatch.');
-    if (loaded.reconciliationMetrics.reconciledLakeHash !== loaded.lakeMetrics.lakeHash) throw new Error('WG-7C final lake identity mismatch.');
-    if (loaded.reconciliationMetrics.reconciledSeasonalHash !== loaded.seasonalMetrics.seasonalHydrologyHash) throw new Error('WG-7C final seasonal identity mismatch.');
+    if (loaded.reconciliationMetrics.postErosionDrainageHash !== loaded.infillMetrics.preInfillDrainageHash) throw new Error('WG-7C drainage identity does not match WG-7D pre-infill ancestry.');
+    if (loaded.reconciliationMetrics.reconciledRunoffHash !== loaded.infillMetrics.preInfillRunoffHash) throw new Error('WG-7C runoff identity does not match WG-7D pre-infill ancestry.');
+    if (loaded.reconciliationMetrics.reconciledLakeHash !== loaded.infillMetrics.preInfillLakeHash) throw new Error('WG-7C lake identity does not match WG-7D pre-infill ancestry.');
+    if (loaded.reconciliationMetrics.reconciledSeasonalHash !== loaded.infillMetrics.preInfillSeasonalHash) throw new Error('WG-7C seasonal identity does not match WG-7D pre-infill ancestry.');
+    if (loaded.infillMetrics.topographyHash !== loaded.metrics.topographyHash || loaded.infillMetrics.climateHash !== loaded.metrics.climateHash) throw new Error('WG-7D immutable WG-4/WG-5 ancestry mismatch.');
+    if (loaded.infillMetrics.preErosionDrainageHash !== loaded.reconciliationMetrics.preErosionDrainageHash || loaded.infillMetrics.preErosionLakeHash !== loaded.reconciliationMetrics.preErosionLakeHash) throw new Error('WG-7D pre-erosion hydrology ancestry mismatch.');
+    if (loaded.infillMetrics.fluvialErosionHash !== loaded.erosionMetrics.fluvialErosionHash || loaded.infillMetrics.terrainEvolutionHash !== loaded.evolutionMetrics.terrainEvolutionHash) throw new Error('WG-7D WG-7A/WG-7B geomorphic ancestry mismatch.');
+    if (loaded.infillMetrics.postErosionHydrologyHash !== loaded.reconciliationMetrics.postErosionHydrologyHash || loaded.infillMetrics.inputEvolvedSurfaceHash !== loaded.evolutionMetrics.evolvedSurfaceHash) throw new Error('WG-7D WG-7C/evolved-surface ancestry mismatch.');
+    if (loaded.infillMetrics.postInfillDrainageHash !== loaded.drainageMetrics.drainageHash) throw new Error('WG-7D final drainage identity mismatch.');
+    if (loaded.infillMetrics.postInfillRunoffHash !== loaded.runoffMetrics.runoffHash) throw new Error('WG-7D final runoff identity mismatch.');
+    if (loaded.infillMetrics.postInfillLakeHash !== loaded.lakeMetrics.lakeHash) throw new Error('WG-7D final lake identity mismatch.');
+    if (loaded.infillMetrics.postInfillSeasonalHash !== loaded.seasonalMetrics.seasonalHydrologyHash) throw new Error('WG-7D final seasonal identity mismatch.');
     current = loaded;
     buffers = { x: new Float32Array(loaded.metrics.fineSampleCount), y: new Float32Array(loaded.metrics.fineSampleCount), visible: new Uint8Array(loaded.metrics.fineSampleCount) };
     styleCache = { result: null, key: '', sampleBuckets: [], boundaryBuckets: [] };
-    edgeOverlayCache = { result: null, coastline: new Uint32Array(0), contours: [] };
+    edgeOverlayCache = { result: null, coastline: new Uint32Array(0), contours: [], evolvedContours: [], basinDivides: new Uint32Array(0), riverBuckets: [] };
     showMetrics(loaded); redraw(false); updateAnimation(); finishGenerationTelemetry(loaded);
-    generationStep.textContent = `${loaded.metrics.spinupYears} climate spin-up years · ${loaded.drainageMetrics.basinCount.toLocaleString()} basins · ${loaded.lakeMetrics.lakeCount.toLocaleString()} equilibrium lakes · ${loaded.evolutionMetrics.receiverChangedSampleCount.toLocaleString()} receivers changed after evolution`;
+    generationStep.textContent = `${loaded.metrics.spinupYears} climate spin-up years · ${loaded.drainageMetrics.basinCount.toLocaleString()} basins · ${loaded.lakeMetrics.lakeCount.toLocaleString()} equilibrium lakes · ${loaded.evolutionMetrics.receiverChangedSampleCount.toLocaleString()} receivers changed after evolution · ${loaded.infillMetrics.filledDepressionCount.toLocaleString()} lake basins infilled`;
     generationTimer.textContent = formatDuration(performance.now() - generationStartedAt);
-    status.textContent = `Planet ready through WG-7C: ${loaded.metrics.fineSampleCount.toLocaleString()} samples, ${loaded.evolutionMetrics.erodedSampleCount.toLocaleString()} evolved erosion cells, ${loaded.evolutionMetrics.receiverChangedSampleCount.toLocaleString()} drainage receivers changed, mean land |Δz| ${loaded.evolutionMetrics.meanLandAbsoluteTerrainChangeM.toFixed(3)} m, sediment closure ${loaded.evolutionMetrics.sedimentConservationRelativeError.toExponential(2)}.`;
+    status.textContent = `Planet ready through WG-7D: ${loaded.metrics.fineSampleCount.toLocaleString()} samples, ${loaded.evolutionMetrics.erodedSampleCount.toLocaleString()} evolved erosion cells, ${loaded.evolutionMetrics.receiverChangedSampleCount.toLocaleString()} drainage receivers changed, mean land |Δz| ${loaded.evolutionMetrics.meanLandAbsoluteTerrainChangeM.toFixed(3)} m, sediment closure ${loaded.evolutionMetrics.sedimentConservationRelativeError.toExponential(2)}.`;
   } catch (error) {
     if (generationTimerHandle) { clearInterval(generationTimerHandle); generationTimerHandle = null; }
     generationStage.textContent = 'Generation failed';
@@ -1055,8 +1196,9 @@ async function generatePlanet(): Promise<void> {
 
 generate.addEventListener('click', () => void generatePlanet());
 projection.addEventListener('change', () => redraw(false));
-visualization.addEventListener('change', () => { styleCache = { result: null, key: '', sampleBuckets: [], boundaryBuckets: [] }; redraw(false); updateAnimation(); });
-overlayInputs.forEach(input => input.addEventListener('change', () => { updateOverlaySummary(); redraw(false); updateAnimation(); }));
+preset.addEventListener('change', () => applyViewPreset(preset.value));
+visualization.addEventListener('change', () => { preset.value = 'custom'; styleCache = { result: null, key: '', sampleBuckets: [], boundaryBuckets: [] }; redraw(false); updateAnimation(); });
+overlayInputs.forEach(input => input.addEventListener('change', () => { preset.value = 'custom'; updateOverlaySummary(); redraw(false); updateAnimation(); }));
 season.addEventListener('input', () => { updateSeasonLabel(); styleCache = { result: null, key: '', sampleBuckets: [], boundaryBuckets: [] }; redraw(false); });
 canvas.addEventListener('pointerdown', event => {
   if (projection.value !== 'globe') return;
@@ -1081,4 +1223,5 @@ window.addEventListener('beforeunload', () => {
 });
 updateSeasonLabel();
 updateOverlaySummary();
+applyViewPreset(preset.value);
 void generatePlanet();

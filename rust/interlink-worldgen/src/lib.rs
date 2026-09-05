@@ -10,6 +10,7 @@ mod evolution;
 mod fields;
 mod geology;
 mod hydroclimate;
+mod infill;
 mod lakes;
 mod lithosphere;
 mod parameters;
@@ -68,6 +69,11 @@ pub use geology::{
 pub use hydroclimate::{
     build_hydroclimate_closure_report, HydroclimateClosureReport, HydroclimateLatitudeBand,
 };
+pub use infill::{
+    generate_lake_sediment_infill, LakeSedimentInfillMetrics, LakeSedimentInfillParameters,
+    LakeSedimentInfillRequest, LakeSedimentInfillState, LAKE_SEDIMENT_INFILL_STAGE_ID,
+    LAKE_SEDIMENT_INFILL_STAGE_VERSION,
+};
 pub use lakes::{
     generate_lakes_closed_basins, LakeMetrics, LakeParameters, LakeRecord, LakeRequest, LakeState,
     LAKE_KIND_ENDORHEIC, LAKE_KIND_NONE, LAKE_KIND_OVERFLOWING, LAKE_KIND_TERMINAL_STORAGE,
@@ -118,7 +124,7 @@ pub use topology::{
     GeodesicTopology, PlanetTopology, TopologyMetrics, INVALID_SAMPLE_ID, MAX_TOPOLOGY_LEVEL,
 };
 
-pub const WORLDGEN_ENGINE_VERSION: u32 = 10;
+pub const WORLDGEN_ENGINE_VERSION: u32 = 11;
 pub const SYNTHETIC_STAGE_ID: &str = "foundation:synthetic";
 pub const SYNTHETIC_STAGE_VERSION: u32 = 1;
 const SYNTHETIC_NAMESPACE: &str = "worldgen:foundation:synthetic:v1";
