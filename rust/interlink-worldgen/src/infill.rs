@@ -22,6 +22,8 @@ const DELIVERY_EPSILON_KG_S: f64 = 1.0e-12;
 pub struct LakeSedimentInfillParameters {
     /// Maximum amount a historical lake-floor sample may be raised in this direct solve.
     pub maximum_fill_depth_m: f64,
+    /// Bulk density used to convert accepted historical lake-sink mass to deposited volume.
+    pub deposited_sediment_density_kg_m3: f64,
     /// Hydrology parameters must exactly match the accepted WG-7C reconciliation contract.
     pub hydrology: PostErosionHydrologyParameters,
 }
@@ -30,6 +32,7 @@ impl Default for LakeSedimentInfillParameters {
     fn default() -> Self {
         Self {
             maximum_fill_depth_m: 120.0,
+            deposited_sediment_density_kg_m3: 1_800.0,
             hydrology: PostErosionHydrologyParameters::default(),
         }
     }
@@ -43,6 +46,12 @@ impl LakeSedimentInfillParameters {
         {
             return Err("WG-7D maximum lake fill depth must be finite and within (0, 5000]");
         }
+        if !self.deposited_sediment_density_kg_m3.is_finite()
+            || self.deposited_sediment_density_kg_m3 <= 0.0
+            || self.deposited_sediment_density_kg_m3 > 10_000.0
+        {
+            return Err("WG-7D deposited sediment density must be finite and within (0, 10000]");
+        }
         self.hydrology.validate()?;
         Ok(())
     }
@@ -50,6 +59,13 @@ impl LakeSedimentInfillParameters {
     pub fn parameter_hash(&self) -> u64 {
         let mut hash = FNV_OFFSET_BASIS;
         hash = fnv_update(hash, &self.maximum_fill_depth_m.to_bits().to_le_bytes());
+        hash = fnv_update(
+            hash,
+            &self
+                .deposited_sediment_density_kg_m3
+                .to_bits()
+                .to_le_bytes(),
+        );
         fnv_update(hash, &self.hydrology.parameter_hash().to_le_bytes())
     }
 
@@ -261,7 +277,10 @@ pub fn generate_lake_sediment_infill(
         || reconciliation.metrics.reconciled_lake_hash
             != reconciliation.reconciled_lakes.metrics.lake_hash
         || reconciliation.metrics.reconciled_seasonal_hash
-            != reconciliation.reconciled_seasonal.metrics.seasonal_hydrology_hash
+            != reconciliation
+                .reconciled_seasonal
+                .metrics
+                .seasonal_hydrology_hash
     {
         return Err(WorldgenError::InvalidGeomorphology(
             "WG-7D requires exact accepted WG-4/WG-5/WG-7A/WG-7B/WG-7C ancestry",
@@ -288,8 +307,14 @@ pub fn generate_lake_sediment_infill(
         ));
     }
 
-    let mut members_by_depression = vec![Vec::<usize>::new(); pre_erosion_drainage.depressions.len()];
-    for (sample, depression_id) in pre_erosion_drainage.depression_id.iter().copied().enumerate() {
+    let mut members_by_depression =
+        vec![Vec::<usize>::new(); pre_erosion_drainage.depressions.len()];
+    for (sample, depression_id) in pre_erosion_drainage
+        .depression_id
+        .iter()
+        .copied()
+        .enumerate()
+    {
         if depression_id == INVALID_SAMPLE_ID {
             continue;
         }
@@ -304,7 +329,7 @@ pub fn generate_lake_sediment_infill(
 
     let p = request.parameters;
     let duration_seconds = evolution.metrics.geomorphic_duration_years * planet.orbital_period_s;
-    let density = 1_800.0_f64;
+    let density = p.deposited_sediment_density_kg_m3;
     let mut post_infill_solid_elevation_m = evolution.evolved_solid_elevation_m.clone();
     let mut lake_fill_depth_m = vec![0.0_f32; count];
     let mut historical_lake_trap_count = 0_u32;
@@ -487,18 +512,52 @@ pub fn generate_lake_sediment_infill(
     let stage_seed = derive_stage_seed(&request.seed, LAKE_SEDIMENT_INFILL_NAMESPACE);
     let infill_parameter_hash = p.parameter_hash();
     let mut lake_sediment_infill_hash = FNV_OFFSET_BASIS;
-    lake_sediment_infill_hash = fnv_update(lake_sediment_infill_hash, LAKE_SEDIMENT_INFILL_STAGE_ID.as_bytes());
-    lake_sediment_infill_hash = fnv_update(lake_sediment_infill_hash, &LAKE_SEDIMENT_INFILL_STAGE_VERSION.to_le_bytes());
+    lake_sediment_infill_hash = fnv_update(
+        lake_sediment_infill_hash,
+        LAKE_SEDIMENT_INFILL_STAGE_ID.as_bytes(),
+    );
+    lake_sediment_infill_hash = fnv_update(
+        lake_sediment_infill_hash,
+        &LAKE_SEDIMENT_INFILL_STAGE_VERSION.to_le_bytes(),
+    );
     lake_sediment_infill_hash = fnv_update(lake_sediment_infill_hash, &stage_seed.to_le_bytes());
-    lake_sediment_infill_hash = fnv_update(lake_sediment_infill_hash, &infill_parameter_hash.to_le_bytes());
-    lake_sediment_infill_hash = fnv_update(lake_sediment_infill_hash, &evolution.metrics.terrain_evolution_hash.to_le_bytes());
-    lake_sediment_infill_hash = fnv_update(lake_sediment_infill_hash, &reconciliation.metrics.post_erosion_hydrology_hash.to_le_bytes());
-    lake_sediment_infill_hash = hash_f32_slice(lake_sediment_infill_hash, &post_infill_solid_elevation_m);
+    lake_sediment_infill_hash = fnv_update(
+        lake_sediment_infill_hash,
+        &infill_parameter_hash.to_le_bytes(),
+    );
+    lake_sediment_infill_hash = fnv_update(
+        lake_sediment_infill_hash,
+        &evolution.metrics.terrain_evolution_hash.to_le_bytes(),
+    );
+    lake_sediment_infill_hash = fnv_update(
+        lake_sediment_infill_hash,
+        &reconciliation
+            .metrics
+            .post_erosion_hydrology_hash
+            .to_le_bytes(),
+    );
+    lake_sediment_infill_hash =
+        hash_f32_slice(lake_sediment_infill_hash, &post_infill_solid_elevation_m);
     lake_sediment_infill_hash = hash_f32_slice(lake_sediment_infill_hash, &lake_fill_depth_m);
-    lake_sediment_infill_hash = fnv_update(lake_sediment_infill_hash, &post_infill_drainage.metrics.drainage_hash.to_le_bytes());
-    lake_sediment_infill_hash = fnv_update(lake_sediment_infill_hash, &reconciled_runoff.metrics.runoff_hash.to_le_bytes());
-    lake_sediment_infill_hash = fnv_update(lake_sediment_infill_hash, &reconciled_lakes.metrics.lake_hash.to_le_bytes());
-    lake_sediment_infill_hash = fnv_update(lake_sediment_infill_hash, &reconciled_seasonal.metrics.seasonal_hydrology_hash.to_le_bytes());
+    lake_sediment_infill_hash = fnv_update(
+        lake_sediment_infill_hash,
+        &post_infill_drainage.metrics.drainage_hash.to_le_bytes(),
+    );
+    lake_sediment_infill_hash = fnv_update(
+        lake_sediment_infill_hash,
+        &reconciled_runoff.metrics.runoff_hash.to_le_bytes(),
+    );
+    lake_sediment_infill_hash = fnv_update(
+        lake_sediment_infill_hash,
+        &reconciled_lakes.metrics.lake_hash.to_le_bytes(),
+    );
+    lake_sediment_infill_hash = fnv_update(
+        lake_sediment_infill_hash,
+        &reconciled_seasonal
+            .metrics
+            .seasonal_hydrology_hash
+            .to_le_bytes(),
+    );
 
     Ok(LakeSedimentInfillState {
         stage: StageIdentity {
@@ -521,10 +580,18 @@ pub fn generate_lake_sediment_infill(
             sediment_conservation_relative_error,
             pre_infill_lake_count: reconciliation.reconciled_lakes.metrics.lake_count,
             post_infill_lake_count: reconciled_lakes.metrics.lake_count,
-            post_infill_runoff_conservation_relative_error: reconciled_runoff.metrics.discharge_conservation_relative_error,
-            post_infill_lake_water_balance_relative_error: reconciled_lakes.metrics.water_balance_relative_error,
-            post_infill_seasonal_routing_relative_error: reconciled_seasonal.metrics.seasonal_routing_conservation_relative_error,
-            post_infill_seasonal_water_balance_relative_error: reconciled_seasonal.metrics.seasonal_water_balance_relative_error,
+            post_infill_runoff_conservation_relative_error: reconciled_runoff
+                .metrics
+                .discharge_conservation_relative_error,
+            post_infill_lake_water_balance_relative_error: reconciled_lakes
+                .metrics
+                .water_balance_relative_error,
+            post_infill_seasonal_routing_relative_error: reconciled_seasonal
+                .metrics
+                .seasonal_routing_conservation_relative_error,
+            post_infill_seasonal_water_balance_relative_error: reconciled_seasonal
+                .metrics
+                .seasonal_water_balance_relative_error,
             infill_parameter_hash,
             topography_hash: topography.metrics.topography_hash,
             climate_hash: climate.metrics.climate_hash,
