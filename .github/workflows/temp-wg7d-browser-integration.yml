@@ -25,7 +25,7 @@ jobs:
           cache: npm
       - name: Install pinned Rust and browser target
         run: |
-          rustup toolchain install "${RUST_VERSION}" --profile minimal --target wasm32-unknown-unknown
+          rustup toolchain install "${RUST_VERSION}" --profile minimal --component rustfmt --target wasm32-unknown-unknown
           rustup default "${RUST_VERSION}"
       - name: Restore wasm-bindgen CLI cache
         id: wasm-bindgen-cache
