@@ -1,0 +1,80 @@
+name: Temporary WG-7C Browser Identity Fix
+
+on:
+  push:
+    branches: [wg7c-post-erosion-hydrology]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: wg7c-post-erosion-hydrology
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Fix WG-7A ancestry guards and add regression
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          lab = Path('src/worldgen/diagnostics/worldgenClimateLabStandalone.ts')
+          s = lab.read_text()
+          old = "if (loaded.erosionMetrics.drainageHash !== loaded.drainageMetrics.drainageHash) throw new Error('WG-7A drainage identity does not match accepted WG-6A topology.');"
+          new = "if (loaded.erosionMetrics.drainageHash !== loaded.reconciliationMetrics.preErosionDrainageHash) throw new Error('WG-7A drainage identity does not match WG-7C pre-erosion WG-6A ancestry.');"
+          if old not in s:
+              raise SystemExit('expected stale WG-7A drainage guard not found')
+          s = s.replace(old, new, 1)
+
+          old = "if (loaded.erosionMetrics.lakeHash !== loaded.lakeMetrics.lakeHash) throw new Error('WG-7A lake identity does not match accepted WG-6C state.');"
+          new = "if (loaded.erosionMetrics.lakeHash !== loaded.reconciliationMetrics.preErosionLakeHash) throw new Error('WG-7A lake identity does not match WG-7C pre-erosion WG-6C ancestry.');"
+          if old not in s:
+              raise SystemExit('expected stale WG-7A lake guard not found')
+          s = s.replace(old, new, 1)
+
+          # Remove the now-redundant duplicate pre-erosion lake guard that follows the seasonal check.
+          duplicate = "    if (loaded.erosionMetrics.lakeHash !== loaded.reconciliationMetrics.preErosionLakeHash) throw new Error('WG-7A lake identity does not match WG-7C pre-erosion WG-6C ancestry.');\n"
+          first = s.find(duplicate)
+          second = s.find(duplicate, first + 1) if first >= 0 else -1
+          if second >= 0:
+              s = s[:second] + s[second + len(duplicate):]
+
+          s = s.replace('Planet ready through WG-7B:', 'Planet ready through WG-7C:', 1)
+          lab.write_text(s)
+
+          test = Path('tests/wg7Reconciliation.test.ts')
+          t = test.read_text()
+          anchor = "  assert.match(lab, /reconciliationMetrics\\.preErosionSeasonalHash/);\n"
+          addition = (
+              "  assert.match(lab, /erosionMetrics\\.drainageHash !== loaded\\.reconciliationMetrics\\.preErosionDrainageHash/);\n"
+              "  assert.match(lab, /erosionMetrics\\.lakeHash !== loaded\\.reconciliationMetrics\\.preErosionLakeHash/);\n"
+              "  assert.doesNotMatch(lab, /erosionMetrics\\.drainageHash !== loaded\\.drainageMetrics\\.drainageHash/);\n"
+          )
+          if addition not in t:
+              if anchor not in t:
+                  raise SystemExit('test insertion anchor not found')
+              t = t.replace(anchor, addition + anchor, 1)
+          test.write_text(t)
+          PY
+      - name: Build and test browser contract
+        run: |
+          npm run build
+          npm run test:ts
+      - name: Commit fix
+        run: |
+          git config user.name "Zetic"
+          git config user.email "105380590+Zetic@users.noreply.github.com"
+          git add src/worldgen/diagnostics/worldgenClimateLabStandalone.ts dist/worldgen/diagnostics/worldgenClimateLabStandalone.js tests/wg7Reconciliation.test.ts
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "WG-7C: validate WG-7A against pre-erosion ancestry"
+          git push origin HEAD:wg7c-post-erosion-hydrology
