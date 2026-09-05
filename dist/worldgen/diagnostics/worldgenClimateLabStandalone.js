@@ -68,6 +68,7 @@ function geologicalBoundaryColor(regime) {
         return '#d59cff';
     return '#d7e2ef';
 }
+const INFILL_MODES = new Set(['infill-solid-elevation', 'infill-fill-depth']);
 const RECONCILIATION_MODES = new Set(['reconciliation-lake-depth-delta', 'reconciliation-lake-change', 'reconciliation-realized-discharge-delta', 'reconciliation-flow-presence-delta', 'reconciliation-flow-regime-change']);
 const EVOLUTION_MODES = new Set(['evolution-solid-elevation', 'evolution-terrain-delta', 'evolution-applied-erosion', 'evolution-applied-deposition', 'evolution-receiver-change', 'evolution-contributing-area', 'evolution-potential-discharge']);
 const EROSION_MODES = new Set(['erosion-effective-discharge', 'erosion-channel-slope', 'erosion-channel-width', 'erosion-erodibility', 'erosion-incision-potential', 'erosion-sediment-supply', 'erosion-sediment-load', 'erosion-sediment-deposition']);
@@ -259,7 +260,7 @@ function hypsometricColor(result, sample) {
 function evolvedHypsometricColor(result, sample) {
     if (result.submergedMask[sample])
         return hypsometricColor(result, sample);
-    const elevation = result.elevationAboveSeaLevelM[sample] + result.terrainDeltaM[sample];
+    const elevation = result.postInfillSolidElevationM[sample] - result.metrics.seaLevelM;
     if (elevation < 100)
         return '#456f3d';
     if (elevation < 400)
@@ -408,6 +409,8 @@ function scalarField(result, mode, phase) {
                 scalarScratch[index] = result.flowRegimeChangedMask[index];
             return { values: scalarScratch, minimum: 0, maximum: 1, lowHue: 210, highHue: 5 };
         }
+        case 'infill-solid-elevation': return { values: result.postInfillSolidElevationM, minimum: -12_000, maximum: 8_000, lowHue: 225, highHue: 25 };
+        case 'infill-fill-depth': return { values: result.lakeFillDepthM, minimum: 0, maximum: Math.max(0.01, result.infillMetrics.maximumFillDepthM), lowHue: 205, highHue: 35 };
         case 'evolution-solid-elevation': return { values: result.evolvedSolidElevationM, minimum: -12_000, maximum: 8_000, lowHue: 225, highHue: 25 };
         case 'evolution-terrain-delta': {
             const bound = Math.max(0.01, result.evolutionMetrics.maximumAbsoluteTerrainChangeM);
@@ -654,8 +657,8 @@ function ensureEdgeOverlayCache(result) {
                 basinDivides.push(a, b);
             const ea = result.elevationAboveSeaLevelM[a];
             const eb = result.elevationAboveSeaLevelM[b];
-            const evolvedA = ea + result.terrainDeltaM[a];
-            const evolvedB = eb + result.terrainDeltaM[b];
+            const evolvedA = result.postInfillSolidElevationM[a] - result.metrics.seaLevelM;
+            const evolvedB = result.postInfillSolidElevationM[b] - result.metrics.seaLevelM;
             for (let levelIndex = 0; levelIndex < TOPOGRAPHIC_CONTOURS_M.length; levelIndex += 1) {
                 const level = TOPOGRAPHIC_CONTOURS_M[levelIndex];
                 if ((ea < level && eb >= level) || (eb < level && ea >= level))
@@ -1011,6 +1014,7 @@ const GENERATION_STAGE_LABELS = {
     'fluvial-erosion-sediment': 'Fluvial erosion / sediment',
     'bounded-terrain-evolution': 'Bounded terrain evolution',
     'post-erosion-hydrology': 'Post-erosion hydrology reconciliation',
+    'lake-sediment-infill': 'Lake sediment infill / final hydrology',
     packaging: 'Packaging / transfer',
 };
 let generationStartedAt = 0;
@@ -1211,11 +1215,21 @@ function showMetrics(result) {
     metric(metrics, 'WG-7C seasonal routing / water closure', `${result.reconciliationMetrics.reconciledSeasonalRoutingRelativeError.toExponential(2)} / ${result.reconciliationMetrics.reconciledSeasonalWaterBalanceRelativeError.toExponential(2)}`);
     metric(metrics, 'WG-7C reconciled hashes', `${result.reconciliationMetrics.reconciledRunoffHash} / ${result.reconciliationMetrics.reconciledLakeHash} / ${result.reconciliationMetrics.reconciledSeasonalHash}`);
     metric(metrics, 'WG-7C reconciliation hash', result.reconciliationMetrics.postErosionHydrologyHash);
+    metric(metrics, 'WG-7D / stage', `v${result.engineVersion} · ${result.infillStage.id}@${result.infillStage.version}`);
+    metric(metrics, 'WG-7D infill horizon', `${result.infillMetrics.geomorphicDurationYears.toFixed(0)} y · ${result.infillMetrics.historicalLakeTrapCount.toLocaleString()} historical traps`);
+    metric(metrics, 'WG-7D filled depressions / samples', `${result.infillMetrics.filledDepressionCount.toLocaleString()} / ${result.infillMetrics.filledSampleCount.toLocaleString()} · ${result.infillMetrics.capacityLimitedDepressionCount.toLocaleString()} capacity-limited`);
+    metric(metrics, 'WG-7D max fill', `${result.infillMetrics.maximumFillDepthM.toFixed(3)} m`);
+    metric(metrics, 'WG-7D sediment delivery', `${result.infillMetrics.totalHistoricalLakeDeliveryKgS.toFixed(1)} kg/s · applied ${result.infillMetrics.totalAppliedLakeFillEquivalentKgS.toFixed(1)} · unapplied ${result.infillMetrics.totalUnappliedLakeSedimentKgS.toFixed(1)}`);
+    metric(metrics, 'WG-7D lake count', `${result.infillMetrics.preInfillLakeCount.toLocaleString()} → ${result.infillMetrics.postInfillLakeCount.toLocaleString()}`);
+    metric(metrics, 'WG-7D sediment closure', result.infillMetrics.sedimentConservationRelativeError.toExponential(2));
+    metric(metrics, 'WG-7D final hydro closure', `runoff ${result.infillMetrics.postInfillRunoffConservationRelativeError.toExponential(2)} · lake ${result.infillMetrics.postInfillLakeWaterBalanceRelativeError.toExponential(2)} · seasonal ${result.infillMetrics.postInfillSeasonalWaterBalanceRelativeError.toExponential(2)}`);
+    metric(metrics, 'WG-7D surface / drainage hash', `${result.infillMetrics.postInfillSurfaceHash} / ${result.infillMetrics.postInfillDrainageHash}`);
+    metric(metrics, 'WG-7D infill hash', result.infillMetrics.lakeSedimentInfillHash);
 }
 async function generatePlanet() {
     generate.disabled = true;
     startGenerationTelemetry();
-    status.textContent = 'Generating one physical planet through WG-7B bounded terrain evolution in Rust/WASM…';
+    status.textContent = 'Generating one physical planet through WG-7D lake sediment infill in Rust/WASM…';
     try {
         const request = { seed: seed.value, coarseLevel: Number(coarseLevel.value), fineLevel: Number(fineLevel.value), plateCount: Number(plates.value) };
         const loaded = await client.generateClimate(request, handleGenerationProgress);
@@ -1261,14 +1275,30 @@ async function generatePlanet() {
             throw new Error('WG-7C immutable WG-4/WG-5 ancestry mismatch.');
         if (loaded.reconciliationMetrics.terrainEvolutionHash !== loaded.evolutionMetrics.terrainEvolutionHash || loaded.reconciliationMetrics.evolvedSurfaceHash !== loaded.evolutionMetrics.evolvedSurfaceHash)
             throw new Error('WG-7C WG-7B terrain ancestry mismatch.');
-        if (loaded.reconciliationMetrics.postErosionDrainageHash !== loaded.drainageMetrics.drainageHash)
-            throw new Error('WG-7C final drainage identity mismatch.');
-        if (loaded.reconciliationMetrics.reconciledRunoffHash !== loaded.runoffMetrics.runoffHash)
-            throw new Error('WG-7C final runoff identity mismatch.');
-        if (loaded.reconciliationMetrics.reconciledLakeHash !== loaded.lakeMetrics.lakeHash)
-            throw new Error('WG-7C final lake identity mismatch.');
-        if (loaded.reconciliationMetrics.reconciledSeasonalHash !== loaded.seasonalMetrics.seasonalHydrologyHash)
-            throw new Error('WG-7C final seasonal identity mismatch.');
+        if (loaded.reconciliationMetrics.postErosionDrainageHash !== loaded.infillMetrics.preInfillDrainageHash)
+            throw new Error('WG-7C drainage identity does not match WG-7D pre-infill ancestry.');
+        if (loaded.reconciliationMetrics.reconciledRunoffHash !== loaded.infillMetrics.preInfillRunoffHash)
+            throw new Error('WG-7C runoff identity does not match WG-7D pre-infill ancestry.');
+        if (loaded.reconciliationMetrics.reconciledLakeHash !== loaded.infillMetrics.preInfillLakeHash)
+            throw new Error('WG-7C lake identity does not match WG-7D pre-infill ancestry.');
+        if (loaded.reconciliationMetrics.reconciledSeasonalHash !== loaded.infillMetrics.preInfillSeasonalHash)
+            throw new Error('WG-7C seasonal identity does not match WG-7D pre-infill ancestry.');
+        if (loaded.infillMetrics.topographyHash !== loaded.metrics.topographyHash || loaded.infillMetrics.climateHash !== loaded.metrics.climateHash)
+            throw new Error('WG-7D immutable WG-4/WG-5 ancestry mismatch.');
+        if (loaded.infillMetrics.preErosionDrainageHash !== loaded.reconciliationMetrics.preErosionDrainageHash || loaded.infillMetrics.preErosionLakeHash !== loaded.reconciliationMetrics.preErosionLakeHash)
+            throw new Error('WG-7D pre-erosion hydrology ancestry mismatch.');
+        if (loaded.infillMetrics.fluvialErosionHash !== loaded.erosionMetrics.fluvialErosionHash || loaded.infillMetrics.terrainEvolutionHash !== loaded.evolutionMetrics.terrainEvolutionHash)
+            throw new Error('WG-7D WG-7A/WG-7B geomorphic ancestry mismatch.');
+        if (loaded.infillMetrics.postErosionHydrologyHash !== loaded.reconciliationMetrics.postErosionHydrologyHash || loaded.infillMetrics.inputEvolvedSurfaceHash !== loaded.evolutionMetrics.evolvedSurfaceHash)
+            throw new Error('WG-7D WG-7C/evolved-surface ancestry mismatch.');
+        if (loaded.infillMetrics.postInfillDrainageHash !== loaded.drainageMetrics.drainageHash)
+            throw new Error('WG-7D final drainage identity mismatch.');
+        if (loaded.infillMetrics.postInfillRunoffHash !== loaded.runoffMetrics.runoffHash)
+            throw new Error('WG-7D final runoff identity mismatch.');
+        if (loaded.infillMetrics.postInfillLakeHash !== loaded.lakeMetrics.lakeHash)
+            throw new Error('WG-7D final lake identity mismatch.');
+        if (loaded.infillMetrics.postInfillSeasonalHash !== loaded.seasonalMetrics.seasonalHydrologyHash)
+            throw new Error('WG-7D final seasonal identity mismatch.');
         current = loaded;
         buffers = { x: new Float32Array(loaded.metrics.fineSampleCount), y: new Float32Array(loaded.metrics.fineSampleCount), visible: new Uint8Array(loaded.metrics.fineSampleCount) };
         styleCache = { result: null, key: '', sampleBuckets: [], boundaryBuckets: [] };
@@ -1277,9 +1307,9 @@ async function generatePlanet() {
         redraw(false);
         updateAnimation();
         finishGenerationTelemetry(loaded);
-        generationStep.textContent = `${loaded.metrics.spinupYears} climate spin-up years · ${loaded.drainageMetrics.basinCount.toLocaleString()} basins · ${loaded.lakeMetrics.lakeCount.toLocaleString()} equilibrium lakes · ${loaded.evolutionMetrics.receiverChangedSampleCount.toLocaleString()} receivers changed after evolution`;
+        generationStep.textContent = `${loaded.metrics.spinupYears} climate spin-up years · ${loaded.drainageMetrics.basinCount.toLocaleString()} basins · ${loaded.lakeMetrics.lakeCount.toLocaleString()} equilibrium lakes · ${loaded.evolutionMetrics.receiverChangedSampleCount.toLocaleString()} receivers changed after evolution · ${loaded.infillMetrics.filledDepressionCount.toLocaleString()} lake basins infilled`;
         generationTimer.textContent = formatDuration(performance.now() - generationStartedAt);
-        status.textContent = `Planet ready through WG-7C: ${loaded.metrics.fineSampleCount.toLocaleString()} samples, ${loaded.evolutionMetrics.erodedSampleCount.toLocaleString()} evolved erosion cells, ${loaded.evolutionMetrics.receiverChangedSampleCount.toLocaleString()} drainage receivers changed, mean land |Δz| ${loaded.evolutionMetrics.meanLandAbsoluteTerrainChangeM.toFixed(3)} m, sediment closure ${loaded.evolutionMetrics.sedimentConservationRelativeError.toExponential(2)}.`;
+        status.textContent = `Planet ready through WG-7D: ${loaded.metrics.fineSampleCount.toLocaleString()} samples, ${loaded.evolutionMetrics.erodedSampleCount.toLocaleString()} evolved erosion cells, ${loaded.evolutionMetrics.receiverChangedSampleCount.toLocaleString()} drainage receivers changed, mean land |Δz| ${loaded.evolutionMetrics.meanLandAbsoluteTerrainChangeM.toFixed(3)} m, sediment closure ${loaded.evolutionMetrics.sedimentConservationRelativeError.toExponential(2)}.`;
     }
     catch (error) {
         if (generationTimerHandle) {

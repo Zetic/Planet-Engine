@@ -1,4 +1,6 @@
-use interlink_worldgen::{build_icosphere, generate_tectonics, PlanetPhysicalParameters, TectonicsRequest};
+use interlink_worldgen::{
+    build_icosphere, generate_tectonics, PlanetPhysicalParameters, TectonicsRequest,
+};
 
 #[test]
 fn macro_plate_partition_retains_meaningful_area_variation_across_reference_seeds() {

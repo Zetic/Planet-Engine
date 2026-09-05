@@ -258,13 +258,21 @@ fn main() -> Result<(), String> {
         state.metrics.post_infill_runoff_conservation_relative_error,
         state.metrics.post_infill_lake_water_balance_relative_error,
         state.metrics.post_infill_seasonal_routing_relative_error,
-        state.metrics.post_infill_seasonal_water_balance_relative_error,
+        state
+            .metrics
+            .post_infill_seasonal_water_balance_relative_error,
     );
     println!(
         "seasonal spinup={} surface_drift_m={:.9} max_range_m={:.6}",
         state.reconciled_seasonal.metrics.lake_spinup_years,
-        state.reconciled_seasonal.metrics.final_lake_surface_cycle_change_m,
-        state.reconciled_seasonal.metrics.maximum_seasonal_lake_level_range_m,
+        state
+            .reconciled_seasonal
+            .metrics
+            .final_lake_surface_cycle_change_m,
+        state
+            .reconciled_seasonal
+            .metrics
+            .maximum_seasonal_lake_level_range_m,
     );
     println!(
         "hash infill={} surface={} drainage={} runoff={:016x} lake={:016x} seasonal={:016x} parameters={}",

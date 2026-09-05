@@ -48,6 +48,10 @@
           <optgroup label="Composite / showcase">
             <option value="physical-world">Final physical world</option>
           </optgroup>
+          <optgroup label="Geomorphology · Lake sediment infill / final surface (WG-7D)">
+            <option value="infill-solid-elevation">Final post-infill solid elevation</option>
+            <option value="infill-fill-depth">Lake sediment fill depth</option>
+          </optgroup>
           <optgroup label="Hydrology · Post-erosion reconciliation (WG-7C)">
             <option value="reconciliation-lake-depth-delta">Lake depth change after erosion</option>
             <option value="reconciliation-lake-change">Lake state changed</option>
@@ -176,7 +180,7 @@
           <details id="worldgen-overlays" class="worldgen-overlay-menu">
             <summary>Overlays <strong id="worldgen-overlay-summary">None</strong></summary>
             <div class="worldgen-overlay-options">
-              <label><input type="checkbox" data-worldgen-overlay value="evolved-topography" data-label="Evolved topographic contours"> Evolved topographic contours</label>
+              <label><input type="checkbox" data-worldgen-overlay value="evolved-topography" data-label="Final topographic contours"> Final topographic contours</label>
               <label><input type="checkbox" data-worldgen-overlay value="final-rivers" data-label="Final rivers"> Final rivers</label>
               <label><input type="checkbox" data-worldgen-overlay value="final-lakes" data-label="Final lakes"> Final lakes</label>
               <label><input type="checkbox" data-worldgen-overlay value="basin-divides" data-label="Drainage divides"> Drainage divides</label>
@@ -221,10 +225,10 @@
         <div id="worldgen-metrics" class="worldgen-lab-metrics"></div>
       </div>
       <div class="worldgen-lab-note">
-        <strong>Current physical frontier: WG-7C</strong>
-        <p>One generation runs the accepted topology, tectonic, geological, lithospheric, multiresolution inheritance, WG-4 topography, WG-5 coupled climate, WG-6A drainage topology, WG-6B annual runoff/discharge, WG-6C lake equilibrium, WG-6D seasonal hydrology, WG-7A fluvial erosion/sediment diagnostics, WG-7B bounded terrain evolution, and WG-7C post-erosion hydrology reconciliation in one cumulative Rust/WASM result.</p>
+        <strong>Current physical frontier: WG-7D</strong>
+        <p>One generation runs the accepted topology, tectonic, geological, lithospheric, multiresolution inheritance, WG-4 topography, WG-5 coupled climate, WG-6A drainage topology, WG-6B annual runoff/discharge, WG-6C lake equilibrium, WG-6D seasonal hydrology, WG-7A fluvial erosion/sediment diagnostics, WG-7B bounded terrain evolution, WG-7C post-erosion hydrology reconciliation, and WG-7D bounded lake-sediment infill in one cumulative Rust/WASM result.</p>
         <p>WG-7B converts WG-7A channel incision into cell-average valley erosion, chooses one bounded adaptive geomorphic horizon, conserves the actually applied sediment mass into land deposition plus lake and terminal/ocean sinks, and creates a distinct evolved solid surface without rewriting WG-4 identity.</p>
-        <p>The WG-4 ocean mask/coastline remains fixed. WG-7B rebuilds drainage once on the evolved surface; WG-7C then rebinds the exact accepted local runoff to that DAG, recomputes lake equilibrium against evolved elevation, and reruns seasonal realized flow/lake storage without rerunning WG-5 climate or mutating terrain again. The browser retains the reconciled drainage/runoff/lake/seasonal state as the final hydrology while pre-erosion WG-6 ancestry survives as compact WG-7C hashes and change diagnostics. Coastline migration, sediment-driven lake infill/capacity change, delta/coastal construction, hillslope transport, glaciers, weathering/soil/lithology, resources, Regions, Features, and gameplay integration remain downstream.</p>
+        <p>The WG-4 ocean mask/coastline remains fixed. WG-7B rebuilds drainage once on the evolved surface; WG-7C reconciles runoff, lakes, and seasonal flow to that terrain; WG-7D then converts already-conserved historical lake sediment delivery into bounded basin infill, rebuilds drainage once more on the distinct post-infill surface, and reconciles runoff/lakes/seasonal hydrology again without rerunning WG-5 climate. The browser exposes WG-7D hydrology as the final state while retaining WG-7C as compact ancestry/change diagnostics instead of keeping two complete seasonal states in WASM memory. Coastline migration, deltas/offshore construction, floodplains, hillslope transport, glaciers, weathering/soil/lithology, resources, Regions, Features, and gameplay integration remain downstream.</p>
       </div>
     </section>
   </main>

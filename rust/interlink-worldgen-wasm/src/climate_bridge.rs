@@ -1,19 +1,21 @@
 use interlink_worldgen::{
     build_icosphere, generate_bounded_terrain_evolution, generate_coupled_climate_with_diagnostics,
     generate_crust_and_history, generate_drainage_topology, generate_fluvial_erosion_sediment,
-    generate_initial_topography, generate_lakes_closed_basins, generate_lithosphere,
-    generate_post_erosion_hydrology, generate_runoff_discharge, generate_seasonal_hydrology,
-    generate_tectonics, inherit_boundary_interfaces, inherit_physical_state,
-    ClimatePhysicalParameters, ClimateRequest, ClimateState, DrainageRequest,
-    FluvialErosionRequest, FluvialErosionState, GeodesicTopology, GeologyRequest,
-    InheritedBoundarySet, InheritedPhysicalState, LakeRequest, LithosphereRequest,
-    PlanetPhysicalParameters, PostErosionHydrologyRequest, PostErosionHydrologyState,
-    RunoffRequest, SeasonalHydrologyRequest, TectonicsRequest, TerrainEvolutionRequest,
-    TerrainEvolutionState, TopographyRequest, TopographyState, WORLDGEN_ENGINE_VERSION,
+    generate_initial_topography, generate_lake_sediment_infill, generate_lakes_closed_basins,
+    generate_lithosphere, generate_post_erosion_hydrology, generate_runoff_discharge,
+    generate_seasonal_hydrology, generate_tectonics, inherit_boundary_interfaces,
+    inherit_physical_state, ClimatePhysicalParameters, ClimateRequest, ClimateState,
+    DrainageRequest, FluvialErosionRequest, FluvialErosionState, GeodesicTopology, GeologyRequest,
+    InheritedBoundarySet, InheritedPhysicalState, LakeRequest, LakeSedimentInfillRequest,
+    LakeSedimentInfillState, LithosphereRequest, PlanetPhysicalParameters,
+    PostErosionHydrologyMetrics, PostErosionHydrologyRequest, PostErosionHydrologyState,
+    RunoffRequest, SeasonalHydrologyRequest, StageIdentity, TectonicsRequest,
+    TerrainEvolutionRequest, TerrainEvolutionState, TopographyRequest, TopographyState,
+    WORLDGEN_ENGINE_VERSION,
 };
 use wasm_bindgen::prelude::*;
 
-const GENERATION_STAGE_COUNT: u32 = 17;
+const GENERATION_STAGE_COUNT: u32 = 18;
 
 fn report_generation_progress(
     callback: Option<&js_sys::Function>,
@@ -35,6 +37,17 @@ fn report_generation_progress(
     );
 }
 
+#[derive(Clone, Debug)]
+struct ReconciliationDiagnostics {
+    stage: StageIdentity,
+    metrics: PostErosionHydrologyMetrics,
+    lake_kind_changed_mask: Vec<u8>,
+    lake_depth_delta_m: Vec<f32>,
+    annual_realized_discharge_delta_m3_s: Vec<f32>,
+    flow_regime_changed_mask: Vec<u8>,
+    flow_presence_delta: Vec<f32>,
+}
+
 #[wasm_bindgen]
 pub struct WasmWorldgenClimate {
     fine_topology: GeodesicTopology,
@@ -44,7 +57,8 @@ pub struct WasmWorldgenClimate {
     climate: ClimateState,
     erosion: FluvialErosionState,
     evolution: TerrainEvolutionState,
-    reconciliation: PostErosionHydrologyState,
+    reconciliation: ReconciliationDiagnostics,
+    infill: LakeSedimentInfillState,
     planet: PlanetPhysicalParameters,
     climate_physical: ClimatePhysicalParameters,
     precipitation_phase_rate_mm_year: Vec<f32>,
@@ -258,6 +272,46 @@ impl WasmWorldgenClimate {
         )
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
         report_generation_progress(progress, "post-erosion-hydrology", 15, 1, 1);
+
+        report_generation_progress(progress, "lake-sediment-infill", 16, 0, 1);
+        let infill = generate_lake_sediment_infill(
+            &fine_topology,
+            &terrain,
+            &climate,
+            &diagnostics,
+            &drainage,
+            &lakes,
+            &erosion,
+            &evolution,
+            &reconciliation,
+            planet,
+            &LakeSedimentInfillRequest::new(seed.as_str()),
+        )
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        report_generation_progress(progress, "lake-sediment-infill", 16, 1, 1);
+
+        // WG-7D owns the final drainage/runoff/lake/seasonal state. Retain only the compact
+        // WG-7C ancestry/change diagnostics so an L7 browser result does not keep two complete
+        // seasonal hydrology states alive at once.
+        let PostErosionHydrologyState {
+            stage,
+            metrics,
+            lake_kind_changed_mask,
+            lake_depth_delta_m,
+            annual_realized_discharge_delta_m3_s,
+            flow_regime_changed_mask,
+            flow_presence_delta,
+            ..
+        } = reconciliation;
+        let reconciliation = ReconciliationDiagnostics {
+            stage,
+            metrics,
+            lake_kind_changed_mask,
+            lake_depth_delta_m,
+            annual_realized_discharge_delta_m3_s,
+            flow_regime_changed_mask,
+            flow_presence_delta,
+        };
         let precipitation_phase_rate_mm_year = diagnostics.precipitation_phase_rate_mm_year;
 
         Ok(Self {
@@ -269,6 +323,7 @@ impl WasmWorldgenClimate {
             erosion,
             evolution,
             reconciliation,
+            infill,
             planet,
             climate_physical,
             precipitation_phase_rate_mm_year,
@@ -708,15 +763,15 @@ impl WasmWorldgenClimate {
     }
 
     pub fn drainage_stage_id(&self) -> String {
-        self.evolution.post_erosion_drainage.stage.id.to_owned()
+        self.infill.post_infill_drainage.stage.id.to_owned()
     }
     pub fn drainage_stage_version(&self) -> u32 {
-        self.evolution.post_erosion_drainage.stage.version
+        self.infill.post_infill_drainage.stage.version
     }
     pub fn drainage_stage_seed_hex(&self) -> String {
         format!(
             "{:016x}",
-            self.evolution.post_erosion_drainage.stage.derived_seed
+            self.infill.post_infill_drainage.stage.derived_seed
         )
     }
     pub fn drainage_hash_hex(&self) -> String {
@@ -738,7 +793,7 @@ impl WasmWorldgenClimate {
             .ocean_sample_count
     }
     pub fn drainage_basin_count(&self) -> u32 {
-        self.evolution.post_erosion_drainage.metrics.basin_count
+        self.infill.post_infill_drainage.metrics.basin_count
     }
     pub fn drainage_depression_count(&self) -> u32 {
         self.evolution
@@ -753,7 +808,7 @@ impl WasmWorldgenClimate {
             .depression_sample_count
     }
     pub fn drainage_land_area_m2(&self) -> f64 {
-        self.evolution.post_erosion_drainage.metrics.land_area_m2
+        self.infill.post_infill_drainage.metrics.land_area_m2
     }
     pub fn terminal_contributing_area_m2(&self) -> f64 {
         self.evolution
@@ -780,19 +835,19 @@ impl WasmWorldgenClimate {
             .maximum_depression_depth_m
     }
     pub fn receiver(&self) -> Vec<u32> {
-        self.evolution.post_erosion_drainage.receiver.clone()
+        self.infill.post_infill_drainage.receiver.clone()
     }
     pub fn outlet_sample(&self) -> Vec<u32> {
-        self.evolution.post_erosion_drainage.outlet_sample.clone()
+        self.infill.post_infill_drainage.outlet_sample.clone()
     }
     pub fn outlet_kind(&self) -> Vec<u8> {
-        self.evolution.post_erosion_drainage.outlet_kind.clone()
+        self.infill.post_infill_drainage.outlet_kind.clone()
     }
     pub fn basin_id(&self) -> Vec<u32> {
-        self.evolution.post_erosion_drainage.basin_id.clone()
+        self.infill.post_infill_drainage.basin_id.clone()
     }
     pub fn depression_id(&self) -> Vec<u32> {
-        self.evolution.post_erosion_drainage.depression_id.clone()
+        self.infill.post_infill_drainage.depression_id.clone()
     }
     pub fn hydrologic_escape_elevation_m(&self) -> Vec<f32> {
         self.evolution
@@ -813,7 +868,7 @@ impl WasmWorldgenClimate {
             .clone()
     }
     pub fn drainage_order(&self) -> Vec<u32> {
-        self.evolution.post_erosion_drainage.drainage_order.clone()
+        self.infill.post_infill_drainage.drainage_order.clone()
     }
     pub fn basin_outlet_samples(&self) -> Vec<u32> {
         self.evolution
@@ -873,272 +928,203 @@ impl WasmWorldgenClimate {
     }
 
     pub fn runoff_stage_id(&self) -> String {
-        self.reconciliation.reconciled_runoff.stage.id.to_owned()
+        self.infill.reconciled_runoff.stage.id.to_owned()
     }
     pub fn runoff_stage_version(&self) -> u32 {
-        self.reconciliation.reconciled_runoff.stage.version
+        self.infill.reconciled_runoff.stage.version
     }
     pub fn runoff_stage_seed_hex(&self) -> String {
-        format!(
-            "{:016x}",
-            self.reconciliation.reconciled_runoff.stage.derived_seed
-        )
+        format!("{:016x}", self.infill.reconciled_runoff.stage.derived_seed)
     }
     pub fn runoff_hash_hex(&self) -> String {
-        self.reconciliation
-            .reconciled_runoff
-            .metrics
-            .runoff_hash_hex()
+        self.infill.reconciled_runoff.metrics.runoff_hash_hex()
     }
     pub fn runoff_parameter_hash_hex(&self) -> String {
-        self.reconciliation
+        self.infill
             .reconciled_runoff
             .metrics
             .runoff_parameter_hash_hex()
     }
     pub fn runoff_climate_hash_hex(&self) -> String {
-        self.reconciliation
-            .reconciled_runoff
-            .metrics
-            .climate_hash_hex()
+        self.infill.reconciled_runoff.metrics.climate_hash_hex()
     }
     pub fn runoff_drainage_hash_hex(&self) -> String {
-        self.reconciliation
-            .reconciled_runoff
-            .metrics
-            .drainage_hash_hex()
+        self.infill.reconciled_runoff.metrics.drainage_hash_hex()
     }
     pub fn mean_land_runoff_precipitation_mm(&self) -> f64 {
-        self.reconciliation
+        self.infill
             .reconciled_runoff
             .metrics
             .mean_land_precipitation_mm
     }
     pub fn mean_land_actual_evapotranspiration_mm(&self) -> f64 {
-        self.reconciliation
+        self.infill
             .reconciled_runoff
             .metrics
             .mean_land_actual_evapotranspiration_mm
     }
     pub fn mean_land_runoff_mm(&self) -> f64 {
-        self.reconciliation
-            .reconciled_runoff
-            .metrics
-            .mean_land_runoff_mm
+        self.infill.reconciled_runoff.metrics.mean_land_runoff_mm
     }
     pub fn maximum_land_runoff_mm(&self) -> f64 {
-        self.reconciliation
-            .reconciled_runoff
-            .metrics
-            .maximum_land_runoff_mm
+        self.infill.reconciled_runoff.metrics.maximum_land_runoff_mm
     }
     pub fn land_runoff_fraction(&self) -> f64 {
-        self.reconciliation
-            .reconciled_runoff
-            .metrics
-            .land_runoff_fraction
+        self.infill.reconciled_runoff.metrics.land_runoff_fraction
     }
     pub fn total_local_runoff_m3_s(&self) -> f64 {
-        self.reconciliation
+        self.infill
             .reconciled_runoff
             .metrics
             .total_local_runoff_m3_s
     }
     pub fn terminal_discharge_m3_s(&self) -> f64 {
-        self.reconciliation
+        self.infill
             .reconciled_runoff
             .metrics
             .terminal_discharge_m3_s
     }
     pub fn discharge_conservation_relative_error(&self) -> f64 {
-        self.reconciliation
+        self.infill
             .reconciled_runoff
             .metrics
             .discharge_conservation_relative_error
     }
     pub fn maximum_potential_discharge_m3_s(&self) -> f64 {
-        self.reconciliation
+        self.infill
             .reconciled_runoff
             .metrics
             .maximum_potential_discharge_m3_s
     }
     pub fn actual_evapotranspiration_mm(&self) -> Vec<f32> {
-        self.reconciliation
+        self.infill
             .reconciled_runoff
             .actual_evapotranspiration_mm
             .clone()
     }
     pub fn local_runoff_mm(&self) -> Vec<f32> {
-        self.reconciliation
-            .reconciled_runoff
-            .local_runoff_mm
-            .clone()
+        self.infill.reconciled_runoff.local_runoff_mm.clone()
     }
     pub fn runoff_fraction(&self) -> Vec<f32> {
-        self.reconciliation
-            .reconciled_runoff
-            .runoff_fraction
-            .clone()
+        self.infill.reconciled_runoff.runoff_fraction.clone()
     }
     pub fn local_runoff_m3_s(&self) -> Vec<f32> {
-        self.reconciliation
-            .reconciled_runoff
-            .local_runoff_m3_s
-            .clone()
+        self.infill.reconciled_runoff.local_runoff_m3_s.clone()
     }
     pub fn potential_discharge_m3_s(&self) -> Vec<f32> {
-        self.reconciliation
+        self.infill
             .reconciled_runoff
             .potential_discharge_m3_s
             .clone()
     }
 
     pub fn lake_stage_id(&self) -> String {
-        self.reconciliation.reconciled_lakes.stage.id.to_owned()
+        self.infill.reconciled_lakes.stage.id.to_owned()
     }
     pub fn lake_stage_version(&self) -> u32 {
-        self.reconciliation.reconciled_lakes.stage.version
+        self.infill.reconciled_lakes.stage.version
     }
     pub fn lake_stage_seed_hex(&self) -> String {
-        format!(
-            "{:016x}",
-            self.reconciliation.reconciled_lakes.stage.derived_seed
-        )
+        format!("{:016x}", self.infill.reconciled_lakes.stage.derived_seed)
     }
     pub fn lake_hash_hex(&self) -> String {
-        self.reconciliation.reconciled_lakes.metrics.lake_hash_hex()
+        self.infill.reconciled_lakes.metrics.lake_hash_hex()
     }
     pub fn lake_parameter_hash_hex(&self) -> String {
-        self.reconciliation
+        self.infill
             .reconciled_lakes
             .metrics
             .lake_parameter_hash_hex()
     }
     pub fn lake_climate_hash_hex(&self) -> String {
-        self.reconciliation
-            .reconciled_lakes
-            .metrics
-            .climate_hash_hex()
+        self.infill.reconciled_lakes.metrics.climate_hash_hex()
     }
     pub fn lake_drainage_hash_hex(&self) -> String {
-        self.reconciliation
-            .reconciled_lakes
-            .metrics
-            .drainage_hash_hex()
+        self.infill.reconciled_lakes.metrics.drainage_hash_hex()
     }
     pub fn lake_runoff_hash_hex(&self) -> String {
-        self.reconciliation
-            .reconciled_lakes
-            .metrics
-            .runoff_hash_hex()
+        self.infill.reconciled_lakes.metrics.runoff_hash_hex()
     }
     pub fn lake_count(&self) -> u32 {
-        self.reconciliation.reconciled_lakes.metrics.lake_count
+        self.infill.reconciled_lakes.metrics.lake_count
     }
     pub fn endorheic_lake_count(&self) -> u32 {
-        self.reconciliation
-            .reconciled_lakes
-            .metrics
-            .endorheic_lake_count
+        self.infill.reconciled_lakes.metrics.endorheic_lake_count
     }
     pub fn overflowing_lake_count(&self) -> u32 {
-        self.reconciliation
-            .reconciled_lakes
-            .metrics
-            .overflowing_lake_count
+        self.infill.reconciled_lakes.metrics.overflowing_lake_count
     }
     pub fn terminal_storage_lake_count(&self) -> u32 {
-        self.reconciliation
+        self.infill
             .reconciled_lakes
             .metrics
             .terminal_storage_lake_count
     }
     pub fn lake_sample_count(&self) -> u32 {
-        self.reconciliation
-            .reconciled_lakes
-            .metrics
-            .lake_sample_count
+        self.infill.reconciled_lakes.metrics.lake_sample_count
     }
     pub fn total_lake_area_m2(&self) -> f64 {
-        self.reconciliation
-            .reconciled_lakes
-            .metrics
-            .total_lake_area_m2
+        self.infill.reconciled_lakes.metrics.total_lake_area_m2
     }
     pub fn total_lake_volume_m3(&self) -> f64 {
-        self.reconciliation
-            .reconciled_lakes
-            .metrics
-            .total_lake_volume_m3
+        self.infill.reconciled_lakes.metrics.total_lake_volume_m3
     }
     pub fn maximum_lake_area_m2(&self) -> f64 {
-        self.reconciliation
-            .reconciled_lakes
-            .metrics
-            .maximum_lake_area_m2
+        self.infill.reconciled_lakes.metrics.maximum_lake_area_m2
     }
     pub fn maximum_lake_depth_m(&self) -> f64 {
-        self.reconciliation
-            .reconciled_lakes
-            .metrics
-            .maximum_lake_depth_m
+        self.infill.reconciled_lakes.metrics.maximum_lake_depth_m
     }
     pub fn total_lake_precipitation_m3_s(&self) -> f64 {
-        self.reconciliation
+        self.infill
             .reconciled_lakes
             .metrics
             .total_lake_precipitation_m3_s
     }
     pub fn total_lake_evaporation_m3_s(&self) -> f64 {
-        self.reconciliation
+        self.infill
             .reconciled_lakes
             .metrics
             .total_lake_evaporation_m3_s
     }
     pub fn terminal_realized_discharge_m3_s(&self) -> f64 {
-        self.reconciliation
+        self.infill
             .reconciled_lakes
             .metrics
             .terminal_realized_discharge_m3_s
     }
     pub fn maximum_realized_discharge_m3_s(&self) -> f64 {
-        self.reconciliation
+        self.infill
             .reconciled_lakes
             .metrics
             .maximum_realized_discharge_m3_s
     }
     pub fn unreleased_storage_m3_s(&self) -> f64 {
-        self.reconciliation
-            .reconciled_lakes
-            .metrics
-            .unreleased_storage_m3_s
+        self.infill.reconciled_lakes.metrics.unreleased_storage_m3_s
     }
     pub fn lake_water_balance_relative_error(&self) -> f64 {
-        self.reconciliation
+        self.infill
             .reconciled_lakes
             .metrics
             .water_balance_relative_error
     }
     pub fn lake_id(&self) -> Vec<u32> {
-        self.reconciliation.reconciled_lakes.lake_id.clone()
+        self.infill.reconciled_lakes.lake_id.clone()
     }
     pub fn lake_kind(&self) -> Vec<u8> {
-        self.reconciliation.reconciled_lakes.lake_kind.clone()
+        self.infill.reconciled_lakes.lake_kind.clone()
     }
     pub fn lake_fraction(&self) -> Vec<f32> {
-        self.reconciliation.reconciled_lakes.lake_fraction.clone()
+        self.infill.reconciled_lakes.lake_fraction.clone()
     }
     pub fn lake_depth_m(&self) -> Vec<f32> {
-        self.reconciliation.reconciled_lakes.lake_depth_m.clone()
+        self.infill.reconciled_lakes.lake_depth_m.clone()
     }
     pub fn realized_discharge_m3_s(&self) -> Vec<f32> {
-        self.reconciliation
-            .reconciled_lakes
-            .realized_discharge_m3_s
-            .clone()
+        self.infill.reconciled_lakes.realized_discharge_m3_s.clone()
     }
     pub fn lake_depression_ids(&self) -> Vec<u32> {
-        self.reconciliation
+        self.infill
             .reconciled_lakes
             .lakes
             .iter()
@@ -1146,7 +1132,7 @@ impl WasmWorldgenClimate {
             .collect()
     }
     pub fn lake_kinds(&self) -> Vec<u8> {
-        self.reconciliation
+        self.infill
             .reconciled_lakes
             .lakes
             .iter()
@@ -1154,7 +1140,7 @@ impl WasmWorldgenClimate {
             .collect()
     }
     pub fn lake_surface_elevations_m(&self) -> Vec<f64> {
-        self.reconciliation
+        self.infill
             .reconciled_lakes
             .lakes
             .iter()
@@ -1162,7 +1148,7 @@ impl WasmWorldgenClimate {
             .collect()
     }
     pub fn lake_areas_m2(&self) -> Vec<f64> {
-        self.reconciliation
+        self.infill
             .reconciled_lakes
             .lakes
             .iter()
@@ -1170,7 +1156,7 @@ impl WasmWorldgenClimate {
             .collect()
     }
     pub fn lake_volumes_m3(&self) -> Vec<f64> {
-        self.reconciliation
+        self.infill
             .reconciled_lakes
             .lakes
             .iter()
@@ -1178,7 +1164,7 @@ impl WasmWorldgenClimate {
             .collect()
     }
     pub fn lake_outflows_m3_s(&self) -> Vec<f64> {
-        self.reconciliation
+        self.infill
             .reconciled_lakes
             .lakes
             .iter()
@@ -1186,7 +1172,7 @@ impl WasmWorldgenClimate {
             .collect()
     }
     pub fn lake_spill_samples(&self) -> Vec<u32> {
-        self.reconciliation
+        self.infill
             .reconciled_lakes
             .lakes
             .iter()
@@ -1195,229 +1181,208 @@ impl WasmWorldgenClimate {
     }
 
     pub fn seasonal_stage_id(&self) -> String {
-        self.reconciliation.reconciled_seasonal.stage.id.to_owned()
+        self.infill.reconciled_seasonal.stage.id.to_owned()
     }
     pub fn seasonal_stage_version(&self) -> u32 {
-        self.reconciliation.reconciled_seasonal.stage.version
+        self.infill.reconciled_seasonal.stage.version
     }
     pub fn seasonal_stage_seed_hex(&self) -> String {
         format!(
             "{:016x}",
-            self.reconciliation.reconciled_seasonal.stage.derived_seed
+            self.infill.reconciled_seasonal.stage.derived_seed
         )
     }
     pub fn seasonal_hydrology_hash_hex(&self) -> String {
-        self.reconciliation
+        self.infill
             .reconciled_seasonal
             .metrics
             .seasonal_hydrology_hash_hex()
     }
     pub fn seasonal_parameter_hash_hex(&self) -> String {
-        self.reconciliation
+        self.infill
             .reconciled_seasonal
             .metrics
             .seasonal_parameter_hash_hex()
     }
     pub fn seasonal_climate_hash_hex(&self) -> String {
-        self.reconciliation
-            .reconciled_seasonal
-            .metrics
-            .climate_hash_hex()
+        self.infill.reconciled_seasonal.metrics.climate_hash_hex()
     }
     pub fn seasonal_drainage_hash_hex(&self) -> String {
-        self.reconciliation
-            .reconciled_seasonal
-            .metrics
-            .drainage_hash_hex()
+        self.infill.reconciled_seasonal.metrics.drainage_hash_hex()
     }
     pub fn seasonal_runoff_hash_hex(&self) -> String {
-        self.reconciliation
-            .reconciled_seasonal
-            .metrics
-            .runoff_hash_hex()
+        self.infill.reconciled_seasonal.metrics.runoff_hash_hex()
     }
     pub fn seasonal_lake_hash_hex(&self) -> String {
-        self.reconciliation
-            .reconciled_seasonal
-            .metrics
-            .lake_hash_hex()
+        self.infill.reconciled_seasonal.metrics.lake_hash_hex()
     }
     pub fn seasonal_dry_flow_sample_count(&self) -> u32 {
-        self.reconciliation
+        self.infill
             .reconciled_seasonal
             .metrics
             .dry_flow_sample_count
     }
     pub fn seasonal_intermittent_flow_sample_count(&self) -> u32 {
-        self.reconciliation
+        self.infill
             .reconciled_seasonal
             .metrics
             .intermittent_flow_sample_count
     }
     pub fn seasonal_perennial_flow_sample_count(&self) -> u32 {
-        self.reconciliation
+        self.infill
             .reconciled_seasonal
             .metrics
             .perennial_flow_sample_count
     }
     pub fn maximum_phase_local_runoff_m3_s(&self) -> f64 {
-        self.reconciliation
+        self.infill
             .reconciled_seasonal
             .metrics
             .maximum_phase_local_runoff_m3_s
     }
     pub fn maximum_phase_potential_discharge_m3_s(&self) -> f64 {
-        self.reconciliation
+        self.infill
             .reconciled_seasonal
             .metrics
             .maximum_phase_potential_discharge_m3_s
     }
     pub fn maximum_phase_realized_discharge_m3_s(&self) -> f64 {
-        self.reconciliation
+        self.infill
             .reconciled_seasonal
             .metrics
             .maximum_phase_realized_discharge_m3_s
     }
     pub fn snowmelt_runoff_fraction(&self) -> f64 {
-        self.reconciliation
+        self.infill
             .reconciled_seasonal
             .metrics
             .snowmelt_runoff_fraction
     }
     pub fn annual_mean_seasonal_local_runoff_m3_s(&self) -> f64 {
-        self.reconciliation
+        self.infill
             .reconciled_seasonal
             .metrics
             .annual_mean_local_runoff_m3_s
     }
     pub fn annual_local_runoff_closure_relative_error(&self) -> f64 {
-        self.reconciliation
+        self.infill
             .reconciled_seasonal
             .metrics
             .annual_local_runoff_closure_relative_error
     }
     pub fn annual_mean_terminal_potential_discharge_m3_s(&self) -> f64 {
-        self.reconciliation
+        self.infill
             .reconciled_seasonal
             .metrics
             .annual_mean_terminal_potential_discharge_m3_s
     }
     pub fn seasonal_routing_conservation_relative_error(&self) -> f64 {
-        self.reconciliation
+        self.infill
             .reconciled_seasonal
             .metrics
             .seasonal_routing_conservation_relative_error
     }
     pub fn annual_mean_terminal_seasonal_realized_discharge_m3_s(&self) -> f64 {
-        self.reconciliation
+        self.infill
             .reconciled_seasonal
             .metrics
             .annual_mean_terminal_realized_discharge_m3_s
     }
     pub fn annual_mean_seasonal_lake_precipitation_m3_s(&self) -> f64 {
-        self.reconciliation
+        self.infill
             .reconciled_seasonal
             .metrics
             .annual_mean_lake_precipitation_m3_s
     }
     pub fn annual_mean_seasonal_lake_evaporation_m3_s(&self) -> f64 {
-        self.reconciliation
+        self.infill
             .reconciled_seasonal
             .metrics
             .annual_mean_lake_evaporation_m3_s
     }
     pub fn annual_mean_seasonal_unreleased_terminal_storage_m3_s(&self) -> f64 {
-        self.reconciliation
+        self.infill
             .reconciled_seasonal
             .metrics
             .annual_mean_unreleased_terminal_storage_m3_s
     }
     pub fn seasonal_water_balance_relative_error(&self) -> f64 {
-        self.reconciliation
+        self.infill
             .reconciled_seasonal
             .metrics
             .seasonal_water_balance_relative_error
     }
     pub fn seasonal_lake_spinup_years(&self) -> u8 {
-        self.reconciliation
-            .reconciled_seasonal
-            .metrics
-            .lake_spinup_years
+        self.infill.reconciled_seasonal.metrics.lake_spinup_years
     }
     pub fn final_lake_cycle_relative_change(&self) -> f64 {
-        self.reconciliation
+        self.infill
             .reconciled_seasonal
             .metrics
             .final_lake_cycle_relative_change
     }
     pub fn final_lake_surface_cycle_change_m(&self) -> f64 {
-        self.reconciliation
+        self.infill
             .reconciled_seasonal
             .metrics
             .final_lake_surface_cycle_change_m
     }
     pub fn maximum_seasonal_lake_level_range_m(&self) -> f64 {
-        self.reconciliation
+        self.infill
             .reconciled_seasonal
             .metrics
             .maximum_seasonal_lake_level_range_m
     }
     pub fn seasonal_phase_local_runoff_m3_s(&self) -> Vec<f32> {
-        self.reconciliation
+        self.infill
             .reconciled_seasonal
             .phase_local_runoff_m3_s
             .clone()
     }
     pub fn seasonal_phase_snowmelt_runoff_m3_s(&self) -> Vec<f32> {
-        self.reconciliation
+        self.infill
             .reconciled_seasonal
             .phase_snowmelt_runoff_m3_s
             .clone()
     }
     pub fn seasonal_phase_snow_storage_mm(&self) -> Vec<f32> {
-        self.reconciliation
+        self.infill
             .reconciled_seasonal
             .phase_snow_storage_mm
             .clone()
     }
     pub fn seasonal_phase_potential_discharge_m3_s(&self) -> Vec<f32> {
-        self.reconciliation
+        self.infill
             .reconciled_seasonal
             .phase_potential_discharge_m3_s
             .clone()
     }
     pub fn seasonal_phase_realized_discharge_m3_s(&self) -> Vec<f32> {
-        self.reconciliation
+        self.infill
             .reconciled_seasonal
             .phase_realized_discharge_m3_s
             .clone()
     }
     pub fn seasonal_flow_presence_fraction(&self) -> Vec<f32> {
-        self.reconciliation
+        self.infill
             .reconciled_seasonal
             .flow_presence_fraction
             .clone()
     }
     pub fn seasonal_flow_regime(&self) -> Vec<u8> {
-        self.reconciliation.reconciled_seasonal.flow_regime.clone()
+        self.infill.reconciled_seasonal.flow_regime.clone()
     }
     pub fn seasonal_phase_lake_surface_elevation_m(&self) -> Vec<f32> {
-        self.reconciliation
+        self.infill
             .reconciled_seasonal
             .phase_lake_surface_elevation_m
             .clone()
     }
     pub fn seasonal_phase_lake_area_m2(&self) -> Vec<f64> {
-        self.reconciliation
-            .reconciled_seasonal
-            .phase_lake_area_m2
-            .clone()
+        self.infill.reconciled_seasonal.phase_lake_area_m2.clone()
     }
     pub fn seasonal_phase_lake_volume_m3(&self) -> Vec<f64> {
-        self.reconciliation
-            .reconciled_seasonal
-            .phase_lake_volume_m3
-            .clone()
+        self.infill.reconciled_seasonal.phase_lake_volume_m3.clone()
     }
 
     pub fn erosion_stage_id(&self) -> String {
@@ -1769,5 +1734,137 @@ impl WasmWorldgenClimate {
     }
     pub fn post_erosion_potential_discharge_m3_s(&self) -> Vec<f32> {
         self.evolution.post_erosion_potential_discharge_m3_s.clone()
+    }
+
+    pub fn infill_stage_id(&self) -> String {
+        self.infill.stage.id.to_owned()
+    }
+    pub fn infill_stage_version(&self) -> u32 {
+        self.infill.stage.version
+    }
+    pub fn infill_stage_seed_hex(&self) -> String {
+        format!("{:016x}", self.infill.stage.derived_seed)
+    }
+    pub fn lake_sediment_infill_hash_hex(&self) -> String {
+        self.infill.metrics.lake_sediment_infill_hash_hex()
+    }
+    pub fn infill_parameter_hash_hex(&self) -> String {
+        self.infill.metrics.infill_parameter_hash_hex()
+    }
+    pub fn infill_geomorphic_duration_years(&self) -> f64 {
+        self.infill.metrics.geomorphic_duration_years
+    }
+    pub fn infill_historical_lake_trap_count(&self) -> u32 {
+        self.infill.metrics.historical_lake_trap_count
+    }
+    pub fn infill_filled_depression_count(&self) -> u32 {
+        self.infill.metrics.filled_depression_count
+    }
+    pub fn infill_filled_sample_count(&self) -> u32 {
+        self.infill.metrics.filled_sample_count
+    }
+    pub fn infill_capacity_limited_depression_count(&self) -> u32 {
+        self.infill.metrics.capacity_limited_depression_count
+    }
+    pub fn infill_maximum_fill_depth_m(&self) -> f64 {
+        self.infill.metrics.maximum_fill_depth_m
+    }
+    pub fn infill_total_historical_lake_delivery_kg_s(&self) -> f64 {
+        self.infill.metrics.total_historical_lake_delivery_kg_s
+    }
+    pub fn infill_total_applied_lake_fill_equivalent_kg_s(&self) -> f64 {
+        self.infill.metrics.total_applied_lake_fill_equivalent_kg_s
+    }
+    pub fn infill_total_unapplied_lake_sediment_kg_s(&self) -> f64 {
+        self.infill.metrics.total_unapplied_lake_sediment_kg_s
+    }
+    pub fn infill_total_applied_lake_fill_volume_m3(&self) -> f64 {
+        self.infill.metrics.total_applied_lake_fill_volume_m3
+    }
+    pub fn infill_sediment_conservation_relative_error(&self) -> f64 {
+        self.infill.metrics.sediment_conservation_relative_error
+    }
+    pub fn infill_pre_infill_lake_count(&self) -> u32 {
+        self.infill.metrics.pre_infill_lake_count
+    }
+    pub fn infill_post_infill_lake_count(&self) -> u32 {
+        self.infill.metrics.post_infill_lake_count
+    }
+    pub fn infill_post_infill_runoff_conservation_relative_error(&self) -> f64 {
+        self.infill
+            .metrics
+            .post_infill_runoff_conservation_relative_error
+    }
+    pub fn infill_post_infill_lake_water_balance_relative_error(&self) -> f64 {
+        self.infill
+            .metrics
+            .post_infill_lake_water_balance_relative_error
+    }
+    pub fn infill_post_infill_seasonal_routing_relative_error(&self) -> f64 {
+        self.infill
+            .metrics
+            .post_infill_seasonal_routing_relative_error
+    }
+    pub fn infill_post_infill_seasonal_water_balance_relative_error(&self) -> f64 {
+        self.infill
+            .metrics
+            .post_infill_seasonal_water_balance_relative_error
+    }
+    pub fn infill_topography_hash_hex(&self) -> String {
+        format!("{:016x}", self.infill.metrics.topography_hash)
+    }
+    pub fn infill_climate_hash_hex(&self) -> String {
+        format!("{:016x}", self.infill.metrics.climate_hash)
+    }
+    pub fn infill_pre_erosion_drainage_hash_hex(&self) -> String {
+        format!("{:016x}", self.infill.metrics.pre_erosion_drainage_hash)
+    }
+    pub fn infill_pre_erosion_lake_hash_hex(&self) -> String {
+        format!("{:016x}", self.infill.metrics.pre_erosion_lake_hash)
+    }
+    pub fn infill_fluvial_erosion_hash_hex(&self) -> String {
+        format!("{:016x}", self.infill.metrics.fluvial_erosion_hash)
+    }
+    pub fn infill_terrain_evolution_hash_hex(&self) -> String {
+        format!("{:016x}", self.infill.metrics.terrain_evolution_hash)
+    }
+    pub fn infill_post_erosion_hydrology_hash_hex(&self) -> String {
+        format!("{:016x}", self.infill.metrics.post_erosion_hydrology_hash)
+    }
+    pub fn infill_input_evolved_surface_hash_hex(&self) -> String {
+        format!("{:016x}", self.infill.metrics.input_evolved_surface_hash)
+    }
+    pub fn infill_pre_infill_drainage_hash_hex(&self) -> String {
+        format!("{:016x}", self.infill.metrics.pre_infill_drainage_hash)
+    }
+    pub fn infill_pre_infill_runoff_hash_hex(&self) -> String {
+        format!("{:016x}", self.infill.metrics.pre_infill_runoff_hash)
+    }
+    pub fn infill_pre_infill_lake_hash_hex(&self) -> String {
+        format!("{:016x}", self.infill.metrics.pre_infill_lake_hash)
+    }
+    pub fn infill_pre_infill_seasonal_hash_hex(&self) -> String {
+        format!("{:016x}", self.infill.metrics.pre_infill_seasonal_hash)
+    }
+    pub fn infill_post_infill_surface_hash_hex(&self) -> String {
+        self.infill.metrics.post_infill_surface_hash_hex()
+    }
+    pub fn infill_post_infill_drainage_hash_hex(&self) -> String {
+        self.infill.metrics.post_infill_drainage_hash_hex()
+    }
+    pub fn infill_post_infill_runoff_hash_hex(&self) -> String {
+        format!("{:016x}", self.infill.metrics.post_infill_runoff_hash)
+    }
+    pub fn infill_post_infill_lake_hash_hex(&self) -> String {
+        format!("{:016x}", self.infill.metrics.post_infill_lake_hash)
+    }
+    pub fn infill_post_infill_seasonal_hash_hex(&self) -> String {
+        format!("{:016x}", self.infill.metrics.post_infill_seasonal_hash)
+    }
+    pub fn post_infill_solid_elevation_m(&self) -> Vec<f32> {
+        self.infill.post_infill_solid_elevation_m.clone()
+    }
+    pub fn lake_fill_depth_m(&self) -> Vec<f32> {
+        self.infill.lake_fill_depth_m.clone()
     }
 }
