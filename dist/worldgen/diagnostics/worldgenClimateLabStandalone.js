@@ -256,6 +256,24 @@ function hypsometricColor(result, sample) {
         return '#9b9290';
     return '#e6ebed';
 }
+function evolvedHypsometricColor(result, sample) {
+    if (result.submergedMask[sample])
+        return hypsometricColor(result, sample);
+    const elevation = result.elevationAboveSeaLevelM[sample] + result.terrainDeltaM[sample];
+    if (elevation < 100)
+        return '#456f3d';
+    if (elevation < 400)
+        return '#608448';
+    if (elevation < 1_000)
+        return '#829955';
+    if (elevation < 2_000)
+        return '#9b875b';
+    if (elevation < 3_500)
+        return '#80664f';
+    if (elevation < 5_000)
+        return '#918a88';
+    return '#e4e9ec';
+}
 function bucketize(count, colorAt) {
     const buckets = new Map();
     for (let index = 0; index < count; index += 1) {
@@ -459,6 +477,8 @@ function scalarField(result, mode, phase) {
     }
 }
 function sampleColor(result, mode, sample, field) {
+    if (mode === 'physical-world')
+        return evolvedHypsometricColor(result, sample);
     if (mode === 'physical-elevation' || mode === 'winds' || mode === 'currents')
         return hypsometricColor(result, sample);
     if (mode === 'land-water')
@@ -608,13 +628,15 @@ function drawVectors(context, result, mode, phase, projection, yaw, pitch, width
     }
     context.restore();
 }
-let edgeOverlayCache = { result: null, coastline: new Uint32Array(0), contours: [] };
+let edgeOverlayCache = { result: null, coastline: new Uint32Array(0), contours: [], evolvedContours: [], basinDivides: new Uint32Array(0), riverBuckets: [] };
 const TOPOGRAPHIC_CONTOURS_M = [500, 1_000, 2_000, 3_000, 4_500];
 function ensureEdgeOverlayCache(result) {
     if (edgeOverlayCache.result === result)
         return edgeOverlayCache;
     const coastline = [];
+    const basinDivides = [];
     const contourPairs = TOPOGRAPHIC_CONTOURS_M.map(() => []);
+    const evolvedContourPairs = TOPOGRAPHIC_CONTOURS_M.map(() => []);
     for (let a = 0; a < result.metrics.fineSampleCount; a += 1) {
         const start = result.neighborOffsets[a];
         const end = result.neighborOffsets[a + 1];
@@ -626,19 +648,53 @@ function ensureEdgeOverlayCache(result) {
                 coastline.push(a, b);
             if (result.submergedMask[a] || result.submergedMask[b])
                 continue;
+            const basinA = result.basinId[a];
+            const basinB = result.basinId[b];
+            if (basinA !== WORLDGEN_INVALID_SAMPLE_ID && basinB !== WORLDGEN_INVALID_SAMPLE_ID && basinA !== basinB)
+                basinDivides.push(a, b);
             const ea = result.elevationAboveSeaLevelM[a];
             const eb = result.elevationAboveSeaLevelM[b];
+            const evolvedA = ea + result.terrainDeltaM[a];
+            const evolvedB = eb + result.terrainDeltaM[b];
             for (let levelIndex = 0; levelIndex < TOPOGRAPHIC_CONTOURS_M.length; levelIndex += 1) {
                 const level = TOPOGRAPHIC_CONTOURS_M[levelIndex];
                 if ((ea < level && eb >= level) || (eb < level && ea >= level))
                     contourPairs[levelIndex].push(a, b);
+                if ((evolvedA < level && evolvedB >= level) || (evolvedB < level && evolvedA >= level))
+                    evolvedContourPairs[levelIndex].push(a, b);
             }
         }
+    }
+    const riverBuckets = new Map();
+    const maximumFlow = Math.max(1, result.lakeMetrics.maximumRealizedDischargeM3S);
+    const maximumLogFlow = Math.log1p(maximumFlow);
+    for (let sample = 0; sample < result.metrics.fineSampleCount; sample += 1) {
+        if (result.submergedMask[sample])
+            continue;
+        const downstream = result.receiver[sample];
+        if (downstream === WORLDGEN_INVALID_SAMPLE_ID || downstream >= result.metrics.fineSampleCount)
+            continue;
+        const discharge = Math.max(0, result.realizedDischargeM3S[sample]);
+        const regime = result.seasonalFlowRegime[sample];
+        if (discharge < 1 || regime === 0)
+            continue;
+        const normalized = Math.log1p(discharge) / maximumLogFlow;
+        const widthBucket = Math.max(0, Math.min(5, Math.floor(normalized * 6)));
+        const key = `${regime}:${widthBucket}`;
+        let bucket = riverBuckets.get(key);
+        if (!bucket) {
+            bucket = { regime, widthBucket, pairs: [] };
+            riverBuckets.set(key, bucket);
+        }
+        bucket.pairs.push(sample, downstream);
     }
     edgeOverlayCache = {
         result,
         coastline: Uint32Array.from(coastline),
         contours: TOPOGRAPHIC_CONTOURS_M.map((level, index) => ({ level, pairs: Uint32Array.from(contourPairs[index]) })),
+        evolvedContours: TOPOGRAPHIC_CONTOURS_M.map((level, index) => ({ level, pairs: Uint32Array.from(evolvedContourPairs[index]) })),
+        basinDivides: Uint32Array.from(basinDivides),
+        riverBuckets: Array.from(riverBuckets.values(), bucket => ({ regime: bucket.regime, widthBucket: bucket.widthBucket, pairs: Uint32Array.from(bucket.pairs) })),
     };
     return edgeOverlayCache;
 }
@@ -686,6 +742,49 @@ function drawBoundaryOverlay(context, result, kind, projection, width, buffers) 
     }
     context.restore();
 }
+function drawFinalLakeOverlay(context, result, buffers) {
+    const count = result.metrics.fineSampleCount;
+    const radius = count > 100_000 ? 1.0 : count > 30_000 ? 1.45 : 2.2;
+    context.save();
+    for (let sample = 0; sample < count; sample += 1) {
+        if (!buffers.visible[sample] || result.submergedMask[sample] || result.lakeFraction[sample] <= 0.01)
+            continue;
+        const depth = Math.max(0, result.lakeDepthM[sample]);
+        const alpha = Math.max(0.48, Math.min(0.94, 0.55 + Math.log1p(depth) / 14));
+        context.fillStyle = `rgba(65,174,224,${alpha})`;
+        context.beginPath();
+        context.arc(buffers.x[sample], buffers.y[sample], radius, 0, TWO_PI);
+        context.fill();
+    }
+    context.restore();
+}
+function drawCryosphereOverlay(context, result, buffers) {
+    const count = result.metrics.fineSampleCount;
+    const radius = count > 100_000 ? 0.9 : count > 30_000 ? 1.25 : 1.9;
+    context.save();
+    for (let sample = 0; sample < count; sample += 1) {
+        if (!buffers.visible[sample])
+            continue;
+        const potential = result.submergedMask[sample] ? result.seaIcePotential[sample] : result.persistentSnowPotential[sample];
+        if (potential < 0.2)
+            continue;
+        const alpha = Math.min(0.82, 0.18 + potential * 0.64);
+        context.fillStyle = result.submergedMask[sample] ? `rgba(190,229,244,${alpha})` : `rgba(245,248,250,${alpha})`;
+        context.beginPath();
+        context.arc(buffers.x[sample], buffers.y[sample], radius, 0, TWO_PI);
+        context.fill();
+    }
+    context.restore();
+}
+function drawFinalRiverOverlay(context, edgeCache, buffers, projection, width) {
+    const ordered = [...edgeCache.riverBuckets].sort((a, b) => a.widthBucket - b.widthBucket);
+    for (const bucket of ordered) {
+        const perennial = bucket.regime === 2;
+        const alpha = perennial ? 0.78 + bucket.widthBucket * 0.035 : 0.46 + bucket.widthBucket * 0.04;
+        const stroke = perennial ? `rgba(65,177,236,${Math.min(0.98, alpha)})` : `rgba(99,188,224,${Math.min(0.82, alpha)})`;
+        strokeSamplePairs(context, bucket.pairs, buffers, projection, width, stroke, 0.55 + bucket.widthBucket * 0.42);
+    }
+}
 function drawDiagnosticOverlays(context, result, overlays, phase, projection, yaw, pitch, width, height, buffers, animation) {
     if (overlays.size === 0)
         return;
@@ -696,8 +795,22 @@ function drawDiagnosticOverlays(context, result, overlays, phase, projection, ya
             strokeSamplePairs(context, edgeCache.contours[index].pairs, buffers, projection, width, `rgba(245,248,252,${alphas[index]})`, index >= 3 ? 1.1 : 0.8);
         }
     }
+    if (overlays.has('evolved-topography')) {
+        const alphas = [0.20, 0.28, 0.38, 0.50, 0.64];
+        for (let index = 0; index < edgeCache.evolvedContours.length; index += 1) {
+            strokeSamplePairs(context, edgeCache.evolvedContours[index].pairs, buffers, projection, width, `rgba(238,242,235,${alphas[index]})`, index >= 3 ? 1.05 : 0.78);
+        }
+    }
     if (overlays.has('coastline'))
-        strokeSamplePairs(context, edgeCache.coastline, buffers, projection, width, 'rgba(225,236,246,0.78)', 1.15);
+        strokeSamplePairs(context, edgeCache.coastline, buffers, projection, width, 'rgba(225,236,246,0.84)', 1.2);
+    if (overlays.has('basin-divides'))
+        strokeSamplePairs(context, edgeCache.basinDivides, buffers, projection, width, 'rgba(236,207,132,0.34)', 0.7);
+    if (overlays.has('cryosphere'))
+        drawCryosphereOverlay(context, result, buffers);
+    if (overlays.has('final-lakes'))
+        drawFinalLakeOverlay(context, result, buffers);
+    if (overlays.has('final-rivers'))
+        drawFinalRiverOverlay(context, edgeCache, buffers, projection, width);
     if (overlays.has('tectonic-boundaries'))
         drawBoundaryOverlay(context, result, 'tectonic-boundaries', projection, width, buffers);
     if (overlays.has('geological-boundaries'))
@@ -855,6 +968,7 @@ const coarseLevel = element('worldgen-coarse-level');
 const fineLevel = element('worldgen-level');
 const plates = element('worldgen-plates');
 const projection = element('worldgen-projection');
+const preset = element('worldgen-preset');
 const visualization = element('worldgen-visualization');
 const season = element('worldgen-season');
 const seasonValue = element('worldgen-season-value');
@@ -912,6 +1026,25 @@ function updateOverlaySummary() {
         overlaySummary.textContent = selected[0].dataset.label ?? selected[0].value;
     else
         overlaySummary.textContent = `${selected.length} selected`;
+}
+const VIEW_PRESETS = {
+    'physical-world': { mode: 'physical-world', overlays: ['evolved-topography', 'coastline', 'final-rivers', 'final-lakes', 'cryosphere'] },
+    'hydrologic-atlas': { mode: 'physical-world', overlays: ['evolved-topography', 'coastline', 'final-rivers', 'final-lakes', 'basin-divides'] },
+    'seasonal-world': { mode: 'seasonal-realized-discharge', overlays: ['evolved-topography', 'coastline', 'final-lakes', 'winds'] },
+    'geomorphic-processes': { mode: 'evolution-terrain-delta', overlays: ['evolved-topography', 'coastline', 'final-rivers', 'final-lakes', 'tectonic-boundaries'] },
+};
+function applyViewPreset(name) {
+    const definition = VIEW_PRESETS[name];
+    if (!definition)
+        return;
+    visualization.value = definition.mode;
+    const wanted = new Set(definition.overlays);
+    for (const input of overlayInputs)
+        input.checked = wanted.has(input.value);
+    styleCache = { result: null, key: '', sampleBuckets: [], boundaryBuckets: [] };
+    updateOverlaySummary();
+    redraw(false);
+    updateAnimation();
 }
 function formatDuration(ms) {
     if (ms < 1_000)
@@ -1139,7 +1272,7 @@ async function generatePlanet() {
         current = loaded;
         buffers = { x: new Float32Array(loaded.metrics.fineSampleCount), y: new Float32Array(loaded.metrics.fineSampleCount), visible: new Uint8Array(loaded.metrics.fineSampleCount) };
         styleCache = { result: null, key: '', sampleBuckets: [], boundaryBuckets: [] };
-        edgeOverlayCache = { result: null, coastline: new Uint32Array(0), contours: [] };
+        edgeOverlayCache = { result: null, coastline: new Uint32Array(0), contours: [], evolvedContours: [], basinDivides: new Uint32Array(0), riverBuckets: [] };
         showMetrics(loaded);
         redraw(false);
         updateAnimation();
@@ -1163,8 +1296,9 @@ async function generatePlanet() {
 }
 generate.addEventListener('click', () => void generatePlanet());
 projection.addEventListener('change', () => redraw(false));
-visualization.addEventListener('change', () => { styleCache = { result: null, key: '', sampleBuckets: [], boundaryBuckets: [] }; redraw(false); updateAnimation(); });
-overlayInputs.forEach(input => input.addEventListener('change', () => { updateOverlaySummary(); redraw(false); updateAnimation(); }));
+preset.addEventListener('change', () => applyViewPreset(preset.value));
+visualization.addEventListener('change', () => { preset.value = 'custom'; styleCache = { result: null, key: '', sampleBuckets: [], boundaryBuckets: [] }; redraw(false); updateAnimation(); });
+overlayInputs.forEach(input => input.addEventListener('change', () => { preset.value = 'custom'; updateOverlaySummary(); redraw(false); updateAnimation(); }));
 season.addEventListener('input', () => { updateSeasonLabel(); styleCache = { result: null, key: '', sampleBuckets: [], boundaryBuckets: [] }; redraw(false); });
 canvas.addEventListener('pointerdown', event => {
     if (projection.value !== 'globe')
@@ -1195,4 +1329,5 @@ window.addEventListener('beforeunload', () => {
 });
 updateSeasonLabel();
 updateOverlaySummary();
+applyViewPreset(preset.value);
 void generatePlanet();

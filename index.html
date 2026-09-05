@@ -34,8 +34,20 @@
       <aside class="worldgen-lab-diagnostics">
         <h2>Diagnostics</h2>
         <div class="worldgen-lab-diagnostic-controls">
+          <label>View preset
+            <select id="worldgen-preset">
+              <option value="physical-world" selected>Final physical world</option>
+              <option value="hydrologic-atlas">Hydrologic atlas</option>
+              <option value="seasonal-world">Seasonal physical world</option>
+              <option value="geomorphic-processes">Geomorphic processes</option>
+              <option value="custom">Custom</option>
+            </select>
+          </label>
           <label>Diagnostic
             <select id="worldgen-visualization">
+          <optgroup label="Composite / showcase">
+            <option value="physical-world">Final physical world</option>
+          </optgroup>
           <optgroup label="Hydrology · Post-erosion reconciliation (WG-7C)">
             <option value="reconciliation-lake-depth-delta">Lake depth change after erosion</option>
             <option value="reconciliation-lake-change">Lake state changed</option>
@@ -164,7 +176,12 @@
           <details id="worldgen-overlays" class="worldgen-overlay-menu">
             <summary>Overlays <strong id="worldgen-overlay-summary">None</strong></summary>
             <div class="worldgen-overlay-options">
-              <label><input type="checkbox" data-worldgen-overlay value="topography" data-label="Topographic contours"> Topographic contours</label>
+              <label><input type="checkbox" data-worldgen-overlay value="evolved-topography" data-label="Evolved topographic contours"> Evolved topographic contours</label>
+              <label><input type="checkbox" data-worldgen-overlay value="final-rivers" data-label="Final rivers"> Final rivers</label>
+              <label><input type="checkbox" data-worldgen-overlay value="final-lakes" data-label="Final lakes"> Final lakes</label>
+              <label><input type="checkbox" data-worldgen-overlay value="basin-divides" data-label="Drainage divides"> Drainage divides</label>
+              <label><input type="checkbox" data-worldgen-overlay value="cryosphere" data-label="Snow / sea ice"> Snow / sea ice</label>
+              <label><input type="checkbox" data-worldgen-overlay value="topography" data-label="WG-4 Topographic contours"> WG-4 Topographic contours</label>
               <label><input type="checkbox" data-worldgen-overlay value="coastline" data-label="Coastline"> Coastline</label>
               <label><input type="checkbox" data-worldgen-overlay value="winds" data-label="Seasonal prevailing winds"> Seasonal prevailing winds</label>
               <label><input type="checkbox" data-worldgen-overlay value="currents" data-label="Seasonal surface ocean currents"> Seasonal surface ocean currents</label>
