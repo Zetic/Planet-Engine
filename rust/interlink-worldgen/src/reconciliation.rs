@@ -1,11 +1,11 @@
 use crate::lakes::generate_lakes_closed_basins_from_surface;
+use crate::runoff::rebind_runoff_to_drainage;
 use crate::seasonal::generate_seasonal_hydrology_from_surface;
 use crate::{
-    derive_stage_seed, generate_runoff_discharge, ClimateGenerationDiagnostics, ClimateState,
-    DrainageState, GeodesicTopology, LakeParameters, LakeRequest, LakeState,
-    PlanetPhysicalParameters, PlanetTopology, RunoffParameters, RunoffRequest, RunoffState,
-    SeasonalHydrologyParameters, SeasonalHydrologyRequest, SeasonalHydrologyState, StageIdentity,
-    TerrainEvolutionState, TopographyState, WorldgenError,
+    derive_stage_seed, ClimateGenerationDiagnostics, ClimateState, DrainageState, GeodesicTopology,
+    LakeParameters, LakeRequest, LakeState, PlanetPhysicalParameters, PlanetTopology,
+    RunoffParameters, RunoffState, SeasonalHydrologyParameters, SeasonalHydrologyRequest,
+    SeasonalHydrologyState, StageIdentity, TerrainEvolutionState, TopographyState, WorldgenError,
 };
 
 pub const POST_EROSION_HYDROLOGY_STAGE_ID: &str = "hydrology:post-erosion-reconciliation";
@@ -226,25 +226,21 @@ pub fn generate_post_erosion_hydrology(
         ));
     }
 
-    let runoff_request = RunoffRequest {
-        seed: request.seed.clone(),
-        parameters: request.parameters.runoff,
-    };
-    let reconciled_runoff = generate_runoff_discharge(
-        topology,
-        topography,
-        climate,
+    let reconciled_runoff = rebind_runoff_to_drainage(
+        pre_erosion_runoff,
+        &topography.submerged_mask,
         &evolution.post_erosion_drainage,
         planet,
-        &runoff_request,
     )?;
-    if reconciled_runoff.stage.derived_seed != pre_erosion_runoff.stage.derived_seed
-        || reconciled_runoff.local_runoff_m3_s != pre_erosion_runoff.local_runoff_m3_s
-        || reconciled_runoff.potential_discharge_m3_s
-            != evolution.post_erosion_potential_discharge_m3_s
+    if reconciled_runoff.local_runoff_m3_s != pre_erosion_runoff.local_runoff_m3_s {
+        return Err(WorldgenError::InvalidHydrology(
+            "WG-7C must preserve accepted local runoff exactly",
+        ));
+    }
+    if reconciled_runoff.potential_discharge_m3_s != evolution.post_erosion_potential_discharge_m3_s
     {
         return Err(WorldgenError::InvalidHydrology(
-            "WG-7C must preserve local runoff and WG-7B post-erosion routing",
+            "WG-7C runoff must match WG-7B post-erosion routing exactly",
         ));
     }
 
