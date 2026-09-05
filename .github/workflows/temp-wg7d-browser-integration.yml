@@ -1,3 +1,4 @@
+# Registered on the previous push; this follow-up push activates the temporary integration workflow.
 name: Temporary WG-7D Browser Integration
 
 on:
