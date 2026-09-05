@@ -43,15 +43,18 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
+
           path = Path('rust/interlink-worldgen-wasm/src/climate_bridge.rs')
           text = path.read_text()
-          replacements = {
-              'self.reconciliation.reconciled_runoff': 'self.infill.reconciled_runoff',
-              'self.reconciliation.reconciled_lakes': 'self.infill.reconciled_lakes',
-              'self.reconciliation.reconciled_seasonal': 'self.infill.reconciled_seasonal',
-          }
-          for old, new in replacements.items():
-              text = text.replace(old, new)
+          for field in ('reconciled_runoff', 'reconciled_lakes', 'reconciled_seasonal'):
+              text, count = re.subn(
+                  rf'self\.reconciliation\s*\.\s*{field}',
+                  f'self.infill.{field}',
+                  text,
+              )
+              if count == 0:
+                  raise RuntimeError(f'expected at least one canonical getter reference for {field}')
           path.write_text(text)
           PY
       - name: Format and test Rust workspace
