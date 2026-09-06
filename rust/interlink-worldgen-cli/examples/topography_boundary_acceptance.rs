@@ -1,7 +1,8 @@
 use interlink_worldgen::{
     build_icosphere, generate_crust_and_history, generate_initial_topography, generate_lithosphere,
-    generate_tectonics, inherit_boundary_interfaces, inherit_physical_state, GeologicalBoundaryRegime,
-    GeologyRequest, LithosphereRequest, PlanetPhysicalParameters, TectonicsRequest, TopographyRequest,
+    generate_tectonics, inherit_boundary_interfaces, inherit_physical_state,
+    GeologicalBoundaryRegime, GeologyRequest, LithosphereRequest, PlanetPhysicalParameters,
+    TectonicsRequest, TopographyRequest,
 };
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -16,11 +17,19 @@ struct BoundaryStats {
 
 impl BoundaryStats {
     fn endpoint_land_fraction(self) -> f64 {
-        if self.endpoints == 0 { 0.0 } else { self.land_endpoints as f64 / self.endpoints as f64 }
+        if self.endpoints == 0 {
+            0.0
+        } else {
+            self.land_endpoints as f64 / self.endpoints as f64
+        }
     }
 
     fn both_land_fraction(self) -> f64 {
-        if self.edges == 0 { 0.0 } else { self.both_land_edges as f64 / self.edges as f64 }
+        if self.edges == 0 {
+            0.0
+        } else {
+            self.both_land_edges as f64 / self.edges as f64
+        }
     }
 
     fn mean_submerged_depth_m(self) -> f64 {
@@ -58,13 +67,9 @@ fn main() -> Result<(), String> {
     for seed in seeds {
         let tectonics = generate_tectonics(&coarse, &TectonicsRequest::new(seed, plates), planet)
             .map_err(|error| error.to_string())?;
-        let geology = generate_crust_and_history(
-            &coarse,
-            &tectonics,
-            &GeologyRequest::new(seed),
-            planet,
-        )
-        .map_err(|error| error.to_string())?;
+        let geology =
+            generate_crust_and_history(&coarse, &tectonics, &GeologyRequest::new(seed), planet)
+                .map_err(|error| error.to_string())?;
         let lithosphere = generate_lithosphere(
             &coarse,
             &tectonics,
@@ -81,14 +86,9 @@ fn main() -> Result<(), String> {
             planet,
         )
         .map_err(|error| error.to_string())?;
-        let boundaries = inherit_boundary_interfaces(
-            &coarse,
-            &fine,
-            &tectonics,
-            &geology,
-            &inherited.plate_ids,
-        )
-        .map_err(|error| error.to_string())?;
+        let boundaries =
+            inherit_boundary_interfaces(&coarse, &fine, &tectonics, &geology, &inherited.plate_ids)
+                .map_err(|error| error.to_string())?;
         let terrain = generate_initial_topography(
             &fine,
             &inherited,
@@ -168,31 +168,52 @@ fn main() -> Result<(), String> {
     );
 
     if !(0.20..=0.32).contains(&mean_land_fraction) {
-        return Err(format!("mean land fraction out of calibrated range: {mean_land_fraction:.4}"));
+        return Err(format!(
+            "mean land fraction out of calibrated range: {mean_land_fraction:.4}"
+        ));
     }
     if !(1_000.0..=1_800.0).contains(&mean_land_elevation_m) {
-        return Err(format!("mean land elevation out of calibrated range: {mean_land_elevation_m:.1} m"));
+        return Err(format!(
+            "mean land elevation out of calibrated range: {mean_land_elevation_m:.1} m"
+        ));
     }
     if !(3_200.0..=4_100.0).contains(&mean_ocean_depth_m) {
-        return Err(format!("mean ocean depth out of calibrated range: {mean_ocean_depth_m:.1} m"));
+        return Err(format!(
+            "mean ocean depth out of calibrated range: {mean_ocean_depth_m:.1} m"
+        ));
     }
     if ridge_land_fraction > 0.25 {
-        return Err(format!("oceanic-ridge endpoint emergence too high: {:.2}%", ridge_land_fraction * 100.0));
+        return Err(format!(
+            "oceanic-ridge endpoint emergence too high: {:.2}%",
+            ridge_land_fraction * 100.0
+        ));
     }
     if ridge_both_land_fraction > 0.15 {
-        return Err(format!("continuous emergent oceanic-ridge edges too common: {:.2}%", ridge_both_land_fraction * 100.0));
+        return Err(format!(
+            "continuous emergent oceanic-ridge edges too common: {:.2}%",
+            ridge_both_land_fraction * 100.0
+        ));
     }
     if ridge_submerged_depth_m < 900.0 {
         return Err(format!("submerged oceanic ridge crests are too shallow on average: {ridge_submerged_depth_m:.1} m"));
     }
     if maximum_seed_ridge_land_fraction > 0.45 {
-        return Err(format!("single-seed oceanic-ridge emergence too high: {:.2}%", maximum_seed_ridge_land_fraction * 100.0));
+        return Err(format!(
+            "single-seed oceanic-ridge emergence too high: {:.2}%",
+            maximum_seed_ridge_land_fraction * 100.0
+        ));
     }
     if maximum_seed_ridge_both_land_fraction > 0.35 {
-        return Err(format!("single-seed continuous emergent ridge fraction too high: {:.2}%", maximum_seed_ridge_both_land_fraction * 100.0));
+        return Err(format!(
+            "single-seed continuous emergent ridge fraction too high: {:.2}%",
+            maximum_seed_ridge_both_land_fraction * 100.0
+        ));
     }
     if collision_land_fraction < 0.85 {
-        return Err(format!("continental collision belts lost expected emergence: {:.2}%", collision_land_fraction * 100.0));
+        return Err(format!(
+            "continental collision belts lost expected emergence: {:.2}%",
+            collision_land_fraction * 100.0
+        ));
     }
 
     Ok(())
