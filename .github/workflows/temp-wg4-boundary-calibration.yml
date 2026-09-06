@@ -1,0 +1,19 @@
+name: Temporary WG-4 Boundary Calibration
+
+on:
+  push:
+    branches:
+      - wg4-boundary-emergence-calibration
+
+permissions:
+  contents: read
+
+jobs:
+  calibrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+      - name: Run WG-4 boundary-emergence calibration
+        run: cargo run --release -p interlink-worldgen-cli --example wg4_boundary_calibration
