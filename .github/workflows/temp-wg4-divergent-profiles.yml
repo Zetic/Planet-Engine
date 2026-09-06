@@ -15,23 +15,42 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Baseline WG-4 @5
+      - name: Baseline WG-4 @5 and corrected rift-lake detail
         run: |
           cargo run --release -p interlink-worldgen-cli --example wg4_divergent_morphology_profiles
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('rust/interlink-worldgen-cli/examples/wg4_rift_lake_detail.rs')
+          s = p.read_text()
+          s = s.replace('total_area_by_id.get(&record.id)?', 'total_area_by_id.get(&record.depression_id)?')
+          s = s.replace('rift_area_by_id.get(&record.id)', 'rift_area_by_id.get(&record.depression_id)')
+          s = s.replace('min_final_surface_by_id.get(&record.id)', 'min_final_surface_by_id.get(&record.depression_id)')
+          s = s.replace('max_final_surface_by_id.get(&record.id)', 'max_final_surface_by_id.get(&record.depression_id)')
+          p.write_text(s)
+          PY
           cargo run --release -p interlink-worldgen-cli --example wg4_rift_lake_detail
+          git checkout -- rust/interlink-worldgen-cli/examples/wg4_rift_lake_detail.rs
 
-      - name: Variant S1 - stronger ridge-only damping
+      - name: Variant S2 - moderate ridge-only damping
         run: |
           git checkout -- rust/interlink-worldgen/src/topography.rs
-          python3 scripts/temp-wg4-divergent-profile.py --ridge-direct 0.35 --ridge-history-m 300 --continental-rift-basin-reduction 0.00
+          python3 scripts/temp-wg4-divergent-profile.py --ridge-direct 0.30 --ridge-history-m 250 --continental-rift-basin-reduction 0.00
           cargo run --release -p interlink-worldgen-cli --example wg4_divergent_morphology_profiles
           cargo run --release -p interlink-worldgen-cli --example topography_boundary_acceptance
           cargo run --release -p interlink-worldgen-cli --example topography_rift_acceptance
 
-      - name: Variant S2 - deepest ridge-only candidate
+      - name: Variant S3 - low direct ridge duplication
         run: |
           git checkout -- rust/interlink-worldgen/src/topography.rs
-          python3 scripts/temp-wg4-divergent-profile.py --ridge-direct 0.30 --ridge-history-m 250 --continental-rift-basin-reduction 0.00
+          python3 scripts/temp-wg4-divergent-profile.py --ridge-direct 0.20 --ridge-history-m 150 --continental-rift-basin-reduction 0.00
+          cargo run --release -p interlink-worldgen-cli --example wg4_divergent_morphology_profiles
+          cargo run --release -p interlink-worldgen-cli --example topography_boundary_acceptance
+          cargo run --release -p interlink-worldgen-cli --example topography_rift_acceptance
+
+      - name: Variant S4 - near-thermal-only oceanic ridge
+        run: |
+          git checkout -- rust/interlink-worldgen/src/topography.rs
+          python3 scripts/temp-wg4-divergent-profile.py --ridge-direct 0.10 --ridge-history-m 75 --continental-rift-basin-reduction 0.00
           cargo run --release -p interlink-worldgen-cli --example wg4_divergent_morphology_profiles
           cargo run --release -p interlink-worldgen-cli --example topography_boundary_acceptance
           cargo run --release -p interlink-worldgen-cli --example topography_rift_acceptance
