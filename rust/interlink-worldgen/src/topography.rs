@@ -7,7 +7,7 @@ use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 
 pub const TOPOGRAPHY_STAGE_ID: &str = "terrain:initial-topography";
-pub const TOPOGRAPHY_STAGE_VERSION: u32 = 3;
+pub const TOPOGRAPHY_STAGE_VERSION: u32 = 4;
 const TOPOGRAPHY_NAMESPACE: &str = "terrain:structure:v1";
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
@@ -16,6 +16,8 @@ const CRUST_OCEANIC: u8 = 1;
 const CRUST_TRANSITIONAL: u8 = 2;
 const STRUCTURE_SUTURE: u8 = 1;
 const STRUCTURE_RIFT: u8 = 2;
+const OCEANIC_RIDGE_DIRECT_RESPONSE_SCALE: f64 = 0.50;
+const OCEANIC_RIDGE_BASE_RESPONSE: f64 = 0.10;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TopographyParameters {
@@ -398,8 +400,14 @@ fn boundary_source_fields(
                 collision[a] = collision[a].max(0.35 + 0.65 * convergence);
                 collision[b] = collision[b].max(0.35 + 0.65 * convergence);
             }
-            GeologicalBoundaryRegime::OceanicRidge
-            | GeologicalBoundaryRegime::TransitionalDivergence => {
+            GeologicalBoundaryRegime::OceanicRidge => {
+                let strength = OCEANIC_RIDGE_DIRECT_RESPONSE_SCALE
+                    * (OCEANIC_RIDGE_BASE_RESPONSE
+                        + (1.0 - OCEANIC_RIDGE_BASE_RESPONSE) * divergence);
+                ridge[a] = ridge[a].max(strength);
+                ridge[b] = ridge[b].max(strength);
+            }
+            GeologicalBoundaryRegime::TransitionalDivergence => {
                 ridge[a] = ridge[a].max(0.35 + 0.65 * divergence);
                 ridge[b] = ridge[b].max(0.35 + 0.65 * divergence);
             }

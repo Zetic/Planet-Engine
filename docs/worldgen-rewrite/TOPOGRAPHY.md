@@ -32,7 +32,7 @@ solid elevation + sea level + water depth + land/ocean mask
 
 ## Physical components
 
-The v2 terrain state keeps forcing components separately inspectable: isostatic, oceanic thermal, orogenic/collision, ridge, rift/basin, trench, arc, and mantle-dynamic elevation. The final solid surface is their mechanically filtered sum. This accounting is diagnostic and prevents tectonic relief from becoming an opaque final noise function.
+The terrain state keeps forcing components separately inspectable: isostatic, oceanic thermal, orogenic/collision, ridge, rift/basin, trench, arc, and mantle-dynamic elevation. The final solid surface is their mechanically filtered sum. This accounting is diagnostic and prevents tectonic relief from becoming an opaque final noise function.
 
 Crustal support uses WG-3 thickness and density against the explicit isostatic mantle density. Oceanic and transitional crust subsides with a bounded square-root age relation. Fine inherited boundary interfaces seed geodesic distance fields for collision, spreading, rifting and polarized subduction morphology. Subduction polarity keeps trenches on the subducting plate and arc uplift on the overriding plate, with the arc peak displaced inland from the interface.
 
@@ -56,7 +56,7 @@ WG-4's water mask is an initial hydrostatic standing-water surface. Closed-basin
 
 The `@2` default retunes broad relief amplitudes after the WG-5 calibration baseline showed that the original Earth-like reference placed roughly two thirds to four fifths of land above 2 km across representative L6 worlds. The correction remains upstream in WG-4 rather than compensating with an artificial climate warming term.
 
-The calibrated defaults reduce broad crustal/isostatic support and old/broad uplift while preserving signed tectonic morphology: `isostatic_scale = 0.55`, inherited orogeny `1200 m`, collision uplift `2400 m` over a `600 km` kernel, and mantle-dynamic relief `650 m`. WG-4 `@3` additionally narrows and lowers oceanic spreading-ridge relief from `2000 m / 600 km` to `1200 m / 450 km`. The L5→L7 five-seed calibration reduced aggregate oceanic-ridge endpoint emergence from about `40%` to `19%` and continuous both-land ridge edges from about `31%` to `10%`, while preserving a roughly `26%` mean land fraction, ~`1.4 km` mean land elevation, ~`3.6 km` mean ocean depth, and >`90%` continental-collision endpoint emergence. Rift, trench, arc, thermal-subsidence, water-inventory and mechanical-filter parameters remain unchanged.
+The calibrated defaults reduce broad crustal/isostatic support and old/broad uplift while preserving signed tectonic morphology: `isostatic_scale = 0.55`, inherited orogeny `1200 m`, collision uplift `2400 m` over a `600 km` kernel, and mantle-dynamic relief `650 m`. WG-4 `@3` narrowed and lowered the shared ridge kernel from `2000 m / 600 km` to `1200 m / 450 km`. WG-4 `@4` separates mature `OceanicRidge` source response from `TransitionalDivergence`: pure oceanic spreading now uses `0.50 × (0.10 + 0.90 × normalized_divergence)` before the existing inherited ridge-history factor, while transitional divergence keeps the prior `0.35 + 0.65 × normalized_divergence` response. This avoids double-counting young-ocean thermal relief as a second near-full direct uplift without flattening rifted/transitional margins. Across a six-seed L5→L7 / 16-plate ensemble, aggregate oceanic-ridge endpoint emergence falls from about `20%` to `12%`, both-land ridge edges from about `11%` to `5%`, and submerged ridge endpoints shallower than `500 m` from about `30%` to `10%`; median submerged ridge depth rises from ~`0.86 km` to ~`1.23 km`. Mean land fraction remains ~`27%`, mean land elevation ~`1.41 km`, mean ocean depth ~`3.68 km`, and continental-collision endpoint emergence remains >`92%`. Rift, trench, arc, thermal-subsidence, water-inventory and mechanical-filter parameters remain unchanged.
 
 A five-seed L4 Earth-like ensemble now occupies a deliberately broad **pre-erosion** envelope: land fraction `23–30%`, mean land elevation `1.28–1.82 km`, mean standing-ocean depth `3.49–3.81 km`, and p95 solid elevation `4.49–5.91 km`, with exact water-volume closure and no safety clamps. These are calibration guards, not a requirement to reproduce Earth exactly; later erosion and glaciation are still expected to reshape the distribution.
 
@@ -66,7 +66,7 @@ WG-4 consumes WG-3.75 coarse-to-fine inheritance. The intended global production
 
 ## Determinism
 
-Stage identity is `terrain:initial-topography@3` with namespace `terrain:structure:v1`. The topography hash includes stage/version/seed, WG-4 model parameters, planetary parameters, WG-3.75 inheritance identity, fine boundary identity, ordered solid elevation, sea-level state, and ordered water depth. Upstream tectonic/geology/lithosphere/inheritance hashes are not mutated.
+Stage identity is `terrain:initial-topography@4` with namespace `terrain:structure:v1`. The topography hash includes stage/version/seed, WG-4 model parameters, planetary parameters, WG-3.75 inheritance identity, fine boundary identity, ordered solid elevation, sea-level state, and ordered water depth. Upstream tectonic/geology/lithosphere/inheritance hashes are not mutated.
 
 ## Explicit non-goals
 
