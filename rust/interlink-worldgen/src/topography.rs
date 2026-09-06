@@ -7,7 +7,7 @@ use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 
 pub const TOPOGRAPHY_STAGE_ID: &str = "terrain:initial-topography";
-pub const TOPOGRAPHY_STAGE_VERSION: u32 = 5;
+pub const TOPOGRAPHY_STAGE_VERSION: u32 = 6;
 const TOPOGRAPHY_NAMESPACE: &str = "terrain:structure:v1";
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
@@ -16,7 +16,7 @@ const CRUST_OCEANIC: u8 = 1;
 const CRUST_TRANSITIONAL: u8 = 2;
 const STRUCTURE_SUTURE: u8 = 1;
 const STRUCTURE_RIFT: u8 = 2;
-const OCEANIC_RIDGE_DIRECT_RESPONSE_SCALE: f64 = 0.50;
+const OCEANIC_RIDGE_DIRECT_RESPONSE_SCALE: f64 = 0.10;
 const OCEANIC_RIDGE_BASE_RESPONSE: f64 = 0.10;
 const CONTINENTAL_RIFT_DIRECT_RESPONSE_SCALE: f64 = 0.10;
 const CONTINENTAL_RIFT_BASE_RESPONSE: f64 = 0.05;
@@ -676,7 +676,7 @@ pub fn generate_initial_topography(
             gaussian(ridge_distance[i], p.ridge_width_m) * ridge_sources[ridge_source[i] as usize]
         };
         ridge[i] =
-            p.ridge_uplift_scale_m * ridge_kernel + 500.0 * f64::from(inherited.ridge_history[i]);
+            p.ridge_uplift_scale_m * ridge_kernel + 75.0 * f64::from(inherited.ridge_history[i]);
 
         let rift_kernel = if rift_source[i] == u32::MAX {
             0.0
