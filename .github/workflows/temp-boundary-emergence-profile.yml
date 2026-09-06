@@ -14,5 +14,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Profile all boundary regimes
-        run: cargo run --release -p interlink-worldgen-cli --example temp_boundary_emergence_profile
+
+      - name: Baseline WG-4 @6
+        run: |
+          cargo run --release -p interlink-worldgen-cli --example temp_boundary_emergence_profile
+
+      - name: Strong regime-aware suppression
+        run: |
+          git checkout -- rust/interlink-worldgen/src/topography.rs
+          python3 scripts/temp-boundary-emergence-transform.py strong
+          cargo run --release -p interlink-worldgen-cli --example temp_boundary_emergence_profile
+          cargo run --release -p interlink-worldgen-cli --example topography_boundary_acceptance
+          cargo run --release -p interlink-worldgen-cli --example topography_rift_acceptance
+          cargo run --release -p interlink-worldgen-cli --example topography_divergent_morphology_acceptance
+
+      - name: Extreme regime-aware suppression
+        run: |
+          git checkout -- rust/interlink-worldgen/src/topography.rs
+          python3 scripts/temp-boundary-emergence-transform.py extreme
+          cargo run --release -p interlink-worldgen-cli --example temp_boundary_emergence_profile
+          cargo run --release -p interlink-worldgen-cli --example topography_boundary_acceptance || true
+          cargo run --release -p interlink-worldgen-cli --example topography_rift_acceptance || true
+          cargo run --release -p interlink-worldgen-cli --example topography_divergent_morphology_acceptance || true
