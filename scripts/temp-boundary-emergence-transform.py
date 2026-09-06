@@ -3,9 +3,11 @@ from pathlib import Path
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument("variant", choices=["strong", "extreme"])
+parser.add_argument("variant", choices=["strong", "balanced", "balanced2", "extreme"])
 args = parser.parse_args()
 
+# Keep the deliberately strong suppression of boundary-following oceanic relief in the balanced
+# variants; only restore part of the offset volcanic-arc expression so real island arcs survive.
 if args.variant == "strong":
     ridge_scale = "0.03"
     ridge_history = "25.0"
@@ -14,6 +16,22 @@ if args.variant == "strong":
     collision_transitional = "0.35"
     arc_oceanic = "0.35"
     arc_transitional = "0.65"
+elif args.variant == "balanced":
+    ridge_scale = "0.03"
+    ridge_history = "25.0"
+    transitional_scale = "0.45"
+    collision_oceanic = "0.05"
+    collision_transitional = "0.35"
+    arc_oceanic = "0.60"
+    arc_transitional = "0.80"
+elif args.variant == "balanced2":
+    ridge_scale = "0.03"
+    ridge_history = "25.0"
+    transitional_scale = "0.45"
+    collision_oceanic = "0.05"
+    collision_transitional = "0.35"
+    arc_oceanic = "0.75"
+    arc_transitional = "0.90"
 else:
     ridge_scale = "0.00"
     ridge_history = "0.0"
