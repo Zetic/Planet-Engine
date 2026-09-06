@@ -54,7 +54,6 @@ jobs:
         run: bash scripts/check-wg7d-lake-infill.sh
       - name: Commit calibrated WG-4 integration
         run: |
-          rm .github/workflows/temp-wg4-boundary-calibration.yml
           rm scripts/temp-wg4-boundary-calibration.py
           rm rust/interlink-worldgen-cli/examples/wg4_boundary_calibration.rs
           git config user.name "github-actions[bot]"
