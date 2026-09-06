@@ -14,20 +14,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Baseline WG-4 @4
+      - name: Baseline WG-4 @4 continental rifts
         run: cargo run --release -p interlink-worldgen-cli --example wg4_rift_seaway_profiles
-      - name: Variant E - low explicit rift relief
-        run: |
-          git checkout -- rust/interlink-worldgen/src/topography.rs
-          python3 scripts/temp-wg4-rift-profile.py --direct-scale 0.25 --base 0.05 --history-floor 0.10 --inherited-weight 0.15
-          cargo run --release -p interlink-worldgen-cli --example wg4_rift_seaway_profiles
-      - name: Variant F - minimal explicit rift relief
-        run: |
-          git checkout -- rust/interlink-worldgen/src/topography.rs
-          python3 scripts/temp-wg4-rift-profile.py --direct-scale 0.10 --base 0.05 --history-floor 0.05 --inherited-weight 0.05
-          cargo run --release -p interlink-worldgen-cli --example wg4_rift_seaway_profiles
-      - name: Variant G - no explicit rift boundary/history depression
-        run: |
-          git checkout -- rust/interlink-worldgen/src/topography.rs
-          python3 scripts/temp-wg4-rift-profile.py --direct-scale 0.00 --base 0.00 --history-floor 0.00 --inherited-weight 0.00
-          cargo run --release -p interlink-worldgen-cli --example wg4_rift_seaway_profiles
+      - name: Baseline WG-4 @4 transitional divergence
+        run: cargo run --release -p interlink-worldgen-cli --example wg4_transition_seaway_profiles
+      - name: Apply conditional continental-rift candidate
+        run: python3 scripts/temp-wg4-rift-conditional.py
+      - name: Candidate continental rifts
+        run: cargo run --release -p interlink-worldgen-cli --example wg4_rift_seaway_profiles
+      - name: Candidate transitional divergence
+        run: cargo run --release -p interlink-worldgen-cli --example wg4_transition_seaway_profiles
