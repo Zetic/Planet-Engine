@@ -15,37 +15,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Control S4 - calibrated oceanic ridge with WG-4 @5 rift
+      - name: Apply ridge calibration candidate
+        run: python3 scripts/temp-wg4-divergent-profile.py --ridge-direct 0.10 --ridge-history-m 75
+
+      - name: Verify WG-4 ridge and rift acceptance
         run: |
-          git checkout -- rust/interlink-worldgen/src/topography.rs
-          python3 scripts/temp-wg4-divergent-profile.py --ridge-direct 0.10 --ridge-history-m 75
-          cargo run --release -p interlink-worldgen-cli --example wg4_divergent_morphology_profiles
+          cargo run --release -p interlink-worldgen-cli --example topography_boundary_acceptance
           cargo run --release -p interlink-worldgen-cli --example topography_rift_acceptance
 
-      - name: Variant B1 - mild off-axis basin focusing
-        run: |
-          git checkout -- rust/interlink-worldgen/src/topography.rs
-          python3 scripts/temp-wg4-divergent-profile.py --ridge-direct 0.10 --ridge-history-m 75 --continental-rift-offaxis-basin-reduction 0.25
-          cargo run --release -p interlink-worldgen-cli --example wg4_divergent_morphology_profiles
-          cargo run --release -p interlink-worldgen-cli --example topography_rift_acceptance || true
-
-      - name: Variant B2 - moderate off-axis basin focusing
-        run: |
-          git checkout -- rust/interlink-worldgen/src/topography.rs
-          python3 scripts/temp-wg4-divergent-profile.py --ridge-direct 0.10 --ridge-history-m 75 --continental-rift-offaxis-basin-reduction 0.50
-          cargo run --release -p interlink-worldgen-cli --example wg4_divergent_morphology_profiles
-          cargo run --release -p interlink-worldgen-cli --example topography_rift_acceptance || true
-
-      - name: Variant B3 - focused basin plus modest axial trough
-        run: |
-          git checkout -- rust/interlink-worldgen/src/topography.rs
-          python3 scripts/temp-wg4-divergent-profile.py --ridge-direct 0.10 --ridge-history-m 75 --continental-rift-direct 0.20 --continental-rift-width-m 300000 --continental-rift-offaxis-basin-reduction 0.50
-          cargo run --release -p interlink-worldgen-cli --example wg4_divergent_morphology_profiles
-          cargo run --release -p interlink-worldgen-cli --example topography_rift_acceptance || true
-
-      - name: Variant B4 - strong focused basin plus modest axial trough
-        run: |
-          git checkout -- rust/interlink-worldgen/src/topography.rs
-          python3 scripts/temp-wg4-divergent-profile.py --ridge-direct 0.10 --ridge-history-m 75 --continental-rift-direct 0.20 --continental-rift-width-m 300000 --continental-rift-offaxis-basin-reduction 0.75
-          cargo run --release -p interlink-worldgen-cli --example wg4_divergent_morphology_profiles
-          cargo run --release -p interlink-worldgen-cli --example topography_rift_acceptance || true
+      - name: Trace interlink-wg7c rift lake from WG-6C through WG-7D
+        run: cargo run --release -p interlink-worldgen-cli --example wg4_rift_lake_detail
