@@ -3,7 +3,7 @@ from pathlib import Path
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument("variant", choices=["strong", "balanced", "balanced2", "extreme"])
+parser.add_argument("variant", choices=["strong", "balanced", "balanced2", "balanced3", "extreme"])
 args = parser.parse_args()
 
 # Keep the deliberately strong suppression of boundary-following oceanic relief in the balanced
@@ -32,6 +32,14 @@ elif args.variant == "balanced2":
     collision_transitional = "0.35"
     arc_oceanic = "0.75"
     arc_transitional = "0.90"
+elif args.variant == "balanced3":
+    ridge_scale = "0.03"
+    ridge_history = "25.0"
+    transitional_scale = "0.45"
+    collision_oceanic = "0.05"
+    collision_transitional = "0.35"
+    arc_oceanic = "0.90"
+    arc_transitional = "1.00"
 else:
     ridge_scale = "0.00"
     ridge_history = "0.0"
