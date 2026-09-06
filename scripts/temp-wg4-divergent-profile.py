@@ -8,7 +8,11 @@ parser.add_argument("--ridge-history-m", type=float, default=500.0)
 parser.add_argument("--continental-rift-direct", type=float, default=0.10)
 parser.add_argument("--continental-rift-width-m", type=float, default=450_000.0)
 parser.add_argument("--continental-rift-basin-reduction", type=float, default=0.0)
+parser.add_argument("--continental-rift-offaxis-basin-reduction", type=float, default=0.0)
 args = parser.parse_args()
+
+if args.continental_rift_basin_reduction > 0.0 and args.continental_rift_offaxis_basin_reduction > 0.0:
+    raise SystemExit("choose either broad or off-axis continental-rift basin reduction, not both")
 
 path = Path("rust/interlink-worldgen/src/topography.rs")
 text = path.read_text()
@@ -38,15 +42,36 @@ if old not in text:
     raise SystemExit("continental-rift width default drifted")
 text = text.replace(old, new, 1)
 
-if args.continental_rift_basin_reduction > 0.0:
-    old = """        rift_basin[i] = -(p.rift_subsidence_scale_m
+original_rift_basin = """        rift_basin[i] = -(p.rift_subsidence_scale_m
             * (rift_kernel * rift_focus
                 + inherited_rift_relief_weight * f64::from(inherited.rift_history[i]))
             + p.basin_subsidence_scale_m
                 * (0.55 * f64::from(inherited.basin_potential[i])
                     + 0.45 * f64::from(inherited.subsidence_history[i])));"""
+
+if args.continental_rift_offaxis_basin_reduction > 0.0:
+    weight = args.continental_rift_offaxis_basin_reduction
+    focused = f"""        let rift_axis_focus = gaussian(rift_distance[i], p.rift_width_m);
+        let rift_basin_history_weight = match inherited.crust_kind[i] {{
+            CRUST_OCEANIC | CRUST_TRANSITIONAL => 1.0,
+            _ => 1.0
+                - {weight:.2f}
+                    * f64::from(inherited.rift_history[i]).clamp(0.0, 1.0)
+                    * (1.0 - rift_axis_focus),
+        }};
+        rift_basin[i] = -(p.rift_subsidence_scale_m
+            * (rift_kernel * rift_focus
+                + inherited_rift_relief_weight * f64::from(inherited.rift_history[i]))
+            + p.basin_subsidence_scale_m
+                * rift_basin_history_weight
+                * (0.55 * f64::from(inherited.basin_potential[i])
+                    + 0.45 * f64::from(inherited.subsidence_history[i])));"""
+    if original_rift_basin not in text:
+        raise SystemExit("rift basin expression drifted")
+    text = text.replace(original_rift_basin, focused, 1)
+elif args.continental_rift_basin_reduction > 0.0:
     weight = args.continental_rift_basin_reduction
-    new = f"""        let rift_basin_history_weight = match inherited.crust_kind[i] {{
+    broad = f"""        let rift_basin_history_weight = match inherited.crust_kind[i] {{
             CRUST_OCEANIC | CRUST_TRANSITIONAL => 1.0,
             _ => 1.0 - {weight:.2f} * f64::from(inherited.rift_history[i]).clamp(0.0, 1.0),
         }};
@@ -57,8 +82,8 @@ if args.continental_rift_basin_reduction > 0.0:
                 * rift_basin_history_weight
                 * (0.55 * f64::from(inherited.basin_potential[i])
                     + 0.45 * f64::from(inherited.subsidence_history[i])));"""
-    if old not in text:
+    if original_rift_basin not in text:
         raise SystemExit("rift basin expression drifted")
-    text = text.replace(old, new, 1)
+    text = text.replace(original_rift_basin, broad, 1)
 
 path.write_text(text)
