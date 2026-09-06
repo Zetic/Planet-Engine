@@ -48,6 +48,10 @@ jobs:
         run: cargo run --release -p interlink-worldgen-cli --example topography_boundary_acceptance
       - name: WG-4 L5→L7 connected ridge-island morphology acceptance
         run: cargo run --release -p interlink-worldgen-cli --example topography_divergent_morphology_acceptance
+      - name: WG-4 L5→L7 all-regime boundary morphology acceptance
+        run: cargo run --release -p interlink-worldgen-cli --example topography_boundary_morphology_acceptance
+      - name: WG-4 L5→L7 oceanic arc morphology acceptance
+        run: cargo run --release -p interlink-worldgen-cli --example topography_arc_morphology_acceptance
       - name: WG-4 L5→L7 continental-rift seaway acceptance
         run: cargo run --release -p interlink-worldgen-cli --example topography_rift_acceptance
       - name: Smoke-test WG-6A drainage topology
