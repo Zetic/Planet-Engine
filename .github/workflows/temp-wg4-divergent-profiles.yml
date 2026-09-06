@@ -16,7 +16,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Baseline WG-4 @5
-        run: cargo run --release -p interlink-worldgen-cli --example wg4_divergent_morphology_profiles
+        run: |
+          cargo run --release -p interlink-worldgen-cli --example wg4_divergent_morphology_profiles
+          cargo run --release -p interlink-worldgen-cli --example wg4_rift_lake_detail
 
       - name: Variant S1 - stronger ridge-only damping
         run: |
