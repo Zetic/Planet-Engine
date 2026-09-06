@@ -141,7 +141,8 @@ fn main() -> Result<(), String> {
                 stats.both_land_edges += u64::from(a_land && b_land);
                 for sample in [a, b] {
                     if terrain.submerged_mask[sample] != 0 {
-                        stats.submerged_depths_m
+                        stats
+                            .submerged_depths_m
                             .push(f64::from(terrain.water_depth_m[sample]));
                     }
                 }
