@@ -7,7 +7,7 @@ use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 
 pub const TOPOGRAPHY_STAGE_ID: &str = "terrain:initial-topography";
-pub const TOPOGRAPHY_STAGE_VERSION: u32 = 4;
+pub const TOPOGRAPHY_STAGE_VERSION: u32 = 5;
 const TOPOGRAPHY_NAMESPACE: &str = "terrain:structure:v1";
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
@@ -18,6 +18,11 @@ const STRUCTURE_SUTURE: u8 = 1;
 const STRUCTURE_RIFT: u8 = 2;
 const OCEANIC_RIDGE_DIRECT_RESPONSE_SCALE: f64 = 0.50;
 const OCEANIC_RIDGE_BASE_RESPONSE: f64 = 0.10;
+const CONTINENTAL_RIFT_DIRECT_RESPONSE_SCALE: f64 = 0.10;
+const CONTINENTAL_RIFT_BASE_RESPONSE: f64 = 0.05;
+const CONTINENTAL_RIFT_SOURCE_HISTORY_FLOOR: f64 = 0.05;
+const CONTINENTAL_RIFT_CONTINENTAL_HISTORY_RELIEF_WEIGHT: f64 = 0.05;
+const TRANSITIONAL_RIFT_HISTORY_RELIEF_WEIGHT: f64 = 0.55;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TopographyParameters {
@@ -412,8 +417,11 @@ fn boundary_source_fields(
                 ridge[b] = ridge[b].max(0.35 + 0.65 * divergence);
             }
             GeologicalBoundaryRegime::ContinentalRift => {
-                rift[a] = rift[a].max(0.35 + 0.65 * divergence);
-                rift[b] = rift[b].max(0.35 + 0.65 * divergence);
+                let strength = CONTINENTAL_RIFT_DIRECT_RESPONSE_SCALE
+                    * (CONTINENTAL_RIFT_BASE_RESPONSE
+                        + (1.0 - CONTINENTAL_RIFT_BASE_RESPONSE) * divergence);
+                rift[a] = rift[a].max(strength);
+                rift[b] = rift[b].max(strength);
             }
             GeologicalBoundaryRegime::OceanicSubduction
             | GeologicalBoundaryRegime::OceanContinentSubduction => {
@@ -437,7 +445,8 @@ fn boundary_source_fields(
     for i in 0..count {
         collision[i] *= 0.65 + 0.35 * f64::from(inherited.orogenic_history[i]);
         ridge[i] *= 0.65 + 0.35 * f64::from(inherited.ridge_history[i]);
-        rift[i] *= 0.65 + 0.35 * f64::from(inherited.rift_history[i]);
+        rift[i] *= CONTINENTAL_RIFT_SOURCE_HISTORY_FLOOR
+            + (1.0 - CONTINENTAL_RIFT_SOURCE_HISTORY_FLOOR) * f64::from(inherited.rift_history[i]);
         trench[i] *= 0.55 + 0.45 * f64::from(inherited.trench_history[i]);
         arc[i] *= 0.55 + 0.45 * f64::from(inherited.volcanic_arc_history[i]);
     }
@@ -674,8 +683,14 @@ pub fn generate_initial_topography(
         } else {
             gaussian(rift_distance[i], p.rift_width_m) * rift_sources[rift_source[i] as usize]
         };
+        let inherited_rift_relief_weight = match inherited.crust_kind[i] {
+            CRUST_TRANSITIONAL => TRANSITIONAL_RIFT_HISTORY_RELIEF_WEIGHT,
+            CRUST_OCEANIC => 0.0,
+            _ => CONTINENTAL_RIFT_CONTINENTAL_HISTORY_RELIEF_WEIGHT,
+        };
         rift_basin[i] = -(p.rift_subsidence_scale_m
-            * (rift_kernel * rift_focus + 0.55 * f64::from(inherited.rift_history[i]))
+            * (rift_kernel * rift_focus
+                + inherited_rift_relief_weight * f64::from(inherited.rift_history[i]))
             + p.basin_subsidence_scale_m
                 * (0.55 * f64::from(inherited.basin_potential[i])
                     + 0.45 * f64::from(inherited.subsidence_history[i])));
