@@ -5,6 +5,7 @@ from pathlib import Path
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--base", type=float, required=True)
+parser.add_argument("--multiplier", type=float, default=1.0)
 parser.add_argument("--width-km", type=float, default=450.0)
 args = parser.parse_args()
 
@@ -18,9 +19,10 @@ old = '''            GeologicalBoundaryRegime::OceanicRidge
 '''
 base = args.base
 slope = 1.0 - base
+multiplier = args.multiplier
 new = f'''            GeologicalBoundaryRegime::OceanicRidge => {{
-                ridge[a] = ridge[a].max({base:.6f} + {slope:.6f} * divergence);
-                ridge[b] = ridge[b].max({base:.6f} + {slope:.6f} * divergence);
+                ridge[a] = ridge[a].max({multiplier:.6f} * ({base:.6f} + {slope:.6f} * divergence));
+                ridge[b] = ridge[b].max({multiplier:.6f} * ({base:.6f} + {slope:.6f} * divergence));
             }}
             GeologicalBoundaryRegime::TransitionalDivergence => {{
                 ridge[a] = ridge[a].max(0.35 + 0.65 * divergence);
