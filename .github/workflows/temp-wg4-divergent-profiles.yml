@@ -18,34 +18,18 @@ jobs:
       - name: Baseline WG-4 @5
         run: cargo run --release -p interlink-worldgen-cli --example wg4_divergent_morphology_profiles
 
-      - name: Variant R1 - lower pure oceanic ridge expression
+      - name: Variant S1 - stronger ridge-only damping
         run: |
           git checkout -- rust/interlink-worldgen/src/topography.rs
-          python3 scripts/temp-wg4-divergent-profile.py --ridge-direct 0.40 --ridge-history-m 350 --continental-rift-basin-reduction 0.00
+          python3 scripts/temp-wg4-divergent-profile.py --ridge-direct 0.35 --ridge-history-m 300 --continental-rift-basin-reduction 0.00
           cargo run --release -p interlink-worldgen-cli --example wg4_divergent_morphology_profiles
           cargo run --release -p interlink-worldgen-cli --example topography_boundary_acceptance
           cargo run --release -p interlink-worldgen-cli --example topography_rift_acceptance
 
-      - name: Variant L1 - attenuate duplicated continental-rift basin history
+      - name: Variant S2 - deepest ridge-only candidate
         run: |
           git checkout -- rust/interlink-worldgen/src/topography.rs
-          python3 scripts/temp-wg4-divergent-profile.py --ridge-direct 0.50 --ridge-history-m 500 --continental-rift-basin-reduction 0.45
-          cargo run --release -p interlink-worldgen-cli --example wg4_divergent_morphology_profiles
-          cargo run --release -p interlink-worldgen-cli --example topography_boundary_acceptance
-          cargo run --release -p interlink-worldgen-cli --example topography_rift_acceptance
-
-      - name: Variant C1 - combined moderate calibration
-        run: |
-          git checkout -- rust/interlink-worldgen/src/topography.rs
-          python3 scripts/temp-wg4-divergent-profile.py --ridge-direct 0.40 --ridge-history-m 350 --continental-rift-basin-reduction 0.45
-          cargo run --release -p interlink-worldgen-cli --example wg4_divergent_morphology_profiles
-          cargo run --release -p interlink-worldgen-cli --example topography_boundary_acceptance
-          cargo run --release -p interlink-worldgen-cli --example topography_rift_acceptance
-
-      - name: Variant C2 - stronger divergent damping
-        run: |
-          git checkout -- rust/interlink-worldgen/src/topography.rs
-          python3 scripts/temp-wg4-divergent-profile.py --ridge-direct 0.35 --ridge-history-m 300 --continental-rift-basin-reduction 0.55
+          python3 scripts/temp-wg4-divergent-profile.py --ridge-direct 0.30 --ridge-history-m 250 --continental-rift-basin-reduction 0.00
           cargo run --release -p interlink-worldgen-cli --example wg4_divergent_morphology_profiles
           cargo run --release -p interlink-worldgen-cli --example topography_boundary_acceptance
           cargo run --release -p interlink-worldgen-cli --example topography_rift_acceptance
