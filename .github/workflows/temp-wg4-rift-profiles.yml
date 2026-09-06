@@ -16,23 +16,18 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Baseline WG-4 @4
         run: cargo run --release -p interlink-worldgen-cli --example wg4_rift_seaway_profiles
-      - name: Variant A - remove weak-rift floor
+      - name: Variant E - low explicit rift relief
         run: |
           git checkout -- rust/interlink-worldgen/src/topography.rs
-          python3 scripts/temp-wg4-rift-profile.py --direct-scale 1.00 --base 0.10 --history-floor 0.45 --inherited-weight 0.45
+          python3 scripts/temp-wg4-rift-profile.py --direct-scale 0.25 --base 0.05 --history-floor 0.10 --inherited-weight 0.15
           cargo run --release -p interlink-worldgen-cli --example wg4_rift_seaway_profiles
-      - name: Variant B - maturity-weighted 0.75 direct
+      - name: Variant F - minimal explicit rift relief
         run: |
           git checkout -- rust/interlink-worldgen/src/topography.rs
-          python3 scripts/temp-wg4-rift-profile.py --direct-scale 0.75 --base 0.10 --history-floor 0.35 --inherited-weight 0.40
+          python3 scripts/temp-wg4-rift-profile.py --direct-scale 0.10 --base 0.05 --history-floor 0.05 --inherited-weight 0.05
           cargo run --release -p interlink-worldgen-cli --example wg4_rift_seaway_profiles
-      - name: Variant C - maturity-weighted 0.60 direct
+      - name: Variant G - no explicit rift boundary/history depression
         run: |
           git checkout -- rust/interlink-worldgen/src/topography.rs
-          python3 scripts/temp-wg4-rift-profile.py --direct-scale 0.60 --base 0.10 --history-floor 0.25 --inherited-weight 0.35
-          cargo run --release -p interlink-worldgen-cli --example wg4_rift_seaway_profiles
-      - name: Variant D - maturity-weighted 0.50 direct
-        run: |
-          git checkout -- rust/interlink-worldgen/src/topography.rs
-          python3 scripts/temp-wg4-rift-profile.py --direct-scale 0.50 --base 0.10 --history-floor 0.20 --inherited-weight 0.30
+          python3 scripts/temp-wg4-rift-profile.py --direct-scale 0.00 --base 0.00 --history-floor 0.00 --inherited-weight 0.00
           cargo run --release -p interlink-worldgen-cli --example wg4_rift_seaway_profiles
