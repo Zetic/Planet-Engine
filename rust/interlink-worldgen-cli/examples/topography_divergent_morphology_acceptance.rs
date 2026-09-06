@@ -1,7 +1,8 @@
 use interlink_worldgen::{
     build_icosphere, generate_crust_and_history, generate_initial_topography, generate_lithosphere,
-    generate_tectonics, inherit_boundary_interfaces, inherit_physical_state, GeologicalBoundaryRegime,
-    GeologyRequest, LithosphereRequest, PlanetPhysicalParameters, TectonicsRequest, TopographyRequest,
+    generate_tectonics, inherit_boundary_interfaces, inherit_physical_state,
+    GeologicalBoundaryRegime, GeologyRequest, LithosphereRequest, PlanetPhysicalParameters,
+    TectonicsRequest, TopographyRequest,
 };
 
 const CRUST_CONTINENTAL: u8 = 3;
@@ -105,8 +106,9 @@ fn main() -> Result<(), String> {
     for seed in seeds {
         let tectonics = generate_tectonics(&coarse, &TectonicsRequest::new(seed, plates), planet)
             .map_err(|error| error.to_string())?;
-        let geology = generate_crust_and_history(&coarse, &tectonics, &GeologyRequest::new(seed), planet)
-            .map_err(|error| error.to_string())?;
+        let geology =
+            generate_crust_and_history(&coarse, &tectonics, &GeologyRequest::new(seed), planet)
+                .map_err(|error| error.to_string())?;
         let lithosphere = generate_lithosphere(
             &coarse,
             &tectonics,
@@ -123,14 +125,9 @@ fn main() -> Result<(), String> {
             planet,
         )
         .map_err(|error| error.to_string())?;
-        let boundaries = inherit_boundary_interfaces(
-            &coarse,
-            &fine,
-            &tectonics,
-            &geology,
-            &inherited.plate_ids,
-        )
-        .map_err(|error| error.to_string())?;
+        let boundaries =
+            inherit_boundary_interfaces(&coarse, &fine, &tectonics, &geology, &inherited.plate_ids)
+                .map_err(|error| error.to_string())?;
         let terrain = generate_initial_topography(
             &fine,
             &inherited,
@@ -161,7 +158,10 @@ fn main() -> Result<(), String> {
     );
 
     if aggregate.component_count > 155 {
-        return Err("WG-4 pure-oceanic ridge land remains too fragmented into emergent island components".into());
+        return Err(
+            "WG-4 pure-oceanic ridge land remains too fragmented into emergent island components"
+                .into(),
+        );
     }
     if aggregate.large_component_count > 90 {
         return Err("WG-4 produces too many large emergent pure-oceanic ridge components".into());
