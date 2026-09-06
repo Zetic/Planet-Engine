@@ -35,8 +35,3 @@ replace_once(
     'Stage identity is `terrain:initial-topography@2` with namespace `terrain:structure:v1`.',
     'Stage identity is `terrain:initial-topography@3` with namespace `terrain:structure:v1`.',
 )
-replace_once(
-    ".github/workflows/ci.yml",
-    '      - name: Smoke-test WG-6A drainage topology\n        run: bash scripts/check-wg6a-drainage.sh',
-    '      - name: WG-4 L5→L7 boundary-emergence acceptance\n        run: cargo run --release -p interlink-worldgen-cli --example topography_boundary_acceptance\n      - name: Smoke-test WG-6A drainage topology\n        run: bash scripts/check-wg6a-drainage.sh',
-)
