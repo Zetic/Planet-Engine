@@ -5,6 +5,8 @@ from pathlib import Path
 parser = argparse.ArgumentParser()
 parser.add_argument("--ridge-direct", type=float, default=0.50)
 parser.add_argument("--ridge-history-m", type=float, default=500.0)
+parser.add_argument("--continental-rift-direct", type=float, default=0.10)
+parser.add_argument("--continental-rift-width-m", type=float, default=450_000.0)
 parser.add_argument("--continental-rift-basin-reduction", type=float, default=0.0)
 args = parser.parse_args()
 
@@ -21,6 +23,19 @@ old = "p.ridge_uplift_scale_m * ridge_kernel + 500.0 * f64::from(inherited.ridge
 new = f"p.ridge_uplift_scale_m * ridge_kernel + {args.ridge_history_m:.1f} * f64::from(inherited.ridge_history[i]);"
 if old not in text:
     raise SystemExit("ridge history uplift expression drifted")
+text = text.replace(old, new, 1)
+
+old = "const CONTINENTAL_RIFT_DIRECT_RESPONSE_SCALE: f64 = 0.10;"
+new = f"const CONTINENTAL_RIFT_DIRECT_RESPONSE_SCALE: f64 = {args.continental_rift_direct:.2f};"
+if old not in text:
+    raise SystemExit("continental-rift direct-response constant drifted")
+text = text.replace(old, new, 1)
+
+old = "            rift_width_m: 450_000.0,"
+width = f"{int(args.continental_rift_width_m):_}.0"
+new = f"            rift_width_m: {width},"
+if old not in text:
+    raise SystemExit("continental-rift width default drifted")
 text = text.replace(old, new, 1)
 
 if args.continental_rift_basin_reduction > 0.0:
