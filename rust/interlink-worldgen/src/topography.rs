@@ -7,7 +7,7 @@ use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 
 pub const TOPOGRAPHY_STAGE_ID: &str = "terrain:initial-topography";
-pub const TOPOGRAPHY_STAGE_VERSION: u32 = 6;
+pub const TOPOGRAPHY_STAGE_VERSION: u32 = 7;
 const TOPOGRAPHY_NAMESPACE: &str = "terrain:structure:v1";
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
@@ -16,7 +16,7 @@ const CRUST_OCEANIC: u8 = 1;
 const CRUST_TRANSITIONAL: u8 = 2;
 const STRUCTURE_SUTURE: u8 = 1;
 const STRUCTURE_RIFT: u8 = 2;
-const OCEANIC_RIDGE_DIRECT_RESPONSE_SCALE: f64 = 0.10;
+const OCEANIC_RIDGE_DIRECT_RESPONSE_SCALE: f64 = 0.03;
 const OCEANIC_RIDGE_BASE_RESPONSE: f64 = 0.10;
 const CONTINENTAL_RIFT_DIRECT_RESPONSE_SCALE: f64 = 0.10;
 const CONTINENTAL_RIFT_BASE_RESPONSE: f64 = 0.05;
@@ -413,8 +413,9 @@ fn boundary_source_fields(
                 ridge[b] = ridge[b].max(strength);
             }
             GeologicalBoundaryRegime::TransitionalDivergence => {
-                ridge[a] = ridge[a].max(0.35 + 0.65 * divergence);
-                ridge[b] = ridge[b].max(0.35 + 0.65 * divergence);
+                let strength = 0.45 * (0.10 + 0.90 * divergence);
+                ridge[a] = ridge[a].max(strength);
+                ridge[b] = ridge[b].max(strength);
             }
             GeologicalBoundaryRegime::ContinentalRift => {
                 let strength = CONTINENTAL_RIFT_DIRECT_RESPONSE_SCALE
@@ -667,8 +668,14 @@ pub fn generate_initial_topography(
             gaussian(collision_distance[i], p.collision_width_m)
                 * collision_sources[collision_source[i] as usize]
         };
-        orogenic[i] = p.inherited_orogeny_scale_m * f64::from(inherited.orogenic_history[i])
-            + p.collision_uplift_scale_m * collision_kernel * collision_focus;
+        let collision_crust_scale = match inherited.crust_kind[i] {
+            CRUST_OCEANIC => 0.05,
+            CRUST_TRANSITIONAL => 0.35,
+            _ => 1.0,
+        };
+        orogenic[i] = collision_crust_scale
+            * (p.inherited_orogeny_scale_m * f64::from(inherited.orogenic_history[i])
+                + p.collision_uplift_scale_m * collision_kernel * collision_focus);
 
         let ridge_kernel = if ridge_source[i] == u32::MAX {
             0.0
@@ -676,7 +683,7 @@ pub fn generate_initial_topography(
             gaussian(ridge_distance[i], p.ridge_width_m) * ridge_sources[ridge_source[i] as usize]
         };
         ridge[i] =
-            p.ridge_uplift_scale_m * ridge_kernel + 75.0 * f64::from(inherited.ridge_history[i]);
+            p.ridge_uplift_scale_m * ridge_kernel + 25.0 * f64::from(inherited.ridge_history[i]);
 
         let rift_kernel = if rift_source[i] == u32::MAX {
             0.0
@@ -711,9 +718,15 @@ pub fn generate_initial_topography(
             offset_gaussian(arc_distance[i], p.arc_peak_offset_m, p.arc_width_m)
                 * arc_sources[arc_source[i] as usize]
         };
+        let arc_crust_scale = match inherited.crust_kind[i] {
+            CRUST_OCEANIC => 0.75,
+            CRUST_TRANSITIONAL => 0.90,
+            _ => 1.0,
+        };
         arc[i] = p.arc_uplift_scale_m
             * arc_kernel
-            * (0.65 + 0.35 * f64::from(inherited.volcanic_arc_history[i]));
+            * (0.65 + 0.35 * f64::from(inherited.volcanic_arc_history[i]))
+            * arc_crust_scale;
 
         mantle[i] = p.mantle_dynamic_scale_m * f64::from(inherited.mantle_dynamic_support_index[i]);
     }

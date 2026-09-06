@@ -140,10 +140,7 @@ fn assert_regime(
         stats.oceanic_context_either_land,
         stats.oceanic_context_edges,
     );
-    let both_land = percentage(
-        stats.oceanic_context_both_land,
-        stats.oceanic_context_edges,
-    );
+    let both_land = percentage(stats.oceanic_context_both_land, stats.oceanic_context_edges);
     println!(
         "{:28} ocean_edges={} ocean_any={:.2}% ocean_both={:.2}% chain_edges={} chains={} max_chain={}",
         label(regime),
@@ -198,8 +195,9 @@ fn main() -> Result<(), String> {
     for seed in seeds {
         let tectonics = generate_tectonics(&coarse, &TectonicsRequest::new(seed, 16), planet)
             .map_err(|error| error.to_string())?;
-        let geology = generate_crust_and_history(&coarse, &tectonics, &GeologyRequest::new(seed), planet)
-            .map_err(|error| error.to_string())?;
+        let geology =
+            generate_crust_and_history(&coarse, &tectonics, &GeologyRequest::new(seed), planet)
+                .map_err(|error| error.to_string())?;
         let lithosphere = generate_lithosphere(
             &coarse,
             &tectonics,
@@ -207,23 +205,12 @@ fn main() -> Result<(), String> {
             &LithosphereRequest::new(seed),
         )
         .map_err(|error| error.to_string())?;
-        let inherited = inherit_physical_state(
-            &fine,
-            5,
-            &tectonics,
-            &geology,
-            &lithosphere,
-            planet,
-        )
-        .map_err(|error| error.to_string())?;
-        let boundaries = inherit_boundary_interfaces(
-            &coarse,
-            &fine,
-            &tectonics,
-            &geology,
-            &inherited.plate_ids,
-        )
-        .map_err(|error| error.to_string())?;
+        let inherited =
+            inherit_physical_state(&fine, 5, &tectonics, &geology, &lithosphere, planet)
+                .map_err(|error| error.to_string())?;
+        let boundaries =
+            inherit_boundary_interfaces(&coarse, &fine, &tectonics, &geology, &inherited.plate_ids)
+                .map_err(|error| error.to_string())?;
         let terrain = generate_initial_topography(
             &fine,
             &inherited,
