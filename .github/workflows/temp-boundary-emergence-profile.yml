@@ -15,20 +15,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Balanced strong suppression - 60 percent oceanic arcs
+      - name: High-arc balanced strong suppression
         run: |
           git checkout -- rust/interlink-worldgen/src/topography.rs
-          python3 scripts/temp-boundary-emergence-transform.py balanced
-          cargo run --release -p interlink-worldgen-cli --example temp_boundary_emergence_profile
-          cargo run --release -p interlink-worldgen-cli --example temp_arc_emergence_profile
-          cargo run --release -p interlink-worldgen-cli --example topography_boundary_acceptance || true
-          cargo run --release -p interlink-worldgen-cli --example topography_rift_acceptance || true
-          cargo run --release -p interlink-worldgen-cli --example topography_divergent_morphology_acceptance || true
-
-      - name: Balanced strong suppression - 75 percent oceanic arcs
-        run: |
-          git checkout -- rust/interlink-worldgen/src/topography.rs
-          python3 scripts/temp-boundary-emergence-transform.py balanced2
+          python3 scripts/temp-boundary-emergence-transform.py balanced3
           cargo run --release -p interlink-worldgen-cli --example temp_boundary_emergence_profile
           cargo run --release -p interlink-worldgen-cli --example temp_arc_emergence_profile
           cargo run --release -p interlink-worldgen-cli --example topography_boundary_acceptance || true
