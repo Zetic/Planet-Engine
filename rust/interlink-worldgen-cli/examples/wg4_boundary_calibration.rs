@@ -1,9 +1,10 @@
 use interlink_worldgen::{
     build_icosphere, generate_crust_and_history, generate_initial_topography, generate_lithosphere,
     generate_tectonics, inherit_boundary_interfaces, inherit_physical_state, GeologicalBoundaryRegime,
-    GeologyRequest, LithosphereRequest, PlanetPhysicalParameters, TectonicsRequest, TopographyRequest,
+    GeologyRequest, LithosphereRequest, PlanetPhysicalParameters, TectonicsRequest, TopographyParameters,
+    TopographyRequest,
 };
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 #[derive(Clone, Copy, Debug, Default)]
 struct RegimeStats {
@@ -14,6 +15,14 @@ struct RegimeStats {
     relative_elevation_sum_m: f64,
     submerged_depth_sum_m: f64,
     submerged_endpoints: u64,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct GlobalStats {
+    land_fraction_sum: f64,
+    mean_land_elevation_sum_m: f64,
+    mean_ocean_depth_sum_m: f64,
+    p95_sum_m: f64,
 }
 
 fn label(regime: GeologicalBoundaryRegime) -> &'static str {
@@ -36,21 +45,32 @@ fn main() -> Result<(), String> {
     let planet = PlanetPhysicalParameters::earthlike_reference();
     let coarse = build_icosphere(coarse_level).map_err(|error| error.to_string())?;
     let fine = build_icosphere(fine_level).map_err(|error| error.to_string())?;
-    let mut aggregate: BTreeMap<&'static str, RegimeStats> = BTreeMap::new();
-    let mut land_fraction_sum = 0.0_f64;
-    let mut mean_land_elevation_sum = 0.0_f64;
-    let mut mean_ocean_depth_sum = 0.0_f64;
 
-    println!("WG-4 boundary-emergence calibration baseline");
+    let mut profiles = Vec::new();
+    let baseline = TopographyParameters::default();
+    profiles.push(("baseline-2000x600", baseline));
+    let mut moderate = baseline;
+    moderate.ridge_uplift_scale_m = 1_500.0;
+    moderate.ridge_width_m = 500_000.0;
+    profiles.push(("ridge-1500x500", moderate));
+    let mut low = baseline;
+    low.ridge_uplift_scale_m = 1_200.0;
+    low.ridge_width_m = 450_000.0;
+    profiles.push(("ridge-1200x450", low));
+    let mut narrow = baseline;
+    narrow.ridge_uplift_scale_m = 1_400.0;
+    narrow.ridge_width_m = 400_000.0;
+    profiles.push(("ridge-1400x400", narrow));
+
+    println!("WG-4 boundary-emergence ridge profile comparison");
     println!("coarse=L{coarse_level} fine=L{fine_level} plates={plates} seeds={}", seeds.len());
 
+    let mut aggregate: BTreeMap<&'static str, (GlobalStats, BTreeMap<&'static str, RegimeStats>)> =
+        BTreeMap::new();
+
     for seed in seeds {
-        let tectonics = generate_tectonics(
-            &coarse,
-            &TectonicsRequest::new(seed, plates),
-            planet,
-        )
-        .map_err(|error| error.to_string())?;
+        let tectonics = generate_tectonics(&coarse, &TectonicsRequest::new(seed, plates), planet)
+            .map_err(|error| error.to_string())?;
         let geology = generate_crust_and_history(
             &coarse,
             &tectonics,
@@ -82,104 +102,80 @@ fn main() -> Result<(), String> {
             &inherited.plate_ids,
         )
         .map_err(|error| error.to_string())?;
-        let terrain = generate_initial_topography(
-            &fine,
-            &inherited,
-            &boundaries,
-            planet,
-            &TopographyRequest::new(seed),
-        )
-        .map_err(|error| error.to_string())?;
 
-        land_fraction_sum += terrain.metrics.land_area_fraction;
-        mean_land_elevation_sum += terrain.metrics.mean_land_elevation_m;
-        mean_ocean_depth_sum += terrain.metrics.mean_water_depth_m;
+        for (profile, parameters) in &profiles {
+            let request = TopographyRequest {
+                seed: seed.to_owned(),
+                parameters: *parameters,
+            };
+            let terrain = generate_initial_topography(&fine, &inherited, &boundaries, planet, &request)
+                .map_err(|error| error.to_string())?;
+            let entry = aggregate.entry(*profile).or_default();
+            entry.0.land_fraction_sum += terrain.metrics.land_area_fraction;
+            entry.0.mean_land_elevation_sum_m += terrain.metrics.mean_land_elevation_m;
+            entry.0.mean_ocean_depth_sum_m += terrain.metrics.mean_water_depth_m;
+            entry.0.p95_sum_m += terrain.metrics.p95_solid_elevation_m;
 
-        println!(
-            "seed={seed} land={:.3}% mean_land={:.1}m mean_ocean_depth={:.1}m p95={:.1}m boundaries={}",
-            terrain.metrics.land_area_fraction * 100.0,
-            terrain.metrics.mean_land_elevation_m,
-            terrain.metrics.mean_water_depth_m,
-            terrain.metrics.p95_solid_elevation_m,
-            boundaries.boundaries.len()
-        );
-
-        let mut per_seed: BTreeMap<&'static str, RegimeStats> = BTreeMap::new();
-        let mut unique_boundary_samples = BTreeSet::new();
-        let mut unique_land_boundary_samples = BTreeSet::new();
-
-        for edge in &boundaries.boundaries {
-            let name = label(edge.geological_regime);
-            let stats = per_seed.entry(name).or_default();
-            stats.edges += 1;
-            let a = edge.sample_a as usize;
-            let b = edge.sample_b as usize;
-            let a_land = terrain.submerged_mask[a] == 0;
-            let b_land = terrain.submerged_mask[b] == 0;
-            stats.endpoints += 2;
-            stats.land_endpoints += u64::from(a_land) + u64::from(b_land);
-            stats.both_land_edges += u64::from(a_land && b_land);
-            for sample in [a, b] {
-                stats.relative_elevation_sum_m += f64::from(terrain.elevation_above_sea_level_m[sample]);
-                if terrain.submerged_mask[sample] != 0 {
-                    stats.submerged_depth_sum_m += f64::from(terrain.water_depth_m[sample]);
-                    stats.submerged_endpoints += 1;
+            let mut seed_ridge = RegimeStats::default();
+            for edge in &boundaries.boundaries {
+                let stats = entry.1.entry(label(edge.geological_regime)).or_default();
+                stats.edges += 1;
+                let a = edge.sample_a as usize;
+                let b = edge.sample_b as usize;
+                let a_land = terrain.submerged_mask[a] == 0;
+                let b_land = terrain.submerged_mask[b] == 0;
+                stats.endpoints += 2;
+                stats.land_endpoints += u64::from(a_land) + u64::from(b_land);
+                stats.both_land_edges += u64::from(a_land && b_land);
+                for sample in [a, b] {
+                    stats.relative_elevation_sum_m +=
+                        f64::from(terrain.elevation_above_sea_level_m[sample]);
+                    if terrain.submerged_mask[sample] != 0 {
+                        stats.submerged_depth_sum_m += f64::from(terrain.water_depth_m[sample]);
+                        stats.submerged_endpoints += 1;
+                    }
                 }
-                unique_boundary_samples.insert(sample);
-                if terrain.submerged_mask[sample] == 0 {
-                    unique_land_boundary_samples.insert(sample);
+                if edge.geological_regime == GeologicalBoundaryRegime::OceanicRidge {
+                    seed_ridge.edges += 1;
+                    seed_ridge.endpoints += 2;
+                    seed_ridge.land_endpoints += u64::from(a_land) + u64::from(b_land);
+                    seed_ridge.both_land_edges += u64::from(a_land && b_land);
                 }
             }
-        }
-
-        let unique_fraction = if unique_boundary_samples.is_empty() {
-            0.0
-        } else {
-            unique_land_boundary_samples.len() as f64 / unique_boundary_samples.len() as f64
-        };
-        println!(
-            "  unique_boundary_samples={} land_unique={:.2}%",
-            unique_boundary_samples.len(),
-            unique_fraction * 100.0
-        );
-
-        for (name, stats) in &per_seed {
-            let land_pct = if stats.endpoints == 0 { 0.0 } else { stats.land_endpoints as f64 * 100.0 / stats.endpoints as f64 };
-            let both_land_pct = if stats.edges == 0 { 0.0 } else { stats.both_land_edges as f64 * 100.0 / stats.edges as f64 };
-            let mean_relative = if stats.endpoints == 0 { 0.0 } else { stats.relative_elevation_sum_m / stats.endpoints as f64 };
-            let mean_submerged_depth = if stats.submerged_endpoints == 0 { 0.0 } else { stats.submerged_depth_sum_m / stats.submerged_endpoints as f64 };
-            println!(
-                "  {name}: edges={} endpoint_land={land_pct:.2}% both_land={both_land_pct:.2}% mean_rel={mean_relative:.1}m mean_submerged_depth={mean_submerged_depth:.1}m",
-                stats.edges
-            );
-            let total = aggregate.entry(*name).or_default();
-            total.edges += stats.edges;
-            total.endpoints += stats.endpoints;
-            total.land_endpoints += stats.land_endpoints;
-            total.both_land_edges += stats.both_land_edges;
-            total.relative_elevation_sum_m += stats.relative_elevation_sum_m;
-            total.submerged_depth_sum_m += stats.submerged_depth_sum_m;
-            total.submerged_endpoints += stats.submerged_endpoints;
+            if seed == "3" {
+                println!(
+                    "seed=3 profile={profile} land={:.2}% oceanic_ridge_endpoint_land={:.2}% both_land={:.2}%",
+                    terrain.metrics.land_area_fraction * 100.0,
+                    seed_ridge.land_endpoints as f64 * 100.0 / seed_ridge.endpoints as f64,
+                    seed_ridge.both_land_edges as f64 * 100.0 / seed_ridge.edges as f64,
+                );
+            }
         }
     }
 
     let n = seeds.len() as f64;
-    println!("aggregate:");
-    println!(
-        "  land={:.3}% mean_land={:.1}m mean_ocean_depth={:.1}m",
-        land_fraction_sum * 100.0 / n,
-        mean_land_elevation_sum / n,
-        mean_ocean_depth_sum / n
-    );
-    for (name, stats) in &aggregate {
-        let land_pct = if stats.endpoints == 0 { 0.0 } else { stats.land_endpoints as f64 * 100.0 / stats.endpoints as f64 };
-        let both_land_pct = if stats.edges == 0 { 0.0 } else { stats.both_land_edges as f64 * 100.0 / stats.edges as f64 };
-        let mean_relative = if stats.endpoints == 0 { 0.0 } else { stats.relative_elevation_sum_m / stats.endpoints as f64 };
-        let mean_submerged_depth = if stats.submerged_endpoints == 0 { 0.0 } else { stats.submerged_depth_sum_m / stats.submerged_endpoints as f64 };
+    for (profile, (global, regimes)) in &aggregate {
+        println!("profile={profile}");
         println!(
-            "  {name}: edges={} endpoint_land={land_pct:.2}% both_land={both_land_pct:.2}% mean_rel={mean_relative:.1}m mean_submerged_depth={mean_submerged_depth:.1}m",
-            stats.edges
+            "  global land={:.3}% mean_land={:.1}m mean_ocean_depth={:.1}m p95={:.1}m",
+            global.land_fraction_sum * 100.0 / n,
+            global.mean_land_elevation_sum_m / n,
+            global.mean_ocean_depth_sum_m / n,
+            global.p95_sum_m / n,
         );
+        for (name, stats) in regimes {
+            let land_pct = stats.land_endpoints as f64 * 100.0 / stats.endpoints as f64;
+            let both_land_pct = stats.both_land_edges as f64 * 100.0 / stats.edges as f64;
+            let mean_relative = stats.relative_elevation_sum_m / stats.endpoints as f64;
+            let mean_submerged_depth = if stats.submerged_endpoints == 0 {
+                0.0
+            } else {
+                stats.submerged_depth_sum_m / stats.submerged_endpoints as f64
+            };
+            println!(
+                "  {name}: endpoint_land={land_pct:.2}% both_land={both_land_pct:.2}% mean_rel={mean_relative:.1}m mean_submerged_depth={mean_submerged_depth:.1}m"
+            );
+        }
     }
     Ok(())
 }
