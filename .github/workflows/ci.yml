@@ -44,8 +44,10 @@ jobs:
           cargo run -p interlink-worldgen-cli -- topography --seed ci-wg4 --coarse-level 4 --level 6 --plates 18
           cargo run -p interlink-worldgen-cli -- climate --seed ci-wg5 --coarse-level 3 --level 4 --plates 12
           cargo run -p interlink-worldgen-cli -- profile
-      - name: WG-4 L5→L7 boundary-emergence acceptance
+      - name: WG-4 L5→L7 ridge morphology acceptance
         run: cargo run --release -p interlink-worldgen-cli --example topography_boundary_acceptance
+      - name: WG-4 L5→L7 continental-rift seaway acceptance
+        run: cargo run --release -p interlink-worldgen-cli --example topography_rift_acceptance
       - name: Smoke-test WG-6A drainage topology
         run: bash scripts/check-wg6a-drainage.sh
       - name: Smoke-test WG-6B annual runoff and discharge
