@@ -19,9 +19,9 @@ test('WG-4 browser contract remains available under protocol v18', () => {
   assert.deepEqual(worldgenTopographyCommand(77, { seed: 'wg4', coarseLevel: 4, fineLevel: 6, plateCount: 18 }), { protocolVersion: 18, requestId: 77, type: 'generate-topography', payload: { seed: 'wg4', coarseLevel: 4, fineLevel: 6, plateCount: 18 } });
 });
 
-test('Planet Engine Lab keeps every WG-3.75 and WG-4 view cumulatively through WG-7C', () => {
+test('Planet Engine Lab keeps every WG-3.75 and WG-4 view cumulatively through WG-7D', () => {
   const html = fs.readFileSync('index.html', 'utf8');
-  assert.match(html, /PLANET ENGINE · THROUGH WG-7C/);
+  assert.match(html, /PLANET ENGINE · THROUGH WG-7D/);
   assert.match(html, />Generate Planet</);
   for (const term of [
     'Elevation above sea level', 'Bathymetry', 'Isostatic support', 'Oceanic thermal subsidence', 'Orogenic / collision uplift', 'Ridge relief', 'Rift / basin subsidence', 'Trench relief', 'Volcanic arc relief',
