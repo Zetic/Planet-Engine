@@ -1,0 +1,19 @@
+name: Temp Hydroclimate Partition Profile
+
+on:
+  push:
+    branches:
+      - wg5-wg6-hydroclimate-partition-calibration
+
+permissions:
+  contents: read
+
+jobs:
+  profile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Profile L5 to L7 hydroclimate partition
+        run: cargo run --release -p interlink-worldgen-cli --example temp_hydroclimate_partition_profile
