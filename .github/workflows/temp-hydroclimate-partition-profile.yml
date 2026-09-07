@@ -15,5 +15,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Profile precipitation mechanisms
-        run: cargo run --release -p interlink-worldgen-cli --example temp_precipitation_mechanism_profile
+      - name: Profile moisture transport speeds
+        run: cargo run --release -p interlink-worldgen-cli --example temp_moisture_transport_profile
