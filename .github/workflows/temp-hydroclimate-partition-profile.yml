@@ -15,5 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Profile condensation rainout
-        run: cargo run --release -p interlink-worldgen-cli --example temp_condensation_profile
+      - name: Apply experimental land ET recycling
+        run: python scripts/temp_apply_land_et_recycling.py
+      - name: Profile recycled hydroclimate partition
+        run: cargo run --release -p interlink-worldgen-cli --example temp_hydroclimate_partition_profile
