@@ -11,11 +11,11 @@ permissions:
 jobs:
   profile:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Apply experimental land ET recycling
-        run: python scripts/temp_apply_land_et_recycling.py
-      - name: Profile recycled hydroclimate partition
-        run: cargo run --release -p interlink-worldgen-cli --example temp_hydroclimate_partition_profile
+      - name: Profile precipitation by distance inland
+        run: cargo run --release -p interlink-worldgen-cli --example temp_precipitation_inland_profile
+      - name: Compare L5 multires climate to full L7 reference for visible seed
+        run: cargo run --release -p interlink-worldgen-cli --example climate_performance -- --seed interlink-wg7c --coarse-level 5 --level 7 --plates 16 --runs 1 --compare-reference
