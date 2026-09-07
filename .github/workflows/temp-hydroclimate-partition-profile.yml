@@ -17,3 +17,5 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Profile L5 to L7 hydroclimate partition
         run: cargo run --release -p interlink-worldgen-cli --example temp_hydroclimate_partition_profile
+      - name: Profile precipitation and PET covariance
+        run: cargo run --release -p interlink-worldgen-cli --example temp_hydroclimate_covariance_profile
