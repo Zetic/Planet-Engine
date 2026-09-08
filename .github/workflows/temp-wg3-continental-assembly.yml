@@ -1,0 +1,734 @@
+name: Temp WG3 Continental Assembly
+
+on:
+  push:
+    branches:
+      - wg3-continental-assembly-diversity
+
+permissions:
+  contents: write
+
+jobs:
+  implement-and-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust stable
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - name: Implement tectonically structured continental assembly
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('rust/interlink-worldgen/src/geology.rs')
+          text = path.read_text()
+          text = text.replace('pub const GEOLOGY_STAGE_VERSION: u32 = 1;', 'pub const GEOLOGY_STAGE_VERSION: u32 = 2;')
+          text = text.replace('const GEOLOGY_NAMESPACE: &str = "worldgen:geology:crust-history:v1";', 'const GEOLOGY_NAMESPACE: &str = "worldgen:geology:crust-history:v2";')
+          text = text.replace('const CRUST_PROVINCES_NAMESPACE: &str = "worldgen:geology:crust-provinces:v1";', 'const CRUST_PROVINCES_NAMESPACE: &str = "worldgen:geology:crust-provinces:v2";')
+
+          select_start = text.index('fn select_craton_seeds<T: PlanetTopology>(')
+          select_end = text.index('fn weighted_descending_threshold<T: PlanetTopology>(', select_start)
+          select_block = r'''#[derive(Clone, Copy, Debug)]
+          struct CratonKernel {
+              host_plate: u16,
+              major_axis: [f64; 3],
+              minor_axis: [f64; 3],
+              major_radius_rad: f64,
+              minor_radius_rad: f64,
+              prominence: f64,
+          }
+
+          fn geo_cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+              [
+                  a[1] * b[2] - a[2] * b[1],
+                  a[2] * b[0] - a[0] * b[2],
+                  a[0] * b[1] - a[1] * b[0],
+              ]
+          }
+
+          fn geo_norm(value: [f64; 3]) -> f64 {
+              dot(value, value).sqrt()
+          }
+
+          fn geo_normalize(value: [f64; 3]) -> [f64; 3] {
+              let magnitude = geo_norm(value).max(1.0e-15);
+              [
+                  value[0] / magnitude,
+                  value[1] / magnitude,
+                  value[2] / magnitude,
+              ]
+          }
+
+          fn geo_scale(value: [f64; 3], scale: f64) -> [f64; 3] {
+              [value[0] * scale, value[1] * scale, value[2] * scale]
+          }
+
+          fn geo_add(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+              [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
+          }
+
+          fn continental_core_count(count: usize) -> usize {
+              ((count * 2 + 4) / 5).clamp(3, count.max(3)).min(count)
+          }
+
+          fn plate_relationships(tectonics: &TectonicModel) -> Vec<Vec<f64>> {
+              let count = tectonics.plates.len();
+              let mut sums = vec![vec![0.0_f64; count]; count];
+              let mut populations = vec![vec![0_u32; count]; count];
+              for edge in &tectonics.boundaries {
+                  let a = edge.plate_a as usize;
+                  let b = edge.plate_b as usize;
+                  if a >= count || b >= count || a == b {
+                      continue;
+                  }
+                  let rate = clamp01(edge.normal_rate_m_per_year.abs() / 0.08);
+                  let relation = match edge.kind {
+                      PlateBoundaryKind::Convergent => 0.52 + 0.34 * rate,
+                      PlateBoundaryKind::Divergent => -(0.62 + 0.30 * rate),
+                      PlateBoundaryKind::Transform => 0.10,
+                  };
+                  sums[a][b] += relation;
+                  sums[b][a] += relation;
+                  populations[a][b] += 1;
+                  populations[b][a] += 1;
+              }
+
+              let mut result = vec![vec![-0.08_f64; count]; count];
+              for a in 0..count {
+                  result[a][a] = 0.72;
+                  for b in 0..count {
+                      if populations[a][b] > 0 {
+                          result[a][b] =
+                              (sums[a][b] / f64::from(populations[a][b])).clamp(-1.0, 1.0);
+                      }
+                  }
+              }
+              result
+          }
+
+          fn select_craton_seeds<T: PlanetTopology>(
+              topology: &T,
+              tectonics: &TectonicModel,
+              relationships: &[Vec<f64>],
+              count: usize,
+              seed: u64,
+          ) -> Vec<u32> {
+              let sample_count = topology.sample_count() as usize;
+              let attempts = sample_count.clamp(768, 4096);
+              let core_count = continental_core_count(count);
+              let maximum_plate_area = tectonics
+                  .plates
+                  .iter()
+                  .map(|plate| plate.area_steradians)
+                  .fold(0.0_f64, f64::max)
+                  .max(1.0e-12);
+              let mut selected = Vec::with_capacity(count);
+
+              for index in 0..count {
+                  let satellite = index >= core_count;
+                  let independent_satellite = satellite
+                      && unit_random(
+                          seed ^ (index as u64).wrapping_mul(0x94d0_49bb_1331_11eb),
+                      ) < 0.22;
+                  let parent_index = if selected.is_empty() {
+                      0
+                  } else {
+                      (random::mix64(
+                          seed ^ (index as u64).wrapping_mul(0xd6e8_feb8_6659_fd93),
+                      ) % selected.len() as u64) as usize
+                  };
+                  let target_distance = 0.14
+                      + unit_random(
+                          seed ^ (index as u64).wrapping_mul(0xa076_1d64_78bd_642f),
+                      ) * 0.52;
+                  let mut best_sample = None;
+                  let mut best_score = f64::NEG_INFINITY;
+
+                  for attempt in 0..attempts {
+                      let stream = seed
+                          ^ (index as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15)
+                          ^ (attempt as u64).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+                      let candidate = (random::mix64(stream) % sample_count as u64) as u32;
+                      if selected.contains(&candidate) {
+                          continue;
+                      }
+                      let position = topology.unit_position(candidate);
+                      let minimum_distance = if selected.is_empty() {
+                          PI
+                      } else {
+                          selected
+                              .iter()
+                              .map(|other| arc_radians(position, topology.unit_position(*other)))
+                              .fold(PI, f64::min)
+                      };
+                      if minimum_distance < 0.055 {
+                          continue;
+                      }
+
+                      let plate = tectonics.plate_ids[candidate as usize] as usize;
+                      let plate_area_scale = tectonics
+                          .plates
+                          .get(plate)
+                          .map(|candidate_plate| candidate_plate.area_steradians / maximum_plate_area)
+                          .unwrap_or(0.0);
+                      let convergence_exposure = relationships
+                          .get(plate)
+                          .map(|row| {
+                              row.iter()
+                                  .enumerate()
+                                  .filter(|(other, _)| *other != plate)
+                                  .map(|(_, value)| value.max(0.0))
+                                  .fold(0.0_f64, f64::max)
+                          })
+                          .unwrap_or(0.0);
+                      let jitter = unit_random(stream ^ 0x8ebc_6af0_9c88_c6e3) * 0.06;
+
+                      let score = if !satellite || independent_satellite || selected.is_empty() {
+                          minimum_distance.min(1.25)
+                              + 0.22 * plate_area_scale
+                              + 0.14 * convergence_exposure
+                              + jitter
+                      } else {
+                          let parent = selected[parent_index];
+                          let parent_plate = tectonics.plate_ids[parent as usize] as usize;
+                          let parent_distance =
+                              arc_radians(position, topology.unit_position(parent));
+                          let distance_fit =
+                              1.0 - ((parent_distance - target_distance).abs() / 0.48).min(2.0);
+                          let relation = relationships
+                              .get(parent_plate)
+                              .and_then(|row| row.get(plate))
+                              .copied()
+                              .unwrap_or(-0.08);
+                          distance_fit
+                              + 0.86 * relation
+                              + 0.16 * minimum_distance.min(0.30)
+                              + 0.08 * plate_area_scale
+                              + jitter
+                      };
+
+                      if score > best_score {
+                          best_score = score;
+                          best_sample = Some(candidate);
+                      }
+                  }
+
+                  if best_sample.is_none() {
+                      best_sample = (0..topology.sample_count())
+                          .find(|candidate| !selected.contains(candidate));
+                  }
+                  selected.push(
+                      best_sample.expect("craton seed selection requires a topology sample"),
+                  );
+              }
+              selected
+          }
+
+          fn tangent_axes(
+              center: [f64; 3],
+              angular_velocity: [f64; 3],
+              rotation_rad: f64,
+          ) -> ([f64; 3], [f64; 3]) {
+              let motion = geo_cross(angular_velocity, center);
+              let base = if geo_norm(motion) > 1.0e-12 {
+                  geo_normalize(motion)
+              } else {
+                  let reference = if center[2].abs() < 0.85 {
+                      [0.0, 0.0, 1.0]
+                  } else {
+                      [1.0, 0.0, 0.0]
+                  };
+                  geo_normalize(geo_cross(reference, center))
+              };
+              let side = geo_normalize(geo_cross(center, base));
+              let major = geo_normalize(geo_add(
+                  geo_scale(base, rotation_rad.cos()),
+                  geo_scale(side, rotation_rad.sin()),
+              ));
+              let minor = geo_normalize(geo_cross(center, major));
+              (major, minor)
+          }
+
+          fn elliptical_distance(
+              center: [f64; 3],
+              position: [f64; 3],
+              kernel: CratonKernel,
+          ) -> f64 {
+              let cosine = dot(center, position).clamp(-1.0, 1.0);
+              let distance = cosine.acos();
+              if distance <= 1.0e-12 {
+                  return 0.0;
+              }
+              let sine = distance.sin();
+              if sine.abs() <= 1.0e-9 {
+                  return distance / kernel.minor_radius_rad.max(1.0e-6);
+              }
+              let tangent = [
+                  (position[0] - center[0] * cosine) / sine,
+                  (position[1] - center[1] * cosine) / sine,
+                  (position[2] - center[2] * cosine) / sine,
+              ];
+              let along = distance * dot(tangent, kernel.major_axis);
+              let across = distance * dot(tangent, kernel.minor_axis);
+              ((along / kernel.major_radius_rad).powi(2)
+                  + (across / kernel.minor_radius_rad).powi(2))
+              .sqrt()
+          }
+
+          fn tectonic_boundary_bias<T: PlanetTopology>(
+              topology: &T,
+              tectonics: &TectonicModel,
+          ) -> Vec<f64> {
+              let mut current = vec![0.0_f64; topology.sample_count() as usize];
+              for edge in &tectonics.boundaries {
+                  let rate = clamp01(edge.normal_rate_m_per_year.abs() / 0.08);
+                  let contribution = match edge.kind {
+                      PlateBoundaryKind::Convergent => 0.20 + 0.10 * rate,
+                      PlateBoundaryKind::Divergent => -(0.24 + 0.12 * rate),
+                      PlateBoundaryKind::Transform => -0.02,
+                  };
+                  current[edge.sample_a as usize] += contribution;
+                  current[edge.sample_b as usize] += contribution;
+              }
+              for value in &mut current {
+                  *value = value.clamp(-1.0, 1.0);
+              }
+
+              let mut next = vec![0.0_f64; current.len()];
+              for _ in 0..3 {
+                  for sample in 0..topology.sample_count() {
+                      let neighbors = topology.neighbors(sample);
+                      let mean = neighbors
+                          .iter()
+                          .map(|neighbor| current[*neighbor as usize])
+                          .sum::<f64>()
+                          / neighbors.len() as f64;
+                      next[sample as usize] = current[sample as usize] * 0.56 + mean * 0.44;
+                  }
+                  std::mem::swap(&mut current, &mut next);
+              }
+              current
+          }
+
+          '''
+          text = text[:select_start] + select_block + text[select_end:]
+
+          build_start = text.index('fn build_crust_partition<T: PlanetTopology>(')
+          build_end = text.index('fn initial_properties<T: PlanetTopology>(', build_start)
+          build_block = r'''fn build_crust_partition<T: PlanetTopology>(
+              topology: &T,
+              tectonics: &TectonicModel,
+              province_seed: u64,
+          ) -> (Vec<u8>, Vec<u16>, Vec<u32>, Vec<f64>, Vec<f64>) {
+              let craton_count = (8
+                  + (random::mix64(province_seed ^ 0x3c6e_f372_fe94_f82b) % 11) as usize)
+                  .min(MAX_CONTINENTAL_PROVINCES)
+                  .min(topology.sample_count() as usize)
+                  .max(1);
+              let relationships = plate_relationships(tectonics);
+              let cratons = select_craton_seeds(
+                  topology,
+                  tectonics,
+                  &relationships,
+                  craton_count,
+                  province_seed,
+              );
+              let core_count = continental_core_count(cratons.len());
+              let broad_fabric =
+                  smooth_random_field(topology, province_seed ^ 0x97c2_9b3a_5f61_13d7, 8);
+              let edge_fabric =
+                  smooth_random_field(topology, province_seed ^ 0x243f_6a88_85a3_08d3, 2);
+              let boundary_bias = tectonic_boundary_bias(topology, tectonics);
+              let mut kernels = Vec::with_capacity(cratons.len());
+              let mut craton_ages = Vec::with_capacity(cratons.len());
+
+              for (index, seed_sample) in cratons.iter().copied().enumerate() {
+                  let r0 = unit_random(
+                      province_seed ^ (index as u64).wrapping_mul(0xa076_1d64_78bd_642f),
+                  );
+                  let r1 = unit_random(
+                      province_seed
+                          ^ (index as u64).wrapping_mul(0xe703_7ed1_a0b4_28db)
+                          ^ 0x8ebc_6af0_9c88_c6e3,
+                  );
+                  let r2 = unit_random(
+                      province_seed
+                          ^ (index as u64).wrapping_mul(0x5899_65cc_7537_4cc3)
+                          ^ 0x1319_8a2e_0370_7344,
+                  );
+                  let r3 = unit_random(
+                      province_seed
+                          ^ (index as u64).wrapping_mul(0x1d8e_4e27_c47d_124f)
+                          ^ 0x94d0_49bb_1331_11eb,
+                  );
+                  let r4 = unit_random(
+                      province_seed
+                          ^ (index as u64).wrapping_mul(0xd6e8_feb8_6659_fd93)
+                          ^ 0xbf58_476d_1ce4_e5b9,
+                  );
+                  let (major_radius_rad, aspect, prominence) = if index < core_count {
+                      if index == 0 || r0 > 0.68 {
+                          (0.62 + 0.38 * r1, 1.40 + 1.70 * r2, 0.20 + 0.28 * r3)
+                      } else {
+                          (0.36 + 0.34 * r1, 1.25 + 1.50 * r2, 0.05 + 0.22 * r3)
+                      }
+                  } else {
+                      (0.14 + 0.34 * r1, 1.35 + 2.50 * r2, -0.12 + 0.24 * r3)
+                  };
+                  let minor_radius_rad = (major_radius_rad / aspect).clamp(0.085, 0.58);
+                  let host_plate = tectonics.plate_ids[seed_sample as usize];
+                  let angular_velocity = tectonics
+                      .plates
+                      .get(host_plate as usize)
+                      .map(|plate| plate.angular_velocity_rad_per_myr)
+                      .unwrap_or([0.0, 0.0, 0.0]);
+                  let rotation = (r4 * 2.0 - 1.0) * if index < core_count { 0.72 } else { 1.05 };
+                  let center = topology.unit_position(seed_sample);
+                  let (major_axis, minor_axis) =
+                      tangent_axes(center, angular_velocity, rotation);
+                  kernels.push(CratonKernel {
+                      host_plate,
+                      major_axis,
+                      minor_axis,
+                      major_radius_rad,
+                      minor_radius_rad,
+                      prominence,
+                  });
+
+                  let age = 900.0
+                      + unit_random(
+                          province_seed
+                              ^ (index as u64).wrapping_mul(0x632b_b46d_0e37_1979)
+                              ^ 0x3c6e_f372_fe94_f82b,
+                      ) * 2400.0;
+                  craton_ages.push(age);
+              }
+
+              let mut affinity = vec![f64::NEG_INFINITY; topology.sample_count() as usize];
+              let mut nearest = vec![0_u16; topology.sample_count() as usize];
+              for sample in 0..topology.sample_count() {
+                  let position = topology.unit_position(sample);
+                  let sample_plate = tectonics.plate_ids[sample as usize] as usize;
+                  let mut best = f64::NEG_INFINITY;
+                  let mut best_index = 0_usize;
+                  for (index, seed_sample) in cratons.iter().copied().enumerate() {
+                      let kernel = kernels[index];
+                      let shape_distance = elliptical_distance(
+                          topology.unit_position(seed_sample),
+                          position,
+                          kernel,
+                      );
+                      let relation = relationships
+                          .get(kernel.host_plate as usize)
+                          .and_then(|row| row.get(sample_plate))
+                          .copied()
+                          .unwrap_or(-0.08);
+                      let score = 1.0 - shape_distance + kernel.prominence + 0.17 * relation;
+                      if score > best {
+                          best = score;
+                          best_index = index;
+                      }
+                  }
+                  affinity[sample as usize] = best
+                      + broad_fabric[sample as usize] * 0.30
+                      + edge_fabric[sample as usize] * 0.16
+                      + boundary_bias[sample as usize] * 0.22;
+                  nearest[sample as usize] = best_index as u16;
+              }
+
+              let continental_target =
+                  0.30 + unit_random(province_seed ^ 0x6a09_e667_f3bc_c909) * 0.12;
+              let transitional_target =
+                  0.065 + unit_random(province_seed ^ 0xbb67_ae85_84ca_a73b) * 0.04;
+              let continental_threshold =
+                  weighted_descending_threshold(topology, &affinity, continental_target);
+              let transition_threshold = weighted_descending_threshold(
+                  topology,
+                  &affinity,
+                  (continental_target + transitional_target).min(0.50),
+              );
+
+              let mut kinds = vec![CrustKind::Oceanic as u8; affinity.len()];
+              let mut provinces = vec![0_u16; affinity.len()];
+              for sample in 0..topology.sample_count() {
+                  let index = sample as usize;
+                  if affinity[index] >= continental_threshold {
+                      kinds[index] = CrustKind::Continental as u8;
+                      provinces[index] = nearest[index];
+                  } else if affinity[index] >= transition_threshold {
+                      kinds[index] = CrustKind::Transitional as u8;
+                      provinces[index] = nearest[index];
+                  } else {
+                      kinds[index] = CrustKind::Oceanic as u8;
+                      provinces[index] = OCEANIC_PROVINCE_BIT | tectonics.plate_ids[index];
+                  }
+              }
+              (kinds, provinces, cratons, craton_ages, affinity)
+          }
+
+          '''
+          text = text[:build_start] + build_block + text[build_end:]
+          path.write_text(text)
+
+          example = Path('rust/interlink-worldgen-cli/examples/continental_shape_acceptance.rs')
+          example.write_text(r'''use interlink_worldgen::{
+              build_icosphere, generate_crust_and_history, generate_tectonics, CrustKind,
+              GeodesicTopology, GeologyRequest, PlanetPhysicalParameters, TectonicsRequest,
+          };
+          use std::collections::{BTreeSet, VecDeque};
+          use std::f64::consts::PI;
+
+          #[derive(Clone, Debug)]
+          struct ComponentStats {
+              area_sr: f64,
+              perimeter_rad: f64,
+              diameter_rad: f64,
+              plate_count: usize,
+          }
+
+          fn arc(a: [f64; 3], b: [f64; 3]) -> f64 {
+              (a[0] * b[0] + a[1] * b[1] + a[2] * b[2])
+                  .clamp(-1.0, 1.0)
+                  .acos()
+          }
+
+          fn component_stats(
+              topology: &GeodesicTopology,
+              mask: &[bool],
+              plate_ids: &[u16],
+          ) -> Vec<ComponentStats> {
+              let mut visited = vec![false; mask.len()];
+              let mut components = Vec::new();
+              for start in 0..mask.len() {
+                  if !mask[start] || visited[start] {
+                      continue;
+                  }
+                  visited[start] = true;
+                  let mut queue = VecDeque::from([start]);
+                  let mut samples = Vec::new();
+                  while let Some(sample) = queue.pop_front() {
+                      samples.push(sample);
+                      for neighbor in topology.neighbors_of(sample as u32) {
+                          let index = *neighbor as usize;
+                          if mask[index] && !visited[index] {
+                              visited[index] = true;
+                              queue.push_back(index);
+                          }
+                      }
+                  }
+
+                  let mut area_sr = 0.0_f64;
+                  let mut perimeter_rad = 0.0_f64;
+                  let mut plates = BTreeSet::new();
+                  for sample in &samples {
+                      area_sr += topology.dual_area_steradians()[*sample];
+                      plates.insert(plate_ids[*sample]);
+                      for (neighbor, arc_length) in topology
+                          .neighbors_of(*sample as u32)
+                          .iter()
+                          .zip(topology.neighbor_arc_lengths_of(*sample as u32).iter())
+                      {
+                          if !mask[*neighbor as usize] {
+                              perimeter_rad += *arc_length;
+                          }
+                      }
+                  }
+
+                  let positions = topology.positions();
+                  let first = samples[0];
+                  let farthest_from_first = samples
+                      .iter()
+                      .copied()
+                      .max_by(|a, b| {
+                          arc(positions[first], positions[*a])
+                              .total_cmp(&arc(positions[first], positions[*b]))
+                      })
+                      .unwrap_or(first);
+                  let farthest = samples
+                      .iter()
+                      .copied()
+                      .max_by(|a, b| {
+                          arc(positions[farthest_from_first], positions[*a]).total_cmp(&arc(
+                              positions[farthest_from_first],
+                              positions[*b],
+                          ))
+                      })
+                      .unwrap_or(farthest_from_first);
+                  let diameter_rad = arc(positions[farthest_from_first], positions[farthest]);
+                  components.push(ComponentStats {
+                      area_sr,
+                      perimeter_rad,
+                      diameter_rad,
+                      plate_count: plates.len(),
+                  });
+              }
+              components
+          }
+
+          fn main() -> Result<(), String> {
+              let topology = build_icosphere(4).map_err(|error| error.to_string())?;
+              let planet = PlanetPhysicalParameters::earthlike_reference();
+              let seeds = [
+                  "continental-shape-a",
+                  "continental-shape-b",
+                  "continental-shape-c",
+                  "continental-shape-d",
+                  "interlink-wg7c",
+                  "3",
+              ];
+              let total_area = 4.0 * PI;
+              let mut hierarchy_worlds = 0_usize;
+              let mut elongated_worlds = 0_usize;
+              let mut noncompact_worlds = 0_usize;
+              let mut multiplate_worlds = 0_usize;
+              let mut cv_sum = 0.0_f64;
+
+              for seed in seeds {
+                  let tectonics = generate_tectonics(
+                      &topology,
+                      &TectonicsRequest::new(seed, 16),
+                      planet,
+                  )
+                  .map_err(|error| error.to_string())?;
+                  let geology = generate_crust_and_history(
+                      &topology,
+                      &tectonics,
+                      &GeologyRequest::new(seed),
+                      planet,
+                  )
+                  .map_err(|error| error.to_string())?;
+                  let continental = geology
+                      .crust_kind
+                      .iter()
+                      .map(|kind| *kind == CrustKind::Continental as u8)
+                      .collect::<Vec<_>>();
+                  let mut components = component_stats(&topology, &continental, &tectonics.plate_ids)
+                      .into_iter()
+                      .filter(|component| component.area_sr >= total_area * 0.0025)
+                      .collect::<Vec<_>>();
+                  components.sort_by(|a, b| b.area_sr.total_cmp(&a.area_sr));
+                  if components.len() < 2 {
+                      return Err(format!("{seed}: continental assembly collapsed to fewer than two significant components"));
+                  }
+
+                  let areas = components.iter().map(|component| component.area_sr).collect::<Vec<_>>();
+                  let mean = areas.iter().sum::<f64>() / areas.len() as f64;
+                  let variance = areas
+                      .iter()
+                      .map(|area| (area - mean).powi(2))
+                      .sum::<f64>()
+                      / areas.len() as f64;
+                  let cv = variance.sqrt() / mean.max(1.0e-12);
+                  cv_sum += cv;
+                  let median = areas[areas.len() / 2];
+                  let hierarchy = areas[0] / median.max(1.0e-12);
+                  let max_elongation = components
+                      .iter()
+                      .map(|component| {
+                          let equivalent_radius = (component.area_sr / PI).sqrt().max(1.0e-6);
+                          component.diameter_rad / (2.0 * equivalent_radius)
+                      })
+                      .fold(0.0_f64, f64::max);
+                  let max_compactness = components
+                      .iter()
+                      .map(|component| {
+                          component.perimeter_rad.powi(2)
+                              / (4.0 * PI * component.area_sr.max(1.0e-12))
+                      })
+                      .fold(0.0_f64, f64::max);
+                  let multiplate = components
+                      .iter()
+                      .any(|component| component.area_sr >= total_area * 0.015 && component.plate_count >= 2);
+
+                  hierarchy_worlds += usize::from(hierarchy >= 1.80);
+                  elongated_worlds += usize::from(max_elongation >= 1.25);
+                  noncompact_worlds += usize::from(max_compactness >= 1.15);
+                  multiplate_worlds += usize::from(multiplate);
+                  println!(
+                      "{seed}: components={} CV={cv:.3} largest/median={hierarchy:.3} max_elong={max_elongation:.3} max_compact={max_compactness:.3} multiplate={multiplate}",
+                      components.len()
+                  );
+              }
+
+              let coupling_seed = "continental-tectonic-coupling";
+              let tectonics_12 = generate_tectonics(
+                  &topology,
+                  &TectonicsRequest::new(coupling_seed, 12),
+                  planet,
+              )
+              .map_err(|error| error.to_string())?;
+              let tectonics_20 = generate_tectonics(
+                  &topology,
+                  &TectonicsRequest::new(coupling_seed, 20),
+                  planet,
+              )
+              .map_err(|error| error.to_string())?;
+              let geology_12 = generate_crust_and_history(
+                  &topology,
+                  &tectonics_12,
+                  &GeologyRequest::new(coupling_seed),
+                  planet,
+              )
+              .map_err(|error| error.to_string())?;
+              let geology_20 = generate_crust_and_history(
+                  &topology,
+                  &tectonics_20,
+                  &GeologyRequest::new(coupling_seed),
+                  planet,
+              )
+              .map_err(|error| error.to_string())?;
+              let changed_fraction = geology_12
+                  .crust_kind
+                  .iter()
+                  .zip(geology_20.crust_kind.iter())
+                  .filter(|(a, b)| a != b)
+                  .count() as f64
+                  / geology_12.crust_kind.len() as f64;
+              println!("plate-layout coupling changed crust-kind fraction={changed_fraction:.4}");
+
+              let world_count = seeds.len() as f64;
+              let mean_cv = cv_sum / world_count;
+              if hierarchy_worlds < 4 {
+                  return Err(format!("only {hierarchy_worlds}/6 worlds show a material continental size hierarchy"));
+              }
+              if elongated_worlds < 4 {
+                  return Err(format!("only {elongated_worlds}/6 worlds contain a materially elongated continental component"));
+              }
+              if noncompact_worlds < 4 {
+                  return Err(format!("only {noncompact_worlds}/6 worlds contain a non-circular continental outline"));
+              }
+              if multiplate_worlds < 3 {
+                  return Err(format!("only {multiplate_worlds}/6 worlds assemble a major continent across tectonic domains"));
+              }
+              if mean_cv < 0.55 {
+                  return Err(format!("ensemble continental component-size CV remained too uniform: {mean_cv:.3}"));
+              }
+              if changed_fraction < 0.03 {
+                  return Err(format!("continental partition remains effectively independent of tectonic plate layout: changed={changed_fraction:.4}"));
+              }
+              Ok(())
+          }
+          ''')
+          PY
+      - name: Format WG-3 changes
+        run: cargo fmt --all
+      - name: Test WG-3 geology ensemble
+        run: cargo test -p interlink-worldgen --test geology_ensemble -- --nocapture
+      - name: Run continental shape acceptance
+        run: cargo run --release -p interlink-worldgen-cli --example continental_shape_acceptance
+      - name: Test WG-3 unit surface
+        run: cargo test -p interlink-worldgen geology -- --nocapture
+      - name: Commit validated implementation
+        run: |
+          if git diff --quiet -- rust/interlink-worldgen/src/geology.rs rust/interlink-worldgen-cli/examples/continental_shape_acceptance.rs; then
+            echo "WG-3 implementation already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add rust/interlink-worldgen/src/geology.rs rust/interlink-worldgen-cli/examples/continental_shape_acceptance.rs
+          git commit -m "feat(worldgen): diversify tectonic continental assembly [skip ci]"
+          git push
