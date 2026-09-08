@@ -24,7 +24,8 @@ jobs:
 
           climate = Path('rust/interlink-worldgen/src/climate.rs')
           text = climate.read_text()
-          replacements = [
+
+          unique_replacements = [
               ('pub const CLIMATE_STAGE_VERSION: u32 = 6;', 'pub const CLIMATE_STAGE_VERSION: u32 = 7;'),
               (
                   '    pub evaporation_energy_fraction: f64,\n    pub moisture_transport_minimum_substeps: u8,',
@@ -35,27 +36,26 @@ jobs:
                   '            evaporation_energy_fraction: 0.45,\n            land_potential_evaporation_energy_fraction: 0.70,\n            moisture_transport_minimum_substeps: 4,',
               ),
               (
-                  '            self.evaporation_energy_fraction,\n            self.moisture_transport_cfl_limit,',
-                  '            self.evaporation_energy_fraction,\n            self.land_potential_evaporation_energy_fraction,\n            self.moisture_transport_cfl_limit,',
-              ),
-              (
                   '''        if !self.evaporation_energy_fraction.is_finite()\n            || self.evaporation_energy_fraction <= 0.0\n            || self.evaporation_energy_fraction > 1.0\n        {\n            return Err("evaporation energy fraction must be finite and within (0, 1]");\n        }\n''',
                   '''        if !self.evaporation_energy_fraction.is_finite()\n            || self.evaporation_energy_fraction <= 0.0\n            || self.evaporation_energy_fraction > 1.0\n        {\n            return Err("evaporation energy fraction must be finite and within (0, 1]");\n        }\n        if !self.land_potential_evaporation_energy_fraction.is_finite()\n            || self.land_potential_evaporation_energy_fraction <= 0.0\n            || self.land_potential_evaporation_energy_fraction > 1.0\n        {\n            return Err(\n                "land potential-evaporation energy fraction must be finite and within (0, 1]",\n            );\n        }\n''',
-              ),
-              (
-                  '''            self.evaporation_bulk_transfer_coefficient,\n            self.evaporation_energy_fraction,\n            self.moisture_transport_cfl_limit,''',
-                  '''            self.evaporation_bulk_transfer_coefficient,\n            self.evaporation_energy_fraction,\n            self.land_potential_evaporation_energy_fraction,\n            self.moisture_transport_cfl_limit,''',
               ),
               (
                   '''                    // PET is a reduced potential surface-water demand, not an\n                    // unlimited aerodynamic saturation-deficit integral. Bound\n                    // land demand by the same latent-energy availability used\n                    // for ocean evaporation so exported aridity remains causal\n                    // to the accepted surface energy budget. Ocean PET remains\n                    // the raw requested flux because actual ocean evaporation\n                    // is energy-limited globally below.\n                    let diagnostic_potential_mass = if ocean[i] {\n                        potential_mass\n                    } else {\n                        let energy_limited_mass = parameters.evaporation_energy_fraction\n                            * absorbed_surface_energy_w_m2[i]\n                            * cell_area_m2[i]\n                            * phase_seconds\n                            / LATENT_HEAT_VAPORIZATION_J_PER_KG;\n                        potential_mass.min(energy_limited_mass.max(0.0))\n                    };''',
                   '''                    // Ocean PET remains the raw aerodynamic request because actual\n                    // ocean evaporation is energy-limited globally below. Land PET is\n                    // potential surface-water demand, so it must not collapse toward\n                    // realized evaporation merely because the overlying air is humid.\n                    // Use a distinct latent-energy availability fraction for that\n                    // potential demand while leaving the conserved ocean moisture source\n                    // and its evaporation_energy_fraction unchanged.\n                    let diagnostic_potential_mass = if ocean[i] {\n                        potential_mass\n                    } else {\n                        let energy_limited_mass = parameters\n                            .land_potential_evaporation_energy_fraction\n                            * absorbed_surface_energy_w_m2[i]\n                            * cell_area_m2[i]\n                            * phase_seconds\n                            / LATENT_HEAT_VAPORIZATION_J_PER_KG;\n                        energy_limited_mass.max(0.0)\n                    };''',
               ),
           ]
-          for old, new in replacements:
+          for old, new in unique_replacements:
               count = text.count(old)
               if count != 1:
-                  raise SystemExit(f'climate patch target count {count}: {old[:100]!r}')
+                  raise SystemExit(f'unique climate patch target count {count}: {old[:100]!r}')
               text = text.replace(old, new, 1)
+
+          repeated = '            self.evaporation_energy_fraction,\n            self.moisture_transport_cfl_limit,'
+          repeated_new = '            self.evaporation_energy_fraction,\n            self.land_potential_evaporation_energy_fraction,\n            self.moisture_transport_cfl_limit,'
+          count = text.count(repeated)
+          if count != 2:
+              raise SystemExit(f'expected two climate parameter-list sites, found {count}')
+          text = text.replace(repeated, repeated_new)
           climate.write_text(text)
 
           hydro_test = Path('rust/interlink-worldgen/tests/hydroclimate_closure.rs')
@@ -136,12 +136,8 @@ jobs:
               let mut maximum_seed_runoff_fraction = 0.0_f64;
 
               for seed in SEEDS {
-                  let tectonics = generate_tectonics(
-                      &coarse,
-                      &TectonicsRequest::new(*seed, PLATES),
-                      planet,
-                  )
-                  .map_err(|error| error.to_string())?;
+                  let tectonics = generate_tectonics(&coarse, &TectonicsRequest::new(*seed, PLATES), planet)
+                      .map_err(|error| error.to_string())?;
                   let geology = generate_crust_and_history(
                       &coarse,
                       &tectonics,
@@ -225,8 +221,7 @@ jobs:
                   precipitation_area_sum += metrics.mean_land_precipitation_mm * area;
                   aet_area_sum += metrics.mean_land_actual_evapotranspiration_mm * area;
                   runoff_area_sum += metrics.mean_land_runoff_mm * area;
-                  maximum_seed_runoff_fraction =
-                      maximum_seed_runoff_fraction.max(metrics.land_runoff_fraction);
+                  maximum_seed_runoff_fraction = maximum_seed_runoff_fraction.max(metrics.land_runoff_fraction);
                   println!(
                       "{seed}: P={:.1} AET={:.1} R={:.1} runoff={:.1}%",
                       metrics.mean_land_precipitation_mm,
@@ -248,9 +243,7 @@ jobs:
                   maximum_seed_runoff_fraction * 100.0,
               );
 
-              if !(MIN_AGGREGATE_RUNOFF_FRACTION..=MAX_AGGREGATE_RUNOFF_FRACTION)
-                  .contains(&runoff_fraction)
-              {
+              if !(MIN_AGGREGATE_RUNOFF_FRACTION..=MAX_AGGREGATE_RUNOFF_FRACTION).contains(&runoff_fraction) {
                   return Err(format!(
                       "aggregate runoff fraction {:.3} escaped Earth-like calibration envelope [{:.3}, {:.3}]",
                       runoff_fraction,
