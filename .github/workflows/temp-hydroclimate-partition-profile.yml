@@ -15,5 +15,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Compare L6 multires climate to full L7 reference for visible seed
-        run: cargo run --release -p interlink-worldgen-cli --example climate_performance -- --seed interlink-wg7c --coarse-level 5 --level 7 --plates 16 --runs 1 --climate-level 6 --compare-reference
+      - name: Apply experimental L6 climate ceiling
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('rust/interlink-worldgen/src/climate.rs')
+          text = path.read_text()
+          old = '            maximum_global_climate_level: 5,'
+          new = '            maximum_global_climate_level: 6,'
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f'expected exactly one climate-level default, found {count}')
+          path.write_text(text.replace(old, new))
+          PY
+      - name: Profile six-seed L6 hydroclimate partition
+        run: cargo run --release -p interlink-worldgen-cli --example temp_hydroclimate_partition_profile
+      - name: Profile visible-seed L6 runoff
+        run: cargo run --release -p interlink-worldgen-cli --example runoff_performance -- --seed interlink-wg7c --coarse-level 5 --level 7 --plates 16 --runs 1
+      - name: Profile visible-seed L6 lakes
+        run: cargo run --release -p interlink-worldgen-cli --example lake_performance -- --seed interlink-wg7c --coarse-level 5 --level 7 --plates 16 --runs 1
