@@ -56,7 +56,9 @@ WG-2 intentionally stops before crustal state or terrain. Those derive from acce
 
 WG-3 introduces dense geological state on the same canonical topology:
 
-- coherent continental, transitional, and oceanic crust independent from current plate borders;
+- coherent continental, transitional, and oceanic crust that is not synonymous with current plate ownership;
+- multi-scale continental cores, terranes, and microcontinental satellites with varied size and anisotropic shape;
+- continental assembly informed by accepted plate area, motion, convergence, divergence, and cross-plate relationships without clipping crust to plate borders;
 - physical crust age, thickness, density, and relative buoyancy;
 - oceanic crust age inferred from spreading-system distance and rate;
 - convergent boundaries resolved into oceanic subduction, ocean-continent subduction, or continental collision;

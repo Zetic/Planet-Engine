@@ -13,7 +13,7 @@ planet physical parameters
         +
 seeded geology namespaces
         ↓
-coherent crustal provinces
+tectonically structured continental assembly
         ↓
 crust type / age / thickness / density / buoyancy
         ↓
@@ -32,9 +32,11 @@ The output is the causal substrate for WG-4 initial topography. WG-4 should use 
 
 WG-3 deliberately rejects the legacy simplification that an entire plate is intrinsically continental or oceanic.
 
-Crust is stored per canonical surface sample. One rigid WG-2 plate may contain continental, transitional, and oceanic crust simultaneously. Coherent proto-continental/cratonic provinces are generated independently of current plate borders, allowing current plate boundaries to cut through or combine older crustal domains.
+Crust is stored per canonical surface sample. One rigid WG-2 plate may contain continental, transitional, and oceanic crust simultaneously, and one assembled continental body may span multiple present-day WG-2 plates. Current plate borders therefore do not clip continental provinces or act as crust masks.
 
-The initial crust taxonomy is intentionally broad:
+Stage 2 does, however, use accepted WG-2 kinematics as evidence about assembly. Plate area and motion influence continental-kernel placement and orientation; convergent relationships favor clustered/assembled terranes; divergent relationships discourage cross-boundary assembly and locally reduce continental affinity. This replaces the Stage-1 assumption that continental province geometry should be invariant to a different accepted tectonic layout.
+
+The initial crust taxonomy remains intentionally broad:
 
 ```text
 Oceanic
@@ -74,11 +76,22 @@ History fields are dimensionless bounded memories/influences. They are not eleva
 
 ## Continental provinces
 
-WG-3 creates several deterministic ancient continental nuclei and a smooth spherical structural fabric. Their combined affinity is converted into physically area-weighted continental and transitional fractions rather than classifying each plate wholesale.
+WG-3 Stage 2 builds a deterministic multi-scale continental assembly rather than thresholding a collection of similarly sized circular craton blobs.
 
-The target planet remains broadly Earth-like but seed-variable. Continental interiors receive older/thicker/lower-density crust than oceanic domains. Transitional crust forms margins between the two states.
+The assembly contains two broad classes of nuclei:
 
-Current WG-2 plate borders do not clip these provinces. This permits, for example, a plate containing both a continental block and adjoining oceanic lithosphere.
+- larger continental cores, including occasional supercontinent-scale kernels;
+- smaller satellite terranes/microcontinental nuclei that preferentially cluster around compatible existing cores while retaining some independent fragments.
+
+Each nucleus has a deterministic anisotropic kernel with independently varied major radius, aspect ratio, prominence, and tangent-plane orientation. Plate angular motion supplies the initial local structural direction, then a deterministic rotation prevents every continent from aligning identically with plate motion. The resulting affinity therefore supports elongated blocks, irregular merged masses, narrow appendages, small isolated fragments, and a wider component-size hierarchy than the Stage-1 radial model.
+
+A plate-relationship matrix is derived from accepted boundary kinematics. Same-plate and convergent relationships favor continental assembly, divergent relationships oppose it, and transform/unrelated relationships exert only weak influence. A short-range boundary field further raises affinity near convergence and lowers it near divergence. These terms are deliberately subordinate to province geometry and seeded fabric so current plate borders influence history without becoming the coastline template.
+
+Two deterministic structural-fabric fields operate at different graph scales: a broad field perturbs large-scale province geometry while a shorter-scale field roughens continental margins. Their effects are bounded within the final affinity field rather than being added as elevation noise.
+
+The final continental and transitional masks are still selected by exact area-weighted thresholds. The Earth-like default remains seed-variable at approximately 30–42% continental crust plus 6.5–10.5% transitional crust. This preserves the global crust-area contract while allowing the area to be distributed among very different numbers, sizes, and shapes of continental components.
+
+Continental interiors receive older/thicker/lower-density crust than oceanic domains. Transitional crust forms margins between the two states. Current WG-2 plate borders do not clip these provinces, so a plate can contain both continental and oceanic lithosphere and an assembled continent can cross plate boundaries.
 
 ## Oceanic crust age
 
@@ -141,7 +154,7 @@ Orogenic history thickens continental/transitional crust; rift history thins it.
 
 ## Derived plate summaries
 
-Plate labels are summaries of physical truth, not generator inputs.
+Plate labels are summaries of physical truth, not crust-type labels.
 
 Each WG-2 plate receives a derived summary containing:
 
@@ -163,16 +176,22 @@ Physics should consume the continuous quantities. The categorical scale class is
 
 ## Determinism
 
-WG-3 splits deterministic identity into isolated namespaces:
+WG-3 splits deterministic identity into isolated namespaces. Stage 2 changes the crust-history and crust-province namespaces because continental assembly semantics changed, while unchanged property/history random streams retain their existing namespace identities:
 
 ```text
-worldgen:geology:crust-history:v1
-worldgen:geology:crust-provinces:v1
+worldgen:geology:crust-history:v2
+worldgen:geology:crust-provinces:v2
 worldgen:geology:crust-properties:v1
 worldgen:geology:history:v1
 ```
 
-Changing a later history calculation must not silently move the upstream continental province seeds because random draw order changed.
+Same seed + topology + accepted tectonic state remains deterministic. A materially different accepted tectonic layout is now expected to change the Stage-2 continental partition and geology identity. Changing a later history calculation must still not silently move upstream continental nuclei because random draw order changed.
+
+## Continental-assembly acceptance
+
+Permanent CI runs a six-seed connected-component acceptance over the Stage-2 continental mask. It guards against regression toward same-sized rounded components by checking component-size variation, largest-to-median size hierarchy, angular elongation, outline noncompactness, and the presence of major continental components spanning more than one present-day plate. A separate same-seed 12-plate versus 20-plate control requires the crust partition to respond materially to a changed accepted tectonic layout.
+
+These are morphology/distribution gates rather than Earth-outline matching. They constrain the generator to produce structural diversity while leaving individual seed geography free.
 
 ## Explicit non-goals
 

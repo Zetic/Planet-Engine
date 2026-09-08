@@ -44,6 +44,8 @@ jobs:
           cargo run -p interlink-worldgen-cli -- topography --seed ci-wg4 --coarse-level 4 --level 6 --plates 18
           cargo run -p interlink-worldgen-cli -- climate --seed ci-wg5 --coarse-level 3 --level 4 --plates 12
           cargo run -p interlink-worldgen-cli -- profile
+      - name: WG-3 continental assembly diversity acceptance
+        run: cargo run --release -p interlink-worldgen-cli --example continental_shape_acceptance
       - name: WG-4 L5→L7 ridge morphology acceptance
         run: cargo run --release -p interlink-worldgen-cli --example topography_boundary_acceptance
       - name: WG-4 L5→L7 connected ridge-island morphology acceptance
