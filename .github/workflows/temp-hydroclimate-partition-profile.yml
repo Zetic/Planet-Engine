@@ -15,7 +15,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Profile precipitation by distance inland
-        run: cargo run --release -p interlink-worldgen-cli --example temp_precipitation_inland_profile
-      - name: Compare L5 multires climate to full L7 reference for visible seed
-        run: cargo run --release -p interlink-worldgen-cli --example climate_performance -- --seed interlink-wg7c --coarse-level 5 --level 7 --plates 16 --runs 1 --compare-reference
+      - name: Compare L6 multires climate to full L7 reference for visible seed
+        run: cargo run --release -p interlink-worldgen-cli --example climate_performance -- --seed interlink-wg7c --coarse-level 5 --level 7 --plates 16 --runs 1 --climate-level 6 --compare-reference
