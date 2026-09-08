@@ -1,11 +1,31 @@
 use interlink_worldgen::{
-    build_icosphere, generate_crust_and_history, generate_tectonics, GeologyRequest,
+    build_icosphere, generate_crust_and_history, generate_tectonics, CrustKind, GeologyRequest,
     PlanetPhysicalParameters, TectonicsRequest,
 };
 
+fn mixed_plate_count(
+    plate_ids: &[u16],
+    crust_kind: &[u8],
+    plate_count: usize,
+) -> usize {
+    let mut seen_continental = vec![false; plate_count];
+    let mut seen_oceanic = vec![false; plate_count];
+    for (plate_id, kind) in plate_ids.iter().zip(crust_kind.iter()) {
+        let plate = *plate_id as usize;
+        if *kind == CrustKind::Oceanic as u8 {
+            seen_oceanic[plate] = true;
+        } else {
+            seen_continental[plate] = true;
+        }
+    }
+    (0..plate_count)
+        .filter(|plate| seen_continental[*plate] && seen_oceanic[*plate])
+        .count()
+}
+
 #[test]
-fn continental_crust_partition_is_inherited_truth_not_a_present_day_plate_count_artifact() {
-    let topology = build_icosphere(4).expect("WG-3 crust-independence topology");
+fn continental_crust_is_not_plate_identity_but_responds_to_accepted_tectonic_layout() {
+    let topology = build_icosphere(4).expect("WG-3 crust/plate coupling topology");
     let parameters = PlanetPhysicalParameters::earthlike_reference();
     let seed = "wg3-inherited-crust";
 
@@ -28,19 +48,35 @@ fn continental_crust_partition_is_inherited_truth_not_a_present_day_plate_count_
     )
     .expect("22-plate geology");
 
-    assert_eq!(
-        geology_10.crust_kind,
-        geology_22.crust_kind,
-        "continental/transitional/oceanic inherited crust mask must not be selected from current plate count",
+    let changed_fraction = geology_10
+        .crust_kind
+        .iter()
+        .zip(geology_22.crust_kind.iter())
+        .filter(|(left, right)| left != right)
+        .count() as f64
+        / geology_10.crust_kind.len() as f64;
+    assert!(
+        changed_fraction >= 0.03,
+        "WG-3 continental assembly must respond materially to a different accepted tectonic layout: changed={changed_fraction:.4}",
     );
 
-    for sample in 0..geology_10.crust_kind.len() {
-        if geology_10.crust_kind[sample] != interlink_worldgen::CrustKind::Oceanic as u8 {
-            assert_eq!(
-                geology_10.crust_province_id[sample],
-                geology_22.crust_province_id[sample],
-                "inherited continental/transitional province identity must remain stable across present-day plate counts",
-            );
-        }
-    }
+    let mixed_10 = mixed_plate_count(
+        &tectonics_10.plate_ids,
+        &geology_10.crust_kind,
+        tectonics_10.plates.len(),
+    );
+    let mixed_22 = mixed_plate_count(
+        &tectonics_22.plate_ids,
+        &geology_22.crust_kind,
+        tectonics_22.plates.len(),
+    );
+    assert!(
+        mixed_10 > 0 && mixed_22 > 0,
+        "plate ownership must not become synonymous with crust type: mixed plates 10={mixed_10}, 22={mixed_22}",
+    );
+
+    assert_ne!(
+        geology_10.metrics.geology_hash, geology_22.metrics.geology_hash,
+        "a different accepted tectonic layout must produce a different WG-3 geological identity",
+    );
 }
