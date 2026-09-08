@@ -6,7 +6,7 @@ fn climate_bridge_exposes_coupled_climate_and_accepted_surface() {
 
     assert_eq!(output.generator_version(), 11);
     assert_eq!(output.stage_id(), "climate:coupled-surface");
-    assert_eq!(output.stage_version(), 6);
+    assert_eq!(output.stage_version(), 7);
     assert_eq!(output.global_solver_level(), 4);
     assert_eq!(
         output.global_solver_sample_count(),

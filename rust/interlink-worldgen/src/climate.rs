@@ -5,7 +5,7 @@ use crate::{
 
 const CLIMATE_NAMESPACE: &str = "climate:v1";
 pub const CLIMATE_STAGE_ID: &str = "climate:coupled-surface";
-pub const CLIMATE_STAGE_VERSION: u32 = 6;
+pub const CLIMATE_STAGE_VERSION: u32 = 7;
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 const STEFAN_BOLTZMANN: f64 = 5.670_374_419e-8;
@@ -126,6 +126,7 @@ pub struct ClimateParameters {
     pub ocean_advection_cfl_limit: f64,
     pub evaporation_bulk_transfer_coefficient: f64,
     pub evaporation_energy_fraction: f64,
+    pub land_potential_evaporation_energy_fraction: f64,
     pub moisture_transport_minimum_substeps: u8,
     pub moisture_transport_maximum_substeps: u8,
     pub moisture_transport_cfl_limit: f64,
@@ -173,6 +174,7 @@ impl Default for ClimateParameters {
             ocean_advection_cfl_limit: 0.45,
             evaporation_bulk_transfer_coefficient: 0.0015,
             evaporation_energy_fraction: 0.45,
+            land_potential_evaporation_energy_fraction: 0.70,
             moisture_transport_minimum_substeps: 4,
             moisture_transport_maximum_substeps: 64,
             moisture_transport_cfl_limit: 0.90,
@@ -217,6 +219,7 @@ impl ClimateParameters {
             self.ocean_advection_cfl_limit,
             self.evaporation_bulk_transfer_coefficient,
             self.evaporation_energy_fraction,
+            self.land_potential_evaporation_energy_fraction,
             self.moisture_transport_cfl_limit,
             self.maximum_climatological_moisture_transport_speed_m_s,
             self.orographic_precipitation_strength,
@@ -274,6 +277,14 @@ impl ClimateParameters {
         {
             return Err("evaporation energy fraction must be finite and within (0, 1]");
         }
+        if !self.land_potential_evaporation_energy_fraction.is_finite()
+            || self.land_potential_evaporation_energy_fraction <= 0.0
+            || self.land_potential_evaporation_energy_fraction > 1.0
+        {
+            return Err(
+                "land potential-evaporation energy fraction must be finite and within (0, 1]",
+            );
+        }
         if self.ocean_current_correction_iterations > 24 {
             return Err("ocean current correction iterations exceed supported bound");
         }
@@ -315,6 +326,7 @@ impl ClimateParameters {
             self.ocean_advection_cfl_limit,
             self.evaporation_bulk_transfer_coefficient,
             self.evaporation_energy_fraction,
+            self.land_potential_evaporation_energy_fraction,
             self.moisture_transport_cfl_limit,
             self.maximum_climatological_moisture_transport_speed_m_s,
             self.convergence_precipitation_relative_humidity,
@@ -2226,22 +2238,23 @@ pub(crate) fn generate_coupled_climate_reference_internal(
                         * wind_speed
                         * (saturation_surface - q).max(0.0);
                     let potential_mass = evaporation_flux * cell_area_m2[i] * phase_seconds;
-                    // PET is a reduced potential surface-water demand, not an
-                    // unlimited aerodynamic saturation-deficit integral. Bound
-                    // land demand by the same latent-energy availability used
-                    // for ocean evaporation so exported aridity remains causal
-                    // to the accepted surface energy budget. Ocean PET remains
-                    // the raw requested flux because actual ocean evaporation
-                    // is energy-limited globally below.
+                    // Ocean PET remains the raw aerodynamic request because actual
+                    // ocean evaporation is energy-limited globally below. Land PET is
+                    // potential surface-water demand, so it must not collapse toward
+                    // realized evaporation merely because the overlying air is humid.
+                    // Use a distinct latent-energy availability fraction for that
+                    // potential demand while leaving the conserved ocean moisture source
+                    // and its evaporation_energy_fraction unchanged.
                     let diagnostic_potential_mass = if ocean[i] {
                         potential_mass
                     } else {
-                        let energy_limited_mass = parameters.evaporation_energy_fraction
+                        let energy_limited_mass = parameters
+                            .land_potential_evaporation_energy_fraction
                             * absorbed_surface_energy_w_m2[i]
                             * cell_area_m2[i]
                             * phase_seconds
                             / LATENT_HEAT_VAPORIZATION_J_PER_KG;
-                        potential_mass.min(energy_limited_mass.max(0.0))
+                        energy_limited_mass.max(0.0)
                     };
                     potential_evaporation_mass_year[i] += diagnostic_potential_mass;
                     if ocean[i] {

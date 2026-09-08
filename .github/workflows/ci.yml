@@ -58,6 +58,8 @@ jobs:
         run: bash scripts/check-wg6a-drainage.sh
       - name: Smoke-test WG-6B annual runoff and discharge
         run: bash scripts/check-wg6b-runoff.sh
+      - name: WG-5 to WG-6 hydroclimate partition acceptance
+        run: cargo run --release -p interlink-worldgen-cli --example hydroclimate_partition_acceptance
       - name: Smoke-test WG-6C lakes and realized discharge
         run: bash scripts/check-wg6c-lakes.sh
       - name: Smoke-test WG-6D seasonal hydrology
