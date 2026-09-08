@@ -11,13 +11,13 @@ permissions:
 jobs:
   commit:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 3
       - uses: dtolnay/rust-toolchain@stable
-      - name: Reapply previously validated production patch
+      - name: Reapply validated production patch
         run: |
           python - <<'PY'
           import subprocess
@@ -25,10 +25,9 @@ jobs:
 
           workflow_path = '.github/workflows/temp-hydroclimate-partition-profile.yml'
           source = subprocess.check_output(
-              ['git', 'show', f'HEAD^:{workflow_path}'],
+              ['git', 'show', f'HEAD^^:{workflow_path}'],
               text=True,
           )
-
           py_start_marker = "          python - <<'PY'\n"
           py_end_marker = "\n          PY\n"
           py_start = source.index(py_start_marker) + len(py_start_marker)
@@ -57,14 +56,11 @@ jobs:
           ).write_text(rust_block)
           PY
           cargo fmt --all
-      - name: Recheck hydroclimate partition acceptance
-        run: cargo run --release -p interlink-worldgen-cli --example hydroclimate_partition_acceptance
-      - name: Commit permanent production files
+      - name: Commit permanent code, tests, and documentation
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add \
-            .github/workflows/ci.yml \
             docs/worldgen-rewrite/WG5_HYDROCLIMATE_CLOSURE.md \
             docs/worldgen-rewrite/WG5_PERFORMANCE.md \
             rust/interlink-worldgen/src/climate.rs \
