@@ -1,4 +1,4 @@
-name: Temp Hydroclimate Partition Profile
+name: Temp Hydroclimate Partition Production
 
 on:
   push:
@@ -9,55 +9,289 @@ permissions:
   contents: write
 
 jobs:
-  profile:
+  implement:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Apply experimental split land PET energy budget
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Apply Stage-7 land PET partition closure
         run: |
           python - <<'PY'
-          import re
           from pathlib import Path
-          path = Path('rust/interlink-worldgen/src/climate.rs')
-          text = path.read_text()
-          text, n1 = re.subn(
-              r'let energy_limited_mass = parameters\.evaporation_energy_fraction\s*\n\s*\* absorbed_surface_energy_w_m2\[i\]',
-              'let energy_limited_mass = 0.70\n                            * absorbed_surface_energy_w_m2[i]',
-              text,
-              count=1,
-          )
-          text, n2 = re.subn(
-              r'potential_mass\.min\(energy_limited_mass\.max\(0\.0\)\)',
-              'energy_limited_mass.max(0.0)',
-              text,
-              count=1,
-          )
-          if (n1, n2) != (1, 1):
-              raise SystemExit(f'land PET patch counts were {(n1, n2)}')
-          path.write_text(text)
+
+          climate = Path('rust/interlink-worldgen/src/climate.rs')
+          text = climate.read_text()
+          replacements = [
+              ('pub const CLIMATE_STAGE_VERSION: u32 = 6;', 'pub const CLIMATE_STAGE_VERSION: u32 = 7;'),
+              (
+                  '    pub evaporation_energy_fraction: f64,\n    pub moisture_transport_minimum_substeps: u8,',
+                  '    pub evaporation_energy_fraction: f64,\n    pub land_potential_evaporation_energy_fraction: f64,\n    pub moisture_transport_minimum_substeps: u8,',
+              ),
+              (
+                  '            evaporation_energy_fraction: 0.45,\n            moisture_transport_minimum_substeps: 4,',
+                  '            evaporation_energy_fraction: 0.45,\n            land_potential_evaporation_energy_fraction: 0.70,\n            moisture_transport_minimum_substeps: 4,',
+              ),
+              (
+                  '            self.evaporation_energy_fraction,\n            self.moisture_transport_cfl_limit,',
+                  '            self.evaporation_energy_fraction,\n            self.land_potential_evaporation_energy_fraction,\n            self.moisture_transport_cfl_limit,',
+              ),
+              (
+                  '''        if !self.evaporation_energy_fraction.is_finite()\n            || self.evaporation_energy_fraction <= 0.0\n            || self.evaporation_energy_fraction > 1.0\n        {\n            return Err("evaporation energy fraction must be finite and within (0, 1]");\n        }\n''',
+                  '''        if !self.evaporation_energy_fraction.is_finite()\n            || self.evaporation_energy_fraction <= 0.0\n            || self.evaporation_energy_fraction > 1.0\n        {\n            return Err("evaporation energy fraction must be finite and within (0, 1]");\n        }\n        if !self.land_potential_evaporation_energy_fraction.is_finite()\n            || self.land_potential_evaporation_energy_fraction <= 0.0\n            || self.land_potential_evaporation_energy_fraction > 1.0\n        {\n            return Err(\n                "land potential-evaporation energy fraction must be finite and within (0, 1]",\n            );\n        }\n''',
+              ),
+              (
+                  '''            self.evaporation_bulk_transfer_coefficient,\n            self.evaporation_energy_fraction,\n            self.moisture_transport_cfl_limit,''',
+                  '''            self.evaporation_bulk_transfer_coefficient,\n            self.evaporation_energy_fraction,\n            self.land_potential_evaporation_energy_fraction,\n            self.moisture_transport_cfl_limit,''',
+              ),
+              (
+                  '''                    // PET is a reduced potential surface-water demand, not an\n                    // unlimited aerodynamic saturation-deficit integral. Bound\n                    // land demand by the same latent-energy availability used\n                    // for ocean evaporation so exported aridity remains causal\n                    // to the accepted surface energy budget. Ocean PET remains\n                    // the raw requested flux because actual ocean evaporation\n                    // is energy-limited globally below.\n                    let diagnostic_potential_mass = if ocean[i] {\n                        potential_mass\n                    } else {\n                        let energy_limited_mass = parameters.evaporation_energy_fraction\n                            * absorbed_surface_energy_w_m2[i]\n                            * cell_area_m2[i]\n                            * phase_seconds\n                            / LATENT_HEAT_VAPORIZATION_J_PER_KG;\n                        potential_mass.min(energy_limited_mass.max(0.0))\n                    };''',
+                  '''                    // Ocean PET remains the raw aerodynamic request because actual\n                    // ocean evaporation is energy-limited globally below. Land PET is\n                    // potential surface-water demand, so it must not collapse toward\n                    // realized evaporation merely because the overlying air is humid.\n                    // Use a distinct latent-energy availability fraction for that\n                    // potential demand while leaving the conserved ocean moisture source\n                    // and its evaporation_energy_fraction unchanged.\n                    let diagnostic_potential_mass = if ocean[i] {\n                        potential_mass\n                    } else {\n                        let energy_limited_mass = parameters\n                            .land_potential_evaporation_energy_fraction\n                            * absorbed_surface_energy_w_m2[i]\n                            * cell_area_m2[i]\n                            * phase_seconds\n                            / LATENT_HEAT_VAPORIZATION_J_PER_KG;\n                        energy_limited_mass.max(0.0)\n                    };''',
+              ),
+          ]
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'climate patch target count {count}: {old[:100]!r}')
+              text = text.replace(old, new, 1)
+          climate.write_text(text)
+
+          hydro_test = Path('rust/interlink-worldgen/tests/hydroclimate_closure.rs')
+          text = hydro_test.read_text()
+          old = '''#[test]\nfn hydroclimate_stage_and_latent_energy_parameter_are_explicit() {\n    assert_eq!(CLIMATE_STAGE_VERSION, 6);\n    let baseline = ClimateParameters::default();\n    let mut changed = baseline;\n    changed.evaporation_energy_fraction *= 0.8;\n    assert_ne!(baseline.parameter_hash(), changed.parameter_hash());\n}\n'''
+          new = '''#[test]\nfn hydroclimate_stage_and_latent_energy_parameters_are_explicit() {\n    assert_eq!(CLIMATE_STAGE_VERSION, 7);\n    let baseline = ClimateParameters::default();\n\n    let mut changed_ocean = baseline;\n    changed_ocean.evaporation_energy_fraction *= 0.8;\n    assert_ne!(baseline.parameter_hash(), changed_ocean.parameter_hash());\n\n    let mut changed_land = baseline;\n    changed_land.land_potential_evaporation_energy_fraction *= 0.8;\n    assert_ne!(baseline.parameter_hash(), changed_land.parameter_hash());\n}\n'''
+          if text.count(old) != 1:
+              raise SystemExit('hydroclimate stage test target not found exactly once')
+          hydro_test.write_text(text.replace(old, new, 1))
+
+          wasm_test = Path('rust/interlink-worldgen-wasm/tests/climate_bridge.rs')
+          text = wasm_test.read_text()
+          old = '    assert_eq!(output.stage_version(), 6);'
+          if text.count(old) != 1:
+              raise SystemExit('WASM climate stage-version target not found exactly once')
+          wasm_test.write_text(text.replace(old, '    assert_eq!(output.stage_version(), 7);', 1))
+
+          ci = Path('.github/workflows/ci.yml')
+          text = ci.read_text()
+          old = '''      - name: Smoke-test WG-6B annual runoff and discharge\n        run: bash scripts/check-wg6b-runoff.sh\n      - name: Smoke-test WG-6C lakes and realized discharge\n'''
+          new = '''      - name: Smoke-test WG-6B annual runoff and discharge\n        run: bash scripts/check-wg6b-runoff.sh\n      - name: WG-5 to WG-6 hydroclimate partition acceptance\n        run: cargo run --release -p interlink-worldgen-cli --example hydroclimate_partition_acceptance\n      - name: Smoke-test WG-6C lakes and realized discharge\n'''
+          if text.count(old) != 1:
+              raise SystemExit('CI WG-6B insertion target not found exactly once')
+          ci.write_text(text.replace(old, new, 1))
+
+          closure_doc = Path('docs/worldgen-rewrite/WG5_HYDROCLIMATE_CLOSURE.md')
+          text = closure_doc.read_text()
+          marker = '## Closure change\n'
+          addition = '''## Stage 7 hydroclimate partition recalibration\n\nStage `climate:coupled-surface@7` retains the Stage-6 multiresolution climate architecture and the accepted thermal, wind, ocean-current, moisture-transport, precipitation, snow, and sea-ice equations. It changes only the exported land potential-evaporation forcing consumed by WG-6.\n\nStage 5 made land PET resolution-stable by taking the minimum of aerodynamic saturation-deficit demand and the same `evaporation_energy_fraction` used to limit actual ocean evaporation. Downstream profiling after WG-4 `@7` showed that this conflated potential land demand with humidity-limited realized evaporation: wet cells drove the aerodynamic term toward zero, WG-6B Budyko AET stayed too small, and Earth-like seeds could exceed 80% runoff. A genuine full-L7 climate solve reproduced the same imbalance, ruling out multiresolution reconstruction as the root cause.\n\nStage 7 separates those roles. Actual ocean evaporation keeps `evaporation_energy_fraction = 0.45`, so the conserved atmospheric moisture source and precipitation physics are unchanged. Land PET uses a distinct `land_potential_evaporation_energy_fraction = 0.70` and the accepted absorbed-surface-energy field without taking a minimum against local aerodynamic humidity deficit. The value is an explicit reduced-model calibration parameter for potential surface-water demand, not a claim that 70% of surface energy is realized evapotranspiration. WG-6B retains the Fu/Budyko partition with `omega = 2.6`; WG-6C lake physics is unchanged.\n\nAcross the six-seed L5-to-L7 Earth-like acceptance ensemble, area-weighted runoff falls from roughly 72.8% before this recalibration to 46.9%, with individual seeds spanning about 34.6% to 56.2%. For `interlink-wg7c`, runoff falls from about 80.9% to 56.2% (`P=1049.3`, `AET=459.9`, `R=589.4 mm/yr`). As a downstream diagnostic, unchanged WG-6C geometry then reduces total lake area from about 8.50 million to 5.36 million km2. The remaining lake excess, if any, can therefore be investigated separately from the land-water partition.\n\nThe fixed-ancestry L6/L7 control measured mean land PET of about 2059 and 2070 mm/yr under the split formulation, roughly 0.5% drift. Precipitation-resolution behavior remains a separate Stage-6 reconstruction concern and is not altered by this closure.\n\n'''
+          if text.count(marker) != 1:
+              raise SystemExit('WG5 hydroclimate documentation marker not found exactly once')
+          closure_doc.write_text(text.replace(marker, addition + marker, 1))
+
+          performance_doc = Path('docs/worldgen-rewrite/WG5_PERFORMANCE.md')
+          text = performance_doc.read_text()
+          marker = '## Architecture\n'
+          addition = '''Stage 7 retains this Stage-6 multiresolution execution architecture. Its later hydroclimate-partition recalibration changes land PET semantics and stage identity, not the solver-resolution strategy documented here.\n\n'''
+          if text.count(marker) != 1:
+              raise SystemExit('WG5 performance documentation marker not found exactly once')
+          performance_doc.write_text(text.replace(marker, addition + marker, 1))
           PY
-      - name: Check existing WG-5 hydroclimate quality gates
+
+          cat > rust/interlink-worldgen-cli/examples/hydroclimate_partition_acceptance.rs <<'RS'
+          use interlink_worldgen::{
+              build_icosphere, generate_coupled_climate, generate_crust_and_history,
+              generate_drainage_topology, generate_initial_topography, generate_lithosphere,
+              generate_runoff_discharge, generate_tectonics, inherit_boundary_interfaces,
+              inherit_physical_state, ClimateRequest, DrainageRequest, GeologyRequest,
+              LithosphereRequest, PlanetPhysicalParameters, RunoffRequest, TectonicsRequest,
+              TopographyRequest,
+          };
+
+          const SEEDS: &[&str] = &[
+              "3",
+              "interlink-wg7c",
+              "wg4-boundary-a",
+              "wg4-boundary-b",
+              "wg4-boundary-c",
+              "wg4-boundary-d",
+          ];
+          const COARSE_LEVEL: u8 = 5;
+          const FINE_LEVEL: u8 = 7;
+          const PLATES: u16 = 16;
+          const MIN_AGGREGATE_RUNOFF_FRACTION: f64 = 0.30;
+          const MAX_AGGREGATE_RUNOFF_FRACTION: f64 = 0.55;
+          const MAXIMUM_SEED_RUNOFF_FRACTION: f64 = 0.62;
+          const MIN_AGGREGATE_AET_FRACTION: f64 = 0.40;
+          const MAXIMUM_DISCHARGE_CLOSURE_ERROR: f64 = 1.0e-10;
+
+          fn main() -> Result<(), String> {
+              let planet = PlanetPhysicalParameters::earthlike_reference();
+              let coarse = build_icosphere(COARSE_LEVEL).map_err(|error| error.to_string())?;
+              let fine = build_icosphere(FINE_LEVEL).map_err(|error| error.to_string())?;
+              let mut total_land_area_m2 = 0.0_f64;
+              let mut precipitation_area_sum = 0.0_f64;
+              let mut aet_area_sum = 0.0_f64;
+              let mut runoff_area_sum = 0.0_f64;
+              let mut maximum_seed_runoff_fraction = 0.0_f64;
+
+              for seed in SEEDS {
+                  let tectonics = generate_tectonics(
+                      &coarse,
+                      &TectonicsRequest::new(*seed, PLATES),
+                      planet,
+                  )
+                  .map_err(|error| error.to_string())?;
+                  let geology = generate_crust_and_history(
+                      &coarse,
+                      &tectonics,
+                      &GeologyRequest::new(*seed),
+                      planet,
+                  )
+                  .map_err(|error| error.to_string())?;
+                  let lithosphere = generate_lithosphere(
+                      &coarse,
+                      &tectonics,
+                      &geology,
+                      &LithosphereRequest::new(*seed),
+                  )
+                  .map_err(|error| error.to_string())?;
+                  let inherited = inherit_physical_state(
+                      &fine,
+                      COARSE_LEVEL,
+                      &tectonics,
+                      &geology,
+                      &lithosphere,
+                      planet,
+                  )
+                  .map_err(|error| error.to_string())?;
+                  let boundaries = inherit_boundary_interfaces(
+                      &coarse,
+                      &fine,
+                      &tectonics,
+                      &geology,
+                      &inherited.plate_ids,
+                  )
+                  .map_err(|error| error.to_string())?;
+                  let terrain = generate_initial_topography(
+                      &fine,
+                      &inherited,
+                      &boundaries,
+                      planet,
+                      &TopographyRequest::new(*seed),
+                  )
+                  .map_err(|error| error.to_string())?;
+                  let climate = generate_coupled_climate(
+                      &fine,
+                      &terrain,
+                      planet,
+                      &ClimateRequest::new(*seed),
+                  )
+                  .map_err(|error| error.to_string())?;
+                  let drainage = generate_drainage_topology(
+                      &fine,
+                      &terrain,
+                      planet,
+                      &DrainageRequest::new(*seed),
+                  )
+                  .map_err(|error| error.to_string())?;
+                  let runoff = generate_runoff_discharge(
+                      &fine,
+                      &terrain,
+                      &climate,
+                      &drainage,
+                      planet,
+                      &RunoffRequest::new(*seed),
+                  )
+                  .map_err(|error| error.to_string())?;
+                  let metrics = &runoff.metrics;
+                  if metrics.discharge_conservation_relative_error > MAXIMUM_DISCHARGE_CLOSURE_ERROR {
+                      return Err(format!(
+                          "{seed}: discharge closure {:.3e} exceeds {:.3e}",
+                          metrics.discharge_conservation_relative_error,
+                          MAXIMUM_DISCHARGE_CLOSURE_ERROR,
+                      ));
+                  }
+                  if metrics.land_runoff_fraction > MAXIMUM_SEED_RUNOFF_FRACTION {
+                      return Err(format!(
+                          "{seed}: runoff fraction {:.3} exceeds Earth-like ensemble ceiling {:.3}",
+                          metrics.land_runoff_fraction,
+                          MAXIMUM_SEED_RUNOFF_FRACTION,
+                      ));
+                  }
+
+                  let area = metrics.land_area_m2;
+                  total_land_area_m2 += area;
+                  precipitation_area_sum += metrics.mean_land_precipitation_mm * area;
+                  aet_area_sum += metrics.mean_land_actual_evapotranspiration_mm * area;
+                  runoff_area_sum += metrics.mean_land_runoff_mm * area;
+                  maximum_seed_runoff_fraction =
+                      maximum_seed_runoff_fraction.max(metrics.land_runoff_fraction);
+                  println!(
+                      "{seed}: P={:.1} AET={:.1} R={:.1} runoff={:.1}%",
+                      metrics.mean_land_precipitation_mm,
+                      metrics.mean_land_actual_evapotranspiration_mm,
+                      metrics.mean_land_runoff_mm,
+                      metrics.land_runoff_fraction * 100.0,
+                  );
+              }
+
+              let precipitation = precipitation_area_sum / total_land_area_m2;
+              let aet = aet_area_sum / total_land_area_m2;
+              let runoff = runoff_area_sum / total_land_area_m2;
+              let runoff_fraction = runoff_area_sum / precipitation_area_sum.max(1.0e-12);
+              let aet_fraction = aet_area_sum / precipitation_area_sum.max(1.0e-12);
+              println!(
+                  "WG-5/WG-6 hydroclimate partition acceptance: P={precipitation:.1} AET={aet:.1} R={runoff:.1} runoff={:.1}% aet={:.1}% max_seed_runoff={:.1}%",
+                  runoff_fraction * 100.0,
+                  aet_fraction * 100.0,
+                  maximum_seed_runoff_fraction * 100.0,
+              );
+
+              if !(MIN_AGGREGATE_RUNOFF_FRACTION..=MAX_AGGREGATE_RUNOFF_FRACTION)
+                  .contains(&runoff_fraction)
+              {
+                  return Err(format!(
+                      "aggregate runoff fraction {:.3} escaped Earth-like calibration envelope [{:.3}, {:.3}]",
+                      runoff_fraction,
+                      MIN_AGGREGATE_RUNOFF_FRACTION,
+                      MAX_AGGREGATE_RUNOFF_FRACTION,
+                  ));
+              }
+              if aet_fraction < MIN_AGGREGATE_AET_FRACTION {
+                  return Err(format!(
+                      "aggregate AET fraction {:.3} is below minimum {:.3}",
+                      aet_fraction, MIN_AGGREGATE_AET_FRACTION,
+                  ));
+              }
+              if ((aet + runoff) - precipitation).abs() > 1.0e-6 {
+                  return Err(format!(
+                      "aggregate annual water balance did not close: P={precipitation} AET={aet} R={runoff}",
+                  ));
+              }
+              Ok(())
+          }
+          RS
+      - name: Format and validate focused production change
         run: |
-          mkdir -p profiling-results
-          bash scripts/check-wg5-hydroclimate-closure.sh quality 2>&1 | tee profiling-results/split-land-pet-control.txt
-      - name: Profile six-seed hydroclimate partition
+          set -o pipefail
+          cargo fmt --all
+          cargo test -p interlink-worldgen hydroclimate -- --nocapture
+          cargo test -p interlink-worldgen-wasm climate_bridge -- --nocapture
+          cargo run --release -p interlink-worldgen-cli --example hydroclimate_partition_acceptance
+          cargo check -p interlink-worldgen-wasm --target wasm32-unknown-unknown
+      - name: Commit production change
         run: |
-          cargo run --release -p interlink-worldgen-cli --example temp_hydroclimate_partition_profile 2>&1 | tee -a profiling-results/split-land-pet-control.txt
-      - name: Profile visible-seed runoff
-        run: |
-          cargo run --release -p interlink-worldgen-cli --example runoff_performance -- --seed interlink-wg7c --coarse-level 5 --level 7 --plates 16 --runs 1 2>&1 | tee -a profiling-results/split-land-pet-control.txt
-      - name: Profile visible-seed lakes
-        run: |
-          cargo run --release -p interlink-worldgen-cli --example lake_performance -- --seed interlink-wg7c --coarse-level 5 --level 7 --plates 16 --runs 1 2>&1 | tee -a profiling-results/split-land-pet-control.txt
-      - name: Persist control result
-        if: always()
-        run: |
-          if [ -f profiling-results/split-land-pet-control.txt ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add profiling-results/split-land-pet-control.txt
-            git commit -m "chore: persist split land PET control [skip ci]" || exit 0
-            git push
-          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            .github/workflows/ci.yml \
+            docs/worldgen-rewrite/WG5_HYDROCLIMATE_CLOSURE.md \
+            docs/worldgen-rewrite/WG5_PERFORMANCE.md \
+            rust/interlink-worldgen/src/climate.rs \
+            rust/interlink-worldgen/tests/hydroclimate_closure.rs \
+            rust/interlink-worldgen-wasm/tests/climate_bridge.rs \
+            rust/interlink-worldgen-cli/examples/hydroclimate_partition_acceptance.rs
+          git diff --cached --check
+          git commit -m "fix(worldgen): recalibrate land hydroclimate partition [skip ci]"
+          git push
