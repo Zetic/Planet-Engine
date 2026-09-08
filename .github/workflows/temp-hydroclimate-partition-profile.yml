@@ -6,7 +6,7 @@ on:
       - wg5-wg6-hydroclimate-partition-calibration
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   profile:
@@ -29,4 +29,13 @@ jobs:
           path.write_text(text.replace(old, new))
           PY
       - name: Profile visible-seed full-L7 runoff
-        run: cargo run --release -p interlink-worldgen-cli --example runoff_performance -- --seed interlink-wg7c --coarse-level 5 --level 7 --plates 16 --runs 1
+        run: |
+          mkdir -p profiling-results
+          cargo run --release -p interlink-worldgen-cli --example runoff_performance -- --seed interlink-wg7c --coarse-level 5 --level 7 --plates 16 --runs 1 2>&1 | tee profiling-results/full-l7-runoff-control.txt
+      - name: Persist full-L7 control result
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add profiling-results/full-l7-runoff-control.txt
+          git commit -m "chore: persist full-L7 runoff control [skip ci]"
+          git push
