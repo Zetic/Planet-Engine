@@ -2,6 +2,8 @@
 
 Stage `climate:coupled-surface@6` combines the accepted Stage-5 physical model with a multiresolution execution architecture. Broad atmospheric, ocean, and moisture state is solved on an area-aggregated climate mesh; deterministic hierarchy interpolation and fine-terrain corrections then reconstruct the canonical output level. WG-6 hydrology remains out of scope.
 
+Stage 7 retains this Stage-6 multiresolution execution architecture. Its later hydroclimate-partition recalibration changes land PET semantics and stage identity, not the solver-resolution strategy documented here.
+
 ## Architecture
 
 The default `ClimateParameters::maximum_global_climate_level` is L5. Requests at L5 or below execute the accepted full-resolution solver directly. L6 and L7 requests use this pipeline:

@@ -7,12 +7,17 @@ use interlink_worldgen::{
 };
 
 #[test]
-fn hydroclimate_stage_and_latent_energy_parameter_are_explicit() {
-    assert_eq!(CLIMATE_STAGE_VERSION, 6);
+fn hydroclimate_stage_and_latent_energy_parameters_are_explicit() {
+    assert_eq!(CLIMATE_STAGE_VERSION, 7);
     let baseline = ClimateParameters::default();
-    let mut changed = baseline;
-    changed.evaporation_energy_fraction *= 0.8;
-    assert_ne!(baseline.parameter_hash(), changed.parameter_hash());
+
+    let mut changed_ocean = baseline;
+    changed_ocean.evaporation_energy_fraction *= 0.8;
+    assert_ne!(baseline.parameter_hash(), changed_ocean.parameter_hash());
+
+    let mut changed_land = baseline;
+    changed_land.land_potential_evaporation_energy_fraction *= 0.8;
+    assert_ne!(baseline.parameter_hash(), changed_land.parameter_hash());
 }
 
 #[test]
