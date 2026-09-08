@@ -1,0 +1,168 @@
+[1m[92m    Updating[0m crates.io index
+[1m[92m   Compiling[0m interlink-worldgen v0.1.0 (/home/runner/work/Planet-Engine/Planet-Engine/rust/interlink-worldgen)
+[1m[33mwarning[0m[1m: function `daily_mean_insolation` is never used[0m
+   [1m[94m--> [0mrust/interlink-worldgen/src/climate.rs:635:4
+    [1m[94m|[0m
+[1m[94m635[0m [1m[94m|[0m fn daily_mean_insolation(latitude: f64, declination: f64, stellar_flux: f64) -> f64 {
+    [1m[94m|[0m    [1m[33m^^^^^^^^^^^^^^^^^^^^^[0m
+    [1m[94m|[0m
+    [1m[94m= [0m[1mnote[0m: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+[1m[33mwarning[0m[1m: function `symmetric_edge_normal_wind_m_s` is never used[0m
+    [1m[94m--> [0mrust/interlink-worldgen/src/climate.rs:1098:4
+     [1m[94m|[0m
+[1m[94m1098[0m [1m[94m|[0m fn symmetric_edge_normal_wind_m_s(
+     [1m[94m|[0m    [1m[33m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+
+[1m[33mwarning[0m[1m: function `dot` is never used[0m
+  [1m[94m--> [0mrust/interlink-worldgen/src/climate_calibration.rs:65:4
+   [1m[94m|[0m
+[1m[94m65[0m [1m[94m|[0m fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
+   [1m[94m|[0m    [1m[33m^^^[0m
+
+[1m[33mwarning[0m[1m: function `normalize` is never used[0m
+   [1m[94m--> [0mrust/interlink-worldgen/src/lithosphere.rs:151:4
+    [1m[94m|[0m
+[1m[94m151[0m [1m[94m|[0m fn normalize(value: [f64; 3]) -> [f64; 3] {
+    [1m[94m|[0m    [1m[33m^^^^^^^^^[0m
+
+[1m[33mwarning[0m: `interlink-worldgen` (lib) generated 4 warnings
+[1m[92m   Compiling[0m interlink-worldgen-cli v0.1.0 (/home/runner/work/Planet-Engine/Planet-Engine/rust/interlink-worldgen-cli)
+[1m[92m    Finished[0m `release` profile [optimized] target(s) in 7.47s
+[1m[92m     Running[0m `target/release/examples/temp_hydroclimate_partition_profile`
+SEED 3 land=34.29% temp=284.97K elev=1687m cold=24.34% high2k=21.86% precip=659.5 pet=1483.4 pet_p=2.249
+  base         pet_scale=1.00 omega=2.6 P=659.5 PET=1483.4 AET=300.9 R=358.7 runoff=54.4%
+  omega35      pet_scale=1.00 omega=3.5 P=659.5 PET=1483.4 AET=320.3 R=339.3 runoff=51.4%
+  omega50      pet_scale=1.00 omega=5.0 P=659.5 PET=1483.4 AET=331.3 R=328.2 runoff=49.8%
+  pet125       pet_scale=1.25 omega=2.6 P=659.5 PET=1854.2 AET=333.8 R=325.8 runoff=49.4%
+  pet150       pet_scale=1.50 omega=2.6 P=659.5 PET=2225.1 AET=361.6 R=297.9 runoff=45.2%
+  pet125_o35   pet_scale=1.25 omega=3.5 P=659.5 PET=1854.2 AET=355.6 R=303.9 runoff=46.1%
+  pet150_o35   pet_scale=1.50 omega=3.5 P=659.5 PET=2225.1 AET=385.6 R=274.0 runoff=41.5%
+  pet150_o50   pet_scale=1.50 omega=5.0 P=659.5 PET=2225.1 AET=399.8 R=259.8 runoff=39.4%
+SEED interlink-wg7c land=32.64% temp=276.34K elev=1843m cold=37.13% high2k=26.39% precip=1049.3 pet=1379.0 pet_p=1.314
+  base         pet_scale=1.00 omega=2.6 P=1049.3 PET=1379.0 AET=363.5 R=685.8 runoff=65.4%
+  omega35      pet_scale=1.00 omega=3.5 P=1049.3 PET=1379.0 AET=385.4 R=663.9 runoff=63.3%
+  omega50      pet_scale=1.00 omega=5.0 P=1049.3 PET=1379.0 AET=397.5 R=651.8 runoff=62.1%
+  pet125       pet_scale=1.25 omega=2.6 P=1049.3 PET=1723.7 AET=410.7 R=638.6 runoff=60.9%
+  pet150       pet_scale=1.50 omega=2.6 P=1049.3 PET=2068.4 AET=452.0 R=597.3 runoff=56.9%
+  pet125_o35   pet_scale=1.25 omega=3.5 P=1049.3 PET=1723.7 AET=436.4 R=613.0 runoff=58.4%
+  pet150_o35   pet_scale=1.50 omega=3.5 P=1049.3 PET=2068.4 AET=481.2 R=568.2 runoff=54.1%
+  pet150_o50   pet_scale=1.50 omega=5.0 P=1049.3 PET=2068.4 AET=498.0 R=551.3 runoff=52.5%
+SEED wg4-boundary-a land=34.22% temp=268.09K elev=1623m cold=51.00% high2k=31.67% precip=567.6 pet=1255.7 pet_p=2.212
+  base         pet_scale=1.00 omega=2.6 P=567.6 PET=1255.7 AET=252.8 R=314.8 runoff=55.5%
+  omega35      pet_scale=1.00 omega=3.5 P=567.6 PET=1255.7 AET=268.4 R=299.2 runoff=52.7%
+  omega50      pet_scale=1.00 omega=5.0 P=567.6 PET=1255.7 AET=277.4 R=290.1 runoff=51.1%
+  pet125       pet_scale=1.25 omega=2.6 P=567.6 PET=1569.6 AET=276.8 R=290.8 runoff=51.2%
+  pet150       pet_scale=1.50 omega=2.6 P=567.6 PET=1883.5 AET=297.0 R=270.5 runoff=47.7%
+  pet125_o35   pet_scale=1.25 omega=3.5 P=567.6 PET=1569.6 AET=293.1 R=274.5 runoff=48.4%
+  pet150_o35   pet_scale=1.50 omega=3.5 P=567.6 PET=1883.5 AET=313.9 R=253.7 runoff=44.7%
+  pet150_o50   pet_scale=1.50 omega=5.0 P=567.6 PET=1883.5 AET=323.0 R=244.6 runoff=43.1%
+SEED wg4-boundary-b land=31.73% temp=276.71K elev=2711m cold=37.84% high2k=55.57% precip=517.9 pet=1473.7 pet_p=2.846
+  base         pet_scale=1.00 omega=2.6 P=517.9 PET=1473.7 AET=285.0 R=232.8 runoff=45.0%
+  omega35      pet_scale=1.00 omega=3.5 P=517.9 PET=1473.7 AET=304.7 R=213.2 runoff=41.2%
+  omega50      pet_scale=1.00 omega=5.0 P=517.9 PET=1473.7 AET=316.3 R=201.5 runoff=38.9%
+  pet125       pet_scale=1.25 omega=2.6 P=517.9 PET=1842.2 AET=312.3 R=205.5 runoff=39.7%
+  pet150       pet_scale=1.50 omega=2.6 P=517.9 PET=2210.6 AET=334.6 R=183.3 runoff=35.4%
+  pet125_o35   pet_scale=1.25 omega=3.5 P=517.9 PET=1842.2 AET=333.9 R=183.9 runoff=35.5%
+  pet150_o35   pet_scale=1.50 omega=3.5 P=517.9 PET=2210.6 AET=357.6 R=160.3 runoff=30.9%
+  pet150_o50   pet_scale=1.50 omega=5.0 P=517.9 PET=2210.6 AET=371.5 R=146.4 runoff=28.3%
+SEED wg4-boundary-c land=28.74% temp=282.02K elev=1236m cold=28.22% high2k=22.54% precip=727.6 pet=1415.7 pet_p=1.946
+  base         pet_scale=1.00 omega=2.6 P=727.6 PET=1415.7 AET=325.0 R=402.7 runoff=55.3%
+  omega35      pet_scale=1.00 omega=3.5 P=727.6 PET=1415.7 AET=347.0 R=380.7 runoff=52.3%
+  omega50      pet_scale=1.00 omega=5.0 P=727.6 PET=1415.7 AET=359.8 R=367.9 runoff=50.6%
+  pet125       pet_scale=1.25 omega=2.6 P=727.6 PET=1769.6 AET=359.8 R=367.8 runoff=50.6%
+  pet150       pet_scale=1.50 omega=2.6 P=727.6 PET=2123.5 AET=388.9 R=338.7 runoff=46.6%
+  pet125_o35   pet_scale=1.25 omega=3.5 P=727.6 PET=1769.6 AET=384.4 R=343.3 runoff=47.2%
+  pet150_o35   pet_scale=1.50 omega=3.5 P=727.6 PET=2123.5 AET=415.5 R=312.1 runoff=42.9%
+  pet150_o50   pet_scale=1.50 omega=5.0 P=727.6 PET=2123.5 AET=431.5 R=296.2 runoff=40.7%
+SEED wg4-boundary-d land=30.99% temp=278.95K elev=1564m cold=36.40% high2k=28.31% precip=682.1 pet=1386.4 pet_p=2.032
+  base         pet_scale=1.00 omega=2.6 P=682.1 PET=1386.4 AET=319.4 R=362.7 runoff=53.2%
+  omega35      pet_scale=1.00 omega=3.5 P=682.1 PET=1386.4 AET=341.2 R=341.0 runoff=50.0%
+  omega50      pet_scale=1.00 omega=5.0 P=682.1 PET=1386.4 AET=354.2 R=327.9 runoff=48.1%
+  pet125       pet_scale=1.25 omega=2.6 P=682.1 PET=1732.9 AET=347.2 R=334.9 runoff=49.1%
+  pet150       pet_scale=1.50 omega=2.6 P=682.1 PET=2079.5 AET=369.8 R=312.3 runoff=45.8%
+  pet125_o35   pet_scale=1.25 omega=3.5 P=682.1 PET=1732.9 AET=369.8 R=312.4 runoff=45.8%
+  pet150_o35   pet_scale=1.50 omega=3.5 P=682.1 PET=2079.5 AET=392.6 R=289.6 runoff=42.5%
+  pet150_o50   pet_scale=1.50 omega=5.0 P=682.1 PET=2079.5 AET=405.8 R=276.3 runoff=40.5%
+AGGREGATE
+  base         pet_scale=1.00 omega=2.6 P=699.7 PET=1397.9 AET=306.9 R=392.8 runoff=56.1%
+  omega35      pet_scale=1.00 omega=3.5 P=699.7 PET=1397.9 AET=326.9 R=372.9 runoff=53.3%
+  omega50      pet_scale=1.00 omega=5.0 P=699.7 PET=1397.9 AET=338.4 R=361.3 runoff=51.6%
+  pet125       pet_scale=1.25 omega=2.6 P=699.7 PET=1747.4 AET=339.2 R=360.5 runoff=51.5%
+  pet150       pet_scale=1.50 omega=2.6 P=699.7 PET=2096.9 AET=366.4 R=333.3 runoff=47.6%
+  pet125_o35   pet_scale=1.25 omega=3.5 P=699.7 PET=1747.4 AET=361.2 R=338.5 runoff=48.4%
+  pet150_o35   pet_scale=1.50 omega=3.5 P=699.7 PET=2096.9 AET=390.0 R=309.7 runoff=44.3%
+  pet150_o50   pet_scale=1.50 omega=5.0 P=699.7 PET=2096.9 AET=403.8 R=295.9 runoff=42.3%
+[1m[33mwarning[0m[1m: function `daily_mean_insolation` is never used[0m
+   [1m[94m--> [0mrust/interlink-worldgen/src/climate.rs:635:4
+    [1m[94m|[0m
+[1m[94m635[0m [1m[94m|[0m fn daily_mean_insolation(latitude: f64, declination: f64, stellar_flux: f64) -> f64 {
+    [1m[94m|[0m    [1m[33m^^^^^^^^^^^^^^^^^^^^^[0m
+    [1m[94m|[0m
+    [1m[94m= [0m[1mnote[0m: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+[1m[33mwarning[0m[1m: function `symmetric_edge_normal_wind_m_s` is never used[0m
+    [1m[94m--> [0mrust/interlink-worldgen/src/climate.rs:1098:4
+     [1m[94m|[0m
+[1m[94m1098[0m [1m[94m|[0m fn symmetric_edge_normal_wind_m_s(
+     [1m[94m|[0m    [1m[33m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+
+[1m[33mwarning[0m[1m: function `dot` is never used[0m
+  [1m[94m--> [0mrust/interlink-worldgen/src/climate_calibration.rs:65:4
+   [1m[94m|[0m
+[1m[94m65[0m [1m[94m|[0m fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
+   [1m[94m|[0m    [1m[33m^^^[0m
+
+[1m[33mwarning[0m[1m: function `normalize` is never used[0m
+   [1m[94m--> [0mrust/interlink-worldgen/src/lithosphere.rs:151:4
+    [1m[94m|[0m
+[1m[94m151[0m [1m[94m|[0m fn normalize(value: [f64; 3]) -> [f64; 3] {
+    [1m[94m|[0m    [1m[33m^^^^^^^^^[0m
+
+[1m[33mwarning[0m: `interlink-worldgen` (lib) generated 4 warnings
+[1m[92m   Compiling[0m interlink-worldgen-cli v0.1.0 (/home/runner/work/Planet-Engine/Planet-Engine/rust/interlink-worldgen-cli)
+[1m[92m    Finished[0m `release` profile [optimized] target(s) in 3.12s
+[1m[92m     Running[0m `target/release/examples/runoff_performance --seed interlink-wg7c --coarse-level 5 --level 7 --plates 16 --runs 1`
+WG-6B runoff benchmark
+seed=interlink-wg7c coarse_level=5 level=7 plates=16 samples=163842 runs=1
+runtime_ms mean=8.015 median=8.015 samples=[8.015483]
+water_balance precip_mm=1049.323 aet_mm=363.532 runoff_mm=685.791 runoff_fraction=0.653556
+discharge total_local_m3_s=3618297.458403 terminal_m3_s=3618297.458403 max_m3_s=1605935.700750 relative_error=3.346e-15
+hash runoff=ebaa49814cd09c95 climate=aaf3ffb9bc740549 drainage=0564479db4be6198 parameters=a3157a8f1f2e4e68
+[1m[33mwarning[0m[1m: function `daily_mean_insolation` is never used[0m
+   [1m[94m--> [0mrust/interlink-worldgen/src/climate.rs:635:4
+    [1m[94m|[0m
+[1m[94m635[0m [1m[94m|[0m fn daily_mean_insolation(latitude: f64, declination: f64, stellar_flux: f64) -> f64 {
+    [1m[94m|[0m    [1m[33m^^^^^^^^^^^^^^^^^^^^^[0m
+    [1m[94m|[0m
+    [1m[94m= [0m[1mnote[0m: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+[1m[33mwarning[0m[1m: function `symmetric_edge_normal_wind_m_s` is never used[0m
+    [1m[94m--> [0mrust/interlink-worldgen/src/climate.rs:1098:4
+     [1m[94m|[0m
+[1m[94m1098[0m [1m[94m|[0m fn symmetric_edge_normal_wind_m_s(
+     [1m[94m|[0m    [1m[33m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+
+[1m[33mwarning[0m[1m: function `dot` is never used[0m
+  [1m[94m--> [0mrust/interlink-worldgen/src/climate_calibration.rs:65:4
+   [1m[94m|[0m
+[1m[94m65[0m [1m[94m|[0m fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
+   [1m[94m|[0m    [1m[33m^^^[0m
+
+[1m[33mwarning[0m[1m: function `normalize` is never used[0m
+   [1m[94m--> [0mrust/interlink-worldgen/src/lithosphere.rs:151:4
+    [1m[94m|[0m
+[1m[94m151[0m [1m[94m|[0m fn normalize(value: [f64; 3]) -> [f64; 3] {
+    [1m[94m|[0m    [1m[33m^^^^^^^^^[0m
+
+[1m[33mwarning[0m: `interlink-worldgen` (lib) generated 4 warnings
+[1m[92m   Compiling[0m interlink-worldgen-cli v0.1.0 (/home/runner/work/Planet-Engine/Planet-Engine/rust/interlink-worldgen-cli)
+[1m[92m    Finished[0m `release` profile [optimized] target(s) in 3.36s
+[1m[92m     Running[0m `target/release/examples/lake_performance --seed interlink-wg7c --coarse-level 5 --level 7 --plates 16 --runs 1`
+WG-6C lake equilibrium benchmark
+seed=interlink-wg7c coarse_level=5 level=7 plates=16 samples=163842 runs=1
+runtime_ms mean=7.305 median=7.305 samples=[7.304922]
+lakes total=57 endorheic=37 overflowing=20 terminal_storage=0 lake_samples=2267 area_km2=6871868.584 volume_km3=602274.310 max_depth_m=515.413
+water_balance lake_precip_m3_s=403071.508119 lake_evap_m3_s=351471.858177 terminal_realized_m3_s=3409307.198238 storage_m3_s=0.000000 relative_error=3.343e-15
+discharge potential_max_m3_s=1605935.700750 realized_max_m3_s=1600520.900452
+hash lakes=6da0e8627b911bc7 runoff=ebaa49814cd09c95 drainage=0564479db4be6198 climate=aaf3ffb9bc740549 parameters=aab1693229ba1db8
