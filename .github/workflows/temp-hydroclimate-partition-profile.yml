@@ -15,22 +15,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Apply experimental L6 climate ceiling
+      - name: Apply experimental full-L7 climate ceiling
         run: |
           python - <<'PY'
           from pathlib import Path
           path = Path('rust/interlink-worldgen/src/climate.rs')
           text = path.read_text()
           old = '            maximum_global_climate_level: 5,'
-          new = '            maximum_global_climate_level: 6,'
+          new = '            maximum_global_climate_level: 7,'
           count = text.count(old)
           if count != 1:
               raise SystemExit(f'expected exactly one climate-level default, found {count}')
           path.write_text(text.replace(old, new))
           PY
-      - name: Profile six-seed L6 hydroclimate partition
-        run: cargo run --release -p interlink-worldgen-cli --example temp_hydroclimate_partition_profile
-      - name: Profile visible-seed L6 runoff
+      - name: Profile visible-seed full-L7 runoff
         run: cargo run --release -p interlink-worldgen-cli --example runoff_performance -- --seed interlink-wg7c --coarse-level 5 --level 7 --plates 16 --runs 1
-      - name: Profile visible-seed L6 lakes
-        run: cargo run --release -p interlink-worldgen-cli --example lake_performance -- --seed interlink-wg7c --coarse-level 5 --level 7 --plates 16 --runs 1
