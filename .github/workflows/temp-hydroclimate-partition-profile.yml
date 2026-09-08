@@ -18,26 +18,33 @@ jobs:
       - name: Apply experimental split land PET energy budget
         run: |
           python - <<'PY'
+          import re
           from pathlib import Path
           path = Path('rust/interlink-worldgen/src/climate.rs')
           text = path.read_text()
-          old_fraction = '''parameters.evaporation_energy_fraction
-                            * absorbed_surface_energy_w_m2[i]'''
-          new_fraction = '''0.70
-                            * absorbed_surface_energy_w_m2[i]'''
-          if text.count(old_fraction) != 1:
-              raise SystemExit(f'expected one land PET energy fraction site, found {text.count(old_fraction)}')
-          text = text.replace(old_fraction, new_fraction, 1)
-          old_cap = 'potential_mass.min(energy_limited_mass.max(0.0))'
-          if text.count(old_cap) != 1:
-              raise SystemExit(f'expected one land PET min-cap, found {text.count(old_cap)}')
-          text = text.replace(old_cap, 'energy_limited_mass.max(0.0)', 1)
+          text, n1 = re.subn(
+              r'let energy_limited_mass = parameters\.evaporation_energy_fraction\s*\n\s*\* absorbed_surface_energy_w_m2\[i\]',
+              'let energy_limited_mass = 0.70\n                            * absorbed_surface_energy_w_m2[i]',
+              text,
+              count=1,
+          )
+          text, n2 = re.subn(
+              r'potential_mass\.min\(energy_limited_mass\.max\(0\.0\)\)',
+              'energy_limited_mass.max(0.0)',
+              text,
+              count=1,
+          )
+          if (n1, n2) != (1, 1):
+              raise SystemExit(f'land PET patch counts were {(n1, n2)}')
           path.write_text(text)
           PY
-      - name: Profile six-seed hydroclimate partition
+      - name: Check existing WG-5 hydroclimate quality gates
         run: |
           mkdir -p profiling-results
-          cargo run --release -p interlink-worldgen-cli --example temp_hydroclimate_partition_profile 2>&1 | tee profiling-results/split-land-pet-control.txt
+          bash scripts/check-wg5-hydroclimate-closure.sh quality 2>&1 | tee profiling-results/split-land-pet-control.txt
+      - name: Profile six-seed hydroclimate partition
+        run: |
+          cargo run --release -p interlink-worldgen-cli --example temp_hydroclimate_partition_profile 2>&1 | tee -a profiling-results/split-land-pet-control.txt
       - name: Profile visible-seed runoff
         run: |
           cargo run --release -p interlink-worldgen-cli --example runoff_performance -- --seed interlink-wg7c --coarse-level 5 --level 7 --plates 16 --runs 1 2>&1 | tee -a profiling-results/split-land-pet-control.txt
@@ -45,9 +52,12 @@ jobs:
         run: |
           cargo run --release -p interlink-worldgen-cli --example lake_performance -- --seed interlink-wg7c --coarse-level 5 --level 7 --plates 16 --runs 1 2>&1 | tee -a profiling-results/split-land-pet-control.txt
       - name: Persist control result
+        if: always()
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add profiling-results/split-land-pet-control.txt
-          git commit -m "chore: persist split land PET control [skip ci]"
-          git push
+          if [ -f profiling-results/split-land-pet-control.txt ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add profiling-results/split-land-pet-control.txt
+            git commit -m "chore: persist split land PET control [skip ci]" || exit 0
+            git push
+          fi
