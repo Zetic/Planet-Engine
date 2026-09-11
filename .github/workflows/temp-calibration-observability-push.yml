@@ -1,0 +1,135 @@
+name: Temporary validated calibration push carrier
+
+on:
+  push:
+    branches: [llm-calibration-observability]
+    paths:
+      - '.github/workflows/temp-calibration-observability-push.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: llm-calibration-observability
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          npm ci
+      - name: Reproduce validated integration
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          def replace(path, old, new):
+              p=Path(path); text=p.read_text()
+              if old not in text: raise SystemExit(f'missing expected text in {path}')
+              p.write_text(text.replace(old,new,1))
+          replace('rust/interlink-worldgen-cli/Cargo.toml','name = "interlink-worldgen-cli"\nversion.workspace = true','name = "interlink-worldgen-cli"\ndefault-run = "interlink-worldgen-cli"\nversion.workspace = true')
+          replace('rust/interlink-worldgen/src/lib.rs','build_world_calibration_report, ContinentalAssemblySummary, ContinentalComponentSummary,\n    GeomorphologyCalibrationSummary, HydrologyCalibrationSummary, RankedBasinSummary,','build_world_calibration_report, ClimateCalibrationSummary, ContinentalAssemblySummary,\n    ContinentalComponentSummary, GeomorphologyCalibrationSummary, HydrologyCalibrationSummary, RankedBasinSummary,')
+          replace('rust/interlink-worldgen/src/world_calibration.rs','fn json_number(value: f64) -> String {\n    if value.is_finite() {\n        format!("{value:.12}").trim_end_matches(\'0\').trim_end_matches(\'.\').to_owned()\n    } else {\n        "null".to_owned()\n    }\n}','fn json_number(value: f64) -> String {\n    if value.is_finite() {\n        value.to_string()\n    } else {\n        "null".to_owned()\n    }\n}')
+          replace('src/worldgen/calibrationPacket.ts','maximum_water_depth_m: waterDepth.length ? Math.max(...waterDepth) : 0,','maximum_water_depth_m: waterDepth.reduce((maximum, value) => Math.max(maximum, value), 0),')
+          replace('index.html','      <button id="worldgen-generate" type="button">Generate Planet</button>','      <button id="worldgen-generate" type="button">Generate Planet</button>\n      <button id="worldgen-copy-calibration" type="button" disabled>Copy LLM Summary</button>\n      <button id="worldgen-download-calibration" type="button" disabled>Download Calibration JSON</button>')
+          replace('src/worldgen/diagnostics/worldgenClimateLabStandalone.ts',"import { createWorldgenClient } from '../worldgenClient.js';","import { createWorldgenClient } from '../worldgenClient.js';\nimport { worldCalibrationJson, worldCalibrationMarkdown } from '../calibrationPacket.js';")
+          replace('src/worldgen/diagnostics/worldgenClimateLabStandalone.ts',"const generate = element<HTMLButtonElement>('worldgen-generate');","const generate = element<HTMLButtonElement>('worldgen-generate');\nconst copyCalibration = element<HTMLButtonElement>('worldgen-copy-calibration');\nconst downloadCalibration = element<HTMLButtonElement>('worldgen-download-calibration');")
+          helper=r'''function calibrationFileStem(): string {
+            const normalized = seed.value.trim().replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
+            return normalized || 'planet';
+          }
+          async function copyCalibrationReport(): Promise<void> {
+            if (!current) return;
+            try {
+              await navigator.clipboard.writeText(worldCalibrationMarkdown(current, seed.value, Number(plates.value)));
+              status.textContent = 'Copied compact LLM calibration summary to the clipboard.';
+            } catch (error) {
+              status.textContent = `Could not copy calibration summary: ${error instanceof Error ? error.message : String(error)}`;
+            }
+          }
+          function downloadCalibrationReport(): void {
+            if (!current) return;
+            const blob = new Blob([worldCalibrationJson(current, seed.value, Number(plates.value))], { type: 'application/json;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement('a');
+            anchor.href = url;
+            anchor.download = `planet-calibration-${calibrationFileStem()}.json`;
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+            URL.revokeObjectURL(url);
+            status.textContent = 'Downloaded structured calibration packet.';
+          }
+
+          '''
+          replace('src/worldgen/diagnostics/worldgenClimateLabStandalone.ts','\n\nasync function generatePlanet(): Promise<void> {','\n\n'+helper+'async function generatePlanet(): Promise<void> {')
+          replace('src/worldgen/diagnostics/worldgenClimateLabStandalone.ts','async function generatePlanet(): Promise<void> {\n  generate.disabled = true;\n  startGenerationTelemetry();','async function generatePlanet(): Promise<void> {\n  generate.disabled = true;\n  copyCalibration.disabled = true;\n  downloadCalibration.disabled = true;\n  startGenerationTelemetry();')
+          replace('src/worldgen/diagnostics/worldgenClimateLabStandalone.ts','    current = loaded;\n    buffers = {','    current = loaded;\n    copyCalibration.disabled = false;\n    downloadCalibration.disabled = false;\n    buffers = {')
+          replace('src/worldgen/diagnostics/worldgenClimateLabStandalone.ts',"generate.addEventListener('click', () => void generatePlanet());","generate.addEventListener('click', () => void generatePlanet());\ncopyCalibration.addEventListener('click', () => void copyCalibrationReport());\ndownloadCalibration.addEventListener('click', downloadCalibrationReport);")
+          Path('tests/calibrationPacket.test.ts').write_text(r'''import assert from 'node:assert/strict';
+          import { readFile } from 'node:fs/promises';
+          import test from 'node:test';
+          test('calibration packet stays compact, versioned, and available from the Pages lab', async () => {
+            const packet = await readFile('src/worldgen/calibrationPacket.ts', 'utf8');
+            const controller = await readFile('src/worldgen/diagnostics/worldgenClimateLabStandalone.ts', 'utf8');
+            const html = await readFile('index.html', 'utf8');
+            assert.match(packet, /planet-engine-calibration@1/);
+            assert.match(packet, /RANKED_LIMIT = 8/);
+            assert.doesNotMatch(packet, /JSON\.stringify\(result/);
+            assert.match(controller, /worldCalibrationMarkdown/);
+            assert.match(controller, /worldCalibrationJson/);
+            assert.match(controller, /worldgen-copy-calibration/);
+            assert.match(controller, /worldgen-download-calibration/);
+            assert.match(html, /Copy LLM Summary/);
+            assert.match(html, /Download Calibration JSON/);
+          });
+          ''')
+          Path('docs/worldgen-rewrite/CALIBRATION_OBSERVABILITY.md').write_text(r'''# Calibration observability
+
+          Planet Engine exposes a compact, versioned calibration packet for model-assisted analysis without changing physical generation. Schema `planet-engine-calibration@1` summarizes one accepted WG-0→WG-7D world instead of serializing the full L6/L7 typed-array state.
+
+          ## Contents
+
+          The report records run identity and causal hashes, continental-component morphology, topographic and climate summaries, final WG-7D drainage/runoff/lake/seasonal metrics, ranked large basins/depressions/lakes, and WG-7 geomorphic/sediment summaries. Ranked collections are capped at eight records to keep the packet bounded and useful in an LLM context.
+
+          The report deliberately reports measurements rather than declaring visual or physical success. Existing stage acceptance tests remain authoritative. A later comparison layer may compare the same fixed-seed ensemble between two commits and classify statistically material deltas.
+
+          ## Native export
+
+          ```bash
+          cargo run --release -p interlink-worldgen-cli --bin calibration-report -- \
+            --seed interlink-wg7c --coarse-level 5 --level 7 --plates 16 --format json
+          ```
+
+          `--format markdown` emits a compact paste-ready summary. JSON is intended for automated comparisons and deeper analysis. The native Rust report uses canonical dual-cell areas and is the reference form for automated ensemble calibration.
+
+          ## GitHub Pages
+
+          The static Pages Lab requires no server. After generation, **Copy LLM Summary** copies the Markdown form and **Download Calibration JSON** creates the packet entirely in the browser from the already-transferred protocol-v18 cumulative result.
+
+          The browser does not export raw per-cell arrays. It aggregates them locally first. Because protocol v18 does not transport dual-cell area or every internal per-lake water-budget term, the Pages packet estimates continental component area from equal sample area and leaves unavailable per-lake terms null. Native export should be used when exact ensemble comparisons are required.
+
+          ## Scope
+
+          This observability layer does not alter physics, stage versions, engine version, browser/WASM protocol version, physical parameters, or acceptance thresholds. It is a measurement/export surface only.
+          ''')
+          PY
+          cargo fmt --all
+          cargo test -p interlink-worldgen world_calibration --lib
+          cargo run --release -p interlink-worldgen-cli --bin calibration-report -- --seed ci-calibration-packet --coarse-level 3 --level 4 --plates 12 --format json > /tmp/planet-calibration.json
+          python3 -c "import json; p=json.load(open('/tmp/planet-calibration.json')); assert p['schema']=='planet-engine-calibration@1'"
+          npm run build
+          npm run test:ts
+      - name: Push validated non-workflow changes
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A -- ':!.github/workflows'
+          git commit -m "feat(observability): integrate calibration exports"
+          git push origin HEAD:llm-calibration-observability
