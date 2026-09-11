@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
 import type { WorldgenClimateResult } from '../dist/worldgen/protocol.js';
-import { buildGpuPositions, cameraForWorldDirectionAtScreen, collectViewportSampleIndices, pickNearestSample, screenToWorldDirection } from '../dist/worldgen/diagnostics/worldgenL8GlobeRenderer.js';
+import { buildDualCellGpuMesh, buildGpuPositions, cameraForWorldDirectionAtScreen, collectViewportSampleIndices, pickNearestSample, screenToWorldDirection } from '../dist/worldgen/diagnostics/worldgenL8GlobeRenderer.js';
 
 test('L8 GPU upload converts protocol Float64 positions to Float32 values', () => {
   const protocolPositions = new Float64Array([1, 0, -0.5, Math.PI, -Math.E, 0.25]);
@@ -13,6 +13,33 @@ test('L8 GPU upload converts protocol Float64 positions to Float32 values', () =
   for (let index = 0; index < protocolPositions.length; index += 1) {
     assert.ok(Math.abs(gpuPositions[index]! - protocolPositions[index]!) < 1e-6);
   }
+});
+
+test('GPU dual-cell mesh triangulates one contiguous polygon per sample', () => {
+  const inv = 1 / Math.sqrt(3);
+  const positions = new Float64Array([
+    inv, inv, inv,
+    inv, -inv, -inv,
+    -inv, inv, -inv,
+    -inv, -inv, inv,
+  ]);
+  const neighborOffsets = new Uint32Array([0, 3, 6, 9, 12]);
+  const neighbors = new Uint32Array([
+    1, 2, 3,
+    0, 2, 3,
+    0, 1, 3,
+    0, 1, 2,
+  ]);
+  const mesh = buildDualCellGpuMesh({ positions, neighborOffsets, neighbors, metrics: { fineSampleCount: 4 } } as never);
+  assert.equal(mesh.vertexCount, 16);
+  assert.equal(mesh.triangleCount, 12);
+  assert.equal(mesh.positions.length, 48);
+  assert.equal(mesh.cellIds.length, 16);
+  assert.equal(mesh.indices.length, 36);
+  assert.deepEqual(Array.from(mesh.cellIds.slice(0, 4)), [0, 0, 0, 0]);
+  assert.ok(mesh.positions instanceof Float32Array);
+  assert.ok(Array.from(mesh.positions).every(Number.isFinite));
+  assert.ok(Array.from(mesh.indices).every(index => index < mesh.vertexCount));
 });
 
 test('settled L8 dual-cell selection covers the viewport plus a safety margin', () => {
@@ -83,8 +110,12 @@ test('L8 lab exposes GPU globe rendering, persistent zoom, and direct tile inspe
   assert.match(source, /screenToWorldDirection/);
   assert.match(source, /cameraForWorldDirectionAtScreen/);
   assert.match(gpu, /getContext\('webgl2'/);
-  assert.match(gpu, /drawArrays\(gl\.POINTS/);
-  assert.doesNotMatch(gpu, /if \(gl_PointSize/);
-  assert.match(gpu, /buildGpuPositions\(result\.positions\)/);
+  assert.match(gpu, /buildDualCellGpuMesh/);
+  assert.match(gpu, /drawElements\(gl\.TRIANGLES/);
+  assert.match(gpu, /vertexAttribIPointer/);
+  assert.match(gpu, /texelFetch/);
+  assert.doesNotMatch(gpu, /drawArrays\(gl\.POINTS/);
+  assert.doesNotMatch(gpu, /gl_PointSize/);
+  assert.match(gpu, /buildDualCellGpuMesh\(result\)/);
   assert.doesNotMatch(gpu, /bufferData\(gl\.ARRAY_BUFFER, result\.positions/);
 });
