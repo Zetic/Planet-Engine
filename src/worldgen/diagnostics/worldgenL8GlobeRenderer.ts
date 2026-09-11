@@ -5,6 +5,10 @@ export type TileDirection = [number, number, number];
 
 const DEFAULT_L5_SAMPLE_COUNT = 10_242;
 
+export function buildGpuPositions(positions: Float64Array): Float32Array {
+  return Float32Array.from(positions);
+}
+
 function compileShader(gl: WebGL2RenderingContext, type: number, source: string): WebGLShader {
   const shader = gl.createShader(type);
   if (!shader) throw new Error('Could not allocate WebGL shader.');
@@ -132,7 +136,7 @@ export class L8GlobeRenderer {
 
     if (this.uploadedResult !== result) {
       gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
-      gl.bufferData(gl.ARRAY_BUFFER, result.positions, gl.STATIC_DRAW);
+      gl.bufferData(gl.ARRAY_BUFFER, buildGpuPositions(result.positions), gl.STATIC_DRAW);
       this.uploadedResult = result;
       this.uploadedColorKey = '';
     }
