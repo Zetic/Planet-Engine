@@ -911,6 +911,7 @@ const metrics = element<HTMLElement>('worldgen-metrics');
 const canvas = element<HTMLCanvasElement>('worldgen-field');
 const client = createWorldgenClient();
 let current: WorldgenClimateResult | null = null;
+let currentCalibrationRequest: { seed: string; plateCount: number } | null = null;
 let buffers: ProjectionBuffers | null = null;
 let yaw = -0.65;
 let pitch = 0.25;
@@ -1140,26 +1141,26 @@ function showMetrics(result: WorldgenClimateResult): void {
 }
 
 
-function calibrationFileStem(): string {
-  const normalized = seed.value.trim().replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
+function calibrationFileStem(value: string): string {
+  const normalized = value.trim().replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
   return normalized || 'planet';
 }
 async function copyCalibrationReport(): Promise<void> {
-  if (!current) return;
+  if (!current || !currentCalibrationRequest) return;
   try {
-    await navigator.clipboard.writeText(worldCalibrationMarkdown(current, seed.value, Number(plates.value)));
+    await navigator.clipboard.writeText(worldCalibrationMarkdown(current, currentCalibrationRequest.seed, currentCalibrationRequest.plateCount));
     status.textContent = 'Copied compact LLM calibration summary to the clipboard.';
   } catch (error) {
     status.textContent = `Could not copy calibration summary: ${error instanceof Error ? error.message : String(error)}`;
   }
 }
 function downloadCalibrationReport(): void {
-  if (!current) return;
-  const blob = new Blob([worldCalibrationJson(current, seed.value, Number(plates.value))], { type: 'application/json;charset=utf-8' });
+  if (!current || !currentCalibrationRequest) return;
+  const blob = new Blob([worldCalibrationJson(current, currentCalibrationRequest.seed, currentCalibrationRequest.plateCount)], { type: 'application/json;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = `planet-calibration-${calibrationFileStem()}.json`;
+  anchor.download = `planet-calibration-${calibrationFileStem(currentCalibrationRequest.seed)}.json`;
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
@@ -1210,6 +1211,7 @@ async function generatePlanet(): Promise<void> {
     if (loaded.infillMetrics.postInfillLakeHash !== loaded.lakeMetrics.lakeHash) throw new Error('WG-7D final lake identity mismatch.');
     if (loaded.infillMetrics.postInfillSeasonalHash !== loaded.seasonalMetrics.seasonalHydrologyHash) throw new Error('WG-7D final seasonal identity mismatch.');
     current = loaded;
+    currentCalibrationRequest = { seed: request.seed, plateCount: request.plateCount };
     copyCalibration.disabled = false;
     downloadCalibration.disabled = false;
     buffers = { x: new Float32Array(loaded.metrics.fineSampleCount), y: new Float32Array(loaded.metrics.fineSampleCount), visible: new Uint8Array(loaded.metrics.fineSampleCount) };

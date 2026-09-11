@@ -226,6 +226,16 @@ export function buildWorldCalibrationPacket(result: WorldgenClimateResult, seed:
   const landAreaKm2 = Math.max(1e-12, result.drainageMetrics.landAreaM2 / 1e6);
   return {
     schema: WORLD_CALIBRATION_SCHEMA,
+    fidelity: {
+      source: 'github-pages',
+      canonical_dual_cell_area: false,
+      complete_internal_lake_budget: false,
+      approximation_notes: [
+        'continental component area uses equal-sample area because protocol v18 does not transport dual-cell area',
+        'derived topography percentiles and means are unweighted sample summaries',
+        'per-lake gross inflow and evaporation are unavailable in protocol v18 and remain null',
+      ],
+    },
     run: {
       seed,
       engine_version: result.engineVersion,
@@ -367,6 +377,7 @@ export function worldCalibrationMarkdown(result: WorldgenClimateResult, seed: st
     '# Planet Engine calibration report',
     '',
     `Schema: \`${packet.schema}\``,
+    'Fidelity: GitHub Pages packet · equal-sample continental area / unweighted derived topography summaries · partial per-lake budget',
     `Seed: \`${seed}\` · L${result.coarseLevel} → L${result.fineLevel} · ${plateCount} plates · ${result.metrics.fineSampleCount.toLocaleString()} samples · engine v${result.engineVersion}`,
     '',
     '## Continental assembly',

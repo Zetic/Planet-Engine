@@ -21,7 +21,7 @@ cargo run --release -p interlink-worldgen-cli --bin calibration-report -- \
 
 The static Pages Lab requires no server. After generation, **Copy LLM Summary** copies the Markdown form and **Download Calibration JSON** creates the packet entirely in the browser from the already-transferred protocol-v18 cumulative result.
 
-The browser does not export raw per-cell arrays. It aggregates them locally first. Because protocol v18 does not transport dual-cell area or every internal per-lake water-budget term, the Pages packet estimates continental component area from equal sample area and leaves unavailable per-lake terms null. Native export should be used when exact ensemble comparisons are required.
+The browser does not export raw per-cell arrays. It aggregates them locally first. Because protocol v18 does not transport dual-cell area or every internal per-lake water-budget term, the Pages packet estimates continental component area from equal sample area, uses unweighted sample summaries for derived topography percentiles/means, and leaves unavailable per-lake terms null. These limitations are recorded in the packet itself under `fidelity`, so a detached JSON/Markdown export remains self-describing. Native export should be used when exact ensemble comparisons are required.
 
 ## Scope
 

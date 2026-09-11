@@ -720,6 +720,7 @@ impl WorldCalibrationReport {
             "  \"schema\": \"{}@{}\",",
             WORLD_CALIBRATION_SCHEMA_ID, WORLD_CALIBRATION_SCHEMA_VERSION
         );
+        let _ = writeln!(out, "  \"fidelity\": {{\"source\":\"native\",\"canonical_dual_cell_area\":true,\"complete_internal_lake_budget\":true,\"approximation_notes\":[]}},");
         let _ = writeln!(out, "  \"run\": {{");
         let _ = writeln!(out, "    \"seed\": {},", q(&self.run.seed));
         let _ = writeln!(out, "    \"engine_version\": {},", self.run.engine_version);
@@ -863,6 +864,7 @@ impl WorldCalibrationReport {
             "Schema: `{}@{}`",
             WORLD_CALIBRATION_SCHEMA_ID, WORLD_CALIBRATION_SCHEMA_VERSION
         );
+        let _ = writeln!(out, "Fidelity: native canonical dual-cell areas + complete internal lake budget");
         let _ = writeln!(
             out,
             "Seed: `{}` · L{} → L{} · {} plates · {} samples · engine v{}",
