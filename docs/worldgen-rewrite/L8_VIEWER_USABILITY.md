@@ -4,7 +4,7 @@ The canonical physical world remains **L5 -> L8** and the camera never changes g
 
 ## Rendering contract
 
-Orthographic globe interaction uses the actual L8 dual polygons as one persistent WebGL2 surface from 1x through 24x. Each physical sample owns one triangulated dual cell, the polygon mesh and its perimeter-edge index buffer are uploaded once for the generated world, and diagnostic colors live in a compact per-cell texture. Camera rotation and zoom are shader uniforms. The viewer does not switch to a second CPU terrain renderer at a zoom threshold.
+Orthographic globe interaction uses the actual L8 dual polygons as one persistent WebGL2 surface from 1x through 24x. Each physical sample owns one triangulated dual cell, the polygon mesh includes a center-to-perimeter interpolation weight, and diagnostic colors live in a compact per-cell texture. Camera rotation and zoom are shader uniforms. The viewer does not switch to a second CPU terrain renderer at a zoom threshold.
 
 The front hemisphere uses a compressed clip-space depth range so valid unit-sphere geometry never sits directly on the WebGL near plane. This prevents camera-centered clear-color holes while preserving front-to-back depth ordering. Physical cell boundaries are an overlay on the same GPU cell polygons rather than a separate diagnostic mode, so borders can be combined with any surface diagnostic and remain present while the camera is rotating or zooming.
 
