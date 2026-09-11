@@ -2,7 +2,18 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
 import type { WorldgenClimateResult } from '../dist/worldgen/protocol.js';
-import { cameraForWorldDirectionAtScreen, pickNearestSample, screenToWorldDirection } from '../dist/worldgen/diagnostics/worldgenL8GlobeRenderer.js';
+import { buildGpuPositions, cameraForWorldDirectionAtScreen, pickNearestSample, screenToWorldDirection } from '../dist/worldgen/diagnostics/worldgenL8GlobeRenderer.js';
+
+test('L8 GPU upload converts protocol Float64 positions to Float32 values', () => {
+  const protocolPositions = new Float64Array([1, 0, -0.5, Math.PI, -Math.E, 0.25]);
+  const gpuPositions = buildGpuPositions(protocolPositions);
+  assert.ok(gpuPositions instanceof Float32Array);
+  assert.equal(gpuPositions.length, protocolPositions.length);
+  assert.equal(gpuPositions.byteLength, protocolPositions.length * Float32Array.BYTES_PER_ELEMENT);
+  for (let index = 0; index < protocolPositions.length; index += 1) {
+    assert.ok(Math.abs(gpuPositions[index]! - protocolPositions[index]!) < 1e-6);
+  }
+});
 
 test('L8 globe camera maps the viewport center to the front-facing world direction', () => {
   const direction = screenToWorldDirection(550, 380, 1100, 760, { yaw: 0, pitch: 0, zoom: 1 });
@@ -60,5 +71,6 @@ test('L8 lab exposes GPU globe rendering, persistent zoom, and direct tile inspe
   assert.match(gpu, /getContext\('webgl2'/);
   assert.match(gpu, /drawArrays\(gl\.POINTS/);
   assert.doesNotMatch(gpu, /if \(gl_PointSize/);
-  assert.match(gpu, /gl\.bufferData\(gl\.ARRAY_BUFFER, result\.positions, gl\.STATIC_DRAW\)/);
+  assert.match(gpu, /buildGpuPositions\(result\.positions\)/);
+  assert.doesNotMatch(gpu, /bufferData\(gl\.ARRAY_BUFFER, result\.positions/);
 });

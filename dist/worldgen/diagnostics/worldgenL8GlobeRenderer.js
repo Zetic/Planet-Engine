@@ -1,4 +1,7 @@
 const DEFAULT_L5_SAMPLE_COUNT = 10_242;
+export function buildGpuPositions(positions) {
+    return Float32Array.from(positions);
+}
 function compileShader(gl, type, source) {
     const shader = gl.createShader(type);
     if (!shader)
@@ -120,7 +123,7 @@ export class L8GlobeRenderer {
         gl.useProgram(program);
         if (this.uploadedResult !== result) {
             gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
-            gl.bufferData(gl.ARRAY_BUFFER, result.positions, gl.STATIC_DRAW);
+            gl.bufferData(gl.ARRAY_BUFFER, buildGpuPositions(result.positions), gl.STATIC_DRAW);
             this.uploadedResult = result;
             this.uploadedColorKey = '';
         }
