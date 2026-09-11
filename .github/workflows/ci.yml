@@ -44,6 +44,10 @@ jobs:
           cargo run -p interlink-worldgen-cli -- topography --seed ci-wg4 --coarse-level 4 --level 6 --plates 18
           cargo run -p interlink-worldgen-cli -- climate --seed ci-wg5 --coarse-level 3 --level 4 --plates 12
           cargo run -p interlink-worldgen-cli -- profile
+      - name: Smoke-test compact calibration packet
+        run: |
+          cargo run --release -p interlink-worldgen-cli --bin calibration-report -- --seed ci-calibration-packet --coarse-level 3 --level 4 --plates 12 --format json > /tmp/planet-calibration.json
+          python3 -c "import json; p=json.load(open('/tmp/planet-calibration.json')); assert p['schema']=='planet-engine-calibration@1'; assert p['run']['sample_count']==2562; assert p['hydrology']['lake_count'] >= 0"
       - name: WG-3 continental assembly diversity acceptance
         run: cargo run --release -p interlink-worldgen-cli --example continental_shape_acceptance
       - name: WG-4 L5→L7 ridge morphology acceptance

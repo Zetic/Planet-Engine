@@ -1,4 +1,5 @@
 import { createWorldgenClient } from '../worldgenClient.js';
+import { worldCalibrationJson, worldCalibrationMarkdown } from '../calibrationPacket.js';
 import { mapVectorDelta, reconstructAnnualHarmonicFromBasis } from './worldgenClimateMath.js';
 import { WORLDGEN_BOUNDARY_CONVERGENT, WORLDGEN_BOUNDARY_DIVERGENT, WORLDGEN_BOUNDARY_TRANSFORM, WORLDGEN_CRUST_CONTINENTAL, WORLDGEN_CRUST_OCEANIC, WORLDGEN_CRUST_TRANSITIONAL, WORLDGEN_GEOLOGY_CONTINENTAL_COLLISION, WORLDGEN_GEOLOGY_CONTINENTAL_RIFT, WORLDGEN_GEOLOGY_OCEANIC_RIDGE, WORLDGEN_GEOLOGY_OCEANIC_SUBDUCTION, WORLDGEN_GEOLOGY_OCEAN_CONTINENT_SUBDUCTION, WORLDGEN_GEOLOGY_TRANSFORM, WORLDGEN_GEOLOGY_TRANSITIONAL_DIVERGENCE, WORLDGEN_STRUCTURE_CONTINENTAL_MARGIN, WORLDGEN_STRUCTURE_NONE, WORLDGEN_STRUCTURE_RIFT, WORLDGEN_STRUCTURE_SUTURE, WORLDGEN_STRUCTURE_TRANSFORM, WORLDGEN_INVALID_SAMPLE_ID, } from '../protocol.js';
 const PALETTE_STEPS = 256;
@@ -978,6 +979,8 @@ const seasonValue = element('worldgen-season-value');
 const overlaySummary = element('worldgen-overlay-summary');
 const overlayInputs = Array.from(document.querySelectorAll('input[data-worldgen-overlay]'));
 const generate = element('worldgen-generate');
+const copyCalibration = element('worldgen-copy-calibration');
+const downloadCalibration = element('worldgen-download-calibration');
 const status = element('worldgen-status');
 const generationProgress = element('worldgen-generation-progress');
 const generationStage = element('worldgen-generation-stage');
@@ -988,6 +991,7 @@ const metrics = element('worldgen-metrics');
 const canvas = element('worldgen-field');
 const client = createWorldgenClient();
 let current = null;
+let currentCalibrationRequest = null;
 let buffers = null;
 let yaw = -0.65;
 let pitch = 0.25;
@@ -1227,8 +1231,39 @@ function showMetrics(result) {
     metric(metrics, 'WG-7D surface / drainage hash', `${result.infillMetrics.postInfillSurfaceHash} / ${result.infillMetrics.postInfillDrainageHash}`);
     metric(metrics, 'WG-7D infill hash', result.infillMetrics.lakeSedimentInfillHash);
 }
+function calibrationFileStem(value) {
+    const normalized = value.trim().replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
+    return normalized || 'planet';
+}
+async function copyCalibrationReport() {
+    if (!current || !currentCalibrationRequest)
+        return;
+    try {
+        await navigator.clipboard.writeText(worldCalibrationMarkdown(current, currentCalibrationRequest.seed, currentCalibrationRequest.plateCount));
+        status.textContent = 'Copied compact LLM calibration summary to the clipboard.';
+    }
+    catch (error) {
+        status.textContent = `Could not copy calibration summary: ${error instanceof Error ? error.message : String(error)}`;
+    }
+}
+function downloadCalibrationReport() {
+    if (!current || !currentCalibrationRequest)
+        return;
+    const blob = new Blob([worldCalibrationJson(current, currentCalibrationRequest.seed, currentCalibrationRequest.plateCount)], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `planet-calibration-${calibrationFileStem(currentCalibrationRequest.seed)}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    status.textContent = 'Downloaded structured calibration packet.';
+}
 async function generatePlanet() {
     generate.disabled = true;
+    copyCalibration.disabled = true;
+    downloadCalibration.disabled = true;
     startGenerationTelemetry();
     status.textContent = 'Generating one physical planet through WG-7D lake sediment infill in Rust/WASM…';
     try {
@@ -1301,6 +1336,9 @@ async function generatePlanet() {
         if (loaded.infillMetrics.postInfillSeasonalHash !== loaded.seasonalMetrics.seasonalHydrologyHash)
             throw new Error('WG-7D final seasonal identity mismatch.');
         current = loaded;
+        currentCalibrationRequest = { seed: request.seed, plateCount: request.plateCount };
+        copyCalibration.disabled = false;
+        downloadCalibration.disabled = false;
         buffers = { x: new Float32Array(loaded.metrics.fineSampleCount), y: new Float32Array(loaded.metrics.fineSampleCount), visible: new Uint8Array(loaded.metrics.fineSampleCount) };
         styleCache = { result: null, key: '', sampleBuckets: [], boundaryBuckets: [] };
         edgeOverlayCache = { result: null, coastline: new Uint32Array(0), contours: [], evolvedContours: [], basinDivides: new Uint32Array(0), riverBuckets: [] };
@@ -1326,6 +1364,8 @@ async function generatePlanet() {
     }
 }
 generate.addEventListener('click', () => void generatePlanet());
+copyCalibration.addEventListener('click', () => void copyCalibrationReport());
+downloadCalibration.addEventListener('click', downloadCalibrationReport);
 projection.addEventListener('change', () => redraw(false));
 preset.addEventListener('change', () => applyViewPreset(preset.value));
 visualization.addEventListener('change', () => { preset.value = 'custom'; styleCache = { result: null, key: '', sampleBuckets: [], boundaryBuckets: [] }; redraw(false); updateAnimation(); });

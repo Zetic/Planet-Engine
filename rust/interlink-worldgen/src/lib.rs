@@ -24,6 +24,7 @@ mod seasonal_lakes;
 mod tectonics;
 mod topography;
 mod topology;
+mod world_calibration;
 
 use std::fmt;
 
@@ -122,6 +123,13 @@ pub use topography::{
 pub use topology::{
     build_icosphere, expected_edge_count, expected_face_count, expected_sample_count,
     GeodesicTopology, PlanetTopology, TopologyMetrics, INVALID_SAMPLE_ID, MAX_TOPOLOGY_LEVEL,
+};
+pub use world_calibration::{
+    build_world_calibration_report, ClimateCalibrationSummary, ContinentalAssemblySummary,
+    ContinentalComponentSummary, GeomorphologyCalibrationSummary, HydrologyCalibrationSummary,
+    RankedBasinSummary, RankedDepressionSummary, RankedLakeSummary, TopographyCalibrationSummary,
+    WorldCalibrationHashes, WorldCalibrationReport, WorldCalibrationRun,
+    WORLD_CALIBRATION_RANKED_LIMIT, WORLD_CALIBRATION_SCHEMA_ID, WORLD_CALIBRATION_SCHEMA_VERSION,
 };
 
 pub const WORLDGEN_ENGINE_VERSION: u32 = 11;
