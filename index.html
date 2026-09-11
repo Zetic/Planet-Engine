@@ -31,6 +31,7 @@
 
     <section class="worldgen-lab-grid">
       <div class="worldgen-lab-viewport">
+        <canvas id="worldgen-surface" aria-hidden="true"></canvas>
         <canvas id="worldgen-field" aria-label="Planet Engine physical diagnostics"></canvas>
       </div>
       <aside class="worldgen-lab-diagnostics">
@@ -202,6 +203,12 @@
               <option value="map">Equirectangular map</option>
             </select>
           </label>
+          <label>Globe zoom
+            <input id="worldgen-zoom" type="range" min="1" max="24" value="1" step="0.1">
+            <span id="worldgen-zoom-value">1.0×</span>
+          </label>
+          <button id="worldgen-reset-camera" class="worldgen-camera-reset" type="button">Reset globe camera</button>
+          <div id="worldgen-cell-inspector" class="worldgen-cell-inspector">Click the globe to inspect an L8 physical cell.</div>
           <label>Season / orbital phase
             <input id="worldgen-season" type="range" min="0" max="1000" value="0" step="1">
             <span id="worldgen-season-value">0.0% orbit</span>
