@@ -1185,14 +1185,14 @@ function renderPlanet(surfaceCanvas, canvas, result, projection, mode, overlays,
                 context.fillRect(12, 12, 260, 28);
                 context.fillStyle = '#9eb0c4';
                 context.font = '12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
-                context.fillText(`GPU camera preview · ${zoom.toFixed(1)}×`, 22, 31);
+                context.fillText(`GPU dual-cell surface · ${zoom.toFixed(1)}×`, 22, 31);
                 return;
             }
             ensureProjectedSamples(result, projection, yaw, pitch, width, height, buffers, zoom);
             const exactDualSurface = zoom >= HIGH_ZOOM_DUAL_CELL_THRESHOLD && (mode === 'physical-world' || mode === 'tiles');
             if (exactDualSurface) {
-                // The GPU point cloud is an interaction preview only at this scale. Settled high-zoom
-                // physical views are the actual contiguous L8 dual cells across the whole viewport.
+                // The GPU already renders contiguous dual cells while moving. Settled high-zoom
+                // physical views switch to Canvas only for exact border/selection detail.
                 surfaceCanvas.hidden = true;
                 context.fillStyle = '#08101a';
                 context.fillRect(0, 0, width, height);

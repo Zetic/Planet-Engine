@@ -47,7 +47,7 @@ test('cumulative WG-5 Lab exposes climate diagnostics and stored seasonal recons
   assert.match(source, /requestAnimationFrame/);
   assert.match(source, /VECTOR_ANIMATION_INTERVAL_MS\s*=\s*50/);
   assert.match(source, /scheduleRedraw\(true\)/);
-  assert.match(source, /GPU camera preview/);
+  assert.match(source, /GPU dual-cell surface/);
 });
 
 test('WG-5 Lab preserves viewport dimensions while splitting diagnostics, overlays, and details', () => {
