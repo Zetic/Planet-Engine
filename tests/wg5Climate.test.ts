@@ -60,8 +60,9 @@ test('WG-5 Lab preserves viewport dimensions while splitting diagnostics, overla
   const gpu = fs.readFileSync('src/worldgen/diagnostics/worldgenL8GlobeRenderer.ts', 'utf8');
   assert.match(source, /overlays\.has\('cell-boundaries'\)/);
   assert.doesNotMatch(source, /mode === 'tiles'/);
-  assert.match(gpu, /boundaryIndices/);
-  assert.match(gpu, /drawElements\(gl\.LINES/);
+  assert.match(gpu, /centerWeights/);
+  assert.match(gpu, /fwidth\(vCenterWeight\)/);
+  assert.doesNotMatch(gpu, /drawElements\(gl\.LINES/);
   assert.doesNotMatch(source, /drawTileLens/);
   assert.doesNotMatch(source, /tileNeighborhood/);
   assert.doesNotMatch(source, /HIGH_ZOOM_DUAL_CELL_THRESHOLD/);

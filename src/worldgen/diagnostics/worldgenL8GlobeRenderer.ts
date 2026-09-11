@@ -13,10 +13,9 @@ export type DualCellGpuMesh = {
   positions: Float32Array;
   cellIds: Uint32Array;
   indices: Uint32Array;
-  boundaryIndices: Uint32Array;
+  centerWeights: Float32Array;
   vertexCount: number;
   triangleCount: number;
-  boundaryIndexCount: number;
 };
 
 type Vec3 = [number, number, number];
@@ -62,21 +61,21 @@ export function buildDualCellGpuMesh(result: Pick<WorldgenClimateResult, 'positi
   const positions = new Float32Array(vertexCount * 3);
   const cellIds = new Uint32Array(vertexCount);
   const indices = new Uint32Array(totalDegree * 3);
-  const boundaryIndices = new Uint32Array(totalDegree * 2);
+  const centerWeights = new Float32Array(vertexCount);
   const orderedSamples = new Uint32Array(maxDegree);
   const orderedAngles = new Float64Array(maxDegree);
   const cornerIds = new Uint32Array(maxDegree);
   let vertexCursor = 0;
   let indexCursor = 0;
-  let boundaryCursor = 0;
 
-  const writeVertex = (vertex: Vec3, cellId: number): number => {
+  const writeVertex = (vertex: Vec3, cellId: number, centerWeight: number): number => {
     const vertexId = vertexCursor++;
     const offset = vertexId * 3;
     positions[offset] = vertex[0];
     positions[offset + 1] = vertex[1];
     positions[offset + 2] = vertex[2];
     cellIds[vertexId] = cellId;
+    centerWeights[vertexId] = centerWeight;
     return vertexId;
   };
 
@@ -105,32 +104,29 @@ export function buildDualCellGpuMesh(result: Pick<WorldgenClimateResult, 'positi
       orderedSamples[slot] = neighbor;
     }
 
-    const base = writeVertex(center, sample);
+    const base = writeVertex(center, sample, 1);
     for (let index = 0; index < degree; index += 1) {
       const a = readVec3(result.positions, orderedSamples[index]!);
       const b = readVec3(result.positions, orderedSamples[(index + 1) % degree]!);
-      cornerIds[index] = writeVertex(sphericalCircumcenter(center, a, b), sample);
+      cornerIds[index] = writeVertex(sphericalCircumcenter(center, a, b), sample, 0);
     }
     for (let index = 0; index < degree; index += 1) {
       indices[indexCursor++] = base;
       indices[indexCursor++] = cornerIds[index]!;
       indices[indexCursor++] = cornerIds[(index + 1) % degree]!;
-      boundaryIndices[boundaryCursor++] = cornerIds[index]!;
-      boundaryIndices[boundaryCursor++] = cornerIds[(index + 1) % degree]!;
     }
   }
 
-  if (vertexCursor !== vertexCount || indexCursor !== indices.length || boundaryCursor !== boundaryIndices.length) {
-    throw new Error(`L8 dual-cell mesh size mismatch: ${vertexCursor}/${vertexCount} vertices, ${indexCursor}/${indices.length} triangle indices, ${boundaryCursor}/${boundaryIndices.length} boundary indices.`);
+  if (vertexCursor !== vertexCount || indexCursor !== indices.length) {
+    throw new Error(`L8 dual-cell mesh size mismatch: ${vertexCursor}/${vertexCount} vertices, ${indexCursor}/${indices.length} triangle indices.`);
   }
   return {
     positions,
     cellIds,
     indices,
-    boundaryIndices,
+    centerWeights,
     vertexCount,
     triangleCount: indices.length / 3,
-    boundaryIndexCount: boundaryIndices.length,
   };
 }
 
@@ -176,12 +172,14 @@ function createProgram(gl: WebGL2RenderingContext): WebGLProgram {
     precision highp int;
     in vec3 aPosition;
     in uint aCellId;
+    in float aCenterWeight;
     uniform float uYaw;
     uniform float uPitch;
     uniform float uClipScaleX;
     uniform float uClipScaleY;
     flat out uint vCellId;
     out float vFront;
+    out float vCenterWeight;
     void main() {
       float cy = cos(uYaw);
       float sy = sin(uYaw);
@@ -197,6 +195,7 @@ function createProgram(gl: WebGL2RenderingContext): WebGLProgram {
       gl_Position = vec4(y1 * uClipScaleX, rotatedZ * uClipScaleY, -rotatedX * 0.5, 1.0);
       vCellId = aCellId;
       vFront = rotatedX;
+      vCenterWeight = aCenterWeight;
     }
   `);
   const fragment = compileShader(gl, gl.FRAGMENT_SHADER, `#version 300 es
@@ -204,22 +203,38 @@ function createProgram(gl: WebGL2RenderingContext): WebGLProgram {
     precision highp int;
     flat in uint vCellId;
     in float vFront;
+    in float vCenterWeight;
     uniform sampler2D uColorTexture;
     uniform int uColorTextureWidth;
     uniform float uAlpha;
-    uniform int uUseSolidColor;
-    uniform vec4 uSolidColor;
+    uniform float uBorderStrength;
+    uniform int uHasSelectedCell;
+    uniform uint uSelectedCell;
     out vec4 outColor;
     void main() {
       if (vFront < 0.0) discard;
-      if (uUseSolidColor != 0) {
-        outColor = uSolidColor;
-        return;
-      }
       int cell = int(vCellId);
       ivec2 texel = ivec2(cell % uColorTextureWidth, cell / uColorTextureWidth);
       vec4 color = texelFetch(uColorTexture, texel, 0);
-      outColor = vec4(color.rgb, color.a * uAlpha);
+      bool selected = uHasSelectedCell != 0 && vCellId == uSelectedCell;
+      vec3 rgb = selected ? mix(color.rgb, vec3(93.0 / 255.0, 224.0 / 255.0, 1.0), 0.28) : color.rgb;
+      float alpha = color.a * uAlpha;
+
+      // aCenterWeight is 1 at the cell owner and 0 at every polygon corner.
+      // Interpolation therefore reaches exactly zero only on the physical cell perimeter.
+      // fwidth converts that analytic edge into a stable screen-space band instead of
+      // relying on implementation-dependent one-pixel WebGL line rasterization.
+      float edgeWidth = max(fwidth(vCenterWeight) * 1.35, 1e-6);
+      float edge = 1.0 - smoothstep(0.0, edgeWidth, vCenterWeight);
+      if (uBorderStrength > 0.0) {
+        float borderMix = edge * uBorderStrength * 0.86;
+        rgb = mix(rgb, vec3(225.0 / 255.0, 236.0 / 255.0, 246.0 / 255.0), borderMix);
+      }
+      if (selected) {
+        rgb = mix(rgb, vec3(93.0 / 255.0, 224.0 / 255.0, 1.0), edge);
+        alpha = max(alpha, 0.98);
+      }
+      outColor = vec4(rgb, alpha);
     }
   `);
   const program = gl.createProgram();
@@ -242,13 +257,12 @@ export class L8GlobeRenderer {
   private readonly program: WebGLProgram | null;
   private readonly positionBuffer: WebGLBuffer | null;
   private readonly cellIdBuffer: WebGLBuffer | null;
+  private readonly centerWeightBuffer: WebGLBuffer | null;
   private readonly indexBuffer: WebGLBuffer | null;
-  private readonly boundaryIndexBuffer: WebGLBuffer | null;
   private readonly colorTexture: WebGLTexture | null;
   private uploadedResult: WorldgenClimateResult | null = null;
   private uploadedColorKey = '';
   private uploadedIndexCount = 0;
-  private uploadedBoundaryIndexCount = 0;
   private colorTextureWidth = 1024;
   private colorTextureScratch = new Uint8Array(0);
 
@@ -266,18 +280,18 @@ export class L8GlobeRenderer {
       this.program = null;
       this.positionBuffer = null;
       this.cellIdBuffer = null;
+      this.centerWeightBuffer = null;
       this.indexBuffer = null;
-      this.boundaryIndexBuffer = null;
       this.colorTexture = null;
       return;
     }
     this.program = createProgram(gl);
     this.positionBuffer = gl.createBuffer();
     this.cellIdBuffer = gl.createBuffer();
+    this.centerWeightBuffer = gl.createBuffer();
     this.indexBuffer = gl.createBuffer();
-    this.boundaryIndexBuffer = gl.createBuffer();
     this.colorTexture = gl.createTexture();
-    if (!this.positionBuffer || !this.cellIdBuffer || !this.indexBuffer || !this.boundaryIndexBuffer || !this.colorTexture) {
+    if (!this.positionBuffer || !this.cellIdBuffer || !this.centerWeightBuffer || !this.indexBuffer || !this.colorTexture) {
       throw new Error('Could not allocate WebGL dual-cell resources.');
     }
   }
@@ -291,12 +305,11 @@ export class L8GlobeRenderer {
     gl.bufferData(gl.ARRAY_BUFFER, mesh.positions, gl.STATIC_DRAW);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.cellIdBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, mesh.cellIds, gl.STATIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.centerWeightBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, mesh.centerWeights, gl.STATIC_DRAW);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, mesh.indices, gl.STATIC_DRAW);
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.boundaryIndexBuffer);
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, mesh.boundaryIndices, gl.STATIC_DRAW);
     this.uploadedIndexCount = mesh.indices.length;
-    this.uploadedBoundaryIndexCount = mesh.boundaryIndices.length;
     this.uploadedResult = result;
     this.uploadedColorKey = '';
   }
@@ -333,7 +346,7 @@ export class L8GlobeRenderer {
   ): boolean {
     const gl = this.gl;
     const program = this.program;
-    if (!gl || !program || !this.positionBuffer || !this.cellIdBuffer || !this.indexBuffer || !this.boundaryIndexBuffer || !this.colorTexture) return false;
+    if (!gl || !program || !this.positionBuffer || !this.cellIdBuffer || !this.centerWeightBuffer || !this.indexBuffer || !this.colorTexture) return false;
     if (this.canvas.width !== width) this.canvas.width = width;
     if (this.canvas.height !== height) this.canvas.height = height;
     gl.viewport(0, 0, width, height);
@@ -362,6 +375,11 @@ export class L8GlobeRenderer {
     gl.enableVertexAttribArray(cellIdLocation);
     gl.vertexAttribIPointer(cellIdLocation, 1, gl.UNSIGNED_INT, 0, 0);
 
+    const centerWeightLocation = gl.getAttribLocation(program, 'aCenterWeight');
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.centerWeightBuffer);
+    gl.enableVertexAttribArray(centerWeightLocation);
+    gl.vertexAttribPointer(centerWeightLocation, 1, gl.FLOAT, false, 0, 0);
+
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.colorTexture);
@@ -374,43 +392,13 @@ export class L8GlobeRenderer {
     gl.uniform1i(gl.getUniformLocation(program, 'uColorTexture'), 0);
     gl.uniform1i(gl.getUniformLocation(program, 'uColorTextureWidth'), this.colorTextureWidth);
     gl.uniform1f(gl.getUniformLocation(program, 'uAlpha'), alpha);
-    gl.uniform1i(gl.getUniformLocation(program, 'uUseSolidColor'), 0);
+    const borderStrength = showCellBorders ? Math.max(0, Math.min(1, (camera.zoom - 2.0) / 2.5)) : 0;
+    const validSelectedCell = selectedCell !== null && selectedCell >= 0 && selectedCell < result.metrics.fineSampleCount;
+    gl.uniform1f(gl.getUniformLocation(program, 'uBorderStrength'), borderStrength);
+    gl.uniform1i(gl.getUniformLocation(program, 'uHasSelectedCell'), validSelectedCell ? 1 : 0);
+    gl.uniform1ui(gl.getUniformLocation(program, 'uSelectedCell'), validSelectedCell ? selectedCell! : 0);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
     gl.drawElements(gl.TRIANGLES, this.uploadedIndexCount, gl.UNSIGNED_INT, 0);
-
-    const borderFade = showCellBorders ? Math.max(0, Math.min(1, (camera.zoom - 2.0) / 2.5)) : 0;
-    if (borderFade > 0 || selectedCell !== null) {
-      // Dual-cell overlays lie exactly on the filled surface. Disable depth testing for
-      // this front-hemisphere pass so equal-depth precision cannot make borders flash.
-      // The fragment shader still rejects back-facing geometry through vFront.
-      gl.disable(gl.DEPTH_TEST);
-      gl.uniform1i(gl.getUniformLocation(program, 'uUseSolidColor'), 1);
-
-      if (selectedCell !== null && selectedCell >= 0 && selectedCell < result.metrics.fineSampleCount) {
-        const start = result.neighborOffsets[selectedCell]!;
-        const end = result.neighborOffsets[selectedCell + 1]!;
-        const degree = end - start;
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
-        gl.uniform4f(gl.getUniformLocation(program, 'uSolidColor'), 93 / 255, 224 / 255, 1, 0.24);
-        gl.drawElements(gl.TRIANGLES, degree * 3, gl.UNSIGNED_INT, start * 3 * Uint32Array.BYTES_PER_ELEMENT);
-      }
-
-      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.boundaryIndexBuffer);
-      gl.lineWidth(1);
-      if (borderFade > 0) {
-        gl.uniform4f(gl.getUniformLocation(program, 'uSolidColor'), 225 / 255, 236 / 255, 246 / 255, 0.62 * borderFade);
-        gl.drawElements(gl.LINES, this.uploadedBoundaryIndexCount, gl.UNSIGNED_INT, 0);
-      }
-      if (selectedCell !== null && selectedCell >= 0 && selectedCell < result.metrics.fineSampleCount) {
-        const start = result.neighborOffsets[selectedCell]!;
-        const end = result.neighborOffsets[selectedCell + 1]!;
-        const degree = end - start;
-        gl.uniform4f(gl.getUniformLocation(program, 'uSolidColor'), 93 / 255, 224 / 255, 1, 1);
-        gl.drawElements(gl.LINES, degree * 2, gl.UNSIGNED_INT, start * 2 * Uint32Array.BYTES_PER_ELEMENT);
-      }
-      gl.uniform1i(gl.getUniformLocation(program, 'uUseSolidColor'), 0);
-      gl.enable(gl.DEPTH_TEST);
-    }
     return true;
   }
 
@@ -419,14 +407,13 @@ export class L8GlobeRenderer {
     if (!gl) return;
     if (this.positionBuffer) gl.deleteBuffer(this.positionBuffer);
     if (this.cellIdBuffer) gl.deleteBuffer(this.cellIdBuffer);
+    if (this.centerWeightBuffer) gl.deleteBuffer(this.centerWeightBuffer);
     if (this.indexBuffer) gl.deleteBuffer(this.indexBuffer);
-    if (this.boundaryIndexBuffer) gl.deleteBuffer(this.boundaryIndexBuffer);
     if (this.colorTexture) gl.deleteTexture(this.colorTexture);
     if (this.program) gl.deleteProgram(this.program);
     this.uploadedResult = null;
     this.uploadedColorKey = '';
     this.uploadedIndexCount = 0;
-    this.uploadedBoundaryIndexCount = 0;
     this.colorTextureScratch = new Uint8Array(0);
   }
 }
