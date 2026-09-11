@@ -103,7 +103,10 @@ test('L8 lab keeps one continuous GPU cell surface through zoom and interaction'
   assert.match(source, /new L8GlobeRenderer/);
   assert.match(source, /addEventListener\('wheel'/);
   assert.match(source, /'custom': \{ mode: 'physical-elevation', overlays: \[\] \}/);
-  assert.match(source, /mode === 'tiles'/);
+  assert.match(html, /value="cell-boundaries" data-label="Physical cell boundaries"/);
+  assert.doesNotMatch(html, /<option value="tiles">/);
+  assert.match(source, /overlays\.has\('cell-boundaries'\)/);
+  assert.doesNotMatch(source, /mode === 'tiles'/);
   assert.match(source, /drawDiagnosticOverlays/);
   assert.doesNotMatch(source, /HIGH_ZOOM_DUAL_CELL_THRESHOLD/);
   assert.doesNotMatch(source, /drawTileLens/);
@@ -120,6 +123,9 @@ test('L8 lab keeps one continuous GPU cell surface through zoom and interaction'
   assert.match(gpu, /boundaryIndexBuffer/);
   assert.match(gpu, /drawElements\(gl\.TRIANGLES/);
   assert.match(gpu, /drawElements\(gl\.LINES/);
+  assert.match(gpu, /gl\.disable\(gl\.DEPTH_TEST\)/);
+  assert.match(gpu, /gl\.drawElements\(gl\.TRIANGLES, degree \* 3/);
+  assert.match(gpu, /selectedCell !== null/);
   assert.match(gpu, /-rotatedX \* 0\.5/);
   assert.match(gpu, /uUseSolidColor/);
   assert.match(gpu, /vertexAttribIPointer/);

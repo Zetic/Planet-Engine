@@ -6,9 +6,9 @@ Lower levels remain supported for smoke tests, diagnostics, convergence work, an
 
 ## Dual-cell gameplay view
 
-Every L8 sample owns its spherical Voronoi/dual cell. On the closed icosphere this yields **655,362 physical cells: 655,350 hexagons and the 12 topologically required pentagons**. The Pages diagnostic `Physical dual-cell tiles (hexagons + pentagons)` renders the final physical surface by these cells.
+Every L8 sample owns its spherical Voronoi/dual cell. On the closed icosphere this yields **655,362 physical cells: 655,350 hexagons and the 12 topologically required pentagons**. The orthographic viewer renders those cells as the canonical GPU surface for every diagnostic. `Physical cell boundaries` is an overlay, not a separate surface diagnostic, so the same hexagon/pentagon topology can be inspected over elevation, climate, hydrology, geology, or any other surface coloring.
 
-Rendering every L8 cell boundary continuously would require roughly two million dual-edge segments, so the diagnostic keeps the full world as a lightweight physical backdrop and provides a magnified five-ring dual-cell lens at the current view center. The lens renders exact spherical dual polygons and makes the hexagon/pentagon topology directly inspectable. The 12 pentagons are highlighted globally; drag the orthographic globe to move the lens target. This is a diagnostic visualization only; it does not add a separate gameplay grid or alter physical state.
+Cell perimeters are kept in a GPU index buffer and fade in when cells become screen-resolved. Clicking the globe selects the nearest L8 cell; the selected cell is filled and outlined regardless of the active diagnostic or boundary-overlay state. This is a visualization of the existing physical topology only; it does not add a separate gameplay grid or alter physical state.
 
 ## Calibration
 

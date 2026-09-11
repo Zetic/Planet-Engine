@@ -380,8 +380,22 @@ export class L8GlobeRenderer {
 
     const borderFade = showCellBorders ? Math.max(0, Math.min(1, (camera.zoom - 2.0) / 2.5)) : 0;
     if (borderFade > 0 || selectedCell !== null) {
-      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.boundaryIndexBuffer);
+      // Dual-cell overlays lie exactly on the filled surface. Disable depth testing for
+      // this front-hemisphere pass so equal-depth precision cannot make borders flash.
+      // The fragment shader still rejects back-facing geometry through vFront.
+      gl.disable(gl.DEPTH_TEST);
       gl.uniform1i(gl.getUniformLocation(program, 'uUseSolidColor'), 1);
+
+      if (selectedCell !== null && selectedCell >= 0 && selectedCell < result.metrics.fineSampleCount) {
+        const start = result.neighborOffsets[selectedCell]!;
+        const end = result.neighborOffsets[selectedCell + 1]!;
+        const degree = end - start;
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
+        gl.uniform4f(gl.getUniformLocation(program, 'uSolidColor'), 93 / 255, 224 / 255, 1, 0.24);
+        gl.drawElements(gl.TRIANGLES, degree * 3, gl.UNSIGNED_INT, start * 3 * Uint32Array.BYTES_PER_ELEMENT);
+      }
+
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.boundaryIndexBuffer);
       gl.lineWidth(1);
       if (borderFade > 0) {
         gl.uniform4f(gl.getUniformLocation(program, 'uSolidColor'), 225 / 255, 236 / 255, 246 / 255, 0.62 * borderFade);
@@ -395,6 +409,7 @@ export class L8GlobeRenderer {
         gl.drawElements(gl.LINES, degree * 2, gl.UNSIGNED_INT, start * 2 * Uint32Array.BYTES_PER_ELEMENT);
       }
       gl.uniform1i(gl.getUniformLocation(program, 'uUseSolidColor'), 0);
+      gl.enable(gl.DEPTH_TEST);
     }
     return true;
   }

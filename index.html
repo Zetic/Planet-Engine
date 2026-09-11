@@ -175,8 +175,7 @@
             <option value="structural-zones">Structural zone type</option>
             <option value="fragmentation">Fragmentation propensity</option>
           </optgroup>
-          <optgroup label="Topology / gameplay cells">
-            <option value="tiles">Physical dual-cell tiles (hexagons + pentagons)</option>
+          <optgroup label="Topology">
             <option value="mesh">Fine topology mesh</option>
           </optgroup>
         </select>
@@ -184,6 +183,7 @@
           <details id="worldgen-overlays" class="worldgen-overlay-menu">
             <summary>Overlays <strong id="worldgen-overlay-summary">None</strong></summary>
             <div class="worldgen-overlay-options">
+              <label><input type="checkbox" data-worldgen-overlay value="cell-boundaries" data-label="Physical cell boundaries"> Physical cell boundaries</label>
               <label><input type="checkbox" data-worldgen-overlay value="evolved-topography" data-label="Final topographic contours"> Final topographic contours</label>
               <label><input type="checkbox" data-worldgen-overlay value="final-rivers" data-label="Final rivers"> Final rivers</label>
               <label><input type="checkbox" data-worldgen-overlay value="final-lakes" data-label="Final lakes"> Final lakes</label>
