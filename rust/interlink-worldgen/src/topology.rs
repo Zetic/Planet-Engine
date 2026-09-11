@@ -666,6 +666,21 @@ mod tests {
         }
     }
     #[test]
+    fn canonical_l8_topology_has_expected_dual_cell_counts() {
+        let topology = build_icosphere(8).unwrap();
+        let metrics = topology.metrics();
+        assert_eq!(metrics.sample_count, 655_362);
+        assert_eq!(metrics.edge_count, expected_edge_count(8).unwrap());
+        assert_eq!(metrics.face_count, expected_face_count(8).unwrap());
+        assert_eq!(metrics.five_neighbor_count, 12);
+        assert_eq!(metrics.six_neighbor_count, 655_350);
+        assert_eq!(
+            i64::from(metrics.sample_count) - i64::from(metrics.edge_count)
+                + i64::from(metrics.face_count),
+            2
+        );
+    }
+    #[test]
     fn exactly_twelve_sites_are_pentavalent_and_every_other_site_is_hexavalent() {
         for level in 0..=5 {
             let topology = build_icosphere(level).unwrap();

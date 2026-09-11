@@ -19,8 +19,8 @@
 
     <section class="worldgen-lab-controls" aria-label="Planet generation controls">
       <label>Seed <input id="worldgen-seed" type="text" value="interlink-wg7c"></label>
-      <label>Coarse physical level <input id="worldgen-coarse-level" type="number" min="0" max="6" value="4"></label>
-      <label>Fine planet level <input id="worldgen-level" type="number" min="0" max="7" value="6"></label>
+      <label>Coarse physical level <input id="worldgen-coarse-level" type="number" min="0" max="6" value="5"></label>
+      <label>Fine planet level <input id="worldgen-level" type="number" min="0" max="8" value="8"></label>
       <label>Plate count <input id="worldgen-plates" type="number" min="4" max="48" value="16"></label>
       <button id="worldgen-generate" type="button">Generate Planet</button>
       <button id="worldgen-copy-calibration" type="button" disabled>Copy LLM Summary</button>
@@ -174,7 +174,8 @@
             <option value="structural-zones">Structural zone type</option>
             <option value="fragmentation">Fragmentation propensity</option>
           </optgroup>
-          <optgroup label="Topology">
+          <optgroup label="Topology / gameplay cells">
+            <option value="tiles">Physical dual-cell tiles (hexagons + pentagons)</option>
             <option value="mesh">Fine topology mesh</option>
           </optgroup>
         </select>

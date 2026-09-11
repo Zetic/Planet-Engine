@@ -13,8 +13,9 @@ import { mapVectorDelta, reconstructAnnualHarmonic } from '../dist/worldgen/diag
 test('WG-5 browser protocol is versioned and bounded', () => {
   assert.equal(WORLDGEN_PROTOCOL_VERSION, 18);
   assert.equal(WORLDGEN_CLIMATE_COARSE_MAX_LEVEL, 6);
-  assert.equal(WORLDGEN_CLIMATE_FINE_MAX_LEVEL, 7);
+  assert.equal(WORLDGEN_CLIMATE_FINE_MAX_LEVEL, 8);
   const request = { seed: 'wg5-browser', coarseLevel: 3, fineLevel: 4, plateCount: 12 };
+  assert.doesNotThrow(() => validateClimateRequest({ seed: 'wg5-l8', coarseLevel: 5, fineLevel: 8, plateCount: 16 }));
   assert.doesNotThrow(() => validateClimateRequest(request));
   assert.deepEqual(worldgenClimateCommand(91, request), {
     protocolVersion: 18,
@@ -53,6 +54,13 @@ test('WG-5 Lab preserves viewport dimensions while splitting diagnostics, overla
   const css = fs.readFileSync('styles/worldgenLab.css', 'utf8');
   const source = fs.readFileSync('src/worldgen/diagnostics/worldgenClimateLabStandalone.ts', 'utf8');
   assert.match(html, /class="worldgen-lab-diagnostics"/);
+  assert.match(html, /Physical dual-cell tiles \(hexagons \+ pentagons\)/);
+  assert.match(source, /mode === 'tiles'/);
+  assert.match(source, /tileBoundary/);
+  assert.match(source, /drawTileLens/);
+  assert.match(source, /tileNeighborhood/);
+  assert.match(source, /Ready for canonical L8 generation/);
+  assert.doesNotMatch(source, /void generatePlanet\(\);/);
   assert.match(html, /id="worldgen-overlays"/);
   assert.match(html, /Topographic contours/);
   assert.match(html, /id="worldgen-projection"/);
