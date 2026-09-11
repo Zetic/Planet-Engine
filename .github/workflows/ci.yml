@@ -48,6 +48,10 @@ jobs:
         run: |
           cargo run --release -p interlink-worldgen-cli --bin calibration-report -- --seed ci-calibration-packet --coarse-level 3 --level 4 --plates 12 --format json > /tmp/planet-calibration.json
           python3 -c "import json; p=json.load(open('/tmp/planet-calibration.json')); assert p['schema']=='planet-engine-calibration@1'; assert p['run']['sample_count']==2562; assert p['hydrology']['lake_count'] >= 0"
+      - name: Canonical L5→L8 full-pipeline smoke
+        run: |
+          cargo run --release -p interlink-worldgen-cli --bin calibration-report -- --seed ci-l8-canonical --coarse-level 5 --level 8 --plates 16 --format json > /tmp/planet-l8-calibration.json
+          python3 -c "import json; p=json.load(open('/tmp/planet-l8-calibration.json')); assert p['schema']=='planet-engine-calibration@1'; assert p['run']['coarse_level']==5; assert p['run']['fine_level']==8; assert p['run']['sample_count']==655362; assert p['hydrology']['lake_count'] >= 0"
       - name: WG-3 continental assembly diversity acceptance
         run: cargo run --release -p interlink-worldgen-cli --example continental_shape_acceptance
       - name: WG-4 L5→L7 ridge morphology acceptance

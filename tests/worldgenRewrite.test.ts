@@ -58,12 +58,12 @@ const PROTOCOL = 18;
 test('Planet Engine browser protocol v18 preserves WG-0 through WG-3.75 contracts', () => {
   assert.equal(WORLDGEN_PROTOCOL_VERSION, PROTOCOL);
   assert.equal(WORLDGEN_SYNTHETIC_MAX_SAMPLES, 4_194_304);
-  assert.equal(WORLDGEN_TOPOLOGY_MAX_LEVEL, 7);
+  assert.equal(WORLDGEN_TOPOLOGY_MAX_LEVEL, 8);
   assert.equal(WORLDGEN_TECTONICS_MAX_LEVEL, 6);
   assert.equal(WORLDGEN_GEOLOGY_MAX_LEVEL, 6);
   assert.equal(WORLDGEN_LITHOSPHERE_MAX_LEVEL, 6);
   assert.equal(WORLDGEN_INHERITANCE_COARSE_MAX_LEVEL, 6);
-  assert.equal(WORLDGEN_INHERITANCE_FINE_MAX_LEVEL, 7);
+  assert.equal(WORLDGEN_INHERITANCE_FINE_MAX_LEVEL, 8);
   assert.equal(WORLDGEN_TECTONICS_MIN_PLATES, 4);
   assert.equal(WORLDGEN_TECTONICS_MAX_PLATES, 48);
   assert.deepEqual([WORLDGEN_BOUNDARY_CONVERGENT, WORLDGEN_BOUNDARY_DIVERGENT, WORLDGEN_BOUNDARY_TRANSFORM], [1, 2, 3]);
@@ -97,13 +97,13 @@ test('Planet Engine browser protocol v18 preserves WG-0 through WG-3.75 contract
 
   assert.throws(() => validateSyntheticRequest({ seed: '', width: 1, height: 1 }), /seed/i);
   assert.throws(() => validateSyntheticRequest({ seed: 'x', width: 4096, height: 4096 }), /limited/i);
-  assert.doesNotThrow(() => validateTopologyRequest({ level: 7 }));
-  assert.throws(() => validateTopologyRequest({ level: 8 }), /0 through 7/i);
+  assert.doesNotThrow(() => validateTopologyRequest({ level: 8 }));
+  assert.throws(() => validateTopologyRequest({ level: 9 }), /0 through 8/i);
   assert.doesNotThrow(() => validateTectonicsRequest({ seed: 'x', level: 6, plateCount: 24 }));
   assert.throws(() => validateTectonicsRequest({ seed: 'x', level: 5, plateCount: 3 }), /4 through 48/i);
   assert.doesNotThrow(() => validateGeologyRequest({ seed: 'x', level: 6, plateCount: 24 }));
   assert.doesNotThrow(() => validateLithosphereRequest({ seed: 'x', level: 6, plateCount: 24 }));
-  assert.doesNotThrow(() => validateInheritanceRequest({ seed: 'x', coarseLevel: 4, fineLevel: 7, plateCount: 24 }));
+  assert.doesNotThrow(() => validateInheritanceRequest({ seed: 'x', coarseLevel: 5, fineLevel: 8, plateCount: 24 }));
   assert.throws(() => validateInheritanceRequest({ seed: 'x', coarseLevel: 5, fineLevel: 4, plateCount: 16 }), /fine level/i);
 });
 

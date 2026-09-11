@@ -13,8 +13,9 @@ import {
 test('WG-6A browser protocol is versioned and bounded', () => {
   assert.equal(WORLDGEN_PROTOCOL_VERSION, 18);
   assert.equal(WORLDGEN_DRAINAGE_COARSE_MAX_LEVEL, 6);
-  assert.equal(WORLDGEN_DRAINAGE_FINE_MAX_LEVEL, 7);
+  assert.equal(WORLDGEN_DRAINAGE_FINE_MAX_LEVEL, 8);
   assert.equal(WORLDGEN_INVALID_SAMPLE_ID, 0xffff_ffff);
+  assert.doesNotThrow(() => validateDrainageRequest({ seed: 'wg6a-l8', coarseLevel: 5, fineLevel: 8, plateCount: 16 }));
 
   assert.doesNotThrow(() => validateDrainageRequest({
     seed: 'wg6a-browser',

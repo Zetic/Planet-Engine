@@ -578,7 +578,7 @@ function buildStyleCache(result, mode, phase) {
     const field = scalarField(result, mode, phase);
     const phaseKey = ['seasonal-temperature', 'seasonal-sst', 'seasonal-precipitation', 'seasonal-realized-discharge', 'seasonal-snow-storage'].includes(mode) ? phase.toFixed(3) : 'mean';
     const key = `${mode}:${phaseKey}`;
-    const sampleBuckets = mode === 'mesh' ? [] : bucketize(result.metrics.fineSampleCount, sample => sampleColor(result, mode, sample, field));
+    const sampleBuckets = (mode === 'mesh' || mode === 'tiles') ? [] : bucketize(result.metrics.fineSampleCount, sample => sampleColor(result, mode, sample, field));
     let boundaryBuckets = [];
     if (mode === 'tectonic-boundaries')
         boundaryBuckets = bucketize(result.metrics.fineBoundaryEdgeCount, boundary => tectonicBoundaryColor(result.boundaryKinds[boundary]));
@@ -824,6 +824,218 @@ function drawDiagnosticOverlays(context, result, overlays, phase, projection, ya
     if (overlays.has('currents'))
         drawVectors(context, result, 'currents', phase, projection, yaw, pitch, width, height, buffers, animation);
 }
+function tilePosition(result, sample) {
+    const offset = sample * 3;
+    return [result.positions[offset], result.positions[offset + 1], result.positions[offset + 2]];
+}
+function tileDot(a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
+function tileCross(a, b) {
+    return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+}
+function tileSubtract(a, b) { return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]; }
+function tileNormalize(value) {
+    const length = Math.hypot(value[0], value[1], value[2]);
+    return length > 1e-15 ? [value[0] / length, value[1] / length, value[2] / length] : [0, 0, 1];
+}
+function tileCircumcenter(a, b, c) {
+    let center = tileNormalize(tileCross(tileSubtract(b, a), tileSubtract(c, a)));
+    if (tileDot(center, a) < 0)
+        center = [-center[0], -center[1], -center[2]];
+    return center;
+}
+function tileTangentBasis(up) {
+    const reference = Math.abs(up[2]) < 0.9 ? [0, 0, 1] : [0, 1, 0];
+    const east = tileNormalize(tileCross(reference, up));
+    return [east, tileCross(up, east)];
+}
+function tileHasNeighbor(result, sample, candidate) {
+    const start = result.neighborOffsets[sample];
+    const end = result.neighborOffsets[sample + 1];
+    for (let cursor = start; cursor < end; cursor += 1) {
+        if (result.neighbors[cursor] === candidate)
+            return true;
+    }
+    return false;
+}
+function tileBoundary(result, sample) {
+    const start = result.neighborOffsets[sample];
+    const end = result.neighborOffsets[sample + 1];
+    const center = tilePosition(result, sample);
+    const vertices = [];
+    for (let left = start; left < end; left += 1) {
+        const a = result.neighbors[left];
+        for (let right = left + 1; right < end; right += 1) {
+            const b = result.neighbors[right];
+            if (!tileHasNeighbor(result, a, b))
+                continue;
+            vertices.push(tileCircumcenter(center, tilePosition(result, a), tilePosition(result, b)));
+        }
+    }
+    const [east, north] = tileTangentBasis(center);
+    vertices.sort((a, b) => Math.atan2(tileDot(a, north), tileDot(a, east)) - Math.atan2(tileDot(b, north), tileDot(b, east)));
+    return vertices;
+}
+function tileNeighborhood(result, center, rings) {
+    const visited = new Set([center]);
+    let frontier = [center];
+    for (let ring = 0; ring < rings; ring += 1) {
+        const next = [];
+        for (const sample of frontier) {
+            const start = result.neighborOffsets[sample];
+            const end = result.neighborOffsets[sample + 1];
+            for (let cursor = start; cursor < end; cursor += 1) {
+                const neighbor = result.neighbors[cursor];
+                if (visited.has(neighbor))
+                    continue;
+                visited.add(neighbor);
+                next.push(neighbor);
+            }
+        }
+        frontier = next;
+    }
+    return Array.from(visited);
+}
+function drawTileLens(context, result, focusSample, width, height) {
+    const lensSize = Math.min(340, Math.max(260, Math.floor(Math.min(width, height) * 0.42)));
+    const lensX = width - lensSize - 18;
+    const lensY = height - lensSize - 18;
+    const padding = 28;
+    const center = tilePosition(result, focusSample);
+    const [east, north] = tileTangentBasis(center);
+    const samples = tileNeighborhood(result, focusSample, 5);
+    const polygons = samples.map(sample => ({ sample, vertices: tileBoundary(result, sample) }));
+    let extent = 0;
+    for (const polygon of polygons) {
+        for (const vertex of polygon.vertices) {
+            const denominator = Math.max(1e-5, tileDot(vertex, center));
+            const x = tileDot(vertex, east) / denominator;
+            const y = tileDot(vertex, north) / denominator;
+            extent = Math.max(extent, Math.abs(x), Math.abs(y));
+        }
+    }
+    const scale = (lensSize / 2 - padding) / Math.max(extent, 1e-6);
+    const project = (point) => {
+        const denominator = Math.max(1e-5, tileDot(point, center));
+        return [
+            lensX + lensSize / 2 + tileDot(point, east) / denominator * scale,
+            lensY + lensSize / 2 - tileDot(point, north) / denominator * scale,
+        ];
+    };
+    context.save();
+    context.fillStyle = 'rgba(5,12,20,0.96)';
+    context.fillRect(lensX, lensY, lensSize, lensSize);
+    context.strokeStyle = 'rgba(154,185,207,0.88)';
+    context.lineWidth = 1.2;
+    context.strokeRect(lensX + 0.5, lensY + 0.5, lensSize - 1, lensSize - 1);
+    context.beginPath();
+    context.rect(lensX + 1, lensY + 1, lensSize - 2, lensSize - 2);
+    context.clip();
+    for (const polygon of polygons) {
+        const degree = result.neighborOffsets[polygon.sample + 1] - result.neighborOffsets[polygon.sample];
+        if (polygon.vertices.length !== degree || (degree !== 5 && degree !== 6))
+            continue;
+        context.beginPath();
+        polygon.vertices.forEach((vertex, index) => {
+            const [x, y] = project(vertex);
+            if (index === 0)
+                context.moveTo(x, y);
+            else
+                context.lineTo(x, y);
+        });
+        context.closePath();
+        context.fillStyle = evolvedHypsometricColor(result, polygon.sample);
+        context.fill();
+        const isFocus = polygon.sample === focusSample;
+        context.strokeStyle = degree === 5
+            ? 'rgba(255,211,106,0.98)'
+            : isFocus ? 'rgba(93,224,255,1)' : 'rgba(225,236,246,0.72)';
+        context.lineWidth = degree === 5 ? 2.6 : isFocus ? 2.2 : 0.9;
+        context.stroke();
+    }
+    context.restore();
+    const focusDegree = result.neighborOffsets[focusSample + 1] - result.neighborOffsets[focusSample];
+    context.save();
+    context.fillStyle = 'rgba(5,12,20,0.94)';
+    context.fillRect(lensX, lensY - 44, lensSize, 42);
+    context.fillStyle = '#e7f0f7';
+    context.font = '12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+    context.fillText('L8 dual-cell lens · 5 neighbor rings', lensX + 10, lensY - 27);
+    context.fillStyle = focusDegree === 5 ? '#ffd36a' : '#5de0ff';
+    context.fillText(`focus cell ${focusSample.toLocaleString()} · ${focusDegree === 5 ? 'pentagon' : 'hexagon'}`, lensX + 10, lensY - 10);
+    context.restore();
+}
+function drawPhysicalTiles(context, result, projection, yaw, pitch, width, height, buffers, interactive) {
+    const count = result.metrics.fineSampleCount;
+    const baseTarget = interactive ? 120_000 : 360_000;
+    const stride = Math.max(1, Math.ceil(count / baseTarget));
+    let focusSample = 0;
+    let focusDistanceSquared = Number.POSITIVE_INFINITY;
+    let pentagonCount = 0;
+    context.save();
+    context.globalAlpha = 0.72;
+    for (let sample = 0; sample < count; sample += stride) {
+        if (!buffers.visible[sample])
+            continue;
+        context.fillStyle = evolvedHypsometricColor(result, sample);
+        context.fillRect(buffers.x[sample] - 0.6, buffers.y[sample] - 0.6, 1.2, 1.2);
+    }
+    context.globalAlpha = 1;
+    if (interactive) {
+        context.fillStyle = 'rgba(8,16,26,0.84)';
+        context.fillRect(12, 12, 404, 48);
+        context.fillStyle = '#e7f0f7';
+        context.font = '13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+        context.fillText(`${count.toLocaleString()} physical dual cells`, 22, 32);
+        context.fillStyle = '#ffd36a';
+        context.fillText(`12 pentagons · ${(count - 12).toLocaleString()} hexagons · release to inspect lens`, 22, 50);
+        context.restore();
+        return;
+    }
+    for (let sample = 0; sample < count; sample += 1) {
+        const degree = result.neighborOffsets[sample + 1] - result.neighborOffsets[sample];
+        if (degree === 5)
+            pentagonCount += 1;
+        if (!buffers.visible[sample])
+            continue;
+        const dx = buffers.x[sample] - width / 2;
+        const dy = buffers.y[sample] - height / 2;
+        const distanceSquared = dx * dx + dy * dy;
+        if (distanceSquared < focusDistanceSquared) {
+            focusDistanceSquared = distanceSquared;
+            focusSample = sample;
+        }
+    }
+    context.lineWidth = 1.4;
+    for (let sample = 0; sample < count; sample += 1) {
+        if (result.neighborOffsets[sample + 1] - result.neighborOffsets[sample] !== 5 || !buffers.visible[sample])
+            continue;
+        const x = buffers.x[sample], y = buffers.y[sample];
+        context.beginPath();
+        context.arc(x, y, 4.2, 0, TWO_PI);
+        context.fillStyle = 'rgba(255,211,106,0.96)';
+        context.fill();
+        context.strokeStyle = 'rgba(12,18,26,0.92)';
+        context.stroke();
+    }
+    if (buffers.visible[focusSample]) {
+        const x = buffers.x[focusSample], y = buffers.y[focusSample];
+        context.beginPath();
+        context.arc(x, y, 6.0, 0, TWO_PI);
+        context.strokeStyle = 'rgba(93,224,255,0.98)';
+        context.lineWidth = 1.8;
+        context.stroke();
+    }
+    context.fillStyle = 'rgba(8,16,26,0.84)';
+    context.fillRect(12, 12, 404, 48);
+    context.fillStyle = '#e7f0f7';
+    context.font = '13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+    context.fillText(`${count.toLocaleString()} physical dual cells`, 22, 32);
+    context.fillStyle = '#ffd36a';
+    context.fillText(`${pentagonCount} pentagons · ${(count - pentagonCount).toLocaleString()} hexagons · drag globe to inspect`, 22, 50);
+    if (!interactive && buffers.visible[focusSample])
+        drawTileLens(context, result, focusSample, width, height);
+    context.restore();
+}
 function renderPlanet(canvas, result, projection, mode, overlays, phase, yaw, pitch, buffers, interactive, animation) {
     const width = 1100;
     const height = projection === 'map' ? 550 : 760;
@@ -890,6 +1102,11 @@ function renderPlanet(canvas, result, projection, mode, overlays, phase, yaw, pi
     }
     if (isDrainageMode(mode)) {
         renderDrainageDiagnostic(context, result, projection, mode, width, buffers, interactive);
+        drawDiagnosticOverlays(context, result, overlays, phase, projection, yaw, pitch, width, height, buffers, animation);
+        return;
+    }
+    if (mode === 'tiles') {
+        drawPhysicalTiles(context, result, projection, yaw, pitch, width, height, buffers, interactive);
         drawDiagnosticOverlays(context, result, overlays, phase, projection, yaw, pitch, width, height, buffers, animation);
         return;
     }
@@ -1401,4 +1618,6 @@ window.addEventListener('beforeunload', () => {
 updateSeasonLabel();
 updateOverlaySummary();
 applyViewPreset(preset.value);
-void generatePlanet();
+generationStage.textContent = 'Ready for canonical L8 generation';
+generationStep.textContent = 'L5 coarse physical state → L8 final physical planet';
+status.textContent = 'Ready. Generate the canonical L5 → L8 physical world when you want to allocate the full-resolution state.';

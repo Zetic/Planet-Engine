@@ -12,8 +12,8 @@ import {
 test('WG-4 browser contract remains available under protocol v18', () => {
   assert.equal(WORLDGEN_PROTOCOL_VERSION, 18);
   assert.equal(WORLDGEN_TOPOGRAPHY_COARSE_MAX_LEVEL, 6);
-  assert.equal(WORLDGEN_TOPOGRAPHY_FINE_MAX_LEVEL, 7);
-  assert.doesNotThrow(() => validateTopographyRequest({ seed: 'wg4', coarseLevel: 4, fineLevel: 7, plateCount: 18 }));
+  assert.equal(WORLDGEN_TOPOGRAPHY_FINE_MAX_LEVEL, 8);
+  assert.doesNotThrow(() => validateTopographyRequest({ seed: 'wg4', coarseLevel: 5, fineLevel: 8, plateCount: 18 }));
   assert.throws(() => validateTopographyRequest({ seed: '', coarseLevel: 4, fineLevel: 6, plateCount: 18 }), /seed/i);
   assert.throws(() => validateTopographyRequest({ seed: 'wg4', coarseLevel: 5, fineLevel: 4, plateCount: 18 }), /fine level/i);
   assert.deepEqual(worldgenTopographyCommand(77, { seed: 'wg4', coarseLevel: 4, fineLevel: 6, plateCount: 18 }), { protocolVersion: 18, requestId: 77, type: 'generate-topography', payload: { seed: 'wg4', coarseLevel: 4, fineLevel: 6, plateCount: 18 } });
