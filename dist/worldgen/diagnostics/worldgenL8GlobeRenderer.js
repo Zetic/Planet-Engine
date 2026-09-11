@@ -45,11 +45,13 @@ export function buildDualCellGpuMesh(result) {
     const positions = new Float32Array(vertexCount * 3);
     const cellIds = new Uint32Array(vertexCount);
     const indices = new Uint32Array(totalDegree * 3);
+    const boundaryIndices = new Uint32Array(totalDegree * 2);
     const orderedSamples = new Uint32Array(maxDegree);
     const orderedAngles = new Float64Array(maxDegree);
     const cornerIds = new Uint32Array(maxDegree);
     let vertexCursor = 0;
     let indexCursor = 0;
+    let boundaryCursor = 0;
     const writeVertex = (vertex, cellId) => {
         const vertexId = vertexCursor++;
         const offset = vertexId * 3;
@@ -93,12 +95,22 @@ export function buildDualCellGpuMesh(result) {
             indices[indexCursor++] = base;
             indices[indexCursor++] = cornerIds[index];
             indices[indexCursor++] = cornerIds[(index + 1) % degree];
+            boundaryIndices[boundaryCursor++] = cornerIds[index];
+            boundaryIndices[boundaryCursor++] = cornerIds[(index + 1) % degree];
         }
     }
-    if (vertexCursor !== vertexCount || indexCursor !== indices.length) {
-        throw new Error(`L8 dual-cell mesh size mismatch: ${vertexCursor}/${vertexCount} vertices, ${indexCursor}/${indices.length} indices.`);
+    if (vertexCursor !== vertexCount || indexCursor !== indices.length || boundaryCursor !== boundaryIndices.length) {
+        throw new Error(`L8 dual-cell mesh size mismatch: ${vertexCursor}/${vertexCount} vertices, ${indexCursor}/${indices.length} triangle indices, ${boundaryCursor}/${boundaryIndices.length} boundary indices.`);
     }
-    return { positions, cellIds, indices, vertexCount, triangleCount: indices.length / 3 };
+    return {
+        positions,
+        cellIds,
+        indices,
+        boundaryIndices,
+        vertexCount,
+        triangleCount: indices.length / 3,
+        boundaryIndexCount: boundaryIndices.length,
+    };
 }
 export function collectViewportSampleIndices(x, y, visible, width, height, marginPixels = 24) {
     if (x.length !== y.length || x.length !== visible.length) {
@@ -151,7 +163,10 @@ function createProgram(gl) {
       float y1 = sy * aPosition.x + cy * aPosition.y;
       float rotatedX = cp * x1 + sp * aPosition.z;
       float rotatedZ = -sp * x1 + cp * aPosition.z;
-      gl_Position = vec4(y1 * uClipScaleX, rotatedZ * uClipScaleY, -rotatedX, 1.0);
+      // Keep the front pole comfortably inside clip space. The previous -rotatedX
+      // mapping put valid unit-sphere geometry directly on z=-1 and could expose a
+      // camera-centered clear-color cap through precision/clipping artifacts.
+      gl_Position = vec4(y1 * uClipScaleX, rotatedZ * uClipScaleY, -rotatedX * 0.5, 1.0);
       vCellId = aCellId;
       vFront = rotatedX;
     }
@@ -164,9 +179,15 @@ function createProgram(gl) {
     uniform sampler2D uColorTexture;
     uniform int uColorTextureWidth;
     uniform float uAlpha;
+    uniform int uUseSolidColor;
+    uniform vec4 uSolidColor;
     out vec4 outColor;
     void main() {
       if (vFront < 0.0) discard;
+      if (uUseSolidColor != 0) {
+        outColor = uSolidColor;
+        return;
+      }
       int cell = int(vCellId);
       ivec2 texel = ivec2(cell % uColorTextureWidth, cell / uColorTextureWidth);
       vec4 color = texelFetch(uColorTexture, texel, 0);
@@ -195,10 +216,12 @@ export class L8GlobeRenderer {
     positionBuffer;
     cellIdBuffer;
     indexBuffer;
+    boundaryIndexBuffer;
     colorTexture;
     uploadedResult = null;
     uploadedColorKey = '';
     uploadedIndexCount = 0;
+    uploadedBoundaryIndexCount = 0;
     colorTextureWidth = 1024;
     colorTextureScratch = new Uint8Array(0);
     constructor(canvas) {
@@ -217,6 +240,7 @@ export class L8GlobeRenderer {
             this.positionBuffer = null;
             this.cellIdBuffer = null;
             this.indexBuffer = null;
+            this.boundaryIndexBuffer = null;
             this.colorTexture = null;
             return;
         }
@@ -224,8 +248,9 @@ export class L8GlobeRenderer {
         this.positionBuffer = gl.createBuffer();
         this.cellIdBuffer = gl.createBuffer();
         this.indexBuffer = gl.createBuffer();
+        this.boundaryIndexBuffer = gl.createBuffer();
         this.colorTexture = gl.createTexture();
-        if (!this.positionBuffer || !this.cellIdBuffer || !this.indexBuffer || !this.colorTexture) {
+        if (!this.positionBuffer || !this.cellIdBuffer || !this.indexBuffer || !this.boundaryIndexBuffer || !this.colorTexture) {
             throw new Error('Could not allocate WebGL dual-cell resources.');
         }
     }
@@ -239,7 +264,10 @@ export class L8GlobeRenderer {
         gl.bufferData(gl.ARRAY_BUFFER, mesh.cellIds, gl.STATIC_DRAW);
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
         gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, mesh.indices, gl.STATIC_DRAW);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.boundaryIndexBuffer);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, mesh.boundaryIndices, gl.STATIC_DRAW);
         this.uploadedIndexCount = mesh.indices.length;
+        this.uploadedBoundaryIndexCount = mesh.boundaryIndices.length;
         this.uploadedResult = result;
         this.uploadedColorKey = '';
     }
@@ -263,10 +291,10 @@ export class L8GlobeRenderer {
         gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, this.colorTextureWidth, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, this.colorTextureScratch);
     }
-    draw(result, colors, colorKey, camera, width, height, alpha = 0.94) {
+    draw(result, colors, colorKey, camera, width, height, alpha = 0.94, showCellBorders = false, selectedCell = null) {
         const gl = this.gl;
         const program = this.program;
-        if (!gl || !program || !this.positionBuffer || !this.cellIdBuffer || !this.indexBuffer || !this.colorTexture)
+        if (!gl || !program || !this.positionBuffer || !this.cellIdBuffer || !this.indexBuffer || !this.boundaryIndexBuffer || !this.colorTexture)
             return false;
         if (this.canvas.width !== width)
             this.canvas.width = width;
@@ -306,7 +334,27 @@ export class L8GlobeRenderer {
         gl.uniform1i(gl.getUniformLocation(program, 'uColorTexture'), 0);
         gl.uniform1i(gl.getUniformLocation(program, 'uColorTextureWidth'), this.colorTextureWidth);
         gl.uniform1f(gl.getUniformLocation(program, 'uAlpha'), alpha);
+        gl.uniform1i(gl.getUniformLocation(program, 'uUseSolidColor'), 0);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
         gl.drawElements(gl.TRIANGLES, this.uploadedIndexCount, gl.UNSIGNED_INT, 0);
+        const borderFade = showCellBorders ? Math.max(0, Math.min(1, (camera.zoom - 2.0) / 2.5)) : 0;
+        if (borderFade > 0 || selectedCell !== null) {
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.boundaryIndexBuffer);
+            gl.uniform1i(gl.getUniformLocation(program, 'uUseSolidColor'), 1);
+            gl.lineWidth(1);
+            if (borderFade > 0) {
+                gl.uniform4f(gl.getUniformLocation(program, 'uSolidColor'), 225 / 255, 236 / 255, 246 / 255, 0.62 * borderFade);
+                gl.drawElements(gl.LINES, this.uploadedBoundaryIndexCount, gl.UNSIGNED_INT, 0);
+            }
+            if (selectedCell !== null && selectedCell >= 0 && selectedCell < result.metrics.fineSampleCount) {
+                const start = result.neighborOffsets[selectedCell];
+                const end = result.neighborOffsets[selectedCell + 1];
+                const degree = end - start;
+                gl.uniform4f(gl.getUniformLocation(program, 'uSolidColor'), 93 / 255, 224 / 255, 1, 1);
+                gl.drawElements(gl.LINES, degree * 2, gl.UNSIGNED_INT, start * 2 * Uint32Array.BYTES_PER_ELEMENT);
+            }
+            gl.uniform1i(gl.getUniformLocation(program, 'uUseSolidColor'), 0);
+        }
         return true;
     }
     dispose() {
@@ -319,6 +367,8 @@ export class L8GlobeRenderer {
             gl.deleteBuffer(this.cellIdBuffer);
         if (this.indexBuffer)
             gl.deleteBuffer(this.indexBuffer);
+        if (this.boundaryIndexBuffer)
+            gl.deleteBuffer(this.boundaryIndexBuffer);
         if (this.colorTexture)
             gl.deleteTexture(this.colorTexture);
         if (this.program)
@@ -326,6 +376,7 @@ export class L8GlobeRenderer {
         this.uploadedResult = null;
         this.uploadedColorKey = '';
         this.uploadedIndexCount = 0;
+        this.uploadedBoundaryIndexCount = 0;
         this.colorTextureScratch = new Uint8Array(0);
     }
 }
