@@ -232,49 +232,89 @@ function scalarColor(value, field) {
 function hypsometricColor(result, sample) {
     if (result.submergedMask[sample]) {
         const depth = result.waterDepthM[sample];
+        if (depth > 7_500)
+            return '#092847';
         if (depth > 6_000)
-            return '#071d3a';
+            return '#0d335a';
+        if (depth > 4_500)
+            return '#123f6c';
         if (depth > 3_500)
-            return '#0b3562';
+            return '#194f7e';
+        if (depth > 2_500)
+            return '#205f8e';
         if (depth > 1_500)
-            return '#15588a';
+            return '#286f9e';
+        if (depth > 900)
+            return '#347fae';
         if (depth > 500)
-            return '#2b83b8';
-        if (depth > 100)
+            return '#4d9fc3';
+        if (depth > 250)
             return '#69b7cf';
-        return '#a4dce1';
+        if (depth > 100)
+            return '#87c9d8';
+        if (depth > 50)
+            return '#a4dce1';
+        return '#b7e5e6';
     }
     const elevation = result.elevationAboveSeaLevelM[sample];
+    if (elevation < 50)
+        return '#47743f';
     if (elevation < 100)
         return '#507d45';
+    if (elevation < 200)
+        return '#5c8949';
     if (elevation < 400)
         return '#6d9450';
+    if (elevation < 700)
+        return '#7fa052';
     if (elevation < 1_000)
         return '#91a85d';
+    if (elevation < 1_500)
+        return '#9e9e60';
     if (elevation < 2_000)
         return '#aa9463';
+    if (elevation < 2_750)
+        return '#9c825d';
     if (elevation < 3_500)
         return '#8f7157';
+    if (elevation < 4_250)
+        return '#95817a';
     if (elevation < 5_000)
         return '#9b9290';
+    if (elevation < 6_000)
+        return '#bfc3c4';
     return '#e6ebed';
 }
 function evolvedHypsometricColor(result, sample) {
     if (result.submergedMask[sample])
         return hypsometricColor(result, sample);
     const elevation = result.postInfillSolidElevationM[sample] - result.metrics.seaLevelM;
+    if (elevation < 50)
+        return '#3f6939';
     if (elevation < 100)
         return '#456f3d';
+    if (elevation < 200)
+        return '#527a42';
     if (elevation < 400)
         return '#608448';
+    if (elevation < 700)
+        return '#718e4e';
     if (elevation < 1_000)
         return '#829955';
+    if (elevation < 1_500)
+        return '#918f58';
     if (elevation < 2_000)
         return '#9b875b';
+    if (elevation < 2_750)
+        return '#8d7655';
     if (elevation < 3_500)
         return '#80664f';
+    if (elevation < 4_250)
+        return '#877a72';
     if (elevation < 5_000)
         return '#918a88';
+    if (elevation < 6_000)
+        return '#b7b9b8';
     return '#e4e9ec';
 }
 function bucketize(count, colorAt) {

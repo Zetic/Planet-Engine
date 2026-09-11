@@ -23,6 +23,26 @@ test('composite physical-world views retain WG-7C diagnostics under protocol v18
 });
 
 
+test('physical-world hypsometric palette exposes fine L8 relief and bathymetry bands', () => {
+  const source = fs.readFileSync('src/worldgen/diagnostics/worldgenClimateLabStandalone.ts', 'utf8');
+  const start = source.indexOf('function hypsometricColor');
+  const end = source.indexOf('function bucketize', start);
+  assert.notEqual(start, -1);
+  assert.notEqual(end, -1);
+  const palette = source.slice(start, end);
+
+  for (const threshold of ['7_500', '6_000', '4_500', '3_500', '2_500', '1_500', '900', '500', '250', '100', '50']) {
+    assert.match(palette, new RegExp(`depth > ${threshold}`));
+  }
+  for (const threshold of ['50', '100', '200', '400', '700', '1_000', '1_500', '2_000', '2_750', '3_500', '4_250', '5_000', '6_000']) {
+    assert.match(palette, new RegExp(`elevation < ${threshold}`));
+  }
+  for (const color of ['#a4dce1', '#69b7cf', '#b7e5e6', '#092847']) {
+    assert.match(palette, new RegExp(color));
+  }
+});
+
+
 test('WG-7D final physical world uses post-infill terrain and final hydrology ancestry', () => {
   const protocol = fs.readFileSync('src/worldgen/protocol.ts', 'utf8');
   const worker = fs.readFileSync('src/worldgen/worldgenWorker.ts', 'utf8');
