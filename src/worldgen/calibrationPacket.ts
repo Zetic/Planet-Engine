@@ -166,7 +166,7 @@ function topographySummary(result: WorldgenClimateResult) {
     ocean_area_fraction: result.metrics.oceanAreaFraction,
     mean_land_elevation_m: mean(land),
     mean_water_depth_m: mean(waterDepth),
-    maximum_water_depth_m: waterDepth.length ? Math.max(...waterDepth) : 0,
+    maximum_water_depth_m: waterDepth.reduce((maximum, value) => Math.max(maximum, value), 0),
     water_volume_relative_error: null,
     clamped_sample_count: null,
   };

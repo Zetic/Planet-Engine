@@ -1,5 +1,6 @@
 [package]
 name = "interlink-worldgen-cli"
+default-run = "interlink-worldgen-cli"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true

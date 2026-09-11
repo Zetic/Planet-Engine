@@ -1,4 +1,5 @@
 import { createWorldgenClient } from '../worldgenClient.js';
+import { worldCalibrationJson, worldCalibrationMarkdown } from '../calibrationPacket.js';
 import { mapVectorDelta, reconstructAnnualHarmonicFromBasis } from './worldgenClimateMath.js';
 import {
   WORLDGEN_BOUNDARY_CONVERGENT,
@@ -898,6 +899,8 @@ const seasonValue = element<HTMLElement>('worldgen-season-value');
 const overlaySummary = element<HTMLElement>('worldgen-overlay-summary');
 const overlayInputs = Array.from(document.querySelectorAll<HTMLInputElement>('input[data-worldgen-overlay]'));
 const generate = element<HTMLButtonElement>('worldgen-generate');
+const copyCalibration = element<HTMLButtonElement>('worldgen-copy-calibration');
+const downloadCalibration = element<HTMLButtonElement>('worldgen-download-calibration');
 const status = element<HTMLElement>('worldgen-status');
 const generationProgress = element<HTMLProgressElement>('worldgen-generation-progress');
 const generationStage = element<HTMLElement>('worldgen-generation-stage');
@@ -1137,8 +1140,37 @@ function showMetrics(result: WorldgenClimateResult): void {
 }
 
 
+function calibrationFileStem(): string {
+  const normalized = seed.value.trim().replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
+  return normalized || 'planet';
+}
+async function copyCalibrationReport(): Promise<void> {
+  if (!current) return;
+  try {
+    await navigator.clipboard.writeText(worldCalibrationMarkdown(current, seed.value, Number(plates.value)));
+    status.textContent = 'Copied compact LLM calibration summary to the clipboard.';
+  } catch (error) {
+    status.textContent = `Could not copy calibration summary: ${error instanceof Error ? error.message : String(error)}`;
+  }
+}
+function downloadCalibrationReport(): void {
+  if (!current) return;
+  const blob = new Blob([worldCalibrationJson(current, seed.value, Number(plates.value))], { type: 'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = `planet-calibration-${calibrationFileStem()}.json`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+  status.textContent = 'Downloaded structured calibration packet.';
+}
+
 async function generatePlanet(): Promise<void> {
   generate.disabled = true;
+  copyCalibration.disabled = true;
+  downloadCalibration.disabled = true;
   startGenerationTelemetry();
   status.textContent = 'Generating one physical planet through WG-7D lake sediment infill in Rust/WASM…';
   try {
@@ -1178,6 +1210,8 @@ async function generatePlanet(): Promise<void> {
     if (loaded.infillMetrics.postInfillLakeHash !== loaded.lakeMetrics.lakeHash) throw new Error('WG-7D final lake identity mismatch.');
     if (loaded.infillMetrics.postInfillSeasonalHash !== loaded.seasonalMetrics.seasonalHydrologyHash) throw new Error('WG-7D final seasonal identity mismatch.');
     current = loaded;
+    copyCalibration.disabled = false;
+    downloadCalibration.disabled = false;
     buffers = { x: new Float32Array(loaded.metrics.fineSampleCount), y: new Float32Array(loaded.metrics.fineSampleCount), visible: new Uint8Array(loaded.metrics.fineSampleCount) };
     styleCache = { result: null, key: '', sampleBuckets: [], boundaryBuckets: [] };
     edgeOverlayCache = { result: null, coastline: new Uint32Array(0), contours: [], evolvedContours: [], basinDivides: new Uint32Array(0), riverBuckets: [] };
@@ -1196,6 +1230,8 @@ async function generatePlanet(): Promise<void> {
 }
 
 generate.addEventListener('click', () => void generatePlanet());
+copyCalibration.addEventListener('click', () => void copyCalibrationReport());
+downloadCalibration.addEventListener('click', downloadCalibrationReport);
 projection.addEventListener('change', () => redraw(false));
 preset.addEventListener('change', () => applyViewPreset(preset.value));
 visualization.addEventListener('change', () => { preset.value = 'custom'; styleCache = { result: null, key: '', sampleBuckets: [], boundaryBuckets: [] }; redraw(false); updateAnimation(); });

@@ -125,9 +125,9 @@ pub use topology::{
     GeodesicTopology, PlanetTopology, TopologyMetrics, INVALID_SAMPLE_ID, MAX_TOPOLOGY_LEVEL,
 };
 pub use world_calibration::{
-    build_world_calibration_report, ContinentalAssemblySummary, ContinentalComponentSummary,
-    GeomorphologyCalibrationSummary, HydrologyCalibrationSummary, RankedBasinSummary,
-    RankedDepressionSummary, RankedLakeSummary, TopographyCalibrationSummary,
+    build_world_calibration_report, ClimateCalibrationSummary, ContinentalAssemblySummary,
+    ContinentalComponentSummary, GeomorphologyCalibrationSummary, HydrologyCalibrationSummary,
+    RankedBasinSummary, RankedDepressionSummary, RankedLakeSummary, TopographyCalibrationSummary,
     WorldCalibrationHashes, WorldCalibrationReport, WorldCalibrationRun,
     WORLD_CALIBRATION_RANKED_LIMIT, WORLD_CALIBRATION_SCHEMA_ID, WORLD_CALIBRATION_SCHEMA_VERSION,
 };

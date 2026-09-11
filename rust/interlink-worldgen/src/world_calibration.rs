@@ -326,10 +326,13 @@ fn summarize_continents(
     planet: PlanetPhysicalParameters,
 ) -> ContinentalAssemblySummary {
     let total_area_sr = topology.metrics().total_area_steradians.max(1.0e-18);
-    let mut components = continental_components(topology, &inherited.crust_kind, &inherited.plate_ids)
-        .into_iter()
-        .filter(|component| component.area_sr >= total_area_sr * SIGNIFICANT_CONTINENT_AREA_FRACTION)
-        .collect::<Vec<_>>();
+    let mut components =
+        continental_components(topology, &inherited.crust_kind, &inherited.plate_ids)
+            .into_iter()
+            .filter(|component| {
+                component.area_sr >= total_area_sr * SIGNIFICANT_CONTINENT_AREA_FRACTION
+            })
+            .collect::<Vec<_>>();
     components.sort_by(|a, b| b.area_sr.total_cmp(&a.area_sr));
     let areas = components
         .iter()
@@ -373,7 +376,8 @@ fn summarize_continents(
     for component in &components {
         let equivalent_radius = (component.area_sr / PI).sqrt().max(1.0e-9);
         let elongation = component.diameter_rad / (2.0 * equivalent_radius);
-        let compactness = component.perimeter_rad.powi(2) / (4.0 * PI * component.area_sr.max(1.0e-18));
+        let compactness =
+            component.perimeter_rad.powi(2) / (4.0 * PI * component.area_sr.max(1.0e-18));
         max_elongation = max_elongation.max(elongation);
         max_compactness = max_compactness.max(compactness);
         if component.area_sr >= total_area_sr * 0.015 && component.plate_count >= 2 {
@@ -398,14 +402,21 @@ fn summarize_continents(
         largest_to_median_area_ratio: hierarchy,
         maximum_elongation: max_elongation,
         maximum_compactness: max_compactness,
-        largest_component_plate_count: components.first().map(|component| component.plate_count).unwrap_or(0),
+        largest_component_plate_count: components
+            .first()
+            .map(|component| component.plate_count)
+            .unwrap_or(0),
         has_major_multiplate_component: major_multiplate,
         ranked_components: ranked,
     }
 }
 
 fn ranked_basins(infill: &LakeSedimentInfillState) -> Vec<RankedBasinSummary> {
-    let mut basins = infill.post_infill_drainage.basins.iter().collect::<Vec<_>>();
+    let mut basins = infill
+        .post_infill_drainage
+        .basins
+        .iter()
+        .collect::<Vec<_>>();
     basins.sort_by(|a, b| b.area_m2.total_cmp(&a.area_m2));
     basins
         .into_iter()
@@ -503,7 +514,10 @@ pub fn build_world_calibration_report(
     let largest_basins = ranked_basins(infill);
     let largest_depressions = ranked_depressions(infill);
     let largest_lakes = ranked_lakes(infill);
-    let largest_basin_area_km2 = largest_basins.first().map(|basin| basin.area_km2).unwrap_or(0.0);
+    let largest_basin_area_km2 = largest_basins
+        .first()
+        .map(|basin| basin.area_km2)
+        .unwrap_or(0.0);
 
     Ok(WorldCalibrationReport {
         run: WorldCalibrationRun {
@@ -529,7 +543,10 @@ pub fn build_world_calibration_report(
             final_seasonal_hash: seasonal.seasonal_hydrology_hash_hex(),
             erosion_hash: format!("{:016x}", erosion_metrics.fluvial_erosion_hash),
             evolution_hash: format!("{:016x}", evolution_metrics.terrain_evolution_hash),
-            post_erosion_hydrology_hash: format!("{:016x}", infill_metrics.post_erosion_hydrology_hash),
+            post_erosion_hydrology_hash: format!(
+                "{:016x}",
+                infill_metrics.post_erosion_hydrology_hash
+            ),
             infill_hash: infill_metrics.lake_sediment_infill_hash_hex(),
         },
         continents: summarize_continents(topology, inherited, planet),
@@ -568,8 +585,12 @@ pub fn build_world_calibration_report(
             precipitation_p95_to_mean_ratio: climate.metrics.p95_annual_precipitation_mm
                 / climate.metrics.mean_annual_precipitation_mm.max(1.0e-12),
             moisture_budget_relative_error: climate.metrics.moisture_budget_relative_error,
-            moisture_transport_limiter_fraction: climate.metrics.moisture_transport_limiter_fraction,
-            maximum_moisture_transport_substeps: climate.metrics.maximum_moisture_transport_substeps,
+            moisture_transport_limiter_fraction: climate
+                .metrics
+                .moisture_transport_limiter_fraction,
+            maximum_moisture_transport_substeps: climate
+                .metrics
+                .maximum_moisture_transport_substeps,
             persistent_snow_area_fraction: climate.metrics.persistent_snow_area_fraction,
             sea_ice_area_fraction: climate.metrics.sea_ice_area_fraction,
             final_temperature_rms_change_k: climate.metrics.final_temperature_rms_change_k,
@@ -586,7 +607,8 @@ pub fn build_world_calibration_report(
             mean_land_runoff_mm: runoff.mean_land_runoff_mm,
             land_runoff_fraction: runoff.land_runoff_fraction,
             maximum_potential_discharge_m3_s: runoff.maximum_potential_discharge_m3_s,
-            runoff_discharge_conservation_relative_error: runoff.discharge_conservation_relative_error,
+            runoff_discharge_conservation_relative_error: runoff
+                .discharge_conservation_relative_error,
             lake_count: lakes.lake_count,
             endorheic_lake_count: lakes.endorheic_lake_count,
             overflowing_lake_count: lakes.overflowing_lake_count,
@@ -594,7 +616,8 @@ pub fn build_world_calibration_report(
             total_lake_area_km2: lakes.total_lake_area_m2 / 1.0e6,
             total_lake_volume_km3: lakes.total_lake_volume_m3 / 1.0e9,
             largest_lake_area_km2: lakes.maximum_lake_area_m2 / 1.0e6,
-            largest_lake_area_fraction_of_land: (lakes.maximum_lake_area_m2 / 1.0e6) / land_area_km2,
+            largest_lake_area_fraction_of_land: (lakes.maximum_lake_area_m2 / 1.0e6)
+                / land_area_km2,
             maximum_lake_depth_m: lakes.maximum_lake_depth_m,
             lake_water_balance_relative_error: lakes.water_balance_relative_error,
             dry_flow_sample_count: seasonal.dry_flow_sample_count,
@@ -602,7 +625,8 @@ pub fn build_world_calibration_report(
             perennial_flow_sample_count: seasonal.perennial_flow_sample_count,
             snowmelt_runoff_fraction: seasonal.snowmelt_runoff_fraction,
             maximum_phase_realized_discharge_m3_s: seasonal.maximum_phase_realized_discharge_m3_s,
-            seasonal_routing_conservation_relative_error: seasonal.seasonal_routing_conservation_relative_error,
+            seasonal_routing_conservation_relative_error: seasonal
+                .seasonal_routing_conservation_relative_error,
             seasonal_water_balance_relative_error: seasonal.seasonal_water_balance_relative_error,
             lake_spinup_years: seasonal.lake_spinup_years,
             final_lake_surface_cycle_change_m: seasonal.final_lake_surface_cycle_change_m,
@@ -617,12 +641,15 @@ pub fn build_world_calibration_report(
             maximum_effective_discharge_m3_s: erosion_metrics.maximum_effective_discharge_m3_s,
             maximum_channel_slope: erosion_metrics.maximum_channel_slope,
             maximum_channel_width_m: erosion_metrics.maximum_channel_width_m,
-            maximum_incision_potential_m_per_year: erosion_metrics.maximum_incision_potential_m_per_year,
+            maximum_incision_potential_m_per_year: erosion_metrics
+                .maximum_incision_potential_m_per_year,
             total_sediment_generated_kg_s: erosion_metrics.total_sediment_generated_kg_s,
             total_land_deposition_kg_s: erosion_metrics.total_land_deposition_kg_s,
             total_lake_deposition_kg_s: erosion_metrics.total_lake_deposition_kg_s,
-            total_terminal_ocean_deposition_kg_s: erosion_metrics.total_terminal_ocean_deposition_kg_s,
-            erosion_sediment_conservation_relative_error: erosion_metrics.sediment_conservation_relative_error,
+            total_terminal_ocean_deposition_kg_s: erosion_metrics
+                .total_terminal_ocean_deposition_kg_s,
+            erosion_sediment_conservation_relative_error: erosion_metrics
+                .sediment_conservation_relative_error,
             geomorphic_duration_years: evolution_metrics.geomorphic_duration_years,
             eroded_sample_count: evolution_metrics.eroded_sample_count,
             depositional_sample_count: evolution_metrics.depositional_sample_count,
@@ -630,17 +657,22 @@ pub fn build_world_calibration_report(
             receiver_changed_fraction: evolution_metrics.receiver_changed_fraction,
             maximum_applied_erosion_m: evolution_metrics.maximum_applied_erosion_m,
             maximum_applied_deposition_m: evolution_metrics.maximum_applied_deposition_m,
-            mean_land_absolute_terrain_change_m: evolution_metrics.mean_land_absolute_terrain_change_m,
-            evolution_sediment_conservation_relative_error: evolution_metrics.sediment_conservation_relative_error,
-            post_erosion_runoff_conservation_relative_error: evolution_metrics.post_erosion_runoff_conservation_relative_error,
+            mean_land_absolute_terrain_change_m: evolution_metrics
+                .mean_land_absolute_terrain_change_m,
+            evolution_sediment_conservation_relative_error: evolution_metrics
+                .sediment_conservation_relative_error,
+            post_erosion_runoff_conservation_relative_error: evolution_metrics
+                .post_erosion_runoff_conservation_relative_error,
             filled_depression_count: infill_metrics.filled_depression_count,
             filled_sample_count: infill_metrics.filled_sample_count,
             capacity_limited_depression_count: infill_metrics.capacity_limited_depression_count,
             maximum_lake_fill_depth_m: infill_metrics.maximum_fill_depth_m,
             total_historical_lake_delivery_kg_s: infill_metrics.total_historical_lake_delivery_kg_s,
-            total_applied_lake_fill_equivalent_kg_s: infill_metrics.total_applied_lake_fill_equivalent_kg_s,
+            total_applied_lake_fill_equivalent_kg_s: infill_metrics
+                .total_applied_lake_fill_equivalent_kg_s,
             total_unapplied_lake_sediment_kg_s: infill_metrics.total_unapplied_lake_sediment_kg_s,
-            infill_sediment_conservation_relative_error: infill_metrics.sediment_conservation_relative_error,
+            infill_sediment_conservation_relative_error: infill_metrics
+                .sediment_conservation_relative_error,
             pre_infill_lake_count: infill_metrics.pre_infill_lake_count,
             post_infill_lake_count: infill_metrics.post_infill_lake_count,
         },
@@ -667,7 +699,7 @@ fn json_escape(value: &str) -> String {
 
 fn json_number(value: f64) -> String {
     if value.is_finite() {
-        format!("{value:.12}").trim_end_matches('0').trim_end_matches('.').to_owned()
+        value.to_string()
     } else {
         "null".to_owned()
     }
@@ -683,7 +715,11 @@ impl WorldCalibrationReport {
         let q = |value: &str| format!("\"{}\"", json_escape(value));
         let n = json_number;
         let _ = writeln!(out, "{{");
-        let _ = writeln!(out, "  \"schema\": \"{}@{}\",", WORLD_CALIBRATION_SCHEMA_ID, WORLD_CALIBRATION_SCHEMA_VERSION);
+        let _ = writeln!(
+            out,
+            "  \"schema\": \"{}@{}\",",
+            WORLD_CALIBRATION_SCHEMA_ID, WORLD_CALIBRATION_SCHEMA_VERSION
+        );
         let _ = writeln!(out, "  \"run\": {{");
         let _ = writeln!(out, "    \"seed\": {},", q(&self.run.seed));
         let _ = writeln!(out, "    \"engine_version\": {},", self.run.engine_version);
@@ -708,26 +744,65 @@ impl WorldCalibrationReport {
             ("final_seasonal", &self.hashes.final_seasonal_hash),
             ("erosion", &self.hashes.erosion_hash),
             ("evolution", &self.hashes.evolution_hash),
-            ("post_erosion_hydrology", &self.hashes.post_erosion_hydrology_hash),
+            (
+                "post_erosion_hydrology",
+                &self.hashes.post_erosion_hydrology_hash,
+            ),
             ("infill", &self.hashes.infill_hash),
         ];
         for (index, (name, value)) in hash_fields.iter().enumerate() {
-            let comma = if index + 1 == hash_fields.len() { "" } else { "," };
+            let comma = if index + 1 == hash_fields.len() {
+                ""
+            } else {
+                ","
+            };
             let _ = writeln!(out, "    \"{name}\": {}{comma}", q(value));
         }
         let _ = writeln!(out, "  }},");
         let c = &self.continents;
         let _ = writeln!(out, "  \"continents\": {{");
-        let _ = writeln!(out, "    \"significant_component_count\": {},", c.significant_component_count);
-        let _ = writeln!(out, "    \"component_area_cv\": {},", n(c.component_area_coefficient_of_variation));
-        let _ = writeln!(out, "    \"largest_to_median_area_ratio\": {},", n(c.largest_to_median_area_ratio));
-        let _ = writeln!(out, "    \"maximum_elongation\": {},", n(c.maximum_elongation));
-        let _ = writeln!(out, "    \"maximum_compactness\": {},", n(c.maximum_compactness));
-        let _ = writeln!(out, "    \"largest_component_plate_count\": {},", c.largest_component_plate_count);
-        let _ = writeln!(out, "    \"has_major_multiplate_component\": {},", c.has_major_multiplate_component);
+        let _ = writeln!(
+            out,
+            "    \"significant_component_count\": {},",
+            c.significant_component_count
+        );
+        let _ = writeln!(
+            out,
+            "    \"component_area_cv\": {},",
+            n(c.component_area_coefficient_of_variation)
+        );
+        let _ = writeln!(
+            out,
+            "    \"largest_to_median_area_ratio\": {},",
+            n(c.largest_to_median_area_ratio)
+        );
+        let _ = writeln!(
+            out,
+            "    \"maximum_elongation\": {},",
+            n(c.maximum_elongation)
+        );
+        let _ = writeln!(
+            out,
+            "    \"maximum_compactness\": {},",
+            n(c.maximum_compactness)
+        );
+        let _ = writeln!(
+            out,
+            "    \"largest_component_plate_count\": {},",
+            c.largest_component_plate_count
+        );
+        let _ = writeln!(
+            out,
+            "    \"has_major_multiplate_component\": {},",
+            c.has_major_multiplate_component
+        );
         let _ = writeln!(out, "    \"ranked_components\": [");
         for (index, component) in c.ranked_components.iter().enumerate() {
-            let comma = if index + 1 == c.ranked_components.len() { "" } else { "," };
+            let comma = if index + 1 == c.ranked_components.len() {
+                ""
+            } else {
+                ","
+            };
             let _ = writeln!(out, "      {{\"anchor_sample\":{},\"sample_count\":{},\"area_km2\":{},\"perimeter_km\":{},\"diameter_km\":{},\"plate_count\":{},\"elongation\":{},\"compactness\":{}}}{comma}", component.anchor_sample, component.sample_count, n(component.area_km2), n(component.perimeter_km), n(component.diameter_km), component.plate_count, n(component.elongation), n(component.compactness));
         }
         let _ = writeln!(out, "    ]");
@@ -744,19 +819,31 @@ impl WorldCalibrationReport {
         let _ = writeln!(out, "    \"dry_flow_sample_count\":{}, \"intermittent_flow_sample_count\":{}, \"perennial_flow_sample_count\":{}, \"snowmelt_runoff_fraction\":{}, \"maximum_phase_realized_discharge_m3_s\":{}, \"seasonal_routing_conservation_relative_error\":{}, \"seasonal_water_balance_relative_error\":{}, \"lake_spinup_years\":{}, \"final_lake_surface_cycle_change_m\":{}, \"maximum_seasonal_lake_level_range_m\":{},", h.dry_flow_sample_count, h.intermittent_flow_sample_count, h.perennial_flow_sample_count, n(h.snowmelt_runoff_fraction), n(h.maximum_phase_realized_discharge_m3_s), n(h.seasonal_routing_conservation_relative_error), n(h.seasonal_water_balance_relative_error), h.lake_spinup_years, n(h.final_lake_surface_cycle_change_m), n(h.maximum_seasonal_lake_level_range_m));
         let _ = writeln!(out, "    \"largest_basins\": [");
         for (index, basin) in h.largest_basins.iter().enumerate() {
-            let comma = if index + 1 == h.largest_basins.len() { "" } else { "," };
+            let comma = if index + 1 == h.largest_basins.len() {
+                ""
+            } else {
+                ","
+            };
             let _ = writeln!(out, "      {{\"basin_id\":{},\"outlet_sample\":{},\"outlet_kind\":{},\"sample_count\":{},\"area_km2\":{}}}{comma}", basin.basin_id, basin.outlet_sample, basin.outlet_kind, basin.sample_count, n(basin.area_km2));
         }
         let _ = writeln!(out, "    ],");
         let _ = writeln!(out, "    \"largest_depressions\": [");
         for (index, depression) in h.largest_depressions.iter().enumerate() {
-            let comma = if index + 1 == h.largest_depressions.len() { "" } else { "," };
+            let comma = if index + 1 == h.largest_depressions.len() {
+                ""
+            } else {
+                ","
+            };
             let _ = writeln!(out, "      {{\"depression_id\":{},\"floor_sample\":{},\"sample_count\":{},\"area_km2\":{},\"maximum_depth_m\":{},\"floor_elevation_m\":{},\"spill_elevation_m\":{}}}{comma}", depression.depression_id, depression.floor_sample, depression.sample_count, n(depression.area_km2), n(depression.maximum_depth_m), n(depression.floor_elevation_m), n(depression.spill_elevation_m));
         }
         let _ = writeln!(out, "    ],");
         let _ = writeln!(out, "    \"largest_lakes\": [");
         for (index, lake) in h.largest_lakes.iter().enumerate() {
-            let comma = if index + 1 == h.largest_lakes.len() { "" } else { "," };
+            let comma = if index + 1 == h.largest_lakes.len() {
+                ""
+            } else {
+                ","
+            };
             let _ = writeln!(out, "      {{\"lake_id\":{},\"depression_id\":{},\"kind\":{},\"area_km2\":{},\"volume_km3\":{},\"maximum_depth_m\":{},\"surface_elevation_m\":{},\"gross_land_inflow_m3_s\":{},\"lake_evaporation_m3_s\":{},\"outflow_m3_s\":{}}}{comma}", lake.lake_id, lake.depression_id, lake.kind, n(lake.area_km2), n(lake.volume_km3), n(lake.maximum_depth_m), n(lake.surface_elevation_m), n(lake.gross_land_inflow_m3_s), n(lake.lake_evaporation_m3_s), n(lake.outflow_m3_s));
         }
         let _ = writeln!(out, "    ]");
@@ -771,8 +858,21 @@ impl WorldCalibrationReport {
         let mut out = String::new();
         let _ = writeln!(out, "# Planet Engine calibration report");
         let _ = writeln!(out, "");
-        let _ = writeln!(out, "Schema: `{}@{}`", WORLD_CALIBRATION_SCHEMA_ID, WORLD_CALIBRATION_SCHEMA_VERSION);
-        let _ = writeln!(out, "Seed: `{}` · L{} → L{} · {} plates · {} samples · engine v{}", self.run.seed, self.run.coarse_level, self.run.fine_level, self.run.plate_count, self.run.sample_count, self.run.engine_version);
+        let _ = writeln!(
+            out,
+            "Schema: `{}@{}`",
+            WORLD_CALIBRATION_SCHEMA_ID, WORLD_CALIBRATION_SCHEMA_VERSION
+        );
+        let _ = writeln!(
+            out,
+            "Seed: `{}` · L{} → L{} · {} plates · {} samples · engine v{}",
+            self.run.seed,
+            self.run.coarse_level,
+            self.run.fine_level,
+            self.run.plate_count,
+            self.run.sample_count,
+            self.run.engine_version
+        );
         let _ = writeln!(out, "");
         let _ = writeln!(out, "## Continental assembly");
         let _ = writeln!(out, "Significant components: {} · area CV {:.3} · largest/median {:.3}× · max elongation {:.3} · max compactness {:.3} · major multi-plate component: {}", self.continents.significant_component_count, self.continents.component_area_coefficient_of_variation, self.continents.largest_to_median_area_ratio, self.continents.maximum_elongation, self.continents.maximum_compactness, self.continents.has_major_multiplate_component);
@@ -785,8 +885,24 @@ impl WorldCalibrationReport {
         let _ = writeln!(out, "Solid elevation P05/P50/P95: {:.0}/{:.0}/{:.0} m · range {:.0} → {:.0} m · water closure {:.3e}", t.p05_solid_elevation_m, t.median_solid_elevation_m, t.p95_solid_elevation_m, t.minimum_solid_elevation_m, t.maximum_solid_elevation_m, t.water_volume_relative_error);
         let c = &self.climate;
         let _ = writeln!(out, "\n## Climate");
-        let _ = writeln!(out, "Temperature {:.1} → {:.1} K · mean {:.1} K · land/ocean {:.1}/{:.1} K · SST {:.1} K", c.minimum_temperature_k, c.maximum_temperature_k, c.mean_temperature_k, c.mean_land_temperature_k, c.mean_ocean_temperature_k, c.mean_sea_surface_temperature_k);
-        let _ = writeln!(out, "Precipitation mean/P95 {:.1}/{:.1} mm/yr · P95/mean {:.2}× · moisture closure {:.3e}", c.mean_annual_precipitation_mm, c.p95_annual_precipitation_mm, c.precipitation_p95_to_mean_ratio, c.moisture_budget_relative_error);
+        let _ = writeln!(
+            out,
+            "Temperature {:.1} → {:.1} K · mean {:.1} K · land/ocean {:.1}/{:.1} K · SST {:.1} K",
+            c.minimum_temperature_k,
+            c.maximum_temperature_k,
+            c.mean_temperature_k,
+            c.mean_land_temperature_k,
+            c.mean_ocean_temperature_k,
+            c.mean_sea_surface_temperature_k
+        );
+        let _ = writeln!(
+            out,
+            "Precipitation mean/P95 {:.1}/{:.1} mm/yr · P95/mean {:.2}× · moisture closure {:.3e}",
+            c.mean_annual_precipitation_mm,
+            c.p95_annual_precipitation_mm,
+            c.precipitation_p95_to_mean_ratio,
+            c.moisture_budget_relative_error
+        );
         let h = &self.hydrology;
         let _ = writeln!(out, "\n## Hydrology");
         let _ = writeln!(out, "Basins/depressions: {} / {} · largest contributing area {:.3}M km² · deepest depression {:.1} m · area closure {:.3e}", h.basin_count, h.depression_count, h.largest_contributing_area_km2 / 1.0e6, h.maximum_depression_depth_m, h.drainage_area_conservation_relative_error);
@@ -802,7 +918,15 @@ impl WorldCalibrationReport {
         if !h.largest_depressions.is_empty() {
             let _ = writeln!(out, "\n### Largest depressions");
             for depression in &h.largest_depressions {
-                let _ = writeln!(out, "- depression {}: {:.0}k km² · depth {:.1} m · floor/spill {:.1}/{:.1} m", depression.depression_id, depression.area_km2 / 1.0e3, depression.maximum_depth_m, depression.floor_elevation_m, depression.spill_elevation_m);
+                let _ = writeln!(
+                    out,
+                    "- depression {}: {:.0}k km² · depth {:.1} m · floor/spill {:.1}/{:.1} m",
+                    depression.depression_id,
+                    depression.area_km2 / 1.0e3,
+                    depression.maximum_depth_m,
+                    depression.floor_elevation_m,
+                    depression.spill_elevation_m
+                );
             }
         }
         let g = &self.geomorphology;
@@ -811,7 +935,15 @@ impl WorldCalibrationReport {
         let _ = writeln!(out, "WG-7B: {:.0} years · {} eroded / {} depositional samples · receiver changes {} ({:.3}%) · max erosion/deposition {:.1}/{:.1} m", g.geomorphic_duration_years, g.eroded_sample_count, g.depositional_sample_count, g.receiver_changed_sample_count, g.receiver_changed_fraction * 100.0, g.maximum_applied_erosion_m, g.maximum_applied_deposition_m);
         let _ = writeln!(out, "WG-7D: {} filled depressions / {} samples · max fill {:.1} m · applied/unapplied sediment {:.1}/{:.1} kg/s · lakes {} → {}", g.filled_depression_count, g.filled_sample_count, g.maximum_lake_fill_depth_m, g.total_applied_lake_fill_equivalent_kg_s, g.total_unapplied_lake_sediment_kg_s, g.pre_infill_lake_count, g.post_infill_lake_count);
         let _ = writeln!(out, "\n## Causal identity");
-        let _ = writeln!(out, "`tectonic {}` → `geology {}` → `lithosphere {}` → `topography {}` → `climate {}`", self.hashes.tectonic_hash, self.hashes.geology_hash, self.hashes.lithosphere_hash, self.hashes.topography_hash, self.hashes.climate_hash);
+        let _ = writeln!(
+            out,
+            "`tectonic {}` → `geology {}` → `lithosphere {}` → `topography {}` → `climate {}`",
+            self.hashes.tectonic_hash,
+            self.hashes.geology_hash,
+            self.hashes.lithosphere_hash,
+            self.hashes.topography_hash,
+            self.hashes.climate_hash
+        );
         let _ = writeln!(out, "`drainage {}` → `runoff {}` → `lakes {}` → `seasonal {}` → `erosion {}` → `evolution {}` → `infill {}`", self.hashes.final_drainage_hash, self.hashes.final_runoff_hash, self.hashes.final_lake_hash, self.hashes.final_seasonal_hash, self.hashes.erosion_hash, self.hashes.evolution_hash, self.hashes.infill_hash);
         out
     }

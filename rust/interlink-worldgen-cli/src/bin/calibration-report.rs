@@ -5,10 +5,9 @@ use interlink_worldgen::{
     generate_lake_sediment_infill, generate_lakes_closed_basins, generate_lithosphere,
     generate_post_erosion_hydrology, generate_runoff_discharge, generate_seasonal_hydrology,
     generate_tectonics, inherit_boundary_interfaces, inherit_physical_state, ClimateRequest,
-    DrainageRequest, FluvialErosionRequest, GeologyRequest, LakeRequest,
-    LakeSedimentInfillRequest, LithosphereRequest, PlanetPhysicalParameters,
-    PostErosionHydrologyRequest, RunoffRequest, SeasonalHydrologyRequest, TectonicsRequest,
-    TerrainEvolutionRequest, TopographyRequest,
+    DrainageRequest, FluvialErosionRequest, GeologyRequest, LakeRequest, LakeSedimentInfillRequest,
+    LithosphereRequest, PlanetPhysicalParameters, PostErosionHydrologyRequest, RunoffRequest,
+    SeasonalHydrologyRequest, TectonicsRequest, TerrainEvolutionRequest, TopographyRequest,
 };
 use std::{env, process};
 
@@ -117,14 +116,9 @@ fn run(options: &Options) -> Result<String, String> {
         planet,
     )
     .map_err(|error| error.to_string())?;
-    let boundaries = inherit_boundary_interfaces(
-        &coarse,
-        &fine,
-        &tectonics,
-        &geology,
-        &inherited.plate_ids,
-    )
-    .map_err(|error| error.to_string())?;
+    let boundaries =
+        inherit_boundary_interfaces(&coarse, &fine, &tectonics, &geology, &inherited.plate_ids)
+            .map_err(|error| error.to_string())?;
     let terrain = generate_initial_topography(
         &fine,
         &inherited,
