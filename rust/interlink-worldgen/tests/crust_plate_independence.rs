@@ -3,7 +3,11 @@ use interlink_worldgen::{
     PlanetPhysicalParameters, TectonicsRequest,
 };
 
-fn mixed_plate_count(plate_ids: &[u16], crust_kind: &[u8], plate_count: usize) -> usize {
+fn mixed_plate_count(
+    plate_ids: &[u16],
+    crust_kind: &[u8],
+    plate_count: usize,
+) -> usize {
     let mut seen_continental = vec![false; plate_count];
     let mut seen_oceanic = vec![false; plate_count];
     for (plate_id, kind) in plate_ids.iter().zip(crust_kind.iter()) {
