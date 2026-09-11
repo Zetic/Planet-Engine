@@ -1,0 +1,51 @@
+name: Temporary WASM refresh
+
+on:
+  push:
+    branches: [llm-calibration-observability]
+    paths:
+      - '.github/workflows/temp-wasm-refresh.yml'
+
+permissions:
+  contents: write
+
+env:
+  RUST_VERSION: '1.98.1'
+  WASM_BINDGEN_VERSION: '0.2.127'
+
+jobs:
+  refresh:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: llm-calibration-observability
+          fetch-depth: 0
+      - name: Install pinned Rust and browser target
+        run: |
+          rustup toolchain install "${RUST_VERSION}" --profile minimal --target wasm32-unknown-unknown
+          rustup default "${RUST_VERSION}"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/wasm-bindgen*
+          key: ${{ runner.os }}-wasm-bindgen-cli-${{ env.WASM_BINDGEN_VERSION }}-rust-${{ env.RUST_VERSION }}
+      - name: Install pinned wasm-bindgen CLI if needed
+        run: |
+          if ! command -v wasm-bindgen >/dev/null 2>&1 || [ "$(wasm-bindgen --version | awk '{print $2}')" != "${WASM_BINDGEN_VERSION}" ]; then
+            cargo install wasm-bindgen-cli --version "${WASM_BINDGEN_VERSION}" --locked
+          fi
+          rustc --version
+          wasm-bindgen --version
+      - name: Rebuild committed browser WASM package
+        run: npm run build:worldgen-wasm
+      - name: Commit refreshed WASM package
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/wasm-worldgen
+          if git diff --cached --quiet; then
+            echo 'WASM package already current.'
+            exit 0
+          fi
+          git commit -m "chore(wasm): refresh packaged worldgen module"
+          git push origin HEAD:llm-calibration-observability
