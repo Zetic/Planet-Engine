@@ -36,6 +36,8 @@ test('GPU dual-cell mesh triangulates one contiguous polygon per sample', () => 
   assert.equal(mesh.positions.length, 48);
   assert.equal(mesh.cellIds.length, 16);
   assert.equal(mesh.indices.length, 36);
+  assert.equal(mesh.boundaryIndices.length, 24);
+  assert.equal(mesh.boundaryIndexCount, 24);
   assert.deepEqual(Array.from(mesh.cellIds.slice(0, 4)), [0, 0, 0, 0]);
   assert.ok(mesh.positions instanceof Float32Array);
   assert.ok(Array.from(mesh.positions).every(Number.isFinite));
@@ -88,7 +90,7 @@ test('L8 picking refines from a coarse seed set through topology neighbors', () 
   assert.equal(pickNearestSample(result, tilted, 2), 3);
 });
 
-test('L8 lab exposes GPU globe rendering, persistent zoom, and direct tile inspection', () => {
+test('L8 lab keeps one continuous GPU cell surface through zoom and interaction', () => {
   const html = fs.readFileSync('index.html', 'utf8');
   const css = fs.readFileSync('styles/worldgenLab.css', 'utf8');
   const source = fs.readFileSync('src/worldgen/diagnostics/worldgenClimateLabStandalone.ts', 'utf8');
@@ -96,26 +98,35 @@ test('L8 lab exposes GPU globe rendering, persistent zoom, and direct tile inspe
   assert.match(html, /id="worldgen-surface"/);
   assert.match(html, /id="worldgen-zoom"/);
   assert.match(html, /id="worldgen-cell-inspector"/);
+  assert.match(html, /<option value="custom" selected>Custom<\/option>/);
   assert.match(css, /#worldgen-surface/);
   assert.match(source, /new L8GlobeRenderer/);
   assert.match(source, /addEventListener\('wheel'/);
-  assert.match(source, /drawViewportDualCells/);
-  assert.match(source, /collectViewportSampleIndices/);
-  assert.match(source, /exactDualSurface/);
-  assert.match(source, /At high zoom, pentagons and selection are represented by the polygon outline itself/);
-  assert.match(source, /surfaceCanvas\.hidden = true/);
-  assert.match(source, /tileNeighborhood/);
-  assert.doesNotMatch(source, /drawLocalDualCells/);
+  assert.match(source, /'custom': \{ mode: 'physical-elevation', overlays: \[\] \}/);
+  assert.match(source, /mode === 'tiles'/);
+  assert.match(source, /drawDiagnosticOverlays/);
+  assert.doesNotMatch(source, /HIGH_ZOOM_DUAL_CELL_THRESHOLD/);
+  assert.doesNotMatch(source, /drawTileLens/);
+  assert.doesNotMatch(source, /drawViewportDualCells/);
+  assert.doesNotMatch(source, /tileNeighborhood/);
+  assert.doesNotMatch(source, /exactDualSurface/);
+  assert.doesNotMatch(source, /GPU dual-cell surface/);
   assert.match(source, /pickNearestSample/);
   assert.match(source, /screenToWorldDirection/);
   assert.match(source, /cameraForWorldDirectionAtScreen/);
   assert.match(gpu, /getContext\('webgl2'/);
   assert.match(gpu, /buildDualCellGpuMesh/);
+  assert.match(gpu, /boundaryIndices/);
+  assert.match(gpu, /boundaryIndexBuffer/);
   assert.match(gpu, /drawElements\(gl\.TRIANGLES/);
+  assert.match(gpu, /drawElements\(gl\.LINES/);
+  assert.match(gpu, /-rotatedX \* 0\.5/);
+  assert.match(gpu, /uUseSolidColor/);
   assert.match(gpu, /vertexAttribIPointer/);
   assert.match(gpu, /texelFetch/);
   assert.doesNotMatch(gpu, /drawArrays\(gl\.POINTS/);
   assert.doesNotMatch(gpu, /gl_PointSize/);
+  assert.doesNotMatch(gpu, /rotatedZ \* uClipScaleY, -rotatedX, 1\.0/);
   assert.match(gpu, /buildDualCellGpuMesh\(result\)/);
   assert.doesNotMatch(gpu, /bufferData\(gl\.ARRAY_BUFFER, result\.positions/);
 });

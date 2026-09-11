@@ -1,7 +1,7 @@
 import { createWorldgenClient } from '../worldgenClient.js';
 import { worldCalibrationJson, worldCalibrationMarkdown } from '../calibrationPacket.js';
 import { mapVectorDelta, reconstructAnnualHarmonicFromBasis } from './worldgenClimateMath.js';
-import { L8GlobeRenderer, buildRgbaColors, cameraForWorldDirectionAtScreen, collectViewportSampleIndices, pickNearestSample, screenToWorldDirection } from './worldgenL8GlobeRenderer.js';
+import { L8GlobeRenderer, buildRgbaColors, cameraForWorldDirectionAtScreen, pickNearestSample, screenToWorldDirection } from './worldgenL8GlobeRenderer.js';
 import {
   WORLDGEN_BOUNDARY_CONVERGENT,
   WORLDGEN_BOUNDARY_DIVERGENT,
@@ -836,231 +836,6 @@ function pentagonSamples(result: WorldgenClimateResult): Uint32Array {
   return pentagonCache;
 }
 
-type TileVec3 = [number, number, number];
-
-const HIGH_ZOOM_DUAL_CELL_THRESHOLD = 4.5;
-const MAX_DUAL_CELL_BOUNDARY_CACHE = 32_768;
-let dualCellBoundaryResult: WorldgenClimateResult | null = null;
-let dualCellBoundaryCache = new Map<number, TileVec3[]>();
-
-function tilePosition(result: WorldgenClimateResult, sample: number): TileVec3 {
-  const offset = sample * 3;
-  return [result.positions[offset]!, result.positions[offset + 1]!, result.positions[offset + 2]!];
-}
-function tileDot(a: TileVec3, b: TileVec3): number { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
-function tileCross(a: TileVec3, b: TileVec3): TileVec3 {
-  return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-}
-function tileSubtract(a: TileVec3, b: TileVec3): TileVec3 { return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]; }
-function tileNormalize(value: TileVec3): TileVec3 {
-  const length = Math.hypot(value[0], value[1], value[2]);
-  return length > 1e-15 ? [value[0] / length, value[1] / length, value[2] / length] : [0, 0, 1];
-}
-function tileCircumcenter(a: TileVec3, b: TileVec3, c: TileVec3): TileVec3 {
-  let center = tileNormalize(tileCross(tileSubtract(b, a), tileSubtract(c, a)));
-  if (tileDot(center, a) < 0) center = [-center[0], -center[1], -center[2]];
-  return center;
-}
-function tileTangentBasis(up: TileVec3): [TileVec3, TileVec3] {
-  const reference: TileVec3 = Math.abs(up[2]) < 0.9 ? [0, 0, 1] : [0, 1, 0];
-  const east = tileNormalize(tileCross(reference, up));
-  return [east, tileCross(up, east)];
-}
-function tileHasNeighbor(result: WorldgenClimateResult, sample: number, candidate: number): boolean {
-  const start = result.neighborOffsets[sample]!;
-  const end = result.neighborOffsets[sample + 1]!;
-  for (let cursor = start; cursor < end; cursor += 1) {
-    if (result.neighbors[cursor] === candidate) return true;
-  }
-  return false;
-}
-function computeTileBoundary(result: WorldgenClimateResult, sample: number): TileVec3[] {
-  const start = result.neighborOffsets[sample]!;
-  const end = result.neighborOffsets[sample + 1]!;
-  const center = tilePosition(result, sample);
-  const vertices: TileVec3[] = [];
-  for (let left = start; left < end; left += 1) {
-    const a = result.neighbors[left]!;
-    for (let right = left + 1; right < end; right += 1) {
-      const b = result.neighbors[right]!;
-      if (!tileHasNeighbor(result, a, b)) continue;
-      vertices.push(tileCircumcenter(center, tilePosition(result, a), tilePosition(result, b)));
-    }
-  }
-  const [east, north] = tileTangentBasis(center);
-  vertices.sort((a, b) => Math.atan2(tileDot(a, north), tileDot(a, east)) - Math.atan2(tileDot(b, north), tileDot(b, east)));
-  return vertices;
-}
-
-function tileBoundary(result: WorldgenClimateResult, sample: number): TileVec3[] {
-  if (dualCellBoundaryResult !== result) {
-    dualCellBoundaryResult = result;
-    dualCellBoundaryCache = new Map<number, TileVec3[]>();
-  }
-  const cached = dualCellBoundaryCache.get(sample);
-  if (cached) return cached;
-  if (dualCellBoundaryCache.size >= MAX_DUAL_CELL_BOUNDARY_CACHE) dualCellBoundaryCache.clear();
-  const boundary = computeTileBoundary(result, sample);
-  dualCellBoundaryCache.set(sample, boundary);
-  return boundary;
-}
-
-function projectTilePoint(point: TileVec3, yaw: number, pitch: number, width: number, height: number, zoom: number): [number, number, boolean] {
-  const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
-  const x1 = cy * point[0] - sy * point[1];
-  const y1 = sy * point[0] + cy * point[1];
-  const rotatedX = cp * x1 + sp * point[2];
-  const rotatedZ = -sp * x1 + cp * point[2];
-  const radius = Math.min(width, height) * 0.44 * zoom;
-  return [width / 2 + y1 * radius, height / 2 - rotatedZ * radius, rotatedX >= 0];
-}
-
-function drawViewportDualCells(
-  context: CanvasRenderingContext2D,
-  result: WorldgenClimateResult,
-  buffers: ProjectionBuffers,
-  selectedSample: number | null,
-  yaw: number,
-  pitch: number,
-  width: number,
-  height: number,
-  zoom: number,
-  showBoundaries: boolean,
-): number {
-  const radius = Math.min(width, height) * 0.44 * zoom;
-  const margin = Math.max(14, Math.min(64, radius * 0.007));
-  const samples = collectViewportSampleIndices(buffers.x, buffers.y, buffers.visible, width, height, margin);
-  context.save();
-  context.lineJoin = 'round';
-  context.lineCap = 'round';
-  for (const sample of samples) {
-    const degree = result.neighborOffsets[sample + 1]! - result.neighborOffsets[sample]!;
-    if (degree !== 5 && degree !== 6) continue;
-    const vertices = tileBoundary(result, sample);
-    if (vertices.length !== degree) continue;
-    const projected = vertices.map(vertex => projectTilePoint(vertex, yaw, pitch, width, height, zoom));
-    if (projected.some(vertex => !vertex[2])) continue;
-
-    context.beginPath();
-    projected.forEach(([x, y], index) => { if (index === 0) context.moveTo(x, y); else context.lineTo(x, y); });
-    context.closePath();
-    const fill = evolvedHypsometricColor(result, sample);
-    context.fillStyle = fill;
-    context.fill();
-
-    // Slight same-color overlap removes anti-aliased seams between adjacent settled polygons.
-    context.strokeStyle = fill;
-    context.lineWidth = 1.6;
-    context.stroke();
-
-    const selected = sample === selectedSample;
-    if (showBoundaries || selected) {
-      context.strokeStyle = selected
-        ? 'rgba(93,224,255,1)'
-        : degree === 5 ? 'rgba(255,211,106,0.98)' : 'rgba(225,236,246,0.60)';
-      context.lineWidth = selected ? 2.6 : degree === 5 ? 2.0 : 0.7;
-      context.stroke();
-    }
-  }
-  context.restore();
-  return samples.length;
-}
-
-function tileNeighborhood(result: WorldgenClimateResult, center: number, rings: number): number[] {
-  const visited = new Set<number>([center]);
-  let frontier = [center];
-  for (let ring = 0; ring < rings; ring += 1) {
-    const next: number[] = [];
-    for (const sample of frontier) {
-      const start = result.neighborOffsets[sample]!;
-      const end = result.neighborOffsets[sample + 1]!;
-      for (let cursor = start; cursor < end; cursor += 1) {
-        const neighbor = result.neighbors[cursor]!;
-        if (visited.has(neighbor)) continue;
-        visited.add(neighbor);
-        next.push(neighbor);
-      }
-    }
-    frontier = next;
-  }
-  return Array.from(visited);
-}
-
-function drawTileLens(
-  context: CanvasRenderingContext2D,
-  result: WorldgenClimateResult,
-  focusSample: number,
-  width: number,
-  height: number,
-): void {
-  const lensSize = Math.min(340, Math.max(260, Math.floor(Math.min(width, height) * 0.42)));
-  const lensX = width - lensSize - 18;
-  const lensY = height - lensSize - 18;
-  const padding = 28;
-  const center = tilePosition(result, focusSample);
-  const [east, north] = tileTangentBasis(center);
-  const samples = tileNeighborhood(result, focusSample, 5);
-  const polygons = samples.map(sample => ({ sample, vertices: tileBoundary(result, sample) }));
-  let extent = 0;
-  for (const polygon of polygons) {
-    for (const vertex of polygon.vertices) {
-      const denominator = Math.max(1e-5, tileDot(vertex, center));
-      const x = tileDot(vertex, east) / denominator;
-      const y = tileDot(vertex, north) / denominator;
-      extent = Math.max(extent, Math.abs(x), Math.abs(y));
-    }
-  }
-  const scale = (lensSize / 2 - padding) / Math.max(extent, 1e-6);
-  const project = (point: TileVec3): [number, number] => {
-    const denominator = Math.max(1e-5, tileDot(point, center));
-    return [
-      lensX + lensSize / 2 + tileDot(point, east) / denominator * scale,
-      lensY + lensSize / 2 - tileDot(point, north) / denominator * scale,
-    ];
-  };
-
-  context.save();
-  context.fillStyle = 'rgba(5,12,20,0.96)';
-  context.fillRect(lensX, lensY, lensSize, lensSize);
-  context.strokeStyle = 'rgba(154,185,207,0.88)';
-  context.lineWidth = 1.2;
-  context.strokeRect(lensX + 0.5, lensY + 0.5, lensSize - 1, lensSize - 1);
-  context.beginPath();
-  context.rect(lensX + 1, lensY + 1, lensSize - 2, lensSize - 2);
-  context.clip();
-
-  for (const polygon of polygons) {
-    const degree = result.neighborOffsets[polygon.sample + 1]! - result.neighborOffsets[polygon.sample]!;
-    if (polygon.vertices.length !== degree || (degree !== 5 && degree !== 6)) continue;
-    context.beginPath();
-    polygon.vertices.forEach((vertex, index) => {
-      const [x, y] = project(vertex);
-      if (index === 0) context.moveTo(x, y); else context.lineTo(x, y);
-    });
-    context.closePath();
-    context.fillStyle = evolvedHypsometricColor(result, polygon.sample);
-    context.fill();
-    const isFocus = polygon.sample === focusSample;
-    context.strokeStyle = degree === 5
-      ? 'rgba(255,211,106,0.98)'
-      : isFocus ? 'rgba(93,224,255,1)' : 'rgba(225,236,246,0.72)';
-    context.lineWidth = degree === 5 ? 2.6 : isFocus ? 2.2 : 0.9;
-    context.stroke();
-  }
-  context.restore();
-
-  const focusDegree = result.neighborOffsets[focusSample + 1]! - result.neighborOffsets[focusSample]!;
-  context.save();
-  context.fillStyle = 'rgba(5,12,20,0.94)';
-  context.fillRect(lensX, lensY - 44, lensSize, 42);
-  context.fillStyle = '#e7f0f7';
-  context.font = '12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
-  context.fillText('L8 dual-cell lens · 5 neighbor rings', lensX + 10, lensY - 27);
-  context.fillStyle = focusDegree === 5 ? '#ffd36a' : '#5de0ff';
-  context.fillText(`focus cell ${focusSample.toLocaleString()} · ${focusDegree === 5 ? 'pentagon' : 'hexagon'}`, lensX + 10, lensY - 10);
-  context.restore();
-}
-
 function drawPhysicalTiles(
   context: CanvasRenderingContext2D,
   result: WorldgenClimateResult,
@@ -1075,8 +850,6 @@ function drawPhysicalTiles(
   selectedSample: number | null,
 ): void {
   const count = result.metrics.fineSampleCount;
-  let focusSample = 0;
-
   if (projection === 'map') {
     const stride = Math.max(1, Math.ceil(count / (interactive ? 120_000 : 360_000)));
     context.save();
@@ -1087,54 +860,24 @@ function drawPhysicalTiles(
       context.fillRect(buffers.x[sample]! - 0.6, buffers.y[sample]! - 0.6, 1.2, 1.2);
     }
     context.restore();
-    let bestDistance = Number.POSITIVE_INFINITY;
-    for (let sample = 0; sample < count; sample += 1) {
-      const dx = buffers.x[sample]! - width / 2;
-      const dy = buffers.y[sample]! - height / 2;
-      const distance = dx * dx + dy * dy;
-      if (distance < bestDistance) { bestDistance = distance; focusSample = sample; }
+    if (selectedSample !== null && buffers.visible[selectedSample]) {
+      context.beginPath();
+      context.arc(buffers.x[selectedSample]!, buffers.y[selectedSample]!, 6, 0, TWO_PI);
+      context.strokeStyle = 'rgba(93,224,255,1)';
+      context.lineWidth = 2.2;
+      context.stroke();
     }
-  } else {
-    const centerDirection = screenToWorldDirection(width / 2, height / 2, width, height, { yaw, pitch, zoom });
-    if (centerDirection) focusSample = pickNearestSample(result, centerDirection);
+    return;
   }
 
   context.save();
-  let exactCellCount = 0;
-  if (projection === 'globe' && !interactive && zoom >= HIGH_ZOOM_DUAL_CELL_THRESHOLD) {
-    exactCellCount = drawViewportDualCells(context, result, buffers, selectedSample, yaw, pitch, width, height, zoom, true);
-  }
-
-  // Low zoom uses center markers because individual cells are not yet screen-resolved.
-  // At high zoom, pentagons and selection are represented by the polygon outline itself.
-  if (zoom < HIGH_ZOOM_DUAL_CELL_THRESHOLD) {
-    for (const sample of pentagonSamples(result)) {
-      if (!buffers.visible[sample]) continue;
-      const x = buffers.x[sample]!, y = buffers.y[sample]!;
-      if (x < -10 || x > width + 10 || y < -10 || y > height + 10) continue;
-      context.beginPath(); context.arc(x, y, 4.2, 0, TWO_PI);
-      context.fillStyle = 'rgba(255,211,106,0.96)'; context.fill();
-      context.strokeStyle = 'rgba(12,18,26,0.92)'; context.lineWidth = 1.4; context.stroke();
-    }
-
-    if (selectedSample !== null && buffers.visible[selectedSample]) {
-      const x = buffers.x[selectedSample]!, y = buffers.y[selectedSample]!;
-      if (x >= -20 && x <= width + 20 && y >= -20 && y <= height + 20) {
-        context.beginPath(); context.arc(x, y, 6.0, 0, TWO_PI);
-        context.strokeStyle = 'rgba(93,224,255,1)'; context.lineWidth = 2.2; context.stroke();
-      }
-    }
-  }
-
   context.fillStyle = 'rgba(8,16,26,0.84)';
   context.fillRect(12, 12, 480, 48);
   context.fillStyle = '#e7f0f7';
   context.font = '13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
   context.fillText(`${count.toLocaleString()} physical dual cells · ${zoom.toFixed(1)}× zoom`, 22, 32);
   context.fillStyle = '#ffd36a';
-  context.fillText(`${pentagonSamples(result).length} pentagons · ${(count - pentagonSamples(result).length).toLocaleString()} hexagons · ${zoom >= HIGH_ZOOM_DUAL_CELL_THRESHOLD ? `${exactCellCount.toLocaleString()} exact viewport cells` : 'zoom to 4.5× for direct cells'}`, 22, 50);
-
-  if (!interactive && projection === 'globe' && zoom < HIGH_ZOOM_DUAL_CELL_THRESHOLD && buffers.visible[focusSample]) drawTileLens(context, result, focusSample, width, height);
+  context.fillText(`${pentagonSamples(result).length} pentagons · ${(count - pentagonSamples(result).length).toLocaleString()} hexagons · canonical GPU dual cells`, 22, 50);
   context.restore();
 }
 
@@ -1164,40 +907,35 @@ function renderPlanet(
   if (projection === 'globe') {
     const gpu = ensureGpuColorCache(result, mode, phase);
     surfaceCanvas.hidden = false;
-    const gpuDrawn = globeRenderer.draw(result, gpu.colors, gpu.key, { yaw, pitch, zoom }, width, height, gpu.alpha);
+    const gpuDrawn = globeRenderer.draw(
+      result,
+      gpu.colors,
+      gpu.key,
+      { yaw, pitch, zoom },
+      width,
+      height,
+      gpu.alpha,
+      mode === 'tiles',
+      selectedSample,
+    );
     if (gpuDrawn) {
       context.clearRect(0, 0, width, height);
-      if (interactive) {
-        context.fillStyle = 'rgba(8,16,26,0.82)';
-        context.fillRect(12, 12, 260, 28);
-        context.fillStyle = '#9eb0c4';
-        context.font = '12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
-        context.fillText(`GPU dual-cell surface · ${zoom.toFixed(1)}×`, 22, 31);
-        return;
-      }
 
-      ensureProjectedSamples(result, projection, yaw, pitch, width, height, buffers, zoom);
-      const exactDualSurface = zoom >= HIGH_ZOOM_DUAL_CELL_THRESHOLD && (mode === 'physical-world' || mode === 'tiles');
-      if (exactDualSurface) {
-        // The GPU already renders contiguous dual cells while moving. Settled high-zoom
-        // physical views switch to Canvas only for exact border/selection detail.
-        surfaceCanvas.hidden = true;
-        context.fillStyle = '#08101a';
-        context.fillRect(0, 0, width, height);
-        if (mode === 'tiles') {
-          drawPhysicalTiles(context, result, projection, yaw, pitch, width, height, buffers, false, zoom, selectedSample);
-        } else {
-          drawViewportDualCells(context, result, buffers, selectedSample, yaw, pitch, width, height, zoom, false);
-        }
-        drawDiagnosticOverlays(context, result, overlays, phase, projection, yaw, pitch, width, height, buffers, animation, zoom);
-        return;
-      }
+      const boundaryMode = mode === 'tectonic-boundaries' || mode === 'geological-boundaries' || mode === 'boundary-provenance';
+      const needsProjectedDecoration = overlays.size > 0
+        || mode === 'mesh'
+        || mode === 'winds'
+        || mode === 'currents'
+        || isDrainageMode(mode)
+        || boundaryMode;
+      if (needsProjectedDecoration) ensureProjectedSamples(result, projection, yaw, pitch, width, height, buffers, zoom);
+
       const globeRadius = Math.min(width, height) * 0.44 * zoom;
       context.beginPath(); context.arc(width / 2, height / 2, globeRadius, 0, TWO_PI);
       context.strokeStyle = '#5d7890'; context.lineWidth = 1; context.stroke();
 
       if (mode === 'tiles') {
-        drawPhysicalTiles(context, result, projection, yaw, pitch, width, height, buffers, false, zoom, selectedSample);
+        drawPhysicalTiles(context, result, projection, yaw, pitch, width, height, buffers, interactive, zoom, selectedSample);
       } else if (mode === 'mesh') {
         context.beginPath(); context.strokeStyle = '#5d7890'; context.lineWidth = 0.55;
         for (let sample = 0; sample < result.metrics.fineSampleCount; sample += 1) {
@@ -1233,7 +971,7 @@ function renderPlanet(
         }
         if (mode === 'winds' || mode === 'currents') drawVectors(context, result, mode, phase, projection, yaw, pitch, width, height, buffers, animation, zoom);
       }
-      drawDiagnosticOverlays(context, result, overlays, phase, projection, yaw, pitch, width, height, buffers, animation, zoom);
+      if (overlays.size > 0) drawDiagnosticOverlays(context, result, overlays, phase, projection, yaw, pitch, width, height, buffers, animation, zoom);
       return;
     }
   }
@@ -1419,6 +1157,7 @@ function updateOverlaySummary(): void {
 
 type ViewPreset = { mode: string; overlays: string[] };
 const VIEW_PRESETS: Record<string, ViewPreset> = {
+  'custom': { mode: 'physical-elevation', overlays: [] },
   'physical-world': { mode: 'physical-world', overlays: ['evolved-topography', 'coastline', 'final-rivers', 'final-lakes', 'cryosphere'] },
   'hydrologic-atlas': { mode: 'physical-world', overlays: ['evolved-topography', 'coastline', 'final-rivers', 'final-lakes', 'basin-divides'] },
   'seasonal-world': { mode: 'seasonal-realized-discharge', overlays: ['evolved-topography', 'coastline', 'final-lakes', 'winds'] },

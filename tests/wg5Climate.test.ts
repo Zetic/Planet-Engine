@@ -47,7 +47,7 @@ test('cumulative WG-5 Lab exposes climate diagnostics and stored seasonal recons
   assert.match(source, /requestAnimationFrame/);
   assert.match(source, /VECTOR_ANIMATION_INTERVAL_MS\s*=\s*50/);
   assert.match(source, /scheduleRedraw\(true\)/);
-  assert.match(source, /GPU dual-cell surface/);
+  assert.match(source, /globeRenderer\.draw/);
 });
 
 test('WG-5 Lab preserves viewport dimensions while splitting diagnostics, overlays, and details', () => {
@@ -56,10 +56,13 @@ test('WG-5 Lab preserves viewport dimensions while splitting diagnostics, overla
   const source = fs.readFileSync('src/worldgen/diagnostics/worldgenClimateLabStandalone.ts', 'utf8');
   assert.match(html, /class="worldgen-lab-diagnostics"/);
   assert.match(html, /Physical dual-cell tiles \(hexagons \+ pentagons\)/);
+  const gpu = fs.readFileSync('src/worldgen/diagnostics/worldgenL8GlobeRenderer.ts', 'utf8');
   assert.match(source, /mode === 'tiles'/);
-  assert.match(source, /tileBoundary/);
-  assert.match(source, /drawTileLens/);
-  assert.match(source, /tileNeighborhood/);
+  assert.match(gpu, /boundaryIndices/);
+  assert.match(gpu, /drawElements\(gl\.LINES/);
+  assert.doesNotMatch(source, /drawTileLens/);
+  assert.doesNotMatch(source, /tileNeighborhood/);
+  assert.doesNotMatch(source, /HIGH_ZOOM_DUAL_CELL_THRESHOLD/);
   assert.match(source, /Ready for canonical L8 generation/);
   assert.doesNotMatch(source, /void generatePlanet\(\);/);
   assert.match(html, /id="worldgen-overlays"/);
