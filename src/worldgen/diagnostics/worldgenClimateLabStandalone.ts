@@ -1,6 +1,7 @@
 import { createWorldgenClient } from '../worldgenClient.js';
 import { worldCalibrationJson, worldCalibrationMarkdown } from '../calibrationPacket.js';
 import { mapVectorDelta, reconstructAnnualHarmonicFromBasis } from './worldgenClimateMath.js';
+import { L8GlobeRenderer, buildRgbaColors, cameraForWorldDirectionAtScreen, pickNearestSample, screenToWorldDirection } from './worldgenL8GlobeRenderer.js';
 import {
   WORLDGEN_BOUNDARY_CONVERGENT,
   WORLDGEN_BOUNDARY_DIVERGENT,
@@ -498,7 +499,7 @@ function sampleColor(result: WorldgenClimateResult, mode: string, sample: number
   return '#8297aa';
 }
 
-function projectSamples(result: WorldgenClimateResult, projection: string, yaw: number, pitch: number, width: number, height: number, buffers: ProjectionBuffers): void {
+function projectSamples(result: WorldgenClimateResult, projection: string, yaw: number, pitch: number, width: number, height: number, buffers: ProjectionBuffers, zoom = 1): void {
   const count = result.metrics.fineSampleCount;
   const positions = result.positions;
   if (projection === 'map') {
@@ -512,7 +513,7 @@ function projectSamples(result: WorldgenClimateResult, projection: string, yaw: 
     return;
   }
   const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
-  const radius = Math.min(width, height) * 0.44;
+  const radius = Math.min(width, height) * 0.44 * zoom;
   for (let sample = 0; sample < count; sample += 1) {
     const offset = sample * 3;
     const px = positions[offset]!; const py = positions[offset + 1]!; const pz = positions[offset + 2]!;
@@ -526,7 +527,7 @@ function projectSamples(result: WorldgenClimateResult, projection: string, yaw: 
   }
 }
 
-function screenTangentDelta(position: [number, number, number], eastValue: number, northValue: number, projection: string, yaw: number, pitch: number, width: number, height: number): [number, number] {
+function screenTangentDelta(position: [number, number, number], eastValue: number, northValue: number, projection: string, yaw: number, pitch: number, width: number, height: number, zoom = 1): [number, number] {
   const [x, y, z] = position;
   const lon = Math.atan2(y, x);
   const lat = Math.asin(Math.max(-1, Math.min(1, z)));
@@ -544,7 +545,7 @@ function screenTangentDelta(position: [number, number, number], eastValue: numbe
   const x1 = cy * tangent[0] - sy * tangent[1];
   const y1 = sy * tangent[0] + cy * tangent[1];
   const rotatedZ = -sp * x1 + cp * tangent[2];
-  const radius = Math.min(width, height) * 0.44;
+  const radius = Math.min(width, height) * 0.44 * zoom;
   return [y1 * radius * 0.055, -rotatedZ * radius * 0.055];
 }
 
@@ -561,7 +562,7 @@ function buildStyleCache(result: WorldgenClimateResult, mode: string, phase: num
   return { result, key, sampleBuckets, boundaryBuckets };
 }
 
-function drawVectors(context: CanvasRenderingContext2D, result: WorldgenClimateResult, mode: 'winds' | 'currents', phase: number, projection: string, yaw: number, pitch: number, width: number, height: number, buffers: ProjectionBuffers, animation: number): void {
+function drawVectors(context: CanvasRenderingContext2D, result: WorldgenClimateResult, mode: 'winds' | 'currents', phase: number, projection: string, yaw: number, pitch: number, width: number, height: number, buffers: ProjectionBuffers, animation: number, zoom = 1): void {
   const count = result.metrics.fineSampleCount;
   const targetVectors = 1_300;
   const stride = Math.max(1, Math.floor(count / targetVectors));
@@ -589,7 +590,7 @@ function drawVectors(context: CanvasRenderingContext2D, result: WorldgenClimateR
     if (speed < (mode === 'winds' ? 0.6 : 0.025)) continue;
     const offset = sample * 3;
     const position: [number, number, number] = [result.positions[offset]!, result.positions[offset + 1]!, result.positions[offset + 2]!];
-    let [dx, dy] = screenTangentDelta(position, east, north, projection, yaw, pitch, width, height);
+    let [dx, dy] = screenTangentDelta(position, east, north, projection, yaw, pitch, width, height, zoom);
     const scale = mode === 'winds' ? Math.min(2.1, 0.6 + speed / 12) : Math.min(2.4, 0.8 + speed * 1.8);
     dx *= scale; dy *= scale;
     const x = buffers.x[sample]!, y = buffers.y[sample]!;
@@ -757,7 +758,7 @@ function drawFinalRiverOverlay(context: CanvasRenderingContext2D, edgeCache: Edg
   }
 }
 
-function drawDiagnosticOverlays(context: CanvasRenderingContext2D, result: WorldgenClimateResult, overlays: ReadonlySet<string>, phase: number, projection: string, yaw: number, pitch: number, width: number, height: number, buffers: ProjectionBuffers, animation: number): void {
+function drawDiagnosticOverlays(context: CanvasRenderingContext2D, result: WorldgenClimateResult, overlays: ReadonlySet<string>, phase: number, projection: string, yaw: number, pitch: number, width: number, height: number, buffers: ProjectionBuffers, animation: number, zoom = 1): void {
   if (overlays.size === 0) return;
   const edgeCache = ensureEdgeOverlayCache(result);
   if (overlays.has('topography')) {
@@ -779,10 +780,61 @@ function drawDiagnosticOverlays(context: CanvasRenderingContext2D, result: World
   if (overlays.has('final-rivers')) drawFinalRiverOverlay(context, edgeCache, buffers, projection, width);
   if (overlays.has('tectonic-boundaries')) drawBoundaryOverlay(context, result, 'tectonic-boundaries', projection, width, buffers);
   if (overlays.has('geological-boundaries')) drawBoundaryOverlay(context, result, 'geological-boundaries', projection, width, buffers);
-  if (overlays.has('winds')) drawVectors(context, result, 'winds', phase, projection, yaw, pitch, width, height, buffers, animation);
-  if (overlays.has('currents')) drawVectors(context, result, 'currents', phase, projection, yaw, pitch, width, height, buffers, animation);
+  if (overlays.has('winds')) drawVectors(context, result, 'winds', phase, projection, yaw, pitch, width, height, buffers, animation, zoom);
+  if (overlays.has('currents')) drawVectors(context, result, 'currents', phase, projection, yaw, pitch, width, height, buffers, animation, zoom);
 }
 
+
+
+type GpuColorCache = { result: WorldgenClimateResult | null; key: string; colors: Uint8Array; alpha: number };
+let gpuColorCache: GpuColorCache = { result: null, key: '', colors: new Uint8Array(0), alpha: 0.94 };
+let projectedResult: WorldgenClimateResult | null = null;
+let projectedKey = '';
+let pentagonResult: WorldgenClimateResult | null = null;
+let pentagonCache = new Uint32Array(0);
+const GPU_SEASONAL_MODES = new Set(['seasonal-temperature', 'seasonal-sst', 'seasonal-precipitation', 'seasonal-realized-discharge', 'seasonal-snow-storage']);
+
+function gpuStyleKey(mode: string, phase: number): string {
+  return `${mode}:${GPU_SEASONAL_MODES.has(mode) ? phase.toFixed(3) : 'mean'}`;
+}
+function ensureGpuColorCache(result: WorldgenClimateResult, mode: string, phase: number): GpuColorCache {
+  const key = gpuStyleKey(mode, phase);
+  if (gpuColorCache.result === result && gpuColorCache.key === key) return gpuColorCache;
+  const field = scalarField(result, mode, phase);
+  const sampler = (sample: number): string => {
+    if (mode === 'tiles') return evolvedHypsometricColor(result, sample);
+    if (mode === 'mesh') return '#24445f';
+    if (isLakeMode(mode)) return lakeSampleColor(result, mode, sample);
+    if (isRunoffMode(mode)) return runoffSampleColor(result, mode, sample);
+    if (isDrainageMode(mode)) return drainageSampleColor(result, mode, sample);
+    return sampleColor(result, mode, sample, field);
+  };
+  const boundaryMode = mode === 'tectonic-boundaries' || mode === 'geological-boundaries' || mode === 'boundary-provenance';
+  gpuColorCache = {
+    result,
+    key,
+    colors: buildRgbaColors(result.metrics.fineSampleCount, sampler),
+    alpha: boundaryMode ? 0.28 : mode === 'mesh' ? 0.34 : 0.94,
+  };
+  return gpuColorCache;
+}
+function ensureProjectedSamples(result: WorldgenClimateResult, projection: string, yaw: number, pitch: number, width: number, height: number, buffers: ProjectionBuffers, zoom: number): void {
+  const key = `${projection}:${yaw.toFixed(6)}:${pitch.toFixed(6)}:${zoom.toFixed(4)}:${width}:${height}`;
+  if (projectedResult === result && projectedKey === key) return;
+  projectSamples(result, projection, yaw, pitch, width, height, buffers, zoom);
+  projectedResult = result;
+  projectedKey = key;
+}
+function pentagonSamples(result: WorldgenClimateResult): Uint32Array {
+  if (pentagonResult === result) return pentagonCache;
+  const samples: number[] = [];
+  for (let sample = 0; sample < result.metrics.fineSampleCount; sample += 1) {
+    if (result.neighborOffsets[sample + 1]! - result.neighborOffsets[sample]! === 5) samples.push(sample);
+  }
+  pentagonResult = result;
+  pentagonCache = Uint32Array.from(samples);
+  return pentagonCache;
+}
 
 type TileVec3 = [number, number, number];
 
@@ -834,6 +886,17 @@ function tileBoundary(result: WorldgenClimateResult, sample: number): TileVec3[]
   vertices.sort((a, b) => Math.atan2(tileDot(a, north), tileDot(a, east)) - Math.atan2(tileDot(b, north), tileDot(b, east)));
   return vertices;
 }
+
+function projectTilePoint(point: TileVec3, yaw: number, pitch: number, width: number, height: number, zoom: number): [number, number, boolean] {
+  const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
+  const x1 = cy * point[0] - sy * point[1];
+  const y1 = sy * point[0] + cy * point[1];
+  const rotatedX = cp * x1 + sp * point[2];
+  const rotatedZ = -sp * x1 + cp * point[2];
+  const radius = Math.min(width, height) * 0.44 * zoom;
+  return [width / 2 + y1 * radius, height / 2 - rotatedZ * radius, rotatedX >= 0];
+}
+
 function tileNeighborhood(result: WorldgenClimateResult, center: number, rings: number): number[] {
   const visited = new Set<number>([center]);
   let frontier = [center];
@@ -852,6 +915,49 @@ function tileNeighborhood(result: WorldgenClimateResult, center: number, rings: 
     frontier = next;
   }
   return Array.from(visited);
+}
+
+
+function drawLocalDualCells(
+  context: CanvasRenderingContext2D,
+  result: WorldgenClimateResult,
+  focusSample: number,
+  selectedSample: number | null,
+  yaw: number,
+  pitch: number,
+  width: number,
+  height: number,
+  zoom: number,
+): void {
+  const rings = Math.max(8, Math.min(38, Math.ceil(170 / zoom)));
+  const samples = tileNeighborhood(result, focusSample, rings);
+  context.save();
+  context.lineJoin = 'round';
+  for (const sample of samples) {
+    const degree = result.neighborOffsets[sample + 1]! - result.neighborOffsets[sample]!;
+    if (degree !== 5 && degree !== 6) continue;
+    const vertices = tileBoundary(result, sample);
+    if (vertices.length !== degree) continue;
+    const projected = vertices.map(vertex => projectTilePoint(vertex, yaw, pitch, width, height, zoom));
+    if (projected.some(vertex => !vertex[2])) continue;
+    let minX = Number.POSITIVE_INFINITY, maxX = Number.NEGATIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY, maxY = Number.NEGATIVE_INFINITY;
+    for (const [x, y] of projected) {
+      minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+    }
+    if (maxX < -8 || minX > width + 8 || maxY < -8 || minY > height + 8) continue;
+    context.beginPath();
+    projected.forEach(([x, y], index) => { if (index === 0) context.moveTo(x, y); else context.lineTo(x, y); });
+    context.closePath();
+    context.fillStyle = evolvedHypsometricColor(result, sample);
+    context.fill();
+    const selected = sample === selectedSample;
+    context.strokeStyle = selected ? 'rgba(93,224,255,1)' : degree === 5 ? 'rgba(255,211,106,0.98)' : 'rgba(225,236,246,0.55)';
+    context.lineWidth = selected ? 2.5 : degree === 5 ? 2.0 : 0.7;
+    context.stroke();
+  }
+  context.restore();
 }
 
 function drawTileLens(
@@ -939,88 +1045,158 @@ function drawPhysicalTiles(
   height: number,
   buffers: ProjectionBuffers,
   interactive: boolean,
+  zoom: number,
+  selectedSample: number | null,
 ): void {
   const count = result.metrics.fineSampleCount;
-  const baseTarget = interactive ? 120_000 : 360_000;
-  const stride = Math.max(1, Math.ceil(count / baseTarget));
   let focusSample = 0;
-  let focusDistanceSquared = Number.POSITIVE_INFINITY;
-  let pentagonCount = 0;
+
+  if (projection === 'map') {
+    const stride = Math.max(1, Math.ceil(count / (interactive ? 120_000 : 360_000)));
+    context.save();
+    context.globalAlpha = 0.72;
+    for (let sample = 0; sample < count; sample += stride) {
+      if (!buffers.visible[sample]) continue;
+      context.fillStyle = evolvedHypsometricColor(result, sample);
+      context.fillRect(buffers.x[sample]! - 0.6, buffers.y[sample]! - 0.6, 1.2, 1.2);
+    }
+    context.restore();
+    let bestDistance = Number.POSITIVE_INFINITY;
+    for (let sample = 0; sample < count; sample += 1) {
+      const dx = buffers.x[sample]! - width / 2;
+      const dy = buffers.y[sample]! - height / 2;
+      const distance = dx * dx + dy * dy;
+      if (distance < bestDistance) { bestDistance = distance; focusSample = sample; }
+    }
+  } else {
+    const centerDirection = screenToWorldDirection(width / 2, height / 2, width, height, { yaw, pitch, zoom });
+    if (centerDirection) focusSample = pickNearestSample(result, centerDirection);
+  }
 
   context.save();
-  context.globalAlpha = 0.72;
-  for (let sample = 0; sample < count; sample += stride) {
-    if (!buffers.visible[sample]) continue;
-    context.fillStyle = evolvedHypsometricColor(result, sample);
-    context.fillRect(buffers.x[sample]! - 0.6, buffers.y[sample]! - 0.6, 1.2, 1.2);
-  }
-  context.globalAlpha = 1;
-
-  if (interactive) {
-    context.fillStyle = 'rgba(8,16,26,0.84)';
-    context.fillRect(12, 12, 404, 48);
-    context.fillStyle = '#e7f0f7';
-    context.font = '13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
-    context.fillText(`${count.toLocaleString()} physical dual cells`, 22, 32);
-    context.fillStyle = '#ffd36a';
-    context.fillText(`12 pentagons · ${(count - 12).toLocaleString()} hexagons · release to inspect lens`, 22, 50);
-    context.restore();
-    return;
+  if (projection === 'globe' && !interactive && zoom >= 4.5) {
+    drawLocalDualCells(context, result, focusSample, selectedSample, yaw, pitch, width, height, zoom);
   }
 
-  for (let sample = 0; sample < count; sample += 1) {
-    const degree = result.neighborOffsets[sample + 1]! - result.neighborOffsets[sample]!;
-    if (degree === 5) pentagonCount += 1;
+  for (const sample of pentagonSamples(result)) {
     if (!buffers.visible[sample]) continue;
-    const dx = buffers.x[sample]! - width / 2;
-    const dy = buffers.y[sample]! - height / 2;
-    const distanceSquared = dx * dx + dy * dy;
-    if (distanceSquared < focusDistanceSquared) {
-      focusDistanceSquared = distanceSquared;
-      focusSample = sample;
+    const x = buffers.x[sample]!, y = buffers.y[sample]!;
+    if (x < -10 || x > width + 10 || y < -10 || y > height + 10) continue;
+    context.beginPath(); context.arc(x, y, zoom >= 4.5 ? 5.2 : 4.2, 0, TWO_PI);
+    context.fillStyle = 'rgba(255,211,106,0.96)'; context.fill();
+    context.strokeStyle = 'rgba(12,18,26,0.92)'; context.lineWidth = 1.4; context.stroke();
+  }
+
+  if (selectedSample !== null && buffers.visible[selectedSample]) {
+    const x = buffers.x[selectedSample]!, y = buffers.y[selectedSample]!;
+    if (x >= -20 && x <= width + 20 && y >= -20 && y <= height + 20) {
+      context.beginPath(); context.arc(x, y, zoom >= 4.5 ? 7.5 : 6.0, 0, TWO_PI);
+      context.strokeStyle = 'rgba(93,224,255,1)'; context.lineWidth = 2.2; context.stroke();
     }
   }
 
-  context.lineWidth = 1.4;
-  for (let sample = 0; sample < count; sample += 1) {
-    if (result.neighborOffsets[sample + 1]! - result.neighborOffsets[sample]! !== 5 || !buffers.visible[sample]) continue;
-    const x = buffers.x[sample]!, y = buffers.y[sample]!;
-    context.beginPath(); context.arc(x, y, 4.2, 0, TWO_PI);
-    context.fillStyle = 'rgba(255,211,106,0.96)'; context.fill();
-    context.strokeStyle = 'rgba(12,18,26,0.92)'; context.stroke();
-  }
-
-  if (buffers.visible[focusSample]) {
-    const x = buffers.x[focusSample]!, y = buffers.y[focusSample]!;
-    context.beginPath(); context.arc(x, y, 6.0, 0, TWO_PI);
-    context.strokeStyle = 'rgba(93,224,255,0.98)';
-    context.lineWidth = 1.8;
-    context.stroke();
-  }
-
   context.fillStyle = 'rgba(8,16,26,0.84)';
-  context.fillRect(12, 12, 404, 48);
+  context.fillRect(12, 12, 480, 48);
   context.fillStyle = '#e7f0f7';
   context.font = '13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
-  context.fillText(`${count.toLocaleString()} physical dual cells`, 22, 32);
+  context.fillText(`${count.toLocaleString()} physical dual cells · ${zoom.toFixed(1)}× zoom`, 22, 32);
   context.fillStyle = '#ffd36a';
-  context.fillText(`${pentagonCount} pentagons · ${(count - pentagonCount).toLocaleString()} hexagons · drag globe to inspect`, 22, 50);
+  context.fillText(`${pentagonSamples(result).length} pentagons · ${(count - pentagonSamples(result).length).toLocaleString()} hexagons · ${zoom >= 4.5 ? 'exact local cell boundaries' : 'zoom to 4.5× for direct cells'}`, 22, 50);
 
-  if (!interactive && buffers.visible[focusSample]) drawTileLens(context, result, focusSample, width, height);
+  if (!interactive && projection === 'globe' && zoom < 4.5 && buffers.visible[focusSample]) drawTileLens(context, result, focusSample, width, height);
   context.restore();
 }
 
-function renderPlanet(canvas: HTMLCanvasElement, result: WorldgenClimateResult, projection: string, mode: string, overlays: ReadonlySet<string>, phase: number, yaw: number, pitch: number, buffers: ProjectionBuffers, interactive: boolean, animation: number): void {
+function renderPlanet(
+  surfaceCanvas: HTMLCanvasElement,
+  canvas: HTMLCanvasElement,
+  result: WorldgenClimateResult,
+  projection: string,
+  mode: string,
+  overlays: ReadonlySet<string>,
+  phase: number,
+  yaw: number,
+  pitch: number,
+  zoom: number,
+  buffers: ProjectionBuffers,
+  interactive: boolean,
+  animation: number,
+  selectedSample: number | null,
+): void {
   const width = 1100;
   const height = projection === 'map' ? 550 : 760;
   if (canvas.width !== width) canvas.width = width;
   if (canvas.height !== height) canvas.height = height;
   const context = canvas.getContext('2d');
   if (!context) throw new Error('Planet Engine Lab could not acquire a 2D canvas context.');
-  context.fillStyle = '#08101a'; context.fillRect(0, 0, width, height);
-  projectSamples(result, projection, yaw, pitch, width, height, buffers);
+
   if (projection === 'globe') {
-    context.beginPath(); context.arc(width / 2, height / 2, Math.min(width, height) * 0.44, 0, TWO_PI);
+    const gpu = ensureGpuColorCache(result, mode, phase);
+    surfaceCanvas.hidden = false;
+    const gpuDrawn = globeRenderer.draw(result, gpu.colors, gpu.key, { yaw, pitch, zoom }, width, height, gpu.alpha);
+    if (gpuDrawn) {
+      context.clearRect(0, 0, width, height);
+      if (interactive) {
+        context.fillStyle = 'rgba(8,16,26,0.82)';
+        context.fillRect(12, 12, 260, 28);
+        context.fillStyle = '#9eb0c4';
+        context.font = '12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+        context.fillText(`GPU camera preview · ${zoom.toFixed(1)}×`, 22, 31);
+        return;
+      }
+
+      ensureProjectedSamples(result, projection, yaw, pitch, width, height, buffers, zoom);
+      const globeRadius = Math.min(width, height) * 0.44 * zoom;
+      context.beginPath(); context.arc(width / 2, height / 2, globeRadius, 0, TWO_PI);
+      context.strokeStyle = '#5d7890'; context.lineWidth = 1; context.stroke();
+
+      if (mode === 'tiles') {
+        drawPhysicalTiles(context, result, projection, yaw, pitch, width, height, buffers, false, zoom, selectedSample);
+      } else if (mode === 'mesh') {
+        context.beginPath(); context.strokeStyle = '#5d7890'; context.lineWidth = 0.55;
+        for (let sample = 0; sample < result.metrics.fineSampleCount; sample += 1) {
+          if (!buffers.visible[sample]) continue;
+          const ax = buffers.x[sample]!, ay = buffers.y[sample]!;
+          if (ax < -4 || ax > width + 4 || ay < -4 || ay > height + 4) continue;
+          for (let cursor = result.neighborOffsets[sample]!; cursor < result.neighborOffsets[sample + 1]!; cursor += 1) {
+            const neighbor = result.neighbors[cursor]!;
+            if (neighbor <= sample || !buffers.visible[neighbor]) continue;
+            context.moveTo(ax, ay); context.lineTo(buffers.x[neighbor]!, buffers.y[neighbor]!);
+          }
+        }
+        context.stroke();
+      } else {
+        if (isDrainageMode(mode)) {
+          if (mode === 'flow-direction') drawDrainageReceiverOverlay(context, result, projection, width, buffers);
+          if (mode === 'basins') drawDrainageOutlets(context, result, buffers);
+        }
+        const cacheKey = `${mode}:${GPU_SEASONAL_MODES.has(mode) ? phase.toFixed(3) : 'mean'}`;
+        if (styleCache.result !== result || styleCache.key !== cacheKey) styleCache = buildStyleCache(result, mode, phase);
+        if (styleCache.boundaryBuckets.length > 0) {
+          context.lineCap = 'round'; context.lineWidth = mode === 'boundary-provenance' ? 1.4 : 2.0;
+          for (const bucket of styleCache.boundaryBuckets) {
+            context.strokeStyle = bucket.color; context.beginPath();
+            for (let cursor = 0; cursor < bucket.indices.length; cursor += 1) {
+              const boundary = bucket.indices[cursor]!;
+              const a = result.boundarySamples[boundary * 2]!, b = result.boundarySamples[boundary * 2 + 1]!;
+              if (!buffers.visible[a] || !buffers.visible[b]) continue;
+              context.moveTo(buffers.x[a]!, buffers.y[a]!); context.lineTo(buffers.x[b]!, buffers.y[b]!);
+            }
+            context.stroke();
+          }
+        }
+        if (mode === 'winds' || mode === 'currents') drawVectors(context, result, mode, phase, projection, yaw, pitch, width, height, buffers, animation, zoom);
+      }
+      drawDiagnosticOverlays(context, result, overlays, phase, projection, yaw, pitch, width, height, buffers, animation, zoom);
+      return;
+    }
+  }
+
+  surfaceCanvas.hidden = true;
+  context.fillStyle = '#08101a'; context.fillRect(0, 0, width, height);
+  ensureProjectedSamples(result, projection, yaw, pitch, width, height, buffers, projection === 'globe' ? zoom : 1);
+  if (projection === 'globe') {
+    context.beginPath(); context.arc(width / 2, height / 2, Math.min(width, height) * 0.44 * zoom, 0, TWO_PI);
     context.strokeStyle = '#5d7890'; context.lineWidth = 1; context.stroke();
   }
   if (isLakeMode(mode)) {
@@ -1036,7 +1212,7 @@ function renderPlanet(canvas: HTMLCanvasElement, result: WorldgenClimateResult, 
       else { context.beginPath(); context.arc(x, y, pointRadius, 0, TWO_PI); context.fill(); }
     }
     context.globalAlpha = 1;
-    drawDiagnosticOverlays(context, result, overlays, phase, projection, yaw, pitch, width, height, buffers, animation);
+    drawDiagnosticOverlays(context, result, overlays, phase, projection, yaw, pitch, width, height, buffers, animation, projection === 'globe' ? zoom : 1);
     return;
   }
   if (isRunoffMode(mode)) {
@@ -1052,17 +1228,17 @@ function renderPlanet(canvas: HTMLCanvasElement, result: WorldgenClimateResult, 
       else { context.beginPath(); context.arc(x, y, pointRadius, 0, TWO_PI); context.fill(); }
     }
     context.globalAlpha = 1;
-    drawDiagnosticOverlays(context, result, overlays, phase, projection, yaw, pitch, width, height, buffers, animation);
+    drawDiagnosticOverlays(context, result, overlays, phase, projection, yaw, pitch, width, height, buffers, animation, projection === 'globe' ? zoom : 1);
     return;
   }
   if (isDrainageMode(mode)) {
     renderDrainageDiagnostic(context, result, projection, mode, width, buffers, interactive);
-    drawDiagnosticOverlays(context, result, overlays, phase, projection, yaw, pitch, width, height, buffers, animation);
+    drawDiagnosticOverlays(context, result, overlays, phase, projection, yaw, pitch, width, height, buffers, animation, projection === 'globe' ? zoom : 1);
     return;
   }
   if (mode === 'tiles') {
-    drawPhysicalTiles(context, result, projection, yaw, pitch, width, height, buffers, interactive);
-    drawDiagnosticOverlays(context, result, overlays, phase, projection, yaw, pitch, width, height, buffers, animation);
+    drawPhysicalTiles(context, result, projection, yaw, pitch, width, height, buffers, interactive, projection === 'globe' ? zoom : 1, selectedSample);
+    drawDiagnosticOverlays(context, result, overlays, phase, projection, yaw, pitch, width, height, buffers, animation, projection === 'globe' ? zoom : 1);
     return;
   }
   if (mode === 'mesh') {
@@ -1080,7 +1256,7 @@ function renderPlanet(canvas: HTMLCanvasElement, result: WorldgenClimateResult, 
     }
     context.stroke(); return;
   }
-  const cacheKey = `${mode}:${['seasonal-temperature', 'seasonal-sst', 'seasonal-precipitation', 'seasonal-realized-discharge', 'seasonal-snow-storage'].includes(mode) ? phase.toFixed(3) : 'mean'}`;
+  const cacheKey = `${mode}:${GPU_SEASONAL_MODES.has(mode) ? phase.toFixed(3) : 'mean'}`;
   if (styleCache.result !== result || styleCache.key !== cacheKey) styleCache = buildStyleCache(result, mode, phase);
   const count = result.metrics.fineSampleCount;
   const pointRadius = count > 100_000 ? 0.8 : count > 30_000 ? 1.15 : count > 5_000 ? 2 : 3;
@@ -1115,8 +1291,8 @@ function renderPlanet(canvas: HTMLCanvasElement, result: WorldgenClimateResult, 
       context.stroke();
     }
   }
-  if (mode === 'winds' || mode === 'currents') drawVectors(context, result, mode, phase, projection, yaw, pitch, width, height, buffers, animation);
-  drawDiagnosticOverlays(context, result, overlays, phase, projection, yaw, pitch, width, height, buffers, animation);
+  if (mode === 'winds' || mode === 'currents') drawVectors(context, result, mode, phase, projection, yaw, pitch, width, height, buffers, animation, projection === 'globe' ? zoom : 1);
+  drawDiagnosticOverlays(context, result, overlays, phase, projection, yaw, pitch, width, height, buffers, animation, projection === 'globe' ? zoom : 1);
 }
 
 const seed = element<HTMLInputElement>('worldgen-seed');
@@ -1128,6 +1304,10 @@ const preset = element<HTMLSelectElement>('worldgen-preset');
 const visualization = element<HTMLSelectElement>('worldgen-visualization');
 const season = element<HTMLInputElement>('worldgen-season');
 const seasonValue = element<HTMLElement>('worldgen-season-value');
+const zoomControl = element<HTMLInputElement>('worldgen-zoom');
+const zoomValue = element<HTMLElement>('worldgen-zoom-value');
+const resetCamera = element<HTMLButtonElement>('worldgen-reset-camera');
+const cellInspector = element<HTMLElement>('worldgen-cell-inspector');
 const overlaySummary = element<HTMLElement>('worldgen-overlay-summary');
 const overlayInputs = Array.from(document.querySelectorAll<HTMLInputElement>('input[data-worldgen-overlay]'));
 const generate = element<HTMLButtonElement>('worldgen-generate');
@@ -1140,14 +1320,19 @@ const generationStep = element<HTMLElement>('worldgen-generation-step');
 const generationTimer = element<HTMLElement>('worldgen-generation-timer');
 const generationProfile = element<HTMLElement>('worldgen-generation-profile');
 const metrics = element<HTMLElement>('worldgen-metrics');
+const surfaceCanvas = element<HTMLCanvasElement>('worldgen-surface');
 const canvas = element<HTMLCanvasElement>('worldgen-field');
+const globeRenderer = new L8GlobeRenderer(surfaceCanvas);
 const client = createWorldgenClient();
 let current: WorldgenClimateResult | null = null;
 let currentCalibrationRequest: { seed: string; plateCount: number } | null = null;
 let buffers: ProjectionBuffers | null = null;
 let yaw = -0.65;
 let pitch = 0.25;
+let zoom = 1;
+let selectedTile: number | null = null;
 let drag: { x: number; y: number; yaw: number; pitch: number } | null = null;
+let cameraSettleHandle: ReturnType<typeof setTimeout> | null = null;
 let frameRequest = 0;
 let animationRequest = 0;
 let animationPhase = 0;
@@ -1255,11 +1440,43 @@ function orbitalPhase(): number { return Number(season.value) / 1000; }
 function updateSeasonLabel(): void { seasonValue.textContent = `${(orbitalPhase() * 100).toFixed(1)}% orbit`; }
 function redraw(interactive = false): void {
   if (!current || !buffers) return;
-  renderPlanet(canvas, current, projection.value, visualization.value, selectedOverlays(), orbitalPhase(), yaw, pitch, buffers, interactive, animationPhase);
+  renderPlanet(surfaceCanvas, canvas, current, projection.value, visualization.value, selectedOverlays(), orbitalPhase(), yaw, pitch, zoom, buffers, interactive, animationPhase, selectedTile);
 }
 function scheduleRedraw(interactive: boolean): void {
   if (frameRequest) return;
-  frameRequest = requestAnimationFrame(() => { frameRequest = 0; redraw(interactive && drag !== null); });
+  frameRequest = requestAnimationFrame(() => { frameRequest = 0; redraw(interactive); });
+}
+function scheduleSettledCameraRedraw(): void {
+  if (cameraSettleHandle) clearTimeout(cameraSettleHandle);
+  cameraSettleHandle = setTimeout(() => { cameraSettleHandle = null; redraw(false); }, 90);
+}
+function updateZoomLabel(): void { zoomValue.textContent = `${zoom.toFixed(1)}×`; }
+function setZoom(next: number, interactive = true): void {
+  zoom = Math.max(1, Math.min(24, next));
+  zoomControl.value = zoom.toFixed(1);
+  updateZoomLabel();
+  if (interactive) { scheduleRedraw(true); scheduleSettledCameraRedraw(); } else redraw(false);
+}
+function updateCameraControls(): void {
+  const globe = projection.value === 'globe';
+  zoomControl.disabled = !globe;
+  resetCamera.disabled = !globe;
+}
+function inspectTile(sample: number | null): void {
+  if (!current || sample === null) { cellInspector.textContent = 'Click the globe to inspect an L8 physical cell.'; return; }
+  const degree = current.neighborOffsets[sample + 1]! - current.neighborOffsets[sample]!;
+  const relativeElevation = current.postInfillSolidElevationM[sample]! - current.metrics.seaLevelM;
+  const surface = current.submergedMask[sample] ? `${current.waterDepthM[sample]!.toFixed(0)} m water depth` : `${relativeElevation.toFixed(0)} m final elevation`;
+  const basin = current.basinId[sample] === WORLDGEN_INVALID_SAMPLE_ID ? 'no basin' : `basin ${current.basinId[sample]!.toLocaleString()}`;
+  cellInspector.textContent = `Cell ${sample.toLocaleString()} · ${degree === 5 ? 'pentagon' : 'hexagon'} · plate ${current.plateIds[sample]!.toLocaleString()} · ${surface} · ${basin}`;
+}
+function pickTileAtPointer(event: PointerEvent | WheelEvent): number | null {
+  if (!current || projection.value !== 'globe') return null;
+  const rect = canvas.getBoundingClientRect();
+  const x = (event.clientX - rect.left) * canvas.width / Math.max(1, rect.width);
+  const y = (event.clientY - rect.top) * canvas.height / Math.max(1, rect.height);
+  const direction = screenToWorldDirection(x, y, canvas.width, canvas.height, { yaw, pitch, zoom });
+  return direction ? pickNearestSample(current, direction) : null;
 }
 function vectorAnimationFrame(timestampMs: number): void {
   animationRequest = 0;
@@ -1270,7 +1487,7 @@ function vectorAnimationFrame(timestampMs: number): void {
     if (timestampMs - lastVectorAnimationMs >= VECTOR_ANIMATION_INTERVAL_MS) {
       animationPhase = (animationPhase + 0.9) % 1000;
       lastVectorAnimationMs = timestampMs;
-      redraw(true);
+      redraw(false);
     }
     animationRequest = requestAnimationFrame(vectorAnimationFrame);
   }
@@ -1449,6 +1666,9 @@ async function generatePlanet(): Promise<void> {
     buffers = { x: new Float32Array(loaded.metrics.fineSampleCount), y: new Float32Array(loaded.metrics.fineSampleCount), visible: new Uint8Array(loaded.metrics.fineSampleCount) };
     styleCache = { result: null, key: '', sampleBuckets: [], boundaryBuckets: [] };
     edgeOverlayCache = { result: null, coastline: new Uint32Array(0), contours: [], evolvedContours: [], basinDivides: new Uint32Array(0), riverBuckets: [] };
+    gpuColorCache = { result: null, key: '', colors: new Uint8Array(0), alpha: 0.94 };
+    projectedResult = null; projectedKey = ''; pentagonResult = null; pentagonCache = new Uint32Array(0);
+    selectedTile = null; inspectTile(null);
     showMetrics(loaded); redraw(false); updateAnimation(); finishGenerationTelemetry(loaded);
     generationStep.textContent = `${loaded.metrics.spinupYears} climate spin-up years · ${loaded.drainageMetrics.basinCount.toLocaleString()} basins · ${loaded.lakeMetrics.lakeCount.toLocaleString()} equilibrium lakes · ${loaded.evolutionMetrics.receiverChangedSampleCount.toLocaleString()} receivers changed after evolution · ${loaded.infillMetrics.filledDepressionCount.toLocaleString()} lake basins infilled`;
     generationTimer.textContent = formatDuration(performance.now() - generationStartedAt);
@@ -1466,33 +1686,62 @@ async function generatePlanet(): Promise<void> {
 generate.addEventListener('click', () => void generatePlanet());
 copyCalibration.addEventListener('click', () => void copyCalibrationReport());
 downloadCalibration.addEventListener('click', downloadCalibrationReport);
-projection.addEventListener('change', () => redraw(false));
+projection.addEventListener('change', () => { updateCameraControls(); redraw(false); });
 preset.addEventListener('change', () => applyViewPreset(preset.value));
-visualization.addEventListener('change', () => { preset.value = 'custom'; styleCache = { result: null, key: '', sampleBuckets: [], boundaryBuckets: [] }; redraw(false); updateAnimation(); });
+visualization.addEventListener('change', () => { preset.value = 'custom'; styleCache = { result: null, key: '', sampleBuckets: [], boundaryBuckets: [] }; gpuColorCache = { result: null, key: '', colors: new Uint8Array(0), alpha: 0.94 }; redraw(false); updateAnimation(); });
 overlayInputs.forEach(input => input.addEventListener('change', () => { preset.value = 'custom'; updateOverlaySummary(); redraw(false); updateAnimation(); }));
-season.addEventListener('input', () => { updateSeasonLabel(); styleCache = { result: null, key: '', sampleBuckets: [], boundaryBuckets: [] }; redraw(false); });
+season.addEventListener('input', () => { updateSeasonLabel(); styleCache = { result: null, key: '', sampleBuckets: [], boundaryBuckets: [] }; gpuColorCache = { result: null, key: '', colors: new Uint8Array(0), alpha: 0.94 }; redraw(false); });
+zoomControl.addEventListener('input', () => setZoom(Number(zoomControl.value), true));
+resetCamera.addEventListener('click', () => {
+  yaw = -0.65; pitch = 0.25; selectedTile = null; inspectTile(null); setZoom(1, false);
+});
+canvas.addEventListener('wheel', event => {
+  if (projection.value !== 'globe' || !current) return;
+  event.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const canvasX = (event.clientX - rect.left) * canvas.width / Math.max(1, rect.width);
+  const canvasY = (event.clientY - rect.top) * canvas.height / Math.max(1, rect.height);
+  const anchorDirection = screenToWorldDirection(canvasX, canvasY, canvas.width, canvas.height, { yaw, pitch, zoom });
+  const nextZoom = Math.max(1, Math.min(24, zoom * Math.exp(-event.deltaY * 0.0015)));
+  if (anchorDirection) {
+    const camera = cameraForWorldDirectionAtScreen(anchorDirection, canvasX, canvasY, canvas.width, canvas.height, nextZoom, { yaw, pitch, zoom });
+    yaw = camera.yaw;
+    pitch = camera.pitch;
+  }
+  setZoom(nextZoom, true);
+}, { passive: false });
 canvas.addEventListener('pointerdown', event => {
   if (projection.value !== 'globe') return;
   drag = { x: event.clientX, y: event.clientY, yaw, pitch }; canvas.setPointerCapture(event.pointerId);
 });
 canvas.addEventListener('pointermove', event => {
   if (!drag || projection.value !== 'globe') return;
-  yaw = drag.yaw + (event.clientX - drag.x) * 0.007;
-  pitch = Math.max(-1.45, Math.min(1.45, drag.pitch + (event.clientY - drag.y) * 0.007));
+  const sensitivity = 0.007 / Math.sqrt(zoom);
+  yaw = drag.yaw + (event.clientX - drag.x) * sensitivity;
+  pitch = Math.max(-1.45, Math.min(1.45, drag.pitch + (event.clientY - drag.y) * sensitivity));
   scheduleRedraw(true);
 });
 canvas.addEventListener('pointerup', event => {
+  const finishedDrag = drag;
   drag = null;
   if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+  if (finishedDrag && Math.hypot(event.clientX - finishedDrag.x, event.clientY - finishedDrag.y) < 4) {
+    selectedTile = pickTileAtPointer(event);
+    inspectTile(selectedTile);
+  }
   scheduleRedraw(false);
 });
 canvas.addEventListener('pointercancel', () => { drag = null; scheduleRedraw(false); });
 window.addEventListener('beforeunload', () => {
   if (frameRequest) cancelAnimationFrame(frameRequest);
   if (animationRequest) cancelAnimationFrame(animationRequest);
+  if (cameraSettleHandle) clearTimeout(cameraSettleHandle);
+  globeRenderer.dispose();
   client.dispose();
 });
 updateSeasonLabel();
+updateZoomLabel();
+updateCameraControls();
 updateOverlaySummary();
 applyViewPreset(preset.value);
 generationStage.textContent = 'Ready for canonical L8 generation';

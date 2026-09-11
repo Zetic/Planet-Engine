@@ -56,3 +56,14 @@
 .worldgen-lab-note strong { color: #a9bfd8; }
 .worldgen-lab-note p + p { margin-top: 8px; }
 @media (max-width: 900px) { .worldgen-lab-grid, .worldgen-lab-details { grid-template-columns: 1fr; } .worldgen-lab-header { flex-direction: column; } .worldgen-lab-note { grid-column: auto; } }
+
+/* Canonical L8 viewer: WebGL surface below a lightweight Canvas2D overlay. */
+.worldgen-lab-viewport canvas { grid-area: 1 / 1; }
+#worldgen-surface { z-index: 0; pointer-events: none; }
+#worldgen-field { z-index: 1; background: transparent; touch-action: none; cursor: grab; }
+#worldgen-field:active { cursor: grabbing; }
+.worldgen-camera-reset { padding: 8px 10px; border: 1px solid #2d4057; background: #101925; color: #c1d0df; cursor: pointer; }
+.worldgen-camera-reset:hover:not(:disabled) { border-color: #6699cc; }
+.worldgen-camera-reset:disabled { opacity: 0.45; cursor: default; }
+.worldgen-cell-inspector { padding: 9px 10px; border: 1px solid #253246; background: #0a121c; color: #9eb0c4; font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
+#worldgen-zoom-value { color: #c1d0df; font-variant-numeric: tabular-nums; }
