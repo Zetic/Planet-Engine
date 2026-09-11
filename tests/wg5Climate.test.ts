@@ -55,9 +55,11 @@ test('WG-5 Lab preserves viewport dimensions while splitting diagnostics, overla
   const css = fs.readFileSync('styles/worldgenLab.css', 'utf8');
   const source = fs.readFileSync('src/worldgen/diagnostics/worldgenClimateLabStandalone.ts', 'utf8');
   assert.match(html, /class="worldgen-lab-diagnostics"/);
-  assert.match(html, /Physical dual-cell tiles \(hexagons \+ pentagons\)/);
+  assert.match(html, /Physical cell boundaries/);
+  assert.doesNotMatch(html, /<option value="tiles">/);
   const gpu = fs.readFileSync('src/worldgen/diagnostics/worldgenL8GlobeRenderer.ts', 'utf8');
-  assert.match(source, /mode === 'tiles'/);
+  assert.match(source, /overlays\.has\('cell-boundaries'\)/);
+  assert.doesNotMatch(source, /mode === 'tiles'/);
   assert.match(gpu, /boundaryIndices/);
   assert.match(gpu, /drawElements\(gl\.LINES/);
   assert.doesNotMatch(source, /drawTileLens/);

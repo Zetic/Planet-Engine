@@ -579,7 +579,7 @@ function buildStyleCache(result, mode, phase) {
     const field = scalarField(result, mode, phase);
     const phaseKey = ['seasonal-temperature', 'seasonal-sst', 'seasonal-precipitation', 'seasonal-realized-discharge', 'seasonal-snow-storage'].includes(mode) ? phase.toFixed(3) : 'mean';
     const key = `${mode}:${phaseKey}`;
-    const sampleBuckets = (mode === 'mesh' || mode === 'tiles') ? [] : bucketize(result.metrics.fineSampleCount, sample => sampleColor(result, mode, sample, field));
+    const sampleBuckets = mode === 'mesh' ? [] : bucketize(result.metrics.fineSampleCount, sample => sampleColor(result, mode, sample, field));
     let boundaryBuckets = [];
     if (mode === 'tectonic-boundaries')
         boundaryBuckets = bucketize(result.metrics.fineBoundaryEdgeCount, boundary => tectonicBoundaryColor(result.boundaryKinds[boundary]));
@@ -828,8 +828,6 @@ function drawDiagnosticOverlays(context, result, overlays, phase, projection, ya
 let gpuColorCache = { result: null, key: '', colors: new Uint8Array(0), alpha: 0.94 };
 let projectedResult = null;
 let projectedKey = '';
-let pentagonResult = null;
-let pentagonCache = new Uint32Array(0);
 const GPU_SEASONAL_MODES = new Set(['seasonal-temperature', 'seasonal-sst', 'seasonal-precipitation', 'seasonal-realized-discharge', 'seasonal-snow-storage']);
 function gpuStyleKey(mode, phase) {
     return `${mode}:${GPU_SEASONAL_MODES.has(mode) ? phase.toFixed(3) : 'mean'}`;
@@ -840,8 +838,6 @@ function ensureGpuColorCache(result, mode, phase) {
         return gpuColorCache;
     const field = scalarField(result, mode, phase);
     const sampler = (sample) => {
-        if (mode === 'tiles')
-            return evolvedHypsometricColor(result, sample);
         if (mode === 'mesh')
             return '#24445f';
         if (isLakeMode(mode))
@@ -869,50 +865,6 @@ function ensureProjectedSamples(result, projection, yaw, pitch, width, height, b
     projectedResult = result;
     projectedKey = key;
 }
-function pentagonSamples(result) {
-    if (pentagonResult === result)
-        return pentagonCache;
-    const samples = [];
-    for (let sample = 0; sample < result.metrics.fineSampleCount; sample += 1) {
-        if (result.neighborOffsets[sample + 1] - result.neighborOffsets[sample] === 5)
-            samples.push(sample);
-    }
-    pentagonResult = result;
-    pentagonCache = Uint32Array.from(samples);
-    return pentagonCache;
-}
-function drawPhysicalTiles(context, result, projection, yaw, pitch, width, height, buffers, interactive, zoom, selectedSample) {
-    const count = result.metrics.fineSampleCount;
-    if (projection === 'map') {
-        const stride = Math.max(1, Math.ceil(count / (interactive ? 120_000 : 360_000)));
-        context.save();
-        context.globalAlpha = 0.72;
-        for (let sample = 0; sample < count; sample += stride) {
-            if (!buffers.visible[sample])
-                continue;
-            context.fillStyle = evolvedHypsometricColor(result, sample);
-            context.fillRect(buffers.x[sample] - 0.6, buffers.y[sample] - 0.6, 1.2, 1.2);
-        }
-        context.restore();
-        if (selectedSample !== null && buffers.visible[selectedSample]) {
-            context.beginPath();
-            context.arc(buffers.x[selectedSample], buffers.y[selectedSample], 6, 0, TWO_PI);
-            context.strokeStyle = 'rgba(93,224,255,1)';
-            context.lineWidth = 2.2;
-            context.stroke();
-        }
-        return;
-    }
-    context.save();
-    context.fillStyle = 'rgba(8,16,26,0.84)';
-    context.fillRect(12, 12, 480, 48);
-    context.fillStyle = '#e7f0f7';
-    context.font = '13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
-    context.fillText(`${count.toLocaleString()} physical dual cells · ${zoom.toFixed(1)}× zoom`, 22, 32);
-    context.fillStyle = '#ffd36a';
-    context.fillText(`${pentagonSamples(result).length} pentagons · ${(count - pentagonSamples(result).length).toLocaleString()} hexagons · canonical GPU dual cells`, 22, 50);
-    context.restore();
-}
 function renderPlanet(surfaceCanvas, canvas, result, projection, mode, overlays, phase, yaw, pitch, zoom, buffers, interactive, animation, selectedSample) {
     const width = 1100;
     const height = projection === 'map' ? 550 : 760;
@@ -926,11 +878,12 @@ function renderPlanet(surfaceCanvas, canvas, result, projection, mode, overlays,
     if (projection === 'globe') {
         const gpu = ensureGpuColorCache(result, mode, phase);
         surfaceCanvas.hidden = false;
-        const gpuDrawn = globeRenderer.draw(result, gpu.colors, gpu.key, { yaw, pitch, zoom }, width, height, gpu.alpha, mode === 'tiles', selectedSample);
+        const gpuDrawn = globeRenderer.draw(result, gpu.colors, gpu.key, { yaw, pitch, zoom }, width, height, gpu.alpha, overlays.has('cell-boundaries'), selectedSample);
         if (gpuDrawn) {
             context.clearRect(0, 0, width, height);
             const boundaryMode = mode === 'tectonic-boundaries' || mode === 'geological-boundaries' || mode === 'boundary-provenance';
-            const needsProjectedDecoration = overlays.size > 0
+            const cpuOverlayCount = overlays.size - (overlays.has('cell-boundaries') ? 1 : 0);
+            const needsProjectedDecoration = cpuOverlayCount > 0
                 || mode === 'mesh'
                 || mode === 'winds'
                 || mode === 'currents'
@@ -944,10 +897,7 @@ function renderPlanet(surfaceCanvas, canvas, result, projection, mode, overlays,
             context.strokeStyle = '#5d7890';
             context.lineWidth = 1;
             context.stroke();
-            if (mode === 'tiles') {
-                drawPhysicalTiles(context, result, projection, yaw, pitch, width, height, buffers, interactive, zoom, selectedSample);
-            }
-            else if (mode === 'mesh') {
+            if (mode === 'mesh') {
                 context.beginPath();
                 context.strokeStyle = '#5d7890';
                 context.lineWidth = 0.55;
@@ -997,7 +947,7 @@ function renderPlanet(surfaceCanvas, canvas, result, projection, mode, overlays,
                 if (mode === 'winds' || mode === 'currents')
                     drawVectors(context, result, mode, phase, projection, yaw, pitch, width, height, buffers, animation, zoom);
             }
-            if (overlays.size > 0)
+            if (cpuOverlayCount > 0)
                 drawDiagnosticOverlays(context, result, overlays, phase, projection, yaw, pitch, width, height, buffers, animation, zoom);
             return;
         }
@@ -1059,11 +1009,6 @@ function renderPlanet(surfaceCanvas, canvas, result, projection, mode, overlays,
     }
     if (isDrainageMode(mode)) {
         renderDrainageDiagnostic(context, result, projection, mode, width, buffers, interactive);
-        drawDiagnosticOverlays(context, result, overlays, phase, projection, yaw, pitch, width, height, buffers, animation, projection === 'globe' ? zoom : 1);
-        return;
-    }
-    if (mode === 'tiles') {
-        drawPhysicalTiles(context, result, projection, yaw, pitch, width, height, buffers, interactive, projection === 'globe' ? zoom : 1, selectedSample);
         drawDiagnosticOverlays(context, result, overlays, phase, projection, yaw, pitch, width, height, buffers, animation, projection === 'globe' ? zoom : 1);
         return;
     }
@@ -1571,8 +1516,6 @@ async function generatePlanet() {
         gpuColorCache = { result: null, key: '', colors: new Uint8Array(0), alpha: 0.94 };
         projectedResult = null;
         projectedKey = '';
-        pentagonResult = null;
-        pentagonCache = new Uint32Array(0);
         selectedTile = null;
         inspectTile(null);
         showMetrics(loaded);

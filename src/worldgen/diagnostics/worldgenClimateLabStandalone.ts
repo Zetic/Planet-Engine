@@ -554,7 +554,7 @@ function buildStyleCache(result: WorldgenClimateResult, mode: string, phase: num
   const field = scalarField(result, mode, phase);
   const phaseKey = ['seasonal-temperature', 'seasonal-sst', 'seasonal-precipitation', 'seasonal-realized-discharge', 'seasonal-snow-storage'].includes(mode) ? phase.toFixed(3) : 'mean';
   const key = `${mode}:${phaseKey}`;
-  const sampleBuckets = (mode === 'mesh' || mode === 'tiles') ? [] : bucketize(result.metrics.fineSampleCount, sample => sampleColor(result, mode, sample, field));
+  const sampleBuckets = mode === 'mesh' ? [] : bucketize(result.metrics.fineSampleCount, sample => sampleColor(result, mode, sample, field));
   let boundaryBuckets: DrawBucket[] = [];
   if (mode === 'tectonic-boundaries') boundaryBuckets = bucketize(result.metrics.fineBoundaryEdgeCount, boundary => tectonicBoundaryColor(result.boundaryKinds[boundary]!));
   else if (mode === 'geological-boundaries') boundaryBuckets = bucketize(result.metrics.fineBoundaryEdgeCount, boundary => geologicalBoundaryColor(result.geologicalBoundaryRegimes[boundary]!));
@@ -790,8 +790,6 @@ type GpuColorCache = { result: WorldgenClimateResult | null; key: string; colors
 let gpuColorCache: GpuColorCache = { result: null, key: '', colors: new Uint8Array(0), alpha: 0.94 };
 let projectedResult: WorldgenClimateResult | null = null;
 let projectedKey = '';
-let pentagonResult: WorldgenClimateResult | null = null;
-let pentagonCache = new Uint32Array(0);
 const GPU_SEASONAL_MODES = new Set(['seasonal-temperature', 'seasonal-sst', 'seasonal-precipitation', 'seasonal-realized-discharge', 'seasonal-snow-storage']);
 
 function gpuStyleKey(mode: string, phase: number): string {
@@ -802,7 +800,6 @@ function ensureGpuColorCache(result: WorldgenClimateResult, mode: string, phase:
   if (gpuColorCache.result === result && gpuColorCache.key === key) return gpuColorCache;
   const field = scalarField(result, mode, phase);
   const sampler = (sample: number): string => {
-    if (mode === 'tiles') return evolvedHypsometricColor(result, sample);
     if (mode === 'mesh') return '#24445f';
     if (isLakeMode(mode)) return lakeSampleColor(result, mode, sample);
     if (isRunoffMode(mode)) return runoffSampleColor(result, mode, sample);
@@ -825,62 +822,6 @@ function ensureProjectedSamples(result: WorldgenClimateResult, projection: strin
   projectedResult = result;
   projectedKey = key;
 }
-function pentagonSamples(result: WorldgenClimateResult): Uint32Array {
-  if (pentagonResult === result) return pentagonCache;
-  const samples: number[] = [];
-  for (let sample = 0; sample < result.metrics.fineSampleCount; sample += 1) {
-    if (result.neighborOffsets[sample + 1]! - result.neighborOffsets[sample]! === 5) samples.push(sample);
-  }
-  pentagonResult = result;
-  pentagonCache = Uint32Array.from(samples);
-  return pentagonCache;
-}
-
-function drawPhysicalTiles(
-  context: CanvasRenderingContext2D,
-  result: WorldgenClimateResult,
-  projection: string,
-  yaw: number,
-  pitch: number,
-  width: number,
-  height: number,
-  buffers: ProjectionBuffers,
-  interactive: boolean,
-  zoom: number,
-  selectedSample: number | null,
-): void {
-  const count = result.metrics.fineSampleCount;
-  if (projection === 'map') {
-    const stride = Math.max(1, Math.ceil(count / (interactive ? 120_000 : 360_000)));
-    context.save();
-    context.globalAlpha = 0.72;
-    for (let sample = 0; sample < count; sample += stride) {
-      if (!buffers.visible[sample]) continue;
-      context.fillStyle = evolvedHypsometricColor(result, sample);
-      context.fillRect(buffers.x[sample]! - 0.6, buffers.y[sample]! - 0.6, 1.2, 1.2);
-    }
-    context.restore();
-    if (selectedSample !== null && buffers.visible[selectedSample]) {
-      context.beginPath();
-      context.arc(buffers.x[selectedSample]!, buffers.y[selectedSample]!, 6, 0, TWO_PI);
-      context.strokeStyle = 'rgba(93,224,255,1)';
-      context.lineWidth = 2.2;
-      context.stroke();
-    }
-    return;
-  }
-
-  context.save();
-  context.fillStyle = 'rgba(8,16,26,0.84)';
-  context.fillRect(12, 12, 480, 48);
-  context.fillStyle = '#e7f0f7';
-  context.font = '13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
-  context.fillText(`${count.toLocaleString()} physical dual cells · ${zoom.toFixed(1)}× zoom`, 22, 32);
-  context.fillStyle = '#ffd36a';
-  context.fillText(`${pentagonSamples(result).length} pentagons · ${(count - pentagonSamples(result).length).toLocaleString()} hexagons · canonical GPU dual cells`, 22, 50);
-  context.restore();
-}
-
 function renderPlanet(
   surfaceCanvas: HTMLCanvasElement,
   canvas: HTMLCanvasElement,
@@ -915,14 +856,15 @@ function renderPlanet(
       width,
       height,
       gpu.alpha,
-      mode === 'tiles',
+      overlays.has('cell-boundaries'),
       selectedSample,
     );
     if (gpuDrawn) {
       context.clearRect(0, 0, width, height);
 
       const boundaryMode = mode === 'tectonic-boundaries' || mode === 'geological-boundaries' || mode === 'boundary-provenance';
-      const needsProjectedDecoration = overlays.size > 0
+      const cpuOverlayCount = overlays.size - (overlays.has('cell-boundaries') ? 1 : 0);
+      const needsProjectedDecoration = cpuOverlayCount > 0
         || mode === 'mesh'
         || mode === 'winds'
         || mode === 'currents'
@@ -934,9 +876,7 @@ function renderPlanet(
       context.beginPath(); context.arc(width / 2, height / 2, globeRadius, 0, TWO_PI);
       context.strokeStyle = '#5d7890'; context.lineWidth = 1; context.stroke();
 
-      if (mode === 'tiles') {
-        drawPhysicalTiles(context, result, projection, yaw, pitch, width, height, buffers, interactive, zoom, selectedSample);
-      } else if (mode === 'mesh') {
+      if (mode === 'mesh') {
         context.beginPath(); context.strokeStyle = '#5d7890'; context.lineWidth = 0.55;
         for (let sample = 0; sample < result.metrics.fineSampleCount; sample += 1) {
           if (!buffers.visible[sample]) continue;
@@ -971,7 +911,7 @@ function renderPlanet(
         }
         if (mode === 'winds' || mode === 'currents') drawVectors(context, result, mode, phase, projection, yaw, pitch, width, height, buffers, animation, zoom);
       }
-      if (overlays.size > 0) drawDiagnosticOverlays(context, result, overlays, phase, projection, yaw, pitch, width, height, buffers, animation, zoom);
+      if (cpuOverlayCount > 0) drawDiagnosticOverlays(context, result, overlays, phase, projection, yaw, pitch, width, height, buffers, animation, zoom);
       return;
     }
   }
@@ -1017,11 +957,6 @@ function renderPlanet(
   }
   if (isDrainageMode(mode)) {
     renderDrainageDiagnostic(context, result, projection, mode, width, buffers, interactive);
-    drawDiagnosticOverlays(context, result, overlays, phase, projection, yaw, pitch, width, height, buffers, animation, projection === 'globe' ? zoom : 1);
-    return;
-  }
-  if (mode === 'tiles') {
-    drawPhysicalTiles(context, result, projection, yaw, pitch, width, height, buffers, interactive, projection === 'globe' ? zoom : 1, selectedSample);
     drawDiagnosticOverlays(context, result, overlays, phase, projection, yaw, pitch, width, height, buffers, animation, projection === 'globe' ? zoom : 1);
     return;
   }
@@ -1452,7 +1387,7 @@ async function generatePlanet(): Promise<void> {
     styleCache = { result: null, key: '', sampleBuckets: [], boundaryBuckets: [] };
     edgeOverlayCache = { result: null, coastline: new Uint32Array(0), contours: [], evolvedContours: [], basinDivides: new Uint32Array(0), riverBuckets: [] };
     gpuColorCache = { result: null, key: '', colors: new Uint8Array(0), alpha: 0.94 };
-    projectedResult = null; projectedKey = ''; pentagonResult = null; pentagonCache = new Uint32Array(0);
+    projectedResult = null; projectedKey = '';
     selectedTile = null; inspectTile(null);
     showMetrics(loaded); redraw(false); updateAnimation(); finishGenerationTelemetry(loaded);
     generationStep.textContent = `${loaded.metrics.spinupYears} climate spin-up years · ${loaded.drainageMetrics.basinCount.toLocaleString()} basins · ${loaded.lakeMetrics.lakeCount.toLocaleString()} equilibrium lakes · ${loaded.evolutionMetrics.receiverChangedSampleCount.toLocaleString()} receivers changed after evolution · ${loaded.infillMetrics.filledDepressionCount.toLocaleString()} lake basins infilled`;
