@@ -1,7 +1,7 @@
 import { createWorldgenClient } from '../worldgenClient.js';
 import { worldCalibrationJson, worldCalibrationMarkdown } from '../calibrationPacket.js';
 import { mapVectorDelta, reconstructAnnualHarmonicFromBasis } from './worldgenClimateMath.js';
-import { L8GlobeRenderer, buildRgbaColors, cameraForWorldDirectionAtScreen, pickNearestSample, screenToWorldDirection } from './worldgenL8GlobeRenderer.js';
+import { L8GlobeRenderer, buildRgbaColors, cameraForWorldDirectionAtScreen, collectViewportSampleIndices, pickNearestSample, screenToWorldDirection } from './worldgenL8GlobeRenderer.js';
 import {
   WORLDGEN_BOUNDARY_CONVERGENT,
   WORLDGEN_BOUNDARY_DIVERGENT,
@@ -838,6 +838,11 @@ function pentagonSamples(result: WorldgenClimateResult): Uint32Array {
 
 type TileVec3 = [number, number, number];
 
+const HIGH_ZOOM_DUAL_CELL_THRESHOLD = 4.5;
+const MAX_DUAL_CELL_BOUNDARY_CACHE = 32_768;
+let dualCellBoundaryResult: WorldgenClimateResult | null = null;
+let dualCellBoundaryCache = new Map<number, TileVec3[]>();
+
 function tilePosition(result: WorldgenClimateResult, sample: number): TileVec3 {
   const offset = sample * 3;
   return [result.positions[offset]!, result.positions[offset + 1]!, result.positions[offset + 2]!];
@@ -869,7 +874,7 @@ function tileHasNeighbor(result: WorldgenClimateResult, sample: number, candidat
   }
   return false;
 }
-function tileBoundary(result: WorldgenClimateResult, sample: number): TileVec3[] {
+function computeTileBoundary(result: WorldgenClimateResult, sample: number): TileVec3[] {
   const start = result.neighborOffsets[sample]!;
   const end = result.neighborOffsets[sample + 1]!;
   const center = tilePosition(result, sample);
@@ -887,6 +892,19 @@ function tileBoundary(result: WorldgenClimateResult, sample: number): TileVec3[]
   return vertices;
 }
 
+function tileBoundary(result: WorldgenClimateResult, sample: number): TileVec3[] {
+  if (dualCellBoundaryResult !== result) {
+    dualCellBoundaryResult = result;
+    dualCellBoundaryCache = new Map<number, TileVec3[]>();
+  }
+  const cached = dualCellBoundaryCache.get(sample);
+  if (cached) return cached;
+  if (dualCellBoundaryCache.size >= MAX_DUAL_CELL_BOUNDARY_CACHE) dualCellBoundaryCache.clear();
+  const boundary = computeTileBoundary(result, sample);
+  dualCellBoundaryCache.set(sample, boundary);
+  return boundary;
+}
+
 function projectTilePoint(point: TileVec3, yaw: number, pitch: number, width: number, height: number, zoom: number): [number, number, boolean] {
   const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
   const x1 = cy * point[0] - sy * point[1];
@@ -895,6 +913,57 @@ function projectTilePoint(point: TileVec3, yaw: number, pitch: number, width: nu
   const rotatedZ = -sp * x1 + cp * point[2];
   const radius = Math.min(width, height) * 0.44 * zoom;
   return [width / 2 + y1 * radius, height / 2 - rotatedZ * radius, rotatedX >= 0];
+}
+
+function drawViewportDualCells(
+  context: CanvasRenderingContext2D,
+  result: WorldgenClimateResult,
+  buffers: ProjectionBuffers,
+  selectedSample: number | null,
+  yaw: number,
+  pitch: number,
+  width: number,
+  height: number,
+  zoom: number,
+  showBoundaries: boolean,
+): number {
+  const radius = Math.min(width, height) * 0.44 * zoom;
+  const margin = Math.max(14, Math.min(64, radius * 0.007));
+  const samples = collectViewportSampleIndices(buffers.x, buffers.y, buffers.visible, width, height, margin);
+  context.save();
+  context.lineJoin = 'round';
+  context.lineCap = 'round';
+  for (const sample of samples) {
+    const degree = result.neighborOffsets[sample + 1]! - result.neighborOffsets[sample]!;
+    if (degree !== 5 && degree !== 6) continue;
+    const vertices = tileBoundary(result, sample);
+    if (vertices.length !== degree) continue;
+    const projected = vertices.map(vertex => projectTilePoint(vertex, yaw, pitch, width, height, zoom));
+    if (projected.some(vertex => !vertex[2])) continue;
+
+    context.beginPath();
+    projected.forEach(([x, y], index) => { if (index === 0) context.moveTo(x, y); else context.lineTo(x, y); });
+    context.closePath();
+    const fill = evolvedHypsometricColor(result, sample);
+    context.fillStyle = fill;
+    context.fill();
+
+    // Slight same-color overlap removes anti-aliased seams between adjacent settled polygons.
+    context.strokeStyle = fill;
+    context.lineWidth = 1.6;
+    context.stroke();
+
+    const selected = sample === selectedSample;
+    if (showBoundaries || selected) {
+      context.strokeStyle = selected
+        ? 'rgba(93,224,255,1)'
+        : degree === 5 ? 'rgba(255,211,106,0.98)' : 'rgba(225,236,246,0.60)';
+      context.lineWidth = selected ? 2.6 : degree === 5 ? 2.0 : 0.7;
+      context.stroke();
+    }
+  }
+  context.restore();
+  return samples.length;
 }
 
 function tileNeighborhood(result: WorldgenClimateResult, center: number, rings: number): number[] {
@@ -915,49 +984,6 @@ function tileNeighborhood(result: WorldgenClimateResult, center: number, rings: 
     frontier = next;
   }
   return Array.from(visited);
-}
-
-
-function drawLocalDualCells(
-  context: CanvasRenderingContext2D,
-  result: WorldgenClimateResult,
-  focusSample: number,
-  selectedSample: number | null,
-  yaw: number,
-  pitch: number,
-  width: number,
-  height: number,
-  zoom: number,
-): void {
-  const rings = Math.max(8, Math.min(38, Math.ceil(170 / zoom)));
-  const samples = tileNeighborhood(result, focusSample, rings);
-  context.save();
-  context.lineJoin = 'round';
-  for (const sample of samples) {
-    const degree = result.neighborOffsets[sample + 1]! - result.neighborOffsets[sample]!;
-    if (degree !== 5 && degree !== 6) continue;
-    const vertices = tileBoundary(result, sample);
-    if (vertices.length !== degree) continue;
-    const projected = vertices.map(vertex => projectTilePoint(vertex, yaw, pitch, width, height, zoom));
-    if (projected.some(vertex => !vertex[2])) continue;
-    let minX = Number.POSITIVE_INFINITY, maxX = Number.NEGATIVE_INFINITY;
-    let minY = Number.POSITIVE_INFINITY, maxY = Number.NEGATIVE_INFINITY;
-    for (const [x, y] of projected) {
-      minX = Math.min(minX, x); maxX = Math.max(maxX, x);
-      minY = Math.min(minY, y); maxY = Math.max(maxY, y);
-    }
-    if (maxX < -8 || minX > width + 8 || maxY < -8 || minY > height + 8) continue;
-    context.beginPath();
-    projected.forEach(([x, y], index) => { if (index === 0) context.moveTo(x, y); else context.lineTo(x, y); });
-    context.closePath();
-    context.fillStyle = evolvedHypsometricColor(result, sample);
-    context.fill();
-    const selected = sample === selectedSample;
-    context.strokeStyle = selected ? 'rgba(93,224,255,1)' : degree === 5 ? 'rgba(255,211,106,0.98)' : 'rgba(225,236,246,0.55)';
-    context.lineWidth = selected ? 2.5 : degree === 5 ? 2.0 : 0.7;
-    context.stroke();
-  }
-  context.restore();
 }
 
 function drawTileLens(
@@ -1074,24 +1100,29 @@ function drawPhysicalTiles(
   }
 
   context.save();
-  if (projection === 'globe' && !interactive && zoom >= 4.5) {
-    drawLocalDualCells(context, result, focusSample, selectedSample, yaw, pitch, width, height, zoom);
+  let exactCellCount = 0;
+  if (projection === 'globe' && !interactive && zoom >= HIGH_ZOOM_DUAL_CELL_THRESHOLD) {
+    exactCellCount = drawViewportDualCells(context, result, buffers, selectedSample, yaw, pitch, width, height, zoom, true);
   }
 
-  for (const sample of pentagonSamples(result)) {
-    if (!buffers.visible[sample]) continue;
-    const x = buffers.x[sample]!, y = buffers.y[sample]!;
-    if (x < -10 || x > width + 10 || y < -10 || y > height + 10) continue;
-    context.beginPath(); context.arc(x, y, zoom >= 4.5 ? 5.2 : 4.2, 0, TWO_PI);
-    context.fillStyle = 'rgba(255,211,106,0.96)'; context.fill();
-    context.strokeStyle = 'rgba(12,18,26,0.92)'; context.lineWidth = 1.4; context.stroke();
-  }
+  // Low zoom uses center markers because individual cells are not yet screen-resolved.
+  // At high zoom, pentagons and selection are represented by the polygon outline itself.
+  if (zoom < HIGH_ZOOM_DUAL_CELL_THRESHOLD) {
+    for (const sample of pentagonSamples(result)) {
+      if (!buffers.visible[sample]) continue;
+      const x = buffers.x[sample]!, y = buffers.y[sample]!;
+      if (x < -10 || x > width + 10 || y < -10 || y > height + 10) continue;
+      context.beginPath(); context.arc(x, y, 4.2, 0, TWO_PI);
+      context.fillStyle = 'rgba(255,211,106,0.96)'; context.fill();
+      context.strokeStyle = 'rgba(12,18,26,0.92)'; context.lineWidth = 1.4; context.stroke();
+    }
 
-  if (selectedSample !== null && buffers.visible[selectedSample]) {
-    const x = buffers.x[selectedSample]!, y = buffers.y[selectedSample]!;
-    if (x >= -20 && x <= width + 20 && y >= -20 && y <= height + 20) {
-      context.beginPath(); context.arc(x, y, zoom >= 4.5 ? 7.5 : 6.0, 0, TWO_PI);
-      context.strokeStyle = 'rgba(93,224,255,1)'; context.lineWidth = 2.2; context.stroke();
+    if (selectedSample !== null && buffers.visible[selectedSample]) {
+      const x = buffers.x[selectedSample]!, y = buffers.y[selectedSample]!;
+      if (x >= -20 && x <= width + 20 && y >= -20 && y <= height + 20) {
+        context.beginPath(); context.arc(x, y, 6.0, 0, TWO_PI);
+        context.strokeStyle = 'rgba(93,224,255,1)'; context.lineWidth = 2.2; context.stroke();
+      }
     }
   }
 
@@ -1101,9 +1132,9 @@ function drawPhysicalTiles(
   context.font = '13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
   context.fillText(`${count.toLocaleString()} physical dual cells · ${zoom.toFixed(1)}× zoom`, 22, 32);
   context.fillStyle = '#ffd36a';
-  context.fillText(`${pentagonSamples(result).length} pentagons · ${(count - pentagonSamples(result).length).toLocaleString()} hexagons · ${zoom >= 4.5 ? 'exact local cell boundaries' : 'zoom to 4.5× for direct cells'}`, 22, 50);
+  context.fillText(`${pentagonSamples(result).length} pentagons · ${(count - pentagonSamples(result).length).toLocaleString()} hexagons · ${zoom >= HIGH_ZOOM_DUAL_CELL_THRESHOLD ? `${exactCellCount.toLocaleString()} exact viewport cells` : 'zoom to 4.5× for direct cells'}`, 22, 50);
 
-  if (!interactive && projection === 'globe' && zoom < 4.5 && buffers.visible[focusSample]) drawTileLens(context, result, focusSample, width, height);
+  if (!interactive && projection === 'globe' && zoom < HIGH_ZOOM_DUAL_CELL_THRESHOLD && buffers.visible[focusSample]) drawTileLens(context, result, focusSample, width, height);
   context.restore();
 }
 
@@ -1146,6 +1177,21 @@ function renderPlanet(
       }
 
       ensureProjectedSamples(result, projection, yaw, pitch, width, height, buffers, zoom);
+      const exactDualSurface = zoom >= HIGH_ZOOM_DUAL_CELL_THRESHOLD && (mode === 'physical-world' || mode === 'tiles');
+      if (exactDualSurface) {
+        // The GPU point cloud is an interaction preview only at this scale. Settled high-zoom
+        // physical views are the actual contiguous L8 dual cells across the whole viewport.
+        surfaceCanvas.hidden = true;
+        context.fillStyle = '#08101a';
+        context.fillRect(0, 0, width, height);
+        if (mode === 'tiles') {
+          drawPhysicalTiles(context, result, projection, yaw, pitch, width, height, buffers, false, zoom, selectedSample);
+        } else {
+          drawViewportDualCells(context, result, buffers, selectedSample, yaw, pitch, width, height, zoom, false);
+        }
+        drawDiagnosticOverlays(context, result, overlays, phase, projection, yaw, pitch, width, height, buffers, animation, zoom);
+        return;
+      }
       const globeRadius = Math.min(width, height) * 0.44 * zoom;
       context.beginPath(); context.arc(width / 2, height / 2, globeRadius, 0, TWO_PI);
       context.strokeStyle = '#5d7890'; context.lineWidth = 1; context.stroke();
