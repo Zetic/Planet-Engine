@@ -2,6 +2,23 @@ const DEFAULT_L5_SAMPLE_COUNT = 10_242;
 export function buildGpuPositions(positions) {
     return Float32Array.from(positions);
 }
+export function collectViewportSampleIndices(x, y, visible, width, height, marginPixels = 24) {
+    if (x.length !== y.length || x.length !== visible.length) {
+        throw new Error('Projected L8 sample buffers must have matching lengths.');
+    }
+    const margin = Math.max(0, marginPixels);
+    const samples = [];
+    for (let sample = 0; sample < x.length; sample += 1) {
+        if (!visible[sample])
+            continue;
+        const px = x[sample];
+        const py = y[sample];
+        if (px < -margin || px > width + margin || py < -margin || py > height + margin)
+            continue;
+        samples.push(sample);
+    }
+    return Uint32Array.from(samples);
+}
 function compileShader(gl, type, source) {
     const shader = gl.createShader(type);
     if (!shader)

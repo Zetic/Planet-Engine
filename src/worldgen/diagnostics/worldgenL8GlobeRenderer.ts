@@ -9,6 +9,29 @@ export function buildGpuPositions(positions: Float64Array): Float32Array {
   return Float32Array.from(positions);
 }
 
+export function collectViewportSampleIndices(
+  x: Float32Array,
+  y: Float32Array,
+  visible: Uint8Array,
+  width: number,
+  height: number,
+  marginPixels = 24,
+): Uint32Array {
+  if (x.length !== y.length || x.length !== visible.length) {
+    throw new Error('Projected L8 sample buffers must have matching lengths.');
+  }
+  const margin = Math.max(0, marginPixels);
+  const samples: number[] = [];
+  for (let sample = 0; sample < x.length; sample += 1) {
+    if (!visible[sample]) continue;
+    const px = x[sample]!;
+    const py = y[sample]!;
+    if (px < -margin || px > width + margin || py < -margin || py > height + margin) continue;
+    samples.push(sample);
+  }
+  return Uint32Array.from(samples);
+}
+
 function compileShader(gl: WebGL2RenderingContext, type: number, source: string): WebGLShader {
   const shader = gl.createShader(type);
   if (!shader) throw new Error('Could not allocate WebGL shader.');
