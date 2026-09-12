@@ -23,7 +23,7 @@ test('composite physical-world views retain WG-7C diagnostics under protocol v18
 });
 
 
-test('physical-world hypsometric palette exposes fine L8 relief and bathymetry bands', () => {
+test('physical-world hypsometric palette doubles L8 relief and bathymetry detail while compressing deep-ocean contrast', () => {
   const source = fs.readFileSync('src/worldgen/diagnostics/worldgenClimateLabStandalone.ts', 'utf8');
   const start = source.indexOf('function hypsometricColor');
   const end = source.indexOf('function bucketize', start);
@@ -31,15 +31,17 @@ test('physical-world hypsometric palette exposes fine L8 relief and bathymetry b
   assert.notEqual(end, -1);
   const palette = source.slice(start, end);
 
-  for (const threshold of ['7_500', '6_000', '4_500', '3_500', '2_500', '1_500', '900', '500', '250', '100', '50']) {
-    assert.match(palette, new RegExp(`depth > ${threshold}`));
+  const oceanThresholds = ['25', '50', '75', '100', '150', '250', '350', '500', '700', '900', '1_200', '1_500', '1_800', '2_200', '2_600', '3_000', '3_500', '4_000', '4_500', '5_250', '6_000', '6_750', '7_500'];
+  for (const threshold of oceanThresholds) assert.match(palette, new RegExp(`depth <= ${threshold}`));
+
+  const landThresholds = ['25', '50', '75', '100', '150', '200', '300', '400', '550', '700', '850', '1_000', '1_250', '1_500', '1_750', '2_000', '2_375', '2_750', '3_125', '3_500', '3_875', '4_250', '4_625', '5_000', '5_500', '6_000', '6_750'];
+  for (const threshold of landThresholds) {
+    const matches = palette.match(new RegExp(`elevation < ${threshold}`, 'g')) ?? [];
+    assert.equal(matches.length, 2, `expected initial and evolved land bands at ${threshold} m`);
   }
-  for (const threshold of ['50', '100', '200', '400', '700', '1_000', '1_500', '2_000', '2_750', '3_500', '4_250', '5_000', '6_000']) {
-    assert.match(palette, new RegExp(`elevation < ${threshold}`));
-  }
-  for (const color of ['#a4dce1', '#69b7cf', '#b7e5e6', '#092847']) {
-    assert.match(palette, new RegExp(color));
-  }
+
+  for (const color of ['#b7e5e6', '#a4dce1', '#87c9d8', '#69b7cf', '#22536e', '#20516c']) assert.match(palette, new RegExp(color));
+  for (const retiredHighContrastDeepOceanColor of ['#092847', '#0d335a', '#123f6c']) assert.doesNotMatch(palette, new RegExp(retiredHighContrastDeepOceanColor));
 });
 
 
