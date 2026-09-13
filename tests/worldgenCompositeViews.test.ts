@@ -23,9 +23,9 @@ test('composite physical-world views retain WG-7C diagnostics under protocol v18
 });
 
 
-test('physical-world hypsometric palette doubles L8 relief and bathymetry detail while compressing deep-ocean contrast', () => {
+test('physical-world relief rendering interpolates land color and derives bounded L8 hillshade while preserving ocean depth bands', () => {
   const source = fs.readFileSync('src/worldgen/diagnostics/worldgenClimateLabStandalone.ts', 'utf8');
-  const start = source.indexOf('function hypsometricColor');
+  const start = source.indexOf('type Rgb =');
   const end = source.indexOf('function bucketize', start);
   assert.notEqual(start, -1);
   assert.notEqual(end, -1);
@@ -33,18 +33,25 @@ test('physical-world hypsometric palette doubles L8 relief and bathymetry detail
 
   const oceanThresholds = ['25', '50', '75', '100', '150', '250', '350', '500', '700', '900', '1_200', '1_500', '1_800', '2_200', '2_600', '3_000', '3_500', '4_000', '4_500', '5_250', '6_000', '6_750', '7_500'];
   for (const threshold of oceanThresholds) assert.match(palette, new RegExp(`depth <= ${threshold}`));
-
-  const landThresholds = ['25', '50', '75', '100', '150', '200', '300', '400', '550', '700', '850', '1_000', '1_250', '1_500', '1_750', '2_000', '2_375', '2_750', '3_125', '3_500', '3_875', '4_250', '4_625', '5_000', '5_500', '6_000', '6_750'];
-  for (const threshold of landThresholds) {
-    const matches = palette.match(new RegExp(`elevation < ${threshold}`, 'g')) ?? [];
-    assert.equal(matches.length, 2, `expected initial and evolved land bands at ${threshold} m`);
-  }
-
   for (const color of ['#b7e5e6', '#a4dce1', '#87c9d8', '#69b7cf', '#22536e', '#20516c']) assert.match(palette, new RegExp(color));
-  for (const retiredHighContrastDeepOceanColor of ['#092847', '#0d335a', '#123f6c']) assert.doesNotMatch(palette, new RegExp(retiredHighContrastDeepOceanColor));
 
-  for (const rockColor of ['#917660', '#967c68', '#a08b7d', '#b0a098', '#c6bfba', '#856d58', '#968575', '#a89d91', '#c1bbb5']) assert.match(palette, new RegExp(rockColor));
+  assert.match(palette, /INITIAL_LAND_RAMP/);
+  assert.match(palette, /EVOLVED_LAND_RAMP/);
+  assert.match(palette, /MAP_LAND_RAMP_STEPS_PER_INTERVAL = 8/);
+  assert.match(palette, /LAND_RELIEF_SHADE_STEPS = 7/);
+  assert.match(palette, /function interpolateLandRamp/);
+  assert.match(palette, /function buildLandReliefShade/);
+  assert.match(palette, /result\.neighborOffsets/);
+  assert.match(palette, /result\.neighbors/);
+  assert.match(palette, /result\.positions/);
+  assert.match(palette, /result\.planet\.radiusM/);
+  assert.match(palette, /Math\.max\(-0\.12, Math\.min\(0\.12/);
+  assert.match(palette, /return shadedLandColor\(INITIAL_LAND_RAMP/);
+  assert.match(palette, /return shadedLandColor\(EVOLVED_LAND_RAMP/);
   for (const retiredSnowyElevationColor of ['#e6ebed', '#e4e9ec', '#d0d5d6', '#cdd2d3']) assert.doesNotMatch(palette, new RegExp(retiredSnowyElevationColor));
+
+  assert.match(source, /sampleColor\(result, mode, sample, field, true\)/);
+  assert.match(source, /sampleColor\(result, mode, sample, field\)/);
 });
 
 
