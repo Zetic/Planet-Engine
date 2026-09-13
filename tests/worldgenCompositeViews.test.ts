@@ -42,6 +42,9 @@ test('physical-world hypsometric palette doubles L8 relief and bathymetry detail
 
   for (const color of ['#b7e5e6', '#a4dce1', '#87c9d8', '#69b7cf', '#22536e', '#20516c']) assert.match(palette, new RegExp(color));
   for (const retiredHighContrastDeepOceanColor of ['#092847', '#0d335a', '#123f6c']) assert.doesNotMatch(palette, new RegExp(retiredHighContrastDeepOceanColor));
+
+  for (const rockColor of ['#917660', '#967c68', '#a08b7d', '#b0a098', '#c6bfba', '#856d58', '#968575', '#a89d91', '#c1bbb5']) assert.match(palette, new RegExp(rockColor));
+  for (const retiredSnowyElevationColor of ['#e6ebed', '#e4e9ec', '#d0d5d6', '#cdd2d3']) assert.doesNotMatch(palette, new RegExp(retiredSnowyElevationColor));
 });
 
 
