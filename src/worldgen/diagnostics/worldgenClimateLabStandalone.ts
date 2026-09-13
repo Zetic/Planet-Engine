@@ -292,14 +292,14 @@ function hypsometricColor(result: WorldgenClimateResult, sample: number): string
   if (elevation < 2_750) return '#9c825d';
   if (elevation < 3_125) return '#95795a';
   if (elevation < 3_500) return '#8f7157';
-  if (elevation < 3_875) return '#927963';
-  if (elevation < 4_250) return '#95817a';
-  if (elevation < 4_625) return '#988a85';
-  if (elevation < 5_000) return '#9b9290';
-  if (elevation < 5_500) return '#adb0b0';
-  if (elevation < 6_000) return '#bfc3c4';
-  if (elevation < 6_750) return '#d0d5d6';
-  return '#e6ebed';
+  if (elevation < 3_875) return '#917660';
+  if (elevation < 4_250) return '#967c68';
+  if (elevation < 4_625) return '#9b8372';
+  if (elevation < 5_000) return '#a08b7d';
+  if (elevation < 5_500) return '#a8958a';
+  if (elevation < 6_000) return '#b0a098';
+  if (elevation < 6_750) return '#bab0aa';
+  return '#c6bfba';
 }
 function evolvedHypsometricColor(result: WorldgenClimateResult, sample: number): string {
   if (result.submergedMask[sample]) return hypsometricColor(result, sample);
@@ -324,14 +324,14 @@ function evolvedHypsometricColor(result: WorldgenClimateResult, sample: number):
   if (elevation < 2_750) return '#8d7655';
   if (elevation < 3_125) return '#876e52';
   if (elevation < 3_500) return '#80664f';
-  if (elevation < 3_875) return '#837064';
-  if (elevation < 4_250) return '#877a72';
-  if (elevation < 4_625) return '#8c827d';
-  if (elevation < 5_000) return '#918a88';
-  if (elevation < 5_500) return '#a3a2a0';
-  if (elevation < 6_000) return '#b7b9b8';
-  if (elevation < 6_750) return '#cdd2d3';
-  return '#e4e9ec';
+  if (elevation < 3_875) return '#856d58';
+  if (elevation < 4_250) return '#8a7461';
+  if (elevation < 4_625) return '#907c6b';
+  if (elevation < 5_000) return '#968575';
+  if (elevation < 5_500) return '#9e9082';
+  if (elevation < 6_000) return '#a89d91';
+  if (elevation < 6_750) return '#b3aaa2';
+  return '#c1bbb5';
 }
 function bucketize(count: number, colorAt: (index: number) => string): DrawBucket[] {
   const buckets = new Map<string, number[]>();
