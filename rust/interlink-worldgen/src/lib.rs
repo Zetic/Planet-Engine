@@ -25,6 +25,7 @@ mod seasonal_lakes;
 mod surface_water;
 mod tectonics;
 mod topography;
+mod topography_morphology;
 mod topology;
 mod world_calibration;
 
@@ -129,6 +130,13 @@ pub use tectonics::{
 pub use topography::{
     generate_initial_topography, TopographyMetrics, TopographyParameters, TopographyRequest,
     TopographyState, TOPOGRAPHY_STAGE_ID, TOPOGRAPHY_STAGE_VERSION,
+};
+pub use topography_morphology::{
+    analyze_topography_morphology, OceanAgeDepthMorphology, QuietOceanMorphology,
+    TopographyDistanceBandMorphology, TopographyMorphologyFeature, TopographyMorphologyReport,
+    TopographyReliefMorphology, TOPOGRAPHY_MORPHOLOGY_DISTANCE_BAND_EDGES_M,
+    TOPOGRAPHY_MORPHOLOGY_OCEAN_AGE_BAND_EDGES_MYR,
+    TOPOGRAPHY_MORPHOLOGY_QUIET_OCEAN_MIN_BOUNDARY_DISTANCE_M,
 };
 pub use topology::{
     build_icosphere, expected_edge_count, expected_face_count, expected_sample_count,
