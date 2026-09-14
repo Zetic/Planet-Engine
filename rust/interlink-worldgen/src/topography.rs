@@ -3,6 +3,7 @@ use crate::{
     InheritedPhysicalState, PlanetPhysicalParameters, StageIdentity, SubductionPolarity,
     WorldgenError,
 };
+use crate::surface_water::solve_hydrostatic_surface_water_f64;
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 
@@ -538,55 +539,6 @@ fn area_weighted_quantile(values: &[f64], areas_sr: &[f64], q: f64) -> f64 {
     values.last().copied().unwrap_or(0.0)
 }
 
-fn water_volume_at_level(
-    elevation_m: &[f64],
-    areas_sr: &[f64],
-    radius_m: f64,
-    sea_level_m: f64,
-) -> f64 {
-    elevation_m
-        .iter()
-        .zip(areas_sr.iter())
-        .map(|(elevation, area_sr)| {
-            (sea_level_m - *elevation).max(0.0) * *area_sr * radius_m * radius_m
-        })
-        .sum()
-}
-
-fn solve_sea_level(
-    elevation_m: &[f64],
-    areas_sr: &[f64],
-    planet: PlanetPhysicalParameters,
-) -> (Option<f64>, f64, f64) {
-    let target = planet.surface_water_volume_m3();
-    if target == 0.0 {
-        return (None, 0.0, 0.0);
-    }
-    let minimum = elevation_m.iter().copied().fold(f64::INFINITY, f64::min);
-    let maximum = elevation_m
-        .iter()
-        .copied()
-        .fold(f64::NEG_INFINITY, f64::max);
-    let mut low = minimum - 1.0;
-    let mut high = maximum + planet.equivalent_global_water_depth_m() + 1.0;
-    while water_volume_at_level(elevation_m, areas_sr, planet.radius_m, high) < target {
-        high += (high - low).max(1_000.0);
-    }
-    for _ in 0..96 {
-        let middle = (low + high) * 0.5;
-        let volume = water_volume_at_level(elevation_m, areas_sr, planet.radius_m, middle);
-        if volume < target {
-            low = middle;
-        } else {
-            high = middle;
-        }
-    }
-    let sea_level = (low + high) * 0.5;
-    let solved = water_volume_at_level(elevation_m, areas_sr, planet.radius_m, sea_level);
-    let error = ((solved - target) / target).abs();
-    (Some(sea_level), solved, error)
-}
-
 pub fn generate_initial_topography(
     topology: &GeodesicTopology,
     inherited: &InheritedPhysicalState,
@@ -760,12 +712,14 @@ pub fn generate_initial_topography(
         }
     }
 
-    let (sea_level, solved_water_volume_m3, water_volume_relative_error) =
-        solve_sea_level(&solid, topology.dual_area_steradians(), planet);
+    let water_state = solve_hydrostatic_surface_water_f64(topology, &solid, planet)?;
+    let sea_level = water_state.metrics.sea_level_m;
+    let solved_water_volume_m3 = water_state.metrics.solved_water_volume_m3;
+    let water_volume_relative_error = water_state.metrics.water_volume_relative_error;
+    let above_sea = water_state.elevation_above_sea_level_m;
+    let water_depth = water_state.water_depth_m;
+    let submerged = water_state.submerged_mask;
 
-    let mut above_sea = vec![0.0_f32; count];
-    let mut water_depth = vec![0.0_f32; count];
-    let mut submerged = vec![0_u8; count];
     let mut land_area = 0.0;
     let mut ocean_area = 0.0;
     let mut land_elevation_area_sum = 0.0;
@@ -775,11 +729,8 @@ pub fn generate_initial_topography(
         let area = topology.dual_area_steradians()[i];
         if let Some(level) = sea_level {
             let relative = solid[i] - level;
-            above_sea[i] = relative as f32;
             if relative < 0.0 {
                 let depth = -relative;
-                water_depth[i] = depth as f32;
-                submerged[i] = 1;
                 ocean_area += area;
                 water_depth_area_sum += depth * area;
                 maximum_water_depth_m = maximum_water_depth_m.max(depth);
@@ -788,7 +739,6 @@ pub fn generate_initial_topography(
                 land_elevation_area_sum += relative * area;
             }
         } else {
-            above_sea[i] = solid[i] as f32;
             land_area += area;
             land_elevation_area_sum += solid[i] * area;
         }
@@ -899,8 +849,8 @@ mod tests {
     use super::*;
     use crate::{
         build_icosphere, generate_crust_and_history, generate_lithosphere, generate_tectonics,
-        inherit_boundary_interfaces, inherit_physical_state, GeologyRequest, LithosphereRequest,
-        TectonicsRequest,
+        inherit_boundary_interfaces, inherit_physical_state, solve_hydrostatic_surface_water,
+        GeologyRequest, LithosphereRequest, TectonicsRequest,
     };
 
     fn generated(seed: &str, water_mass_kg: Option<f64>) -> TopographyState {
@@ -973,6 +923,37 @@ mod tests {
         assert_eq!(topography.metrics.ocean_area_fraction, 0.0);
         assert!(topography.water_depth_m.iter().all(|value| *value == 0.0));
         assert!(topography.submerged_mask.iter().all(|value| *value == 0));
+    }
+
+    #[test]
+    fn extracted_hydrostatic_solver_reproduces_wg4_water_state() {
+        let topography = generated("interlink-wg7c", None);
+        let fine = build_icosphere(4).unwrap();
+        let planet = PlanetPhysicalParameters::earthlike_reference();
+        let extracted = solve_hydrostatic_surface_water(
+            &fine,
+            &topography.solid_elevation_m,
+            planet,
+        )
+        .unwrap();
+
+        assert_eq!(extracted.submerged_mask, topography.submerged_mask);
+        assert_eq!(
+            extracted.metrics.target_water_volume_m3,
+            topography.metrics.target_water_volume_m3
+        );
+        assert!(extracted.metrics.water_volume_relative_error < 1.0e-10);
+        assert!(
+            (extracted.metrics.sea_level_m.unwrap() - topography.metrics.sea_level_m.unwrap()).abs()
+                < 1.0e-3
+        );
+        let maximum_depth_delta = extracted
+            .water_depth_m
+            .iter()
+            .zip(topography.water_depth_m.iter())
+            .map(|(extracted, accepted)| (extracted - accepted).abs())
+            .fold(0.0_f32, f32::max);
+        assert!(maximum_depth_delta < 1.0e-3);
     }
 
     #[test]

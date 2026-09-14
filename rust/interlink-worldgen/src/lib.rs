@@ -22,6 +22,7 @@ mod runoff;
 mod seasonal;
 mod seasonal_flow;
 mod seasonal_lakes;
+mod surface_water;
 mod tectonics;
 mod topography;
 mod topology;
@@ -116,6 +117,9 @@ pub use seasonal::{
 pub use seasonal_flow::{
     FLOW_REGIME_INTERMITTENT, FLOW_REGIME_NONE, FLOW_REGIME_PERENNIAL,
     SEASONAL_FLOW_PRESENCE_EPSILON_M3_S,
+};
+pub use surface_water::{
+    solve_hydrostatic_surface_water, HydrostaticSurfaceWaterMetrics, HydrostaticSurfaceWaterState,
 };
 pub use tectonics::{
     generate_tectonics, PlateBoundaryEdge, PlateBoundaryKind, TectonicMetrics, TectonicModel,
