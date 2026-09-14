@@ -70,6 +70,8 @@ jobs:
         run: cargo run --release -p interlink-worldgen-cli --example topography_rift_profile_acceptance
       - name: WG-4 L5→L7 active-collision response-profile acceptance
         run: cargo run --release -p interlink-worldgen-cli --example topography_orogen_profile_acceptance
+      - name: WG-4 L5→L7 inherited-orogen morphology acceptance
+        run: cargo run --release -p interlink-worldgen-cli --example topography_inherited_orogen_morphology_acceptance
       - name: Smoke-test WG-6A drainage topology
         run: bash scripts/check-wg6a-drainage.sh
       - name: Smoke-test WG-6B annual runoff and discharge

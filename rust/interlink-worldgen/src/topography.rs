@@ -8,7 +8,7 @@ use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 
 pub const TOPOGRAPHY_STAGE_ID: &str = "terrain:initial-topography";
-pub const TOPOGRAPHY_STAGE_VERSION: u32 = 10;
+pub const TOPOGRAPHY_STAGE_VERSION: u32 = 11;
 const TOPOGRAPHY_NAMESPACE: &str = "terrain:structure:v1";
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
@@ -267,6 +267,37 @@ fn offset_gaussian(distance_m: f64, center_m: f64, width_m: f64) -> f64 {
     }
     let x = (distance_m - center_m) / width_m.max(1.0);
     (-x * x).exp()
+}
+
+fn inherited_orogen_relief_response(inherited: &InheritedPhysicalState, index: usize) -> f64 {
+    let history = clamp01(f64::from(inherited.orogenic_history[index]));
+    if history <= 0.0 {
+        return 0.0;
+    }
+
+    let te = ((f64::from(inherited.effective_elastic_thickness_km[index]) - 4.0) / 82.0)
+        .clamp(0.0, 1.0);
+    let weakness = f64::from(inherited.weakness_index[index]).clamp(0.0, 1.0);
+    let thickness = ((f64::from(inherited.crust_thickness_km[index]) - 28.0) / 28.0)
+        .clamp(0.0, 1.0);
+    let fabric = f64::from(inherited.structural_fabric_strength[index]).clamp(0.0, 1.0);
+    let suture = if inherited.structural_zone_kind[index] == STRUCTURE_SUTURE {
+        1.0
+    } else {
+        0.0
+    };
+
+    let exponent = (1.30 + 0.22 * weakness - 0.16 * te - 0.08 * thickness
+        + 0.08 * suture * fabric)
+        .clamp(1.10, 1.55);
+    let support = (0.94
+        + 0.08 * te
+        + 0.07 * thickness
+        + 0.10 * suture * fabric
+        + 0.02 * (1.0 - suture) * fabric)
+        .clamp(0.90, 1.15);
+    let shaped = history.powf(exponent) * support;
+    history * 0.40 + shaped * 0.60
 }
 
 fn validate_inputs(
@@ -650,7 +681,7 @@ pub fn generate_initial_topography(
             _ => 1.0,
         };
         orogenic[i] = collision_crust_scale
-            * (p.inherited_orogeny_scale_m * f64::from(inherited.orogenic_history[i])
+            * (p.inherited_orogeny_scale_m * inherited_orogen_relief_response(inherited, i)
                 + p.collision_uplift_scale_m * collision_kernel * collision_focus);
 
         let oceanic_ridge_kernel = if oceanic_ridge_source[i] == u32::MAX {
