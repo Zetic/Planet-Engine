@@ -243,7 +243,180 @@ function scalarColor(value: number, field: ScalarField): string {
   const hue = field.lowHue + (field.highHue - field.lowHue) * quantized;
   return `hsl(${hue} 68% ${37 + quantized * 23}%)`;
 }
-function hypsometricColor(result: WorldgenClimateResult, sample: number): string {
+type Rgb = readonly [number, number, number];
+type LandRampStop = readonly [elevationM: number, color: Rgb];
+const MAP_LAND_RAMP_STEPS_PER_INTERVAL = 8;
+const LAND_RELIEF_SHADE_STEPS = 7;
+const INITIAL_LAND_RAMP: readonly LandRampStop[] = [
+  [0, [67, 112, 60]],
+  [250, [93, 136, 73]],
+  [750, [130, 161, 84]],
+  [1_500, [157, 154, 95]],
+  [2_250, [165, 138, 97]],
+  [3_000, [148, 118, 87]],
+  [3_750, [128, 101, 79]],
+  [4_500, [116, 97, 90]],
+  [5_500, [119, 113, 109]],
+  [7_000, [133, 130, 127]],
+  [8_500, [148, 145, 142]],
+];
+const EVOLVED_LAND_RAMP: readonly LandRampStop[] = [
+  [0, [59, 102, 55]],
+  [250, [84, 123, 67]],
+  [750, [115, 144, 79]],
+  [1_500, [144, 141, 88]],
+  [2_250, [150, 127, 88]],
+  [3_000, [133, 109, 80]],
+  [3_750, [115, 93, 75]],
+  [4_500, [105, 89, 81]],
+  [5_500, [112, 105, 101]],
+  [7_000, [126, 122, 119]],
+  [8_500, [141, 138, 135]],
+];
+
+type ReliefShadeCache = {
+  result: WorldgenClimateResult | null;
+  initial: Float32Array | null;
+  evolved: Float32Array | null;
+};
+let reliefShadeCache: ReliefShadeCache = { result: null, initial: null, evolved: null };
+
+function clampByte(value: number): number { return Math.max(0, Math.min(255, Math.round(value))); }
+function rgbHex(red: number, green: number, blue: number): string {
+  return `#${clampByte(red).toString(16).padStart(2, '0')}${clampByte(green).toString(16).padStart(2, '0')}${clampByte(blue).toString(16).padStart(2, '0')}`;
+}
+function interpolateLandRamp(stops: readonly LandRampStop[], elevationM: number, bucketed: boolean): Rgb {
+  if (elevationM <= stops[0]![0]) return stops[0]![1];
+  const last = stops[stops.length - 1]!;
+  if (elevationM >= last[0]) return last[1];
+  for (let index = 1; index < stops.length; index += 1) {
+    const upper = stops[index]!;
+    if (elevationM > upper[0]) continue;
+    const lower = stops[index - 1]!;
+    let t = (elevationM - lower[0]) / Math.max(1e-9, upper[0] - lower[0]);
+    if (bucketed) t = Math.round(t * MAP_LAND_RAMP_STEPS_PER_INTERVAL) / MAP_LAND_RAMP_STEPS_PER_INTERVAL;
+    return [
+      lower[1][0] + (upper[1][0] - lower[1][0]) * t,
+      lower[1][1] + (upper[1][1] - lower[1][1]) * t,
+      lower[1][2] + (upper[1][2] - lower[1][2]) * t,
+    ];
+  }
+  return last[1];
+}
+function landElevationM(result: WorldgenClimateResult, sample: number, evolved: boolean): number {
+  return evolved ? result.postInfillSolidElevationM[sample]! - result.metrics.seaLevelM : result.elevationAboveSeaLevelM[sample]!;
+}
+function buildLandReliefShade(result: WorldgenClimateResult, evolved: boolean): Float32Array {
+  const count = result.metrics.fineSampleCount;
+  const shades = new Float32Array(count);
+  shades.fill(1);
+  const positions = result.positions;
+  const radiusM = Math.max(1, result.planet.radiusM);
+  const radialLight = 0.82;
+  const tangentLight = 0.57;
+  const lightNorm = Math.hypot(radialLight, tangentLight);
+  const flatLambert = radialLight / lightNorm;
+  for (let sample = 0; sample < count; sample += 1) {
+    if (result.submergedMask[sample]) continue;
+    const offset = sample * 3;
+    const px = positions[offset]!;
+    const py = positions[offset + 1]!;
+    const pz = positions[offset + 2]!;
+    const elevation = landElevationM(result, sample, evolved);
+    let gx = 0;
+    let gy = 0;
+    let gz = 0;
+    let neighborCount = 0;
+    for (let cursor = result.neighborOffsets[sample]!; cursor < result.neighborOffsets[sample + 1]!; cursor += 1) {
+      const neighbor = result.neighbors[cursor]!;
+      if (result.submergedMask[neighbor]) continue;
+      const neighborOffset = neighbor * 3;
+      const qx = positions[neighborOffset]!;
+      const qy = positions[neighborOffset + 1]!;
+      const qz = positions[neighborOffset + 2]!;
+      const dot = Math.max(-1, Math.min(1, px * qx + py * qy + pz * qz));
+      const tx = qx - px * dot;
+      const ty = qy - py * dot;
+      const tz = qz - pz * dot;
+      const sinArc = Math.hypot(tx, ty, tz);
+      if (sinArc < 1e-12) continue;
+      const arc = Math.atan2(sinArc, dot);
+      const runM = radiusM * arc;
+      if (runM <= 0) continue;
+      const slope = (landElevationM(result, neighbor, evolved) - elevation) / runM;
+      gx += tx / sinArc * slope;
+      gy += ty / sinArc * slope;
+      gz += tz / sinArc * slope;
+      neighborCount += 1;
+    }
+    if (neighborCount === 0) continue;
+    const gradientScale = 2 / neighborCount;
+    gx *= gradientScale;
+    gy *= gradientScale;
+    gz *= gradientScale;
+
+    let northX = -px * pz;
+    let northY = -py * pz;
+    let northZ = 1 - pz * pz;
+    let northNorm = Math.hypot(northX, northY, northZ);
+    if (northNorm < 1e-8) {
+      northX = 1 - px * px;
+      northY = -px * py;
+      northZ = -px * pz;
+      northNorm = Math.hypot(northX, northY, northZ);
+    }
+    if (northNorm < 1e-12) continue;
+    northX /= northNorm;
+    northY /= northNorm;
+    northZ /= northNorm;
+    let eastX = northY * pz - northZ * py;
+    let eastY = northZ * px - northX * pz;
+    let eastZ = northX * py - northY * px;
+    const eastNorm = Math.hypot(eastX, eastY, eastZ);
+    if (eastNorm < 1e-12) continue;
+    eastX /= eastNorm;
+    eastY /= eastNorm;
+    eastZ /= eastNorm;
+    const northwestX = (northX - eastX) * Math.SQRT1_2;
+    const northwestY = (northY - eastY) * Math.SQRT1_2;
+    const northwestZ = (northZ - eastZ) * Math.SQRT1_2;
+    const lightX = (radialLight * px + tangentLight * northwestX) / lightNorm;
+    const lightY = (radialLight * py + tangentLight * northwestY) / lightNorm;
+    const lightZ = (radialLight * pz + tangentLight * northwestZ) / lightNorm;
+
+    let normalX = px - gx;
+    let normalY = py - gy;
+    let normalZ = pz - gz;
+    const normalNorm = Math.hypot(normalX, normalY, normalZ);
+    if (normalNorm < 1e-12) continue;
+    normalX /= normalNorm;
+    normalY /= normalNorm;
+    normalZ /= normalNorm;
+    const lambert = normalX * lightX + normalY * lightY + normalZ * lightZ;
+    const relief = Math.max(-0.12, Math.min(0.12, (lambert - flatLambert) * 1.65));
+    shades[sample] = 1 + relief;
+  }
+  return shades;
+}
+function reliefShade(result: WorldgenClimateResult, sample: number, evolved: boolean): number {
+  if (reliefShadeCache.result !== result) reliefShadeCache = { result, initial: null, evolved: null };
+  if (evolved) {
+    if (!reliefShadeCache.evolved) reliefShadeCache.evolved = buildLandReliefShade(result, true);
+    return reliefShadeCache.evolved[sample]!;
+  }
+  if (!reliefShadeCache.initial) reliefShadeCache.initial = buildLandReliefShade(result, false);
+  return reliefShadeCache.initial[sample]!;
+}
+function shadedLandColor(stops: readonly LandRampStop[], elevationM: number, shade: number, bucketed: boolean): string {
+  const color = interpolateLandRamp(stops, elevationM, bucketed);
+  let appliedShade = shade;
+  if (bucketed) {
+    const t = Math.max(0, Math.min(1, (shade - 0.88) / 0.24));
+    appliedShade = 0.88 + Math.round(t * (LAND_RELIEF_SHADE_STEPS - 1)) / (LAND_RELIEF_SHADE_STEPS - 1) * 0.24;
+  }
+  return rgbHex(color[0] * appliedShade, color[1] * appliedShade, color[2] * appliedShade);
+}
+function hypsometricColor(result: WorldgenClimateResult, sample: number, bucketed = false): string {
   if (result.submergedMask[sample]) {
     const depth = result.waterDepthM[sample]!;
     if (depth <= 25) return '#b7e5e6';
@@ -272,66 +445,12 @@ function hypsometricColor(result: WorldgenClimateResult, sample: number): string
     return '#20516c';
   }
   const elevation = result.elevationAboveSeaLevelM[sample]!;
-  if (elevation < 25) return '#43703c';
-  if (elevation < 50) return '#47743f';
-  if (elevation < 75) return '#4b7842';
-  if (elevation < 100) return '#507d45';
-  if (elevation < 150) return '#568348';
-  if (elevation < 200) return '#5c8949';
-  if (elevation < 300) return '#64904c';
-  if (elevation < 400) return '#6d9450';
-  if (elevation < 550) return '#769a51';
-  if (elevation < 700) return '#7fa052';
-  if (elevation < 850) return '#88a457';
-  if (elevation < 1_000) return '#91a85d';
-  if (elevation < 1_250) return '#989f5f';
-  if (elevation < 1_500) return '#9e9e60';
-  if (elevation < 1_750) return '#a49a62';
-  if (elevation < 2_000) return '#aa9463';
-  if (elevation < 2_375) return '#a48b60';
-  if (elevation < 2_750) return '#9c825d';
-  if (elevation < 3_125) return '#95795a';
-  if (elevation < 3_500) return '#8f7157';
-  if (elevation < 3_875) return '#917660';
-  if (elevation < 4_250) return '#967c68';
-  if (elevation < 4_625) return '#9b8372';
-  if (elevation < 5_000) return '#a08b7d';
-  if (elevation < 5_500) return '#a8958a';
-  if (elevation < 6_000) return '#b0a098';
-  if (elevation < 6_750) return '#bab0aa';
-  return '#c6bfba';
+  return shadedLandColor(INITIAL_LAND_RAMP, elevation, reliefShade(result, sample, false), bucketed);
 }
-function evolvedHypsometricColor(result: WorldgenClimateResult, sample: number): string {
-  if (result.submergedMask[sample]) return hypsometricColor(result, sample);
+function evolvedHypsometricColor(result: WorldgenClimateResult, sample: number, bucketed = false): string {
+  if (result.submergedMask[sample]) return hypsometricColor(result, sample, bucketed);
   const elevation = result.postInfillSolidElevationM[sample]! - result.metrics.seaLevelM;
-  if (elevation < 25) return '#3b6637';
-  if (elevation < 50) return '#3f6939';
-  if (elevation < 75) return '#426c3b';
-  if (elevation < 100) return '#456f3d';
-  if (elevation < 150) return '#4b7440';
-  if (elevation < 200) return '#527a42';
-  if (elevation < 300) return '#598046';
-  if (elevation < 400) return '#608448';
-  if (elevation < 550) return '#68894b';
-  if (elevation < 700) return '#718e4e';
-  if (elevation < 850) return '#7a9452';
-  if (elevation < 1_000) return '#829955';
-  if (elevation < 1_250) return '#8a9457';
-  if (elevation < 1_500) return '#918f58';
-  if (elevation < 1_750) return '#968b5a';
-  if (elevation < 2_000) return '#9b875b';
-  if (elevation < 2_375) return '#958058';
-  if (elevation < 2_750) return '#8d7655';
-  if (elevation < 3_125) return '#876e52';
-  if (elevation < 3_500) return '#80664f';
-  if (elevation < 3_875) return '#856d58';
-  if (elevation < 4_250) return '#8a7461';
-  if (elevation < 4_625) return '#907c6b';
-  if (elevation < 5_000) return '#968575';
-  if (elevation < 5_500) return '#9e9082';
-  if (elevation < 6_000) return '#a89d91';
-  if (elevation < 6_750) return '#b3aaa2';
-  return '#c1bbb5';
+  return shadedLandColor(EVOLVED_LAND_RAMP, elevation, reliefShade(result, sample, true), bucketed);
 }
 function bucketize(count: number, colorAt: (index: number) => string): DrawBucket[] {
   const buckets = new Map<string, number[]>();
@@ -535,9 +654,9 @@ function scalarField(result: WorldgenClimateResult, mode: string, phase: number)
     default: return null;
   }
 }
-function sampleColor(result: WorldgenClimateResult, mode: string, sample: number, field: ScalarField | null): string {
-  if (mode === 'physical-world') return evolvedHypsometricColor(result, sample);
-  if (mode === 'physical-elevation' || mode === 'winds' || mode === 'currents') return hypsometricColor(result, sample);
+function sampleColor(result: WorldgenClimateResult, mode: string, sample: number, field: ScalarField | null, bucketed = false): string {
+  if (mode === 'physical-world') return evolvedHypsometricColor(result, sample, bucketed);
+  if (mode === 'physical-elevation' || mode === 'winds' || mode === 'currents') return hypsometricColor(result, sample, bucketed);
   if (mode === 'land-water') return result.submergedMask[sample] ? '#214d7a' : '#a99b72';
   if (mode === 'plates' || mode === 'tectonic-boundaries' || mode === 'geological-boundaries' || mode === 'boundary-provenance') return plateColor(result.plateIds[sample]!);
   if (mode === 'kinematic-domains') return plateColor(result.kinematicDomainIds[sample]!);
@@ -614,7 +733,7 @@ function buildStyleCache(result: WorldgenClimateResult, mode: string, phase: num
   const field = scalarField(result, mode, phase);
   const phaseKey = ['seasonal-temperature', 'seasonal-sst', 'seasonal-precipitation', 'seasonal-realized-discharge', 'seasonal-snow-storage'].includes(mode) ? phase.toFixed(3) : 'mean';
   const key = `${mode}:${phaseKey}`;
-  const sampleBuckets = mode === 'mesh' ? [] : bucketize(result.metrics.fineSampleCount, sample => sampleColor(result, mode, sample, field));
+  const sampleBuckets = mode === 'mesh' ? [] : bucketize(result.metrics.fineSampleCount, sample => sampleColor(result, mode, sample, field, true));
   let boundaryBuckets: DrawBucket[] = [];
   if (mode === 'tectonic-boundaries') boundaryBuckets = bucketize(result.metrics.fineBoundaryEdgeCount, boundary => tectonicBoundaryColor(result.boundaryKinds[boundary]!));
   else if (mode === 'geological-boundaries') boundaryBuckets = bucketize(result.metrics.fineBoundaryEdgeCount, boundary => geologicalBoundaryColor(result.geologicalBoundaryRegimes[boundary]!));
