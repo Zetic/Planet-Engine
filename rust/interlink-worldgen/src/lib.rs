@@ -2,6 +2,7 @@ mod boundary_refinement;
 mod climate;
 mod climate_calibration;
 mod climate_multiresolution;
+mod continental_morphology;
 mod coordinates;
 mod diagnostics;
 mod drainage;
@@ -39,6 +40,11 @@ pub use climate::{
 };
 pub use climate_calibration::{
     build_climate_calibration_report, ClimateCalibrationReport, ClimateLatitudeBand,
+};
+pub use continental_morphology::{
+    analyze_continental_morphology, analyze_mask_morphology, ContinentalMorphologyComponent,
+    ContinentalMorphologySummary, CONTINENTAL_MORPHOLOGY_MAJOR_AREA_FRACTION,
+    CONTINENTAL_MORPHOLOGY_RANKED_LIMIT, CONTINENTAL_MORPHOLOGY_SIGNIFICANT_AREA_FRACTION,
 };
 pub use coordinates::{
     anchor_origin_cartesian, cartesian_to_local_enu, great_circle_distance_m,

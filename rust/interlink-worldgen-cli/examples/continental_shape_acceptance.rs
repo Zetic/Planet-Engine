@@ -1,94 +1,7 @@
 use interlink_worldgen::{
-    build_icosphere, generate_crust_and_history, generate_tectonics, CrustKind, GeodesicTopology,
-    GeologyRequest, PlanetPhysicalParameters, TectonicsRequest,
+    analyze_continental_morphology, build_icosphere, generate_crust_and_history,
+    generate_tectonics, GeologyRequest, PlanetPhysicalParameters, TectonicsRequest,
 };
-use std::collections::{BTreeSet, VecDeque};
-use std::f64::consts::PI;
-
-#[derive(Clone, Debug)]
-struct ComponentStats {
-    area_sr: f64,
-    perimeter_rad: f64,
-    diameter_rad: f64,
-    plate_count: usize,
-}
-
-fn arc(a: [f64; 3], b: [f64; 3]) -> f64 {
-    (a[0] * b[0] + a[1] * b[1] + a[2] * b[2])
-        .clamp(-1.0, 1.0)
-        .acos()
-}
-
-fn component_stats(
-    topology: &GeodesicTopology,
-    mask: &[bool],
-    plate_ids: &[u16],
-) -> Vec<ComponentStats> {
-    let mut visited = vec![false; mask.len()];
-    let mut components = Vec::new();
-    for start in 0..mask.len() {
-        if !mask[start] || visited[start] {
-            continue;
-        }
-        visited[start] = true;
-        let mut queue = VecDeque::from([start]);
-        let mut samples = Vec::new();
-        while let Some(sample) = queue.pop_front() {
-            samples.push(sample);
-            for neighbor in topology.neighbors_of(sample as u32) {
-                let index = *neighbor as usize;
-                if mask[index] && !visited[index] {
-                    visited[index] = true;
-                    queue.push_back(index);
-                }
-            }
-        }
-
-        let mut area_sr = 0.0_f64;
-        let mut perimeter_rad = 0.0_f64;
-        let mut plates = BTreeSet::new();
-        for sample in &samples {
-            area_sr += topology.dual_area_steradians()[*sample];
-            plates.insert(plate_ids[*sample]);
-            for (neighbor, arc_length) in topology
-                .neighbors_of(*sample as u32)
-                .iter()
-                .zip(topology.neighbor_arc_lengths_of(*sample as u32).iter())
-            {
-                if !mask[*neighbor as usize] {
-                    perimeter_rad += *arc_length;
-                }
-            }
-        }
-
-        let positions = topology.positions();
-        let first = samples[0];
-        let farthest_from_first = samples
-            .iter()
-            .copied()
-            .max_by(|a, b| {
-                arc(positions[first], positions[*a])
-                    .total_cmp(&arc(positions[first], positions[*b]))
-            })
-            .unwrap_or(first);
-        let farthest = samples
-            .iter()
-            .copied()
-            .max_by(|a, b| {
-                arc(positions[farthest_from_first], positions[*a])
-                    .total_cmp(&arc(positions[farthest_from_first], positions[*b]))
-            })
-            .unwrap_or(farthest_from_first);
-        let diameter_rad = arc(positions[farthest_from_first], positions[farthest]);
-        components.push(ComponentStats {
-            area_sr,
-            perimeter_rad,
-            diameter_rad,
-            plate_count: plates.len(),
-        });
-    }
-    components
-}
 
 fn main() -> Result<(), String> {
     let topology = build_icosphere(4).map_err(|error| error.to_string())?;
@@ -101,12 +14,16 @@ fn main() -> Result<(), String> {
         "interlink-wg7c",
         "3",
     ];
-    let total_area = 4.0 * PI;
     let mut hierarchy_worlds = 0_usize;
     let mut elongated_worlds = 0_usize;
     let mut noncompact_worlds = 0_usize;
     let mut multiplate_worlds = 0_usize;
     let mut cv_sum = 0.0_f64;
+    let mut satellite_area_sum = 0.0_f64;
+    let mut constricted_sum = 0.0_f64;
+    let mut fine_complexity_sum = 0.0_f64;
+    let mut medium_complexity_sum = 0.0_f64;
+    let mut coarse_complexity_sum = 0.0_f64;
 
     for seed in seeds {
         let tectonics = generate_tectonics(&topology, &TectonicsRequest::new(seed, 16), planet)
@@ -114,57 +31,76 @@ fn main() -> Result<(), String> {
         let geology =
             generate_crust_and_history(&topology, &tectonics, &GeologyRequest::new(seed), planet)
                 .map_err(|error| error.to_string())?;
-        let continental = geology
-            .crust_kind
-            .iter()
-            .map(|kind| *kind == CrustKind::Continental as u8)
-            .collect::<Vec<_>>();
-        let mut components = component_stats(&topology, &continental, &tectonics.plate_ids)
-            .into_iter()
-            .filter(|component| component.area_sr >= total_area * 0.0025)
-            .collect::<Vec<_>>();
-        components.sort_by(|a, b| b.area_sr.total_cmp(&a.area_sr));
-        if components.len() < 2 {
+        let morphology = analyze_continental_morphology(
+            &topology,
+            &geology.crust_kind,
+            &tectonics.plate_ids,
+        )
+        .map_err(|error| error.to_string())?;
+
+        if morphology.significant_component_count < 2 {
             return Err(format!(
                 "{seed}: continental assembly collapsed to fewer than two significant components"
             ));
         }
 
-        let areas = components
+        let cv = morphology.component_area_coefficient_of_variation;
+        let hierarchy = morphology.largest_to_median_area_ratio;
+        let max_elongation = morphology.maximum_elongation;
+        let max_compactness = morphology.maximum_compactness;
+        let multiplate = morphology.has_major_multiplate_component;
+        let bounded_fractions = [
+            morphology.satellite_area_fraction,
+            morphology.secondary_complement_area_fraction,
+            morphology.constricted_sample_fraction,
+        ];
+        if bounded_fractions
             .iter()
-            .map(|component| component.area_sr)
-            .collect::<Vec<_>>();
-        let mean = areas.iter().sum::<f64>() / areas.len() as f64;
-        let variance =
-            areas.iter().map(|area| (area - mean).powi(2)).sum::<f64>() / areas.len() as f64;
-        let cv = variance.sqrt() / mean.max(1.0e-12);
-        cv_sum += cv;
-        let median = areas[areas.len() / 2];
-        let hierarchy = areas[0] / median.max(1.0e-12);
-        let max_elongation = components
+            .any(|value| !value.is_finite() || !(0.0..=1.0).contains(value))
+        {
+            return Err(format!(
+                "{seed}: continental morphology emitted a non-finite or out-of-range fraction"
+            ));
+        }
+        let complexity_values = [
+            morphology.coastline_complexity_fine,
+            morphology.coastline_complexity_medium,
+            morphology.coastline_complexity_coarse,
+        ];
+        if complexity_values
             .iter()
-            .map(|component| {
-                let equivalent_radius = (component.area_sr / PI).sqrt().max(1.0e-6);
-                component.diameter_rad / (2.0 * equivalent_radius)
-            })
-            .fold(0.0_f64, f64::max);
-        let max_compactness = components
-            .iter()
-            .map(|component| {
-                component.perimeter_rad.powi(2) / (4.0 * PI * component.area_sr.max(1.0e-12))
-            })
-            .fold(0.0_f64, f64::max);
-        let multiplate = components
-            .iter()
-            .any(|component| component.area_sr >= total_area * 0.015 && component.plate_count >= 2);
+            .any(|value| !value.is_finite() || *value < 0.0)
+        {
+            return Err(format!(
+                "{seed}: continental morphology emitted invalid coastline complexity"
+            ));
+        }
 
+        cv_sum += cv;
+        satellite_area_sum += morphology.satellite_area_fraction;
+        constricted_sum += morphology.constricted_sample_fraction;
+        fine_complexity_sum += morphology.coastline_complexity_fine;
+        medium_complexity_sum += morphology.coastline_complexity_medium;
+        coarse_complexity_sum += morphology.coastline_complexity_coarse;
         hierarchy_worlds += usize::from(hierarchy >= 1.80);
         elongated_worlds += usize::from(max_elongation >= 1.25);
         noncompact_worlds += usize::from(max_compactness >= 1.15);
         multiplate_worlds += usize::from(multiplate);
+
         println!(
-            "{seed}: components={} CV={cv:.3} largest/median={hierarchy:.3} max_elong={max_elongation:.3} max_compact={max_compactness:.3} multiplate={multiplate}",
-            components.len()
+            "{seed}: significant={} all={} CV={cv:.3} largest/median={hierarchy:.3} max_elong={max_elongation:.3} max_compact={max_compactness:.3} multiplate={multiplate} satellites={} satellite_area={:.4} constricted={:.4} secondary_complement={} secondary_complement_area={:.4} coast_complexity(f/m/c)={:.3}/{:.3}/{:.3} smoothing={}/{}",
+            morphology.significant_component_count,
+            morphology.all_component_count,
+            morphology.satellite_component_count,
+            morphology.satellite_area_fraction,
+            morphology.constricted_sample_fraction,
+            morphology.secondary_complement_component_count,
+            morphology.secondary_complement_area_fraction,
+            morphology.coastline_complexity_fine,
+            morphology.coastline_complexity_medium,
+            morphology.coastline_complexity_coarse,
+            morphology.medium_smoothing_rounds,
+            morphology.coarse_smoothing_rounds,
         );
     }
 
@@ -200,6 +136,15 @@ fn main() -> Result<(), String> {
 
     let world_count = seeds.len() as f64;
     let mean_cv = cv_sum / world_count;
+    println!(
+        "ensemble observability: mean_satellite_area={:.4} mean_constricted={:.4} mean_coast_complexity(f/m/c)={:.3}/{:.3}/{:.3}",
+        satellite_area_sum / world_count,
+        constricted_sum / world_count,
+        fine_complexity_sum / world_count,
+        medium_complexity_sum / world_count,
+        coarse_complexity_sum / world_count,
+    );
+
     if hierarchy_worlds < 4 {
         return Err(format!(
             "only {hierarchy_worlds}/6 worlds show a material continental size hierarchy"
