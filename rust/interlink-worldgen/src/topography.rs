@@ -8,7 +8,7 @@ use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 
 pub const TOPOGRAPHY_STAGE_ID: &str = "terrain:initial-topography";
-pub const TOPOGRAPHY_STAGE_VERSION: u32 = 8;
+pub const TOPOGRAPHY_STAGE_VERSION: u32 = 9;
 const TOPOGRAPHY_NAMESPACE: &str = "terrain:structure:v1";
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
@@ -59,7 +59,7 @@ impl Default for TopographyParameters {
             ridge_uplift_scale_m: 1_200.0,
             ridge_width_m: 280_000.0,
             rift_subsidence_scale_m: 1_050.0,
-            rift_width_m: 450_000.0,
+            rift_width_m: 350_000.0,
             basin_subsidence_scale_m: 1_350.0,
             trench_depth_scale_m: 5_600.0,
             trench_width_m: 180_000.0,

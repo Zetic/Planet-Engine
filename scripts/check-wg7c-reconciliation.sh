@@ -5,7 +5,7 @@ OUTPUT="$(mktemp)"
 trap 'rm -f "${OUTPUT}"' EXIT
 
 cargo run --release -p interlink-worldgen-cli --example post_erosion_hydrology_performance -- \
-  --seed ci-wg7b-evolution \
+  --seed ci-wg7c-reconciliation \
   --coarse-level 3 \
   --level 4 \
   --plates 12 \
@@ -19,7 +19,7 @@ from pathlib import Path
 
 text = Path(sys.argv[1]).read_text()
 header = re.search(
-    r"seed=ci-wg7b-evolution coarse_level=3 level=4 plates=12 samples=(\d+) runs=1",
+    r"seed=ci-wg7c-reconciliation coarse_level=3 level=4 plates=12 samples=(\d+) runs=1",
     text,
 )
 lakes = re.search(
