@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import test from 'node:test';
 
 const source = fs.readFileSync('src/worldgen/diagnostics/worldgenInheritanceLabStandalone.ts', 'utf8');
+const climateSource = fs.readFileSync('src/worldgen/diagnostics/worldgenClimateLabStandalone.ts', 'utf8');
 
 test('WG-3.75 globe interaction coalesces pointer motion to animation frames', () => {
   assert.match(source, /requestAnimationFrame\(/);
@@ -27,4 +28,9 @@ test('WG-3.75 renderer caches and batches static display styles', () => {
   assert.match(source, /buildStyleCache\(/);
   assert.match(source, /styleCache\.result !== result \|\| styleCache\.mode !== mode/);
   assert.match(source, /const fastPoints = interactive && result\.metrics\.fineSampleCount > 20_000/);
+});
+
+test('WG-7D equirectangular scalar diagnostics avoid oversized static Canvas paths', () => {
+  assert.match(climateSource, /const fastPoints = \(projection === 'map' \|\| interactive\) && count > 20_000/);
+  assert.match(climateSource, /if \(fastPoints\) context\.fillRect\(x - 0\.75, y - 0\.75, 1\.5, 1\.5\)/);
 });
