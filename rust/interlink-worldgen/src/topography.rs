@@ -8,7 +8,7 @@ use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 
 pub const TOPOGRAPHY_STAGE_ID: &str = "terrain:initial-topography";
-pub const TOPOGRAPHY_STAGE_VERSION: u32 = 7;
+pub const TOPOGRAPHY_STAGE_VERSION: u32 = 8;
 const TOPOGRAPHY_NAMESPACE: &str = "terrain:structure:v1";
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
@@ -57,7 +57,7 @@ impl Default for TopographyParameters {
             collision_uplift_scale_m: 2_400.0,
             collision_width_m: 600_000.0,
             ridge_uplift_scale_m: 1_200.0,
-            ridge_width_m: 450_000.0,
+            ridge_width_m: 280_000.0,
             rift_subsidence_scale_m: 1_050.0,
             rift_width_m: 450_000.0,
             basin_subsidence_scale_m: 1_350.0,
@@ -389,9 +389,17 @@ fn boundary_source_fields(
     count: usize,
     inherited: &InheritedPhysicalState,
     boundaries: &InheritedBoundarySet,
-) -> (Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>) {
+) -> (
+    Vec<f64>,
+    Vec<f64>,
+    Vec<f64>,
+    Vec<f64>,
+    Vec<f64>,
+    Vec<f64>,
+) {
     let mut collision = vec![0.0_f64; count];
-    let mut ridge = vec![0.0_f64; count];
+    let mut oceanic_ridge = vec![0.0_f64; count];
+    let mut transitional_ridge = vec![0.0_f64; count];
     let mut rift = vec![0.0_f64; count];
     let mut trench = vec![0.0_f64; count];
     let mut arc = vec![0.0_f64; count];
@@ -410,13 +418,13 @@ fn boundary_source_fields(
                 let strength = OCEANIC_RIDGE_DIRECT_RESPONSE_SCALE
                     * (OCEANIC_RIDGE_BASE_RESPONSE
                         + (1.0 - OCEANIC_RIDGE_BASE_RESPONSE) * divergence);
-                ridge[a] = ridge[a].max(strength);
-                ridge[b] = ridge[b].max(strength);
+                oceanic_ridge[a] = oceanic_ridge[a].max(strength);
+                oceanic_ridge[b] = oceanic_ridge[b].max(strength);
             }
             GeologicalBoundaryRegime::TransitionalDivergence => {
                 let strength = 0.45 * (0.10 + 0.90 * divergence);
-                ridge[a] = ridge[a].max(strength);
-                ridge[b] = ridge[b].max(strength);
+                transitional_ridge[a] = transitional_ridge[a].max(strength);
+                transitional_ridge[b] = transitional_ridge[b].max(strength);
             }
             GeologicalBoundaryRegime::ContinentalRift => {
                 let strength = CONTINENTAL_RIFT_DIRECT_RESPONSE_SCALE
@@ -446,14 +454,22 @@ fn boundary_source_fields(
 
     for i in 0..count {
         collision[i] *= 0.65 + 0.35 * f64::from(inherited.orogenic_history[i]);
-        ridge[i] *= 0.65 + 0.35 * f64::from(inherited.ridge_history[i]);
+        oceanic_ridge[i] *= 0.65 + 0.35 * f64::from(inherited.ridge_history[i]);
+        transitional_ridge[i] *= 0.65 + 0.35 * f64::from(inherited.ridge_history[i]);
         rift[i] *= CONTINENTAL_RIFT_SOURCE_HISTORY_FLOOR
             + (1.0 - CONTINENTAL_RIFT_SOURCE_HISTORY_FLOOR) * f64::from(inherited.rift_history[i]);
         trench[i] *= 0.55 + 0.45 * f64::from(inherited.trench_history[i]);
         arc[i] *= 0.55 + 0.45 * f64::from(inherited.volcanic_arc_history[i]);
     }
 
-    (collision, ridge, rift, trench, arc)
+    (
+        collision,
+        oceanic_ridge,
+        transitional_ridge,
+        rift,
+        trench,
+        arc,
+    )
 }
 
 fn mechanically_filter(
@@ -551,12 +567,20 @@ pub fn generate_initial_topography(
     let p = request.parameters;
     let stage_seed = derive_stage_seed(&request.seed, TOPOGRAPHY_NAMESPACE);
 
-    let (collision_sources, ridge_sources, rift_sources, trench_sources, arc_sources) =
-        boundary_source_fields(count, inherited, boundaries);
+    let (
+        collision_sources,
+        oceanic_ridge_sources,
+        transitional_ridge_sources,
+        rift_sources,
+        trench_sources,
+        arc_sources,
+    ) = boundary_source_fields(count, inherited, boundaries);
     let (collision_distance, collision_source) =
         nearest_sources(topology, &collision_sources, None, planet.radius_m);
-    let (ridge_distance, ridge_source) =
-        nearest_sources(topology, &ridge_sources, None, planet.radius_m);
+    let (oceanic_ridge_distance, oceanic_ridge_source) =
+        nearest_sources(topology, &oceanic_ridge_sources, None, planet.radius_m);
+    let (transitional_ridge_distance, transitional_ridge_source) =
+        nearest_sources(topology, &transitional_ridge_sources, None, planet.radius_m);
     let (rift_distance, rift_source) =
         nearest_sources(topology, &rift_sources, None, planet.radius_m);
     let (trench_distance, trench_source) = nearest_sources(
@@ -629,13 +653,32 @@ pub fn generate_initial_topography(
             * (p.inherited_orogeny_scale_m * f64::from(inherited.orogenic_history[i])
                 + p.collision_uplift_scale_m * collision_kernel * collision_focus);
 
-        let ridge_kernel = if ridge_source[i] == u32::MAX {
+        let oceanic_ridge_kernel = if oceanic_ridge_source[i] == u32::MAX {
             0.0
         } else {
-            gaussian(ridge_distance[i], p.ridge_width_m) * ridge_sources[ridge_source[i] as usize]
+            gaussian(oceanic_ridge_distance[i], p.ridge_width_m)
+                * oceanic_ridge_sources[oceanic_ridge_source[i] as usize]
         };
-        ridge[i] =
-            p.ridge_uplift_scale_m * ridge_kernel + 25.0 * f64::from(inherited.ridge_history[i]);
+        let transitional_ridge_kernel = if transitional_ridge_source[i] == u32::MAX {
+            0.0
+        } else {
+            gaussian(transitional_ridge_distance[i], p.rift_width_m)
+                * transitional_ridge_sources[transitional_ridge_source[i] as usize]
+        };
+        let oceanic_is_nearest = oceanic_ridge_distance[i] + DISTANCE_EPSILON_M
+            < transitional_ridge_distance[i]
+            || ((oceanic_ridge_distance[i] - transitional_ridge_distance[i]).abs()
+                <= DISTANCE_EPSILON_M
+                && oceanic_ridge_source[i] <= transitional_ridge_source[i]);
+        // Broad spreading history is already expressed by oceanic crust age and thermal
+        // subsidence. Keep explicit pure-oceanic ridge relief local, while preserving the
+        // accepted broader TransitionalDivergence response on the existing rift-width scale.
+        ridge[i] = p.ridge_uplift_scale_m
+            * if oceanic_is_nearest {
+                oceanic_ridge_kernel
+            } else {
+                transitional_ridge_kernel
+            };
 
         let rift_kernel = if rift_source[i] == u32::MAX {
             0.0
