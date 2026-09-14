@@ -1228,7 +1228,10 @@ function renderPlanet(surfaceCanvas, canvas, result, projection, mode, overlays,
         styleCache = buildStyleCache(result, mode, phase);
     const count = result.metrics.fineSampleCount;
     const pointRadius = count > 100_000 ? 0.8 : count > 30_000 ? 1.15 : count > 5_000 ? 2 : 3;
-    const fastPoints = interactive && count > 20_000;
+    // Static L8 equirectangular maps can put hundreds of thousands of equal-valued
+    // samples into one color bucket. Rasterize those buckets point-by-point instead
+    // of constructing one browser-sized Canvas path, which can silently drop fills.
+    const fastPoints = (projection === 'map' || interactive) && count > 20_000;
     const boundaryMode = styleCache.boundaryBuckets.length > 0;
     context.globalAlpha = boundaryMode ? 0.28 : 0.94;
     for (const bucket of styleCache.sampleBuckets) {
