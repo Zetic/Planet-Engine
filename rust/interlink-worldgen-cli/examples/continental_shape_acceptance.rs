@@ -31,12 +31,9 @@ fn main() -> Result<(), String> {
         let geology =
             generate_crust_and_history(&topology, &tectonics, &GeologyRequest::new(seed), planet)
                 .map_err(|error| error.to_string())?;
-        let morphology = analyze_continental_morphology(
-            &topology,
-            &geology.crust_kind,
-            &tectonics.plate_ids,
-        )
-        .map_err(|error| error.to_string())?;
+        let morphology =
+            analyze_continental_morphology(&topology, &geology.crust_kind, &tectonics.plate_ids)
+                .map_err(|error| error.to_string())?;
 
         if morphology.significant_component_count < 2 {
             return Err(format!(
@@ -136,13 +133,13 @@ fn main() -> Result<(), String> {
 
     let world_count = seeds.len() as f64;
     let mean_cv = cv_sum / world_count;
+    let mean_satellite_area = satellite_area_sum / world_count;
+    let mean_constricted = constricted_sum / world_count;
+    let mean_fine_complexity = fine_complexity_sum / world_count;
+    let mean_medium_complexity = medium_complexity_sum / world_count;
+    let mean_coarse_complexity = coarse_complexity_sum / world_count;
     println!(
-        "ensemble observability: mean_satellite_area={:.4} mean_constricted={:.4} mean_coast_complexity(f/m/c)={:.3}/{:.3}/{:.3}",
-        satellite_area_sum / world_count,
-        constricted_sum / world_count,
-        fine_complexity_sum / world_count,
-        medium_complexity_sum / world_count,
-        coarse_complexity_sum / world_count,
+        "ensemble observability: mean_satellite_area={mean_satellite_area:.4} mean_constricted={mean_constricted:.4} mean_coast_complexity(f/m/c)={mean_fine_complexity:.3}/{mean_medium_complexity:.3}/{mean_coarse_complexity:.3}",
     );
 
     if hierarchy_worlds < 4 {
@@ -168,6 +165,23 @@ fn main() -> Result<(), String> {
     if mean_cv < 0.55 {
         return Err(format!(
             "ensemble continental component-size CV remained too uniform: {mean_cv:.3}"
+        ));
+    }
+    // WG-3 v3 must materially improve the graph-scale defects measured by the
+    // observability-only v2 baseline while still retaining coarse continental form.
+    if mean_satellite_area > 0.0018 {
+        return Err(format!(
+            "ensemble satellite continental area remains too fragmented: {mean_satellite_area:.4}"
+        ));
+    }
+    if mean_constricted > 0.0175 {
+        return Err(format!(
+            "ensemble continental masks retain too many graph-scale constrictions: {mean_constricted:.4}"
+        ));
+    }
+    if mean_coarse_complexity < 6.0 {
+        return Err(format!(
+            "ensemble coarse continental complexity collapsed toward overly simple macro-shapes: {mean_coarse_complexity:.3}"
         ));
     }
     if changed_fraction < 0.03 {

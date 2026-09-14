@@ -2,9 +2,9 @@
 
 ## Purpose
 
-This document defines the morphology diagnostics used to evaluate continental assembly before changing WG-3 generation. The diagnostics are observational only: they do not alter crust type, plate identity, terrain, sea level, climate, hydrology, erosion, or any later physical state.
+This document defines the morphology diagnostics used to evaluate continental assembly before and after changing WG-3 generation. The diagnostics themselves are observational only: they do not alter crust type, plate identity, terrain, sea level, climate, hydrology, erosion, or any later physical state.
 
-The objective is to make known continental-shape failure modes measurable across fixed seeds so later WG-3 changes can be judged against stable evidence rather than screenshots alone.
+The objective is to make known continental-shape failure modes measurable across fixed seeds so WG-3 changes can be judged against stable evidence rather than screenshots alone.
 
 ## Authoritative subject
 
@@ -34,7 +34,7 @@ These retain the existing WG-3 diversity concepts while moving their calculation
 - per-component `constricted_sample_fraction`: fraction of component samples with no more than two same-mask graph neighbors.
 - global `constricted_sample_fraction`: the corresponding fraction over all significant-component samples.
 
-The constriction metric is a graph-resolution proxy for thin one-cell necks, tips, and shredded fragments. It is not treated as a direct geological quantity and is not currently a hard quality gate.
+The constriction metric is a graph-resolution proxy for thin one-cell necks, tips, and shredded fragments. It is not treated as a direct geological quantity.
 
 ### Satellite fragmentation
 
@@ -60,7 +60,7 @@ The analyzer reports area-weighted compactness for significant components at thr
 
 The smoothing exists only inside diagnostics. It never feeds back into generation. The number of smoothing rounds scales with topology level and is emitted in the summary (`medium_smoothing_rounds`, `coarse_smoothing_rounds`) so reports remain interpretable.
 
-The relationship between fine, medium, and coarse complexity is intended to distinguish large-scale continental form from graph-scale edge shredding. No assumption is made that complexity must decrease monotonically for every possible mask, so the initial observability PR records these values without imposing subjective thresholds.
+The relationship between fine, medium, and coarse complexity is intended to distinguish large-scale continental form from graph-scale edge shredding. No assumption is made that complexity must decrease monotonically for every possible mask.
 
 ## Determinism and complexity
 
@@ -70,7 +70,7 @@ Runtime is linear in samples and neighbor edges for each analysis pass. Multi-sc
 
 ## Acceptance policy
 
-The existing WG-3 acceptance thresholds remain authoritative in this packet:
+The longstanding WG-3 acceptance thresholds remain authoritative:
 
 - at least two significant continental components per accepted seed;
 - material component-size hierarchy in the ensemble;
@@ -80,9 +80,9 @@ The existing WG-3 acceptance thresholds remain authoritative in this packet:
 - sufficient ensemble component-area coefficient of variation;
 - tectonic layout must materially affect crust partition.
 
-The new satellite, constriction, complement-fragmentation, and multi-scale complexity metrics are **observability metrics first**. The acceptance example validates that they are finite and bounded where appropriate, prints a fixed-seed baseline, and does not introduce tuned morphology targets until a subsequent generation-changing PR has evidence for useful ranges.
+PR #47 established the fixed-seed v2 observability baseline without tuning the generator to the new measurements. WG-3 v3 then changes continental assembly and promotes two of those defect measurements to ensemble acceptance gates: mean satellite continental area must remain at or below 0.18% of planetary area, and mean graph-scale constricted-sample fraction must remain at or below 1.75%. These limits sit between the v2 baseline and the v3 implementation result so a regression toward the measured shredded-margin state fails CI while individual worlds can still retain legitimate terranes and narrow features.
 
-This avoids locking the current defects into acceptance merely because they are the present baseline.
+Multi-scale complexity remains primarily comparative because minimizing it blindly would reward featureless ellipses. WG-3 v3 therefore uses only a coarse-complexity floor of 6.0 across the fixed-seed ensemble to prevent the macro field from collapsing toward overly simple shapes. Fine and medium complexity continue to be printed for before/after diagnosis rather than optimized as absolute targets.
 
 ## Synthetic regression coverage
 
@@ -93,16 +93,10 @@ Library tests use deterministic icosphere masks to verify that:
 - an elongated band scores above a compact cap on elongation;
 - topology/mask length mismatches fail explicitly.
 
-Additional fixtures should be added when later PRs introduce a metric that becomes a hard gate. A metric should not become an optimization target without a regression proving the intended directional response.
+WG-3 v3 additionally tests that the broad assembly-corridor influence is local and tapered and that short-scale margin detail is exactly zero away from the provisional macro thresholds. These directional tests protect the architecture behind the new ensemble gates rather than only protecting the current numeric output.
 
 ## Relationship to later work
 
-This packet deliberately does not alter WG-3. The intended use is to establish a stable baseline before continental macro-shape generation is reworked. Later generation changes should compare fixed-seed reports for:
+WG-3 v3 uses this packet to verify reduced graph-scale fragmentation and constriction while retaining component-size diversity, multi-plate assembly, elongation, and nontrivial coarse structure. It does not attempt to generate final emergent-land coastline quality.
 
-- reduced graph-scale fragmentation without collapsing legitimate islands/terranes;
-- stronger large-scale shape hierarchy;
-- lower dependence on one-cell constrictions;
-- retained component-size diversity and multi-plate assembly;
-- coastline complexity that is expressed at coarse and medium scales rather than almost entirely at the native mesh scale.
-
-Final emergent-land coastline quality is a separate concern because it also depends on topography, sea level, erosion, sedimentation, and later shoreline reconciliation.
+Final emergent-land coastline quality remains a separate concern because it also depends on topography, sea level, erosion, sedimentation, and later shoreline reconciliation.

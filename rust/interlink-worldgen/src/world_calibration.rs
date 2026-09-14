@@ -864,7 +864,10 @@ impl WorldCalibrationReport {
             "Schema: `{}@{}`",
             WORLD_CALIBRATION_SCHEMA_ID, WORLD_CALIBRATION_SCHEMA_VERSION
         );
-        let _ = writeln!(out, "Fidelity: native canonical dual-cell areas + complete internal lake budget");
+        let _ = writeln!(
+            out,
+            "Fidelity: native canonical dual-cell areas + complete internal lake budget"
+        );
         let _ = writeln!(
             out,
             "Seed: `{}` · L{} → L{} · {} plates · {} samples · engine v{}",

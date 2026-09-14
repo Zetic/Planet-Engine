@@ -239,7 +239,7 @@ fn main() -> Result<(), String> {
         state.metrics.maximum_fill_depth_m,
     );
     println!(
-        "sediment delivered_kg_s={:.6} applied_equivalent_kg_s={:.6} unapplied_kg_s={:.6} volume_m3={:.6e} closure={:.3e}",
+        "sediment delivered_kg_s={:.9} applied_equivalent_kg_s={:.9} unapplied_kg_s={:.9} volume_m3={:.6e} closure={:.3e}",
         state.metrics.total_historical_lake_delivery_kg_s,
         state.metrics.total_applied_lake_fill_equivalent_kg_s,
         state.metrics.total_unapplied_lake_sediment_kg_s,

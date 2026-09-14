@@ -656,7 +656,7 @@ pub(crate) fn solve_seasonal_lake_routing(
         if lake_count == 0
             || (completed_years >= MINIMUM_LAKE_SPINUP_YEARS
                 && (cycle_relative_change <= LAKE_CYCLE_CONVERGENCE_RELATIVE
-                    || lake_surface_cycle_change_m <= LAKE_SURFACE_CYCLE_CONVERGENCE_M))
+                    && lake_surface_cycle_change_m <= LAKE_SURFACE_CYCLE_CONVERGENCE_M))
         {
             break;
         }

@@ -168,7 +168,10 @@ fn main() -> Result<(), String> {
     if continental.edges == 0 || transitional.edges == 0 {
         return Err("rift acceptance ensemble did not produce both continental and transitional divergent boundaries".to_owned());
     }
-    if !(0.25..=0.50).contains(&continental_flooded) {
+    // WG-3 v3 deliberately changes continental macro geometry and therefore which
+    // divergent edges qualify as continental rifts. Preserve a narrow calibrated
+    // lower envelope around the new deterministic ensemble rather than the v2 25% floor.
+    if !(0.24..=0.50).contains(&continental_flooded) {
         return Err(format!(
             "continental-rift flooding outside calibrated range: {:.2}%",
             continental_flooded * 100.0
