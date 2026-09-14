@@ -196,7 +196,11 @@ fn area_weighted_complexity(
         weighted += component_compactness(component) * component.area_sr;
         area += component.area_sr;
     }
-    if area > 0.0 { weighted / area } else { 0.0 }
+    if area > 0.0 {
+        weighted / area
+    } else {
+        0.0
+    }
 }
 
 fn smooth_mask(topology: &GeodesicTopology, mask: &[bool], rounds: usize) -> Vec<bool> {
@@ -319,7 +323,8 @@ pub fn analyze_mask_morphology(
         maximum_elongation = maximum_elongation.max(elongation);
         maximum_compactness = maximum_compactness.max(compactness);
         significant_samples += component.samples.len();
-        constricted_samples += (constricted_fraction * component.samples.len() as f64).round() as usize;
+        constricted_samples +=
+            (constricted_fraction * component.samples.len() as f64).round() as usize;
         has_major_multiplate_component |= component.area_sr
             >= total_area_sr * CONTINENTAL_MORPHOLOGY_MAJOR_AREA_FRACTION
             && component.plate_count >= 2;
@@ -338,7 +343,10 @@ pub fn analyze_mask_morphology(
         }
     }
 
-    let satellite_area_sr = satellites.iter().map(|component| component.area_sr).sum::<f64>();
+    let satellite_area_sr = satellites
+        .iter()
+        .map(|component| component.area_sr)
+        .sum::<f64>();
     let complement_areas = complement_component_areas(topology, mask);
     let secondary_complement_area_sr = complement_areas.iter().skip(1).sum::<f64>();
     let (medium_rounds, coarse_rounds) = smoothing_rounds(topology.level());

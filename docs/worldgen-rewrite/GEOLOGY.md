@@ -76,7 +76,7 @@ History fields are dimensionless bounded memories/influences. They are not eleva
 
 ## Continental provinces
 
-WG-3 Stage 2 builds a deterministic multi-scale continental assembly rather than thresholding a collection of similarly sized circular craton blobs.
+WG-3 Stage 3 builds a deterministic multi-scale continental assembly that separates continent-scale connectivity from margin-scale detail rather than thresholding a collection of similarly sized circular craton blobs.
 
 The assembly contains two broad classes of nuclei:
 
@@ -87,7 +87,7 @@ Each nucleus has a deterministic anisotropic kernel with independently varied ma
 
 A plate-relationship matrix is derived from accepted boundary kinematics. Same-plate and convergent relationships favor continental assembly, divergent relationships oppose it, and transform/unrelated relationships exert only weak influence. A short-range boundary field further raises affinity near convergence and lowers it near divergence. These terms are deliberately subordinate to province geometry and seeded fabric so current plate borders influence history without becoming the coastline template.
 
-Two deterministic structural-fabric fields operate at different graph scales: a broad field perturbs large-scale province geometry while a shorter-scale field roughens continental margins. Their effects are bounded within the final affinity field rather than being added as elevation noise.
+Continental affinity is now assembled in two explicit spatial bands. Anisotropic nuclei, tectonic relationship terms, a broad structural field, and deterministic broad assembly corridors define the macro continental field. Corridors are only permitted between same-plate or convergent-compatible nuclei; divergent and unrelated domains do not receive artificial bridges. A shorter-scale structural field is then applied only inside bounded score-space bands around the provisional continental/transitional margins. It therefore perturbs an existing margin without being able to create remote continental fragments. Exact area-weighted thresholds are solved again after this bounded margin pass.
 
 The final continental and transitional masks are still selected by exact area-weighted thresholds. The Earth-like default remains seed-variable at approximately 30–42% continental crust plus 6.5–10.5% transitional crust. This preserves the global crust-area contract while allowing the area to be distributed among very different numbers, sizes, and shapes of continental components.
 
@@ -176,11 +176,11 @@ Physics should consume the continuous quantities. The categorical scale class is
 
 ## Determinism
 
-WG-3 splits deterministic identity into isolated namespaces. Stage 2 changes the crust-history and crust-province namespaces because continental assembly semantics changed, while unchanged property/history random streams retain their existing namespace identities:
+WG-3 splits deterministic identity into isolated namespaces. Stage 3 changes the crust-history and crust-province namespaces because continental assembly semantics changed, while unchanged property/history random streams retain their existing namespace identities:
 
 ```text
-worldgen:geology:crust-history:v2
-worldgen:geology:crust-provinces:v2
+worldgen:geology:crust-history:v3
+worldgen:geology:crust-provinces:v3
 worldgen:geology:crust-properties:v1
 worldgen:geology:history:v1
 ```
@@ -189,7 +189,7 @@ Same seed + topology + accepted tectonic state remains deterministic. A material
 
 ## Continental-assembly acceptance
 
-Permanent CI runs a six-seed connected-component acceptance over the Stage-2 continental mask. It guards against regression toward same-sized rounded components by checking component-size variation, largest-to-median size hierarchy, angular elongation, outline noncompactness, and the presence of major continental components spanning more than one present-day plate. A separate same-seed 12-plate versus 20-plate control requires the crust partition to respond materially to a changed accepted tectonic layout.
+Permanent CI runs a six-seed connected-component acceptance over the Stage-3 continental mask. It guards against regression toward same-sized rounded components by checking component-size variation, largest-to-median size hierarchy, angular elongation, outline noncompactness, and the presence of major continental components spanning more than one present-day plate. A separate same-seed 12-plate versus 20-plate control requires the crust partition to respond materially to a changed accepted tectonic layout.
 
 These are morphology/distribution gates rather than Earth-outline matching. They constrain the generator to produce structural diversity while leaving individual seed geography free.
 

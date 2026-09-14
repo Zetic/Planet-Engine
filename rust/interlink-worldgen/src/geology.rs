@@ -7,9 +7,9 @@ use std::collections::BinaryHeap;
 use std::f64::consts::PI;
 
 pub const GEOLOGY_STAGE_ID: &str = "geology:crust-history";
-pub const GEOLOGY_STAGE_VERSION: u32 = 2;
-const GEOLOGY_NAMESPACE: &str = "worldgen:geology:crust-history:v2";
-const CRUST_PROVINCES_NAMESPACE: &str = "worldgen:geology:crust-provinces:v2";
+pub const GEOLOGY_STAGE_VERSION: u32 = 3;
+const GEOLOGY_NAMESPACE: &str = "worldgen:geology:crust-history:v3";
+const CRUST_PROVINCES_NAMESPACE: &str = "worldgen:geology:crust-provinces:v3";
 const CRUST_PROPERTIES_NAMESPACE: &str = "worldgen:geology:crust-properties:v1";
 const GEOLOGICAL_HISTORY_NAMESPACE: &str = "worldgen:geology:history:v1";
 const OCEANIC_PROVINCE_BIT: u16 = 0x8000;
@@ -247,6 +247,14 @@ struct CratonKernel {
     prominence: f64,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct CratonAssemblyLink {
+    a: usize,
+    b: usize,
+    width_rad: f64,
+    strength: f64,
+}
+
 fn geo_cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
     [
         a[1] * b[2] - a[2] * b[1],
@@ -274,6 +282,106 @@ fn geo_scale(value: [f64; 3], scale: f64) -> [f64; 3] {
 
 fn geo_add(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
     [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
+}
+
+fn geo_sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+}
+
+fn corridor_influence(a: [f64; 3], b: [f64; 3], position: [f64; 3], width_rad: f64) -> f64 {
+    let chord = geo_sub(b, a);
+    let denominator = dot(chord, chord);
+    if denominator <= 1.0e-12 || width_rad <= 0.0 {
+        return 0.0;
+    }
+    let from_a = geo_sub(position, a);
+    let t = (dot(from_a, chord) / denominator).clamp(0.0, 1.0);
+    let closest_chord = geo_add(a, geo_scale(chord, t));
+    if geo_norm(closest_chord) <= 1.0e-12 {
+        return 0.0;
+    }
+    let closest = geo_normalize(closest_chord);
+    let distance = arc_radians(closest, position);
+    let normalized = (1.0 - distance / width_rad).clamp(0.0, 1.0);
+    normalized * normalized
+}
+
+fn build_craton_assembly_links<T: PlanetTopology>(
+    topology: &T,
+    tectonics: &TectonicModel,
+    relationships: &[Vec<f64>],
+    cratons: &[u32],
+    core_count: usize,
+    seed: u64,
+) -> Vec<CratonAssemblyLink> {
+    let mut links = Vec::new();
+    for child in 1..cratons.len() {
+        let satellite = child >= core_count;
+        let gate = unit_random(seed ^ (child as u64).wrapping_mul(0x517c_c1b7_2722_0a95));
+        let link_probability = if satellite { 0.86 } else { 0.58 };
+        if gate > link_probability {
+            continue;
+        }
+        let child_sample = cratons[child];
+        let child_position = topology.unit_position(child_sample);
+        let child_plate = tectonics.plate_ids[child_sample as usize] as usize;
+        let maximum_distance = if satellite { 0.92 } else { 1.08 };
+        let mut best: Option<(usize, f64, f64)> = None;
+        for parent in 0..child {
+            let parent_sample = cratons[parent];
+            let parent_plate = tectonics.plate_ids[parent_sample as usize] as usize;
+            let relation = relationships
+                .get(parent_plate)
+                .and_then(|row| row.get(child_plate))
+                .copied()
+                .unwrap_or(-0.08);
+            if relation < 0.35 {
+                continue;
+            }
+            let distance = arc_radians(topology.unit_position(parent_sample), child_position);
+            if distance > maximum_distance {
+                continue;
+            }
+            let parent_core_bonus = if parent < core_count { 0.10 } else { 0.0 };
+            let score =
+                relation * 0.82 + (1.0 - distance / maximum_distance) * 0.42 + parent_core_bonus;
+            if best
+                .map(|(_, best_score, _)| score > best_score)
+                .unwrap_or(true)
+            {
+                best = Some((parent, score, relation));
+            }
+        }
+        if let Some((parent, _, relation)) = best {
+            let width_random =
+                unit_random(seed ^ (child as u64).wrapping_mul(0x6a09_e667_f3bc_c909));
+            let relation_scale = ((relation - 0.35) / 0.65).clamp(0.0, 1.0);
+            let width_rad = if satellite {
+                0.12 + width_random * 0.06
+            } else {
+                0.16 + width_random * 0.08
+            };
+            let strength = if satellite {
+                0.16 + relation_scale * 0.10
+            } else {
+                0.20 + relation_scale * 0.14
+            };
+            links.push(CratonAssemblyLink {
+                a: parent,
+                b: child,
+                width_rad,
+                strength,
+            });
+        }
+    }
+    links
+}
+
+fn margin_detail_weight(value: f64, threshold: f64, half_width: f64) -> f64 {
+    if half_width <= 0.0 {
+        return 0.0;
+    }
+    (1.0 - (value - threshold).abs() / half_width).clamp(0.0, 1.0)
 }
 
 fn continental_core_count(count: usize) -> usize {
@@ -552,7 +660,7 @@ fn build_crust_partition<T: PlanetTopology>(
         province_seed,
     );
     let core_count = continental_core_count(cratons.len());
-    let broad_fabric = smooth_random_field(topology, province_seed ^ 0x97c2_9b3a_5f61_13d7, 8);
+    let broad_fabric = smooth_random_field(topology, province_seed ^ 0x97c2_9b3a_5f61_13d7, 12);
     let edge_fabric = smooth_random_field(topology, province_seed ^ 0x243f_6a88_85a3_08d3, 2);
     let boundary_bias = tectonic_boundary_bias(topology, tectonics);
     let mut kernels = Vec::with_capacity(cratons.len());
@@ -617,7 +725,15 @@ fn build_crust_partition<T: PlanetTopology>(
         craton_ages.push(age);
     }
 
-    let mut affinity = vec![f64::NEG_INFINITY; topology.sample_count() as usize];
+    let assembly_links = build_craton_assembly_links(
+        topology,
+        tectonics,
+        &relationships,
+        &cratons,
+        core_count,
+        province_seed,
+    );
+    let mut macro_affinity = vec![f64::NEG_INFINITY; topology.sample_count() as usize];
     let mut nearest = vec![0_u16; topology.sample_count() as usize];
     for sample in 0..topology.sample_count() {
         let position = topology.unit_position(sample);
@@ -639,15 +755,41 @@ fn build_crust_partition<T: PlanetTopology>(
                 best_index = index;
             }
         }
-        affinity[sample as usize] = best
-            + broad_fabric[sample as usize] * 0.30
-            + edge_fabric[sample as usize] * 0.16
-            + boundary_bias[sample as usize] * 0.22;
+        let mut corridor_boost = 0.0_f64;
+        for link in &assembly_links {
+            let influence = corridor_influence(
+                topology.unit_position(cratons[link.a]),
+                topology.unit_position(cratons[link.b]),
+                position,
+                link.width_rad,
+            );
+            corridor_boost = corridor_boost.max(influence * link.strength);
+        }
+        macro_affinity[sample as usize] = best
+            + broad_fabric[sample as usize] * 0.24
+            + boundary_bias[sample as usize] * 0.22
+            + corridor_boost;
         nearest[sample as usize] = best_index as u16;
     }
 
     let continental_target = 0.30 + unit_random(province_seed ^ 0x6a09_e667_f3bc_c909) * 0.12;
     let transitional_target = 0.065 + unit_random(province_seed ^ 0xbb67_ae85_84ca_a73b) * 0.04;
+    let macro_continental_threshold =
+        weighted_descending_threshold(topology, &macro_affinity, continental_target);
+    let macro_transition_threshold = weighted_descending_threshold(
+        topology,
+        &macro_affinity,
+        (continental_target + transitional_target).min(0.50),
+    );
+    let mut affinity = macro_affinity.clone();
+    for index in 0..affinity.len() {
+        let continental_margin =
+            margin_detail_weight(macro_affinity[index], macro_continental_threshold, 0.24);
+        let outer_margin =
+            margin_detail_weight(macro_affinity[index], macro_transition_threshold, 0.18);
+        let margin_weight = continental_margin.max(outer_margin);
+        affinity[index] += edge_fabric[index] * 0.09 * margin_weight;
+    }
     let continental_threshold =
         weighted_descending_threshold(topology, &affinity, continental_target);
     let transition_threshold = weighted_descending_threshold(
@@ -1676,5 +1818,29 @@ mod tests {
                 / quiet_continental.len() as f64;
             assert!(orogenic_mean > quiet_mean);
         }
+    }
+
+    #[test]
+    fn continental_assembly_corridor_is_broad_local_and_tapered() {
+        let a = geo_normalize([1.0, 0.0, 0.0]);
+        let b = geo_normalize([0.72, 0.69, 0.0]);
+        let midpoint = geo_normalize(geo_add(a, b));
+        let near_margin = geo_normalize([midpoint[0], midpoint[1], 0.10]);
+        let far = [0.0, 0.0, 1.0];
+        let center = corridor_influence(a, b, midpoint, 0.18);
+        let shoulder = corridor_influence(a, b, near_margin, 0.18);
+        let remote = corridor_influence(a, b, far, 0.18);
+        assert!(center > 0.95);
+        assert!(shoulder > 0.0 && shoulder < center);
+        assert_eq!(remote, 0.0);
+    }
+
+    #[test]
+    fn margin_detail_is_zero_away_from_macro_thresholds() {
+        let threshold = 0.5;
+        assert_eq!(margin_detail_weight(0.0, threshold, 0.20), 0.0);
+        assert_eq!(margin_detail_weight(1.0, threshold, 0.20), 0.0);
+        assert_eq!(margin_detail_weight(threshold, threshold, 0.20), 1.0);
+        assert!(margin_detail_weight(0.58, threshold, 0.20) > 0.0);
     }
 }
