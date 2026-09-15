@@ -22,7 +22,11 @@ impl WeightedMoments {
     }
 
     fn mean(self) -> f64 {
-        if self.weight > 0.0 { self.sum / self.weight } else { 0.0 }
+        if self.weight > 0.0 {
+            self.sum / self.weight
+        } else {
+            0.0
+        }
     }
 
     fn cv(self) -> f64 {
@@ -51,7 +55,9 @@ impl PartialEq for Frontier {
 }
 impl Eq for Frontier {}
 impl PartialOrd for Frontier {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> { Some(self.cmp(other)) }
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
 }
 impl Ord for Frontier {
     fn cmp(&self, other: &Self) -> Ordering {
@@ -75,9 +81,7 @@ struct WorldProfile {
     integrated_history: f64,
 }
 
-fn orogen_sources(
-    geology: &interlink_worldgen::CrustalModel,
-) -> (Vec<u32>, Vec<bool>, Vec<bool>) {
+fn orogen_sources(geology: &interlink_worldgen::CrustalModel) -> (Vec<u32>, Vec<bool>, Vec<bool>) {
     let count = geology.orogenic_history.len();
     let mut mask = vec![false; count];
     let mut collision = vec![false; count];
@@ -91,17 +95,19 @@ fn orogen_sources(
                 }
             }
             GeologicalBoundaryRegime::OceanicSubduction
-            | GeologicalBoundaryRegime::OceanContinentSubduction => match boundary.subduction_polarity {
-                SubductionPolarity::PlateA => {
-                    mask[boundary.sample_b as usize] = true;
-                    subduction[boundary.sample_b as usize] = true;
+            | GeologicalBoundaryRegime::OceanContinentSubduction => {
+                match boundary.subduction_polarity {
+                    SubductionPolarity::PlateA => {
+                        mask[boundary.sample_b as usize] = true;
+                        subduction[boundary.sample_b as usize] = true;
+                    }
+                    SubductionPolarity::PlateB => {
+                        mask[boundary.sample_a as usize] = true;
+                        subduction[boundary.sample_a as usize] = true;
+                    }
+                    SubductionPolarity::None => {}
                 }
-                SubductionPolarity::PlateB => {
-                    mask[boundary.sample_a as usize] = true;
-                    subduction[boundary.sample_a as usize] = true;
-                }
-                SubductionPolarity::None => {}
-            },
+            }
             _ => {}
         }
     }
@@ -121,7 +127,11 @@ fn nearest_sources<T: PlanetTopology>(topology: &T, sources: &[u32]) -> (Vec<f64
     for (source, sample) in sources.iter().enumerate() {
         distance[*sample as usize] = 0.0;
         source_id[*sample as usize] = source as u32;
-        frontier.push(Frontier { distance_rad: 0.0, source: source as u32, sample: *sample });
+        frontier.push(Frontier {
+            distance_rad: 0.0,
+            source: source as u32,
+            sample: *sample,
+        });
     }
     while let Some(current) = frontier.pop() {
         let index = current.sample as usize;
@@ -137,7 +147,11 @@ fn nearest_sources<T: PlanetTopology>(topology: &T, sources: &[u32]) -> (Vec<f64
             if candidate + 1.0e-14 < distance[target] {
                 distance[target] = candidate;
                 source_id[target] = current.source;
-                frontier.push(Frontier { distance_rad: candidate, source: current.source, sample: neighbor });
+                frontier.push(Frontier {
+                    distance_rad: candidate,
+                    source: current.source,
+                    sample: neighbor,
+                });
             }
         }
     }
@@ -179,11 +193,17 @@ fn profile_world(
     }
 
     let mut source_mask = vec![false; geology.orogenic_history.len()];
-    for sample in &sources { source_mask[*sample as usize] = true; }
+    for sample in &sources {
+        source_mask[*sample as usize] = true;
+    }
     let mut profile = WorldProfile {
         source_count: sources.len(),
         core_fraction: source_core as f64 / sources.len() as f64,
-        integrated_history: if total_area > 0.0 { history_area / total_area } else { 0.0 },
+        integrated_history: if total_area > 0.0 {
+            history_area / total_area
+        } else {
+            0.0
+        },
         ..WorldProfile::default()
     };
     let mut widths = vec![0.0_f64; sources.len()];
@@ -216,17 +236,27 @@ fn profile_world(
         } else {
             false
         };
-        if endpoint { profile.endpoint_width.add(width, 1.0); }
-        if interior { profile.interior_width.add(width, 1.0); }
+        if endpoint {
+            profile.endpoint_width.add(width, 1.0);
+        }
+        if interior {
+            profile.interior_width.add(width, 1.0);
+        }
     }
 
     for boundary in &geology.boundaries {
         if boundary.regime != GeologicalBoundaryRegime::ContinentalCollision {
             continue;
         }
-        let source_a = sources.iter().position(|sample| *sample == boundary.sample_a);
-        let source_b = sources.iter().position(|sample| *sample == boundary.sample_b);
-        let (Some(a), Some(b)) = (source_a, source_b) else { continue };
+        let source_a = sources
+            .iter()
+            .position(|sample| *sample == boundary.sample_a);
+        let source_b = sources
+            .iter()
+            .position(|sample| *sample == boundary.sample_b);
+        let (Some(a), Some(b)) = (source_a, source_b) else {
+            continue;
+        };
         let wa = widths[a];
         let wb = widths[b];
         let mean = 0.5 * (wa + wb);
@@ -270,8 +300,9 @@ fn main() -> Result<(), String> {
         ("holdout", holdout.as_slice()),
     ] {
         for seed in seeds {
-            let tectonics = generate_tectonics(&topology, &TectonicsRequest::new(*seed, plates), planet)
-                .map_err(|error| error.to_string())?;
+            let tectonics =
+                generate_tectonics(&topology, &TectonicsRequest::new(*seed, plates), planet)
+                    .map_err(|error| error.to_string())?;
             let geology = generate_crust_and_history(
                 &topology,
                 &tectonics,
@@ -289,7 +320,10 @@ fn main() -> Result<(), String> {
             minimum_width_cv = minimum_width_cv.min(profile.width.cv());
             mean_width_cv += profile.width.cv();
             if profile.endpoint_width.weight > 0.0 && profile.interior_width.mean() > 0.0 {
-                endpoint_ratios.add(profile.endpoint_width.mean() / profile.interior_width.mean(), 1.0);
+                endpoint_ratios.add(
+                    profile.endpoint_width.mean() / profile.interior_width.mean(),
+                    1.0,
+                );
             }
             if profile.collision_asymmetry.weight > 0.0 {
                 asymmetry.add(profile.collision_asymmetry.mean(), 1.0);
@@ -323,7 +357,9 @@ fn main() -> Result<(), String> {
         return Err(format!("orogen geometry exercised only {exercised} worlds"));
     }
     if minimum_core < 0.80 {
-        return Err(format!("orogen core continuity fell too low: {minimum_core:.4}"));
+        return Err(format!(
+            "orogen core continuity fell too low: {minimum_core:.4}"
+        ));
     }
     if !minimum_width_cv.is_finite() || mean_cv <= 0.0 {
         return Err("orogen width diagnostics did not produce finite variation".to_string());
