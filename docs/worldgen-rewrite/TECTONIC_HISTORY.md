@@ -1,0 +1,7 @@
+# Tectonic history and boundary systems
+
+WG-2 `@2` introduces the causal foundation for the radical orogen rewrite without changing the accepted macro-plate partition namespace. Plate seeds, ownership, Euler poles, and instantaneous rigid-plate kinematics continue to use `worldgen:tectonics:plates:v1`; tectonic history uses the independent deterministic `worldgen:tectonics:boundary-history:v1` stream.
+
+Individual plate-boundary edges are now assembled into connected **boundary systems** by plate pair, kinematic regime, and graph connectivity. Each edge records system membership, normalized along-strike position, convergence obliquity, and local chain curvature. Each system records physical length, endpoints, junctions, mean normal/shear kinematics, mean obliquity/curvature, a deterministic event age, and analytically integrated cumulative convergence, extension, and shear displacement. This is deliberately an event-history model rather than a time-stepped plate reconstruction.
+
+The new fields are causal inputs for later pre-orogenic lithosphere and Tectonic Orogen Province work. They do not attempt to preserve legacy mountain morphology statistics. During the radical rewrite, legacy WG-3/WG-4 morphology and hydroclimate measurement gates remain in CI as observational `continue-on-error` diagnostics; hard correctness, determinism, compilation, conservation, solver convergence, and WASM parity remain blocking.

@@ -123,9 +123,9 @@ pub use surface_water::{
     solve_hydrostatic_surface_water, HydrostaticSurfaceWaterMetrics, HydrostaticSurfaceWaterState,
 };
 pub use tectonics::{
-    generate_tectonics, PlateBoundaryEdge, PlateBoundaryKind, TectonicMetrics, TectonicModel,
-    TectonicPlate, TectonicsRequest, MAX_TECTONIC_PLATES, MIN_TECTONIC_PLATES, TECTONICS_STAGE_ID,
-    TECTONICS_STAGE_VERSION,
+    generate_tectonics, PlateBoundaryEdge, PlateBoundaryKind, TectonicBoundarySystem,
+    TectonicMetrics, TectonicModel, TectonicPlate, TectonicsRequest, MAX_TECTONIC_PLATES,
+    MIN_TECTONIC_PLATES, TECTONICS_STAGE_ID, TECTONICS_STAGE_VERSION,
 };
 pub use topography::{
     generate_initial_topography, TopographyMetrics, TopographyParameters, TopographyRequest,
