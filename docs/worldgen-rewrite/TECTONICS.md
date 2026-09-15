@@ -1,6 +1,6 @@
 # Spherical Plate Tectonics
 
-WG-2 introduces the first causal physical partition on the canonical WG-1 sphere. It generates a deterministic present-day plate mosaic and rigid plate kinematics. It does not yet generate crustal composition, geological history, or terrain.
+WG-2 introduces the first causal physical partition on the canonical WG-1 sphere. It generates a deterministic present-day plate mosaic and rigid plate kinematics. WG-2.5 now derives connected boundary systems and analytical tectonic chronology from that accepted plate truth. Neither stage generates terrain.
 
 ## Stage boundary
 
@@ -18,9 +18,13 @@ connected spherical plate partition
 rigid Euler-pole motion per plate
         ↓
 relative boundary kinematics
+        ↓
+WG-2.5 connected boundary systems
+        ↓
+analytical event age + accumulated displacement
 ```
 
-The output is a kinematic tectonic substrate for later geological-history and crustal-state stages, not a time-stepped mantle or plate simulation.
+The output is a kinematic and chronological tectonic substrate for later crust, lithosphere, orogen-province, and topography stages. It is deliberately not a time-stepped mantle or plate simulation.
 
 ## Plate partition
 
@@ -40,7 +44,7 @@ Acceptance requires:
 - seed spacing remains macro scale rather than degenerating into pathological clusters;
 - multi-seed plate-area statistics preserve both larger and smaller macro plates rather than a near-equal tessellation.
 
-WG-2 supports 4–48 plates. Browser diagnostics are bounded to topology level 6; higher-resolution geological stages may later consume a coarse tectonic field through explicit refinement/interpolation rather than rerunning unrelated plate truth.
+WG-2 supports 4–48 plates. Higher-resolution geological stages consume coarse physical truth through explicit refinement/interpolation rather than rerunning unrelated plate truth.
 
 ## Rigid plate motion
 
@@ -71,7 +75,25 @@ otherwise normal rate < 0                    → convergent
 otherwise                                    → divergent
 ```
 
-This classification is a kinematic descriptor, not yet a geological landform. A later geological-history stage will distinguish consequences such as ocean-ocean subduction, continent-continent collision, continental rifting, ridge spreading, trench formation, or transform fault systems using crustal state and inherited history.
+This classification is a kinematic descriptor, not a geological landform.
+
+## WG-2.5 connected boundary systems
+
+WG-2.5 replaces the assumption that every boundary edge is an independent causal source. Boundary edges are assembled into deterministic connected systems when they share the same plate pair, kinematic class, and local boundary neighborhood. Each system owns a stable list of source boundary edges.
+
+For each boundary system WG-2.5 derives:
+
+- connected system identity and plate pair;
+- finite endpoints and branch/junction counts;
+- an along-strike graph coordinate and physical distance;
+- local boundary curvature;
+- convergence obliquity from normal versus shear motion;
+- deterministic tectonic event age;
+- cumulative convergence, extension, and shear displacement.
+
+The chronology is analytical rather than time-stepped. Event age is a deterministic causal state associated with the connected system; accumulated displacement is obtained from that age and accepted rigid-plate boundary velocity. This gives later stages a distinction between a young fast collision and a mature long-lived collision without advancing the entire planet through dozens of historical plate solutions.
+
+This stage is intentionally allowed to invalidate old downstream calibration envelopes. It exists to provide stronger upstream causes for the forthcoming pre-orogenic lithosphere and Tectonic Orogen Province stages, not to preserve previous `orogenic_history` morphology.
 
 ## Determinism
 
@@ -81,11 +103,17 @@ WG-2 owns the isolated random namespace:
 worldgen:tectonics:plates:v1
 ```
 
-The tectonic identity hash includes stage seed, plate seed samples, rigid angular-velocity vectors, ordered sample ownership, and ordered boundary kinematics. Changes to downstream geology must not alter WG-2 plate truth.
+WG-2.5 owns a separate chronology namespace:
+
+```text
+worldgen:tectonics:history-systems:v1
+```
+
+The WG-2 tectonic identity hash remains based on stage seed, plate seed samples, rigid angular-velocity vectors, ordered sample ownership, and ordered boundary kinematics. WG-2.5 has its own history hash, so adding chronology does not silently replace accepted macro plate identity.
 
 ## Diagnostics
 
-The native CLI and browser lab expose:
+WG-2 exposes:
 
 - plate count and per-sample ownership;
 - plate seed positions;
@@ -98,16 +126,16 @@ The native CLI and browser lab expose:
 - mean reference plate speed;
 - deterministic topology and tectonic hashes.
 
-The browser can render plate ownership, boundary type, rigid motion direction, and the underlying topology on either an orthographic globe or an equirectangular projection. Projection never changes physical truth.
+WG-2.5 additionally exposes model-level data for boundary-system identity, along-strike position, event age, cumulative convergence/extension/shear, obliquity, curvature, endpoint count, and junction count. Browser visualization is intentionally deferred until the later integration PR; the physical stage itself is available to Rust consumers immediately.
 
 ## Explicit non-goals
 
-WG-2 does **not** generate:
+WG-2/WG-2.5 do **not** generate:
 
 - continental versus oceanic crust;
 - crust age or thickness;
-- subduction polarity;
-- geological time evolution;
+- subduction polarity or slab physics;
+- literal time-stepped plate reconstruction;
 - uplift or subsidence;
 - elevation, bathymetry, or relief;
 - lithology;
@@ -115,4 +143,4 @@ WG-2 does **not** generate:
 - resources;
 - gameplay Regions, Features, NAV, or selection state.
 
-Those remain downstream. The immediate next physical stage after WG-2 should consume this plate mosaic and boundary kinematics to construct geological history/crustal state without replacing the accepted topology or plate identities.
+Those remain downstream. The next architectural stage should consume the accepted plate mosaic plus WG-2.5 chronology and connected systems to construct pre-orogenic lithospheric state without forcing new tectonic physics to match obsolete terrain measurements.
