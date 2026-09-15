@@ -41,6 +41,7 @@ export class WasmWorldgenClimate {
     coarse_sample_count(): number;
     coarse_topology_hash_hex(): string;
     contributing_area_m2(): Float64Array;
+    convergence_temperature_rms_k(): number;
     crust_age_myr(): Float32Array;
     crust_kind(): Uint8Array;
     crust_thickness_km(): Float32Array;
@@ -348,6 +349,7 @@ export class WasmWorldgenClimate {
     snowmelt_runoff_fraction(): number;
     solid_elevation_m(): Float32Array;
     specific_humidity_mean(): Float32Array;
+    spinup_converged(): boolean;
     spinup_years(): number;
     stage_id(): string;
     stage_seed_hex(): string;
@@ -890,6 +892,7 @@ export interface InitOutput {
     readonly wasmworldgenclimate_coarse_sample_count: (a: number) => number;
     readonly wasmworldgenclimate_coarse_topology_hash_hex: (a: number) => [number, number];
     readonly wasmworldgenclimate_contributing_area_m2: (a: number) => [number, number];
+    readonly wasmworldgenclimate_convergence_temperature_rms_k: (a: number) => number;
     readonly wasmworldgenclimate_crust_age_myr: (a: number) => [number, number];
     readonly wasmworldgenclimate_crust_kind: (a: number) => [number, number];
     readonly wasmworldgenclimate_crust_thickness_km: (a: number) => [number, number];
@@ -1197,6 +1200,7 @@ export interface InitOutput {
     readonly wasmworldgenclimate_snowmelt_runoff_fraction: (a: number) => number;
     readonly wasmworldgenclimate_solid_elevation_m: (a: number) => [number, number];
     readonly wasmworldgenclimate_specific_humidity_mean: (a: number) => [number, number];
+    readonly wasmworldgenclimate_spinup_converged: (a: number) => number;
     readonly wasmworldgenclimate_spinup_years: (a: number) => number;
     readonly wasmworldgenclimate_stage_id: (a: number) => [number, number];
     readonly wasmworldgenclimate_stage_seed_hex: (a: number) => [number, number];

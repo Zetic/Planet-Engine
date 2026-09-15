@@ -11,20 +11,36 @@ import {
 import { mapVectorDelta, reconstructAnnualHarmonic } from '../dist/worldgen/diagnostics/worldgenClimateMath.js';
 
 test('WG-5 browser protocol is versioned and bounded', () => {
-  assert.equal(WORLDGEN_PROTOCOL_VERSION, 19);
+  assert.equal(WORLDGEN_PROTOCOL_VERSION, 20);
   assert.equal(WORLDGEN_CLIMATE_COARSE_MAX_LEVEL, 6);
   assert.equal(WORLDGEN_CLIMATE_FINE_MAX_LEVEL, 8);
   const request = { seed: 'wg5-browser', coarseLevel: 3, fineLevel: 4, plateCount: 12 };
   assert.doesNotThrow(() => validateClimateRequest({ seed: 'wg5-l8', coarseLevel: 5, fineLevel: 8, plateCount: 16 }));
   assert.doesNotThrow(() => validateClimateRequest(request));
   assert.deepEqual(worldgenClimateCommand(91, request), {
-    protocolVersion: 19,
+    protocolVersion: 20,
     requestId: 91,
     type: 'generate-climate',
     payload: request,
   });
   assert.throws(() => validateClimateRequest({ ...request, seed: '' }), /seed/i);
   assert.throws(() => validateClimateRequest({ ...request, coarseLevel: 5, fineLevel: 4 }), /fine level/i);
+});
+
+test('WG-5 spin-up max bound is advisory and transported to the browser', () => {
+  const climate = fs.readFileSync('rust/interlink-worldgen/src/climate.rs', 'utf8');
+  const bridge = fs.readFileSync('rust/interlink-worldgen-wasm/src/climate_bridge.rs', 'utf8');
+  const protocol = fs.readFileSync('src/worldgen/protocol.ts', 'utf8');
+  const worker = fs.readFileSync('src/worldgen/worldgenWorker.ts', 'utf8');
+  const lab = fs.readFileSync('src/worldgen/diagnostics/worldgenClimateLabStandalone.ts', 'utf8');
+  assert.doesNotMatch(climate, /WG-5 climate did not converge within the configured spin-up bound/);
+  assert.match(climate, /spinup_converged/);
+  assert.match(bridge, /spinup_converged/);
+  assert.match(protocol, /spinupConverged/);
+  assert.match(protocol, /convergenceTemperatureRmsK/);
+  assert.match(worker, /spinup_converged\(\)/);
+  assert.match(worker, /convergence_temperature_rms_k\(\)/);
+  assert.match(lab, /bounded fallback/);
 });
 
 test('cumulative WG-5 Lab exposes climate diagnostics and stored seasonal reconstruction', () => {

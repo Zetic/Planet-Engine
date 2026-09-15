@@ -274,6 +274,8 @@ export function buildWorldCalibrationPacket(result, seed, plateCount) {
             persistent_snow_area_fraction: result.metrics.persistentSnowAreaFraction,
             sea_ice_area_fraction: result.metrics.seaIceAreaFraction,
             final_temperature_rms_change_k: result.metrics.finalTemperatureRmsChangeK,
+            spinup_converged: result.metrics.spinupConverged,
+            convergence_temperature_rms_k: result.metrics.convergenceTemperatureRmsK,
         },
         hydrology: {
             basin_count: result.drainageMetrics.basinCount,

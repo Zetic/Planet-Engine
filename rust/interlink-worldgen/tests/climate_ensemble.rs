@@ -352,13 +352,30 @@ fn atmospheric_specific_heat_changes_thermal_redistribution_on_fixed_wg4_surface
 }
 
 #[test]
-fn core_rejects_unconverged_climate_instead_of_returning_a_state() {
+fn core_returns_bounded_state_when_spinup_does_not_converge() {
     let planet = PlanetPhysicalParameters::earthlike_reference();
     let (topology, terrain) = generated_surface("wg5-nonconverged", planet);
     let mut request = ClimateRequest::new("wg5-nonconverged");
     request.parameters.minimum_spinup_years = 1;
     request.parameters.maximum_spinup_years = 1;
     request.parameters.convergence_temperature_rms_k = 1.0e-12;
-    let error = generate_coupled_climate(&topology, &terrain, planet, &request).unwrap_err();
-    assert!(error.to_string().contains("did not converge"));
+    let climate = generate_coupled_climate(&topology, &terrain, planet, &request).unwrap();
+    assert_eq!(climate.metrics.spinup_years, 1);
+    assert!(!climate.metrics.spinup_converged);
+    assert_eq!(
+        climate.metrics.convergence_temperature_rms_k,
+        request.parameters.convergence_temperature_rms_k
+    );
+    assert!(
+        climate.metrics.final_temperature_rms_change_k
+            > climate.metrics.convergence_temperature_rms_k
+    );
+    assert!(climate
+        .temperature_mean_k
+        .iter()
+        .all(|value| value.is_finite()));
+    assert!(climate
+        .annual_precipitation_mm
+        .iter()
+        .all(|value| value.is_finite() && *value >= 0.0));
 }

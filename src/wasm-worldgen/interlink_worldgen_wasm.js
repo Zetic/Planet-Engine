@@ -345,6 +345,13 @@ export class WasmWorldgenClimate {
         return v1;
     }
     /**
+     * @returns {number}
+     */
+    convergence_temperature_rms_k() {
+        const ret = wasm.wasmworldgenclimate_convergence_temperature_rms_k(this.__wbg_ptr);
+        return ret;
+    }
+    /**
      * @returns {Float32Array}
      */
     crust_age_myr() {
@@ -3339,6 +3346,13 @@ export class WasmWorldgenClimate {
         var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
         return v1;
+    }
+    /**
+     * @returns {boolean}
+     */
+    spinup_converged() {
+        const ret = wasm.wasmworldgenclimate_spinup_converged(this.__wbg_ptr);
+        return ret !== 0;
     }
     /**
      * @returns {number}
