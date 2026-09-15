@@ -1,0 +1,67 @@
+name: Apply WG-5 nonfatal spin-up rewrite
+
+on:
+  push:
+    branches: [fix/wg5-nonfatal-spinup]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: contains(github.event.head_commit.message, '[wg5-spinup-driver]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/wg5-nonfatal-spinup
+      - name: Apply rewrite
+        run: python3 scripts/apply-wg5-nonfatal-spinup.py
+      - name: Install Rust and browser target
+        run: |
+          rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown
+          rustup default stable
+      - name: Format
+        run: cargo fmt --all
+      - name: Compile workspace
+        run: cargo check --workspace --all-targets
+      - name: Run WG-5 fallback regression
+        run: cargo test -p interlink-worldgen core_returns_bounded_state_when_spinup_does_not_converge -- --exact
+      - name: Run WG-5 and hydroclimate tests
+        run: |
+          cargo test -p interlink-worldgen --test climate_ensemble
+          cargo test -p interlink-worldgen --test hydroclimate_closure
+      - name: Compile browser bridge
+        run: cargo check -p interlink-worldgen-wasm --target wasm32-unknown-unknown
+      - name: Install pinned wasm-bindgen CLI
+        run: cargo install wasm-bindgen-cli --version 0.2.127 --locked
+      - name: Rebuild committed browser WASM package
+        run: npm run build:worldgen-wasm
+      - name: Browser build and regressions
+        run: |
+          npm ci
+          npm run build
+          npm run test:ts
+      - name: Reproduce canonical default seed through full cumulative pipeline
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          import { performance } from 'node:perf_hooks';
+          import { initSync, WasmWorldgenClimate } from './src/wasm-worldgen/interlink_worldgen_wasm.js';
+          initSync({ module: readFileSync('src/wasm-worldgen/interlink_worldgen_wasm_bg.wasm') });
+          const started = performance.now();
+          const output = new WasmWorldgenClimate('interlink-wg7c', 6, 8, 16, undefined);
+          console.log(`default-seed L6->L8 completed in ${(performance.now() - started).toFixed(0)} ms`);
+          console.log(`WG-5 spinup years=${output.spinup_years()} converged=${output.spinup_converged()} rms=${output.final_temperature_rms_change_k().toFixed(6)} target=${output.convergence_temperature_rms_k().toFixed(6)}`);
+          if (!Number.isFinite(output.final_temperature_rms_change_k())) throw new Error('WG-5 fallback RMS is not finite');
+          if (output.fine_sample_count() !== 655362) throw new Error(`unexpected L8 sample count ${output.fine_sample_count()}`);
+          output.free();
+          NODE
+      - name: Commit rewrite
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add rust src dist tests docs
+          git diff --cached --quiet && exit 0
+          git commit -m 'fix(worldgen): make WG-5 spin-up convergence advisory [wg5-spinup-applied]'
+          git push origin HEAD:fix/wg5-nonfatal-spinup
