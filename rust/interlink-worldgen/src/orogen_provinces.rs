@@ -749,11 +749,6 @@ fn structure_signals(pre: &PreOrogenicLithosphereModel, sample: usize) -> Struct
     } else {
         0.0
     };
-    let shear_zone = if structure == InheritedStructureKind::ShearZone as u8 {
-        1.0
-    } else {
-        0.0
-    };
     let craton_boundary = if structure == InheritedStructureKind::CratonBoundary as u8 {
         1.0
     } else {
@@ -1932,35 +1927,41 @@ mod tests {
 
     #[test]
     fn structural_belts_are_not_forced_to_the_literal_boundary() {
-        let seed = "wg36-v4-distributed-belts";
-        let (topology, tectonics, history, geology, pre) = world(seed);
-        let model = generate_tectonic_orogen_provinces(
-            &topology,
-            &tectonics,
-            &history,
-            &geology,
-            &pre,
-            &OrogenProvinceRequest::new(seed),
-            PlanetPhysicalParameters::earthlike_reference(),
-        )
-        .unwrap();
-        let mut core_count = 0usize;
-        let mut inland_core_count = 0usize;
-        for sample in 0..model.mountain_core_index.len() {
-            if model.mountain_core_index[sample] > 0.20 {
-                core_count += 1;
-                if model.boundary_distance_km[sample] > 90.0 {
-                    inland_core_count += 1;
-                }
-                assert!(
-                    model.boundary_distance_km[sample] < 1300.0,
-                    "mountain core escaped too far inland: {:.1} km",
-                    model.boundary_distance_km[sample]
-                );
-            }
-        }
-        assert!(core_count > 0);
-        assert!(inland_core_count > 0);
+        let source = BoundarySource {
+            boundary_index: 0,
+            province_id: 1,
+            kind: OrogenProvinceKind::ContinentalCollision,
+            plate_a: 1,
+            plate_b: 2,
+            overriding_plate: NO_PLATE,
+            hinterland_plate: 1,
+            foreland_or_subducting_plate: 2,
+            along_fraction: 0.5,
+            maturity: 0.72,
+            shortening: 0.78,
+            obliquity: 0.15,
+            curvature: 0.30,
+            width_a_km: 500.0,
+            width_b_km: 420.0,
+            core_strength: 0.85,
+            plateau_eligibility: 0.0,
+        };
+        let inherited = StructureSignals {
+            weak_corridor: 0.90,
+            inherited_belt: 0.90,
+            craton: 0.10,
+            rift: 0.40,
+            transfer: 0.80,
+            paleo_suture: 1.0,
+        };
+        let resistance = 0.25;
+        let boundary = source_profile(source, 1, 0.0, 0.0, resistance, inherited);
+        let displaced = source_profile(source, 1, 240.0, 240.0, resistance, inherited);
+
+        assert!(displaced.boundary_distance_km >= 200.0);
+        assert!(displaced.mountain > 0.50);
+        assert!(displaced.mountain > boundary.mountain * 2.0);
+        assert!(displaced.root > boundary.root);
     }
 
     #[test]
