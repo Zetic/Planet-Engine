@@ -83,9 +83,9 @@ jobs:
           for (const x of arrays.slice(0,40)) console.log(`ARRAY ${x.name} ${mib(x.bytes)}MiB ${x.value.constructor.name} len=${x.value.length}`);
           const packaged = mem('packaged');
           const limits = {
-            constructedRssMiB: 1700,
-            packagedRssMiB: 2100,
-            packetMiB: 600,
+            constructedRssMiB: 1200,
+            packagedRssMiB: 1650,
+            packetMiB: 460,
           };
           if (constructed.rss > limits.constructedRssMiB * MiB) throw new Error(`constructed RSS ${mib(constructed.rss)}MiB exceeds ${limits.constructedRssMiB}MiB budget`);
           if (packaged.rss > limits.packagedRssMiB * MiB) throw new Error(`packaged RSS ${mib(packaged.rss)}MiB exceeds ${limits.packagedRssMiB}MiB budget`);
