@@ -162,6 +162,11 @@ fn main() -> Result<(), String> {
         last = Some(state);
     }
     let state = last.expect("at least one WG-7A benchmark run");
+    assert_eq!(
+        state.metrics.inheritance_hash,
+        inherited.inheritance_hash(),
+        "WG-7A must record the accepted causal fine-state inheritance identity",
+    );
     let mean_ms = durations_ms.iter().sum::<f64>() / durations_ms.len() as f64;
     let mut sorted = durations_ms.clone();
     sorted.sort_by(f64::total_cmp);
