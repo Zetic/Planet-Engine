@@ -71,7 +71,7 @@ fn main() -> Result<(), String> {
         .count();
 
     println!(
-        "WG-4 tectonic topography cutover: stage=v{} provinces={} active_samples={} relief(+/-)={}/{} solid={:.0}..{:.0}m land={:.1}% province_hash={} topo_hash={}",
+        "WG-4 tectonic topography cutover: stage=v{} provinces={} active_samples={} relief(+/-)={}/{} solid={:.0}..{:.0}m clamped={} land={:.1}% province_hash={} topo_hash={}",
         terrain.stage.version,
         lithosphere.orogen_provinces.metrics.province_count,
         active_samples,
@@ -79,6 +79,7 @@ fn main() -> Result<(), String> {
         negative_orogen,
         terrain.metrics.minimum_solid_elevation_m,
         terrain.metrics.maximum_solid_elevation_m,
+        terrain.metrics.clamped_sample_count,
         terrain.metrics.land_area_fraction * 100.0,
         inherited.orogen_province_hash_hex(),
         terrain.metrics.topography_hash_hex(),
