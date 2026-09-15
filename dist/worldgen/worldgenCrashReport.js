@@ -48,12 +48,25 @@ function collectWebGlEnvironment() {
         return { available: false, reason: error instanceof Error ? error.message : String(error) };
     }
 }
+function collectDynamicEnvironment() {
+    const memory = typeof performance !== 'undefined'
+        ? performance.memory
+        : undefined;
+    return {
+        visibilityState: typeof document !== 'undefined' ? document.visibilityState : undefined,
+        jsHeap: memory ? {
+            limitBytes: memory.jsHeapSizeLimit,
+            totalBytes: memory.totalJSHeapSize,
+            usedBytes: memory.usedJSHeapSize,
+            limitMiB: mib(memory.jsHeapSizeLimit),
+            totalMiB: mib(memory.totalJSHeapSize),
+            usedMiB: mib(memory.usedJSHeapSize),
+        } : undefined,
+    };
+}
 function collectEnvironment() {
     const navigatorLike = typeof navigator !== 'undefined'
         ? navigator
-        : undefined;
-    const memory = typeof performance !== 'undefined'
-        ? performance.memory
         : undefined;
     return {
         page: typeof location !== 'undefined' ? `${location.origin}${location.pathname}` : undefined,
@@ -66,15 +79,7 @@ function collectEnvironment() {
         crossOriginIsolated: typeof crossOriginIsolated !== 'undefined' ? crossOriginIsolated : undefined,
         viewport: typeof window !== 'undefined' ? { width: window.innerWidth, height: window.innerHeight, devicePixelRatio: window.devicePixelRatio } : undefined,
         screen: typeof window !== 'undefined' ? { width: window.screen?.width, height: window.screen?.height, colorDepth: window.screen?.colorDepth } : undefined,
-        visibilityState: typeof document !== 'undefined' ? document.visibilityState : undefined,
-        jsHeap: memory ? {
-            limitBytes: memory.jsHeapSizeLimit,
-            totalBytes: memory.totalJSHeapSize,
-            usedBytes: memory.usedJSHeapSize,
-            limitMiB: mib(memory.jsHeapSizeLimit),
-            totalMiB: mib(memory.totalJSHeapSize),
-            usedMiB: mib(memory.usedJSHeapSize),
-        } : undefined,
+        ...collectDynamicEnvironment(),
         webgl2: collectWebGlEnvironment(),
     };
 }
@@ -222,7 +227,7 @@ export function createWorldgenCrashRecorder(protocolVersion) {
         if (report.events.length > MAX_EVENTS)
             report.events.splice(0, report.events.length - MAX_EVENTS);
         report.lastCheckpoint = `${source}:${event}`;
-        report.environment = { ...report.environment, ...collectEnvironment() };
+        report.environment = { ...report.environment, ...collectDynamicEnvironment() };
         save();
     };
     return {
@@ -287,7 +292,7 @@ export function createWorldgenCrashRecorder(protocolVersion) {
             save();
         },
         snapshot() {
-            return JSON.parse(JSON.stringify({ ...report, environment: { ...report.environment, ...collectEnvironment() } }));
+            return JSON.parse(JSON.stringify({ ...report, environment: { ...report.environment, ...collectDynamicEnvironment() } }));
         },
         toJson() { return JSON.stringify(this.snapshot(), null, 2); },
         toMarkdown() { return formatWorldgenCrashReport(this.snapshot()); },
