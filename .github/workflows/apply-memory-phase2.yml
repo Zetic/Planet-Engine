@@ -115,7 +115,7 @@ jobs:
           p = 'src/worldgen/protocol.ts'
           s = load(p)
           start = s.index('export interface WorldgenClimateResult')
-          end = s.index('\n}\n\n\nexport interface WorldgenDrainageMetrics', start) + 2
+          end = s.index('export interface WorldgenDrainageMetrics', start)
           head, body, tail = s[:start], s[start:end], s[end:]
           for field in [
               'faces', 'outletSample', 'outletKind', 'drainageOrder', 'runoffStage',
@@ -128,7 +128,7 @@ jobs:
           # Worker: keep the WASM interface and extraction in exact lockstep with protocol.
           p = 'src/worldgen/worldgenWorker.ts'
           s = load(p)
-          iface_start = s.index('interface WasmWorldgenClimate')
+          iface_start = s.index('interface WasmClimate')
           iface_end = s.index('\n}\n', iface_start) + 2
           ih, ib, it = s[:iface_start], s[iface_start:iface_end], s[iface_end:]
           for method in [
