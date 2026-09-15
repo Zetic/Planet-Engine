@@ -1,0 +1,37 @@
+name: Refresh WG-7A WASM package
+
+on:
+  push:
+    branches: [feat/wg7a-causal-inheritance-identity]
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    if: ${{ contains(github.event.head_commit.message, '[refresh-wg7a-wasm]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RUST_VERSION: '1.98.1'
+      WASM_BINDGEN_VERSION: '0.2.127'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/wg7a-causal-inheritance-identity
+      - name: Install pinned Rust and browser target
+        run: |
+          rustup toolchain install "${RUST_VERSION}" --profile minimal --target wasm32-unknown-unknown
+          rustup default "${RUST_VERSION}"
+      - name: Install pinned wasm-bindgen CLI
+        run: cargo install wasm-bindgen-cli --version "${WASM_BINDGEN_VERSION}" --locked
+      - name: Rebuild committed browser WASM package
+        run: npm run build:worldgen-wasm
+      - name: Commit refreshed package
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/wasm-worldgen
+          git diff --cached --quiet && exit 0
+          git commit -m 'build(worldgen): refresh WG-7A wasm package [wg7a-wasm-refreshed]'
+          git push origin HEAD:feat/wg7a-causal-inheritance-identity
