@@ -1,4 +1,4 @@
-export const WORLDGEN_PROTOCOL_VERSION = 18;
+export const WORLDGEN_PROTOCOL_VERSION = 19;
 export const WORLDGEN_SYNTHETIC_MAX_SAMPLES = 4_194_304;
 export const WORLDGEN_TOPOLOGY_MAX_LEVEL = 8;
 export const WORLDGEN_TECTONICS_MAX_LEVEL = 6;
@@ -652,16 +652,10 @@ export interface WorldgenClimateResult {
   lakeSpillSamples: Uint32Array;
   seasonalStage: WorldgenStageMetadata;
   seasonalMetrics: WorldgenSeasonalHydrologyMetrics;
-  seasonalPhaseLocalRunoffM3S: Float32Array;
-  seasonalPhaseSnowmeltRunoffM3S: Float32Array;
   seasonalPhaseSnowStorageMm: Float32Array;
-  seasonalPhasePotentialDischargeM3S: Float32Array;
   seasonalPhaseRealizedDischargeM3S: Float32Array;
   seasonalFlowPresenceFraction: Float32Array;
   seasonalFlowRegime: Uint8Array;
-  seasonalPhaseLakeSurfaceElevationM: Float32Array;
-  seasonalPhaseLakeAreaM2: Float64Array;
-  seasonalPhaseLakeVolumeM3: Float64Array;
   erosionStage: WorldgenStageMetadata;
   erosionMetrics: WorldgenFluvialErosionMetrics;
   effectiveDischargeM3S: Float32Array;

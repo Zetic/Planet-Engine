@@ -53,7 +53,7 @@ import {
   worldgenTopologyCommand,
 } from '../dist/worldgen/protocol.js';
 
-const PROTOCOL = 18;
+const PROTOCOL = 19;
 
 test('Planet Engine browser protocol v18 preserves WG-0 through WG-3.75 contracts', () => {
   assert.equal(WORLDGEN_PROTOCOL_VERSION, PROTOCOL);

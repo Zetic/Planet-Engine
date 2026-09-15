@@ -3289,51 +3289,6 @@ export class WasmWorldgenClimate {
         return ret >>> 0;
     }
     /**
-     * @returns {Float64Array}
-     */
-    seasonal_phase_lake_area_m2() {
-        const ret = wasm.wasmworldgenclimate_seasonal_phase_lake_area_m2(this.__wbg_ptr);
-        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
-        return v1;
-    }
-    /**
-     * @returns {Float32Array}
-     */
-    seasonal_phase_lake_surface_elevation_m() {
-        const ret = wasm.wasmworldgenclimate_seasonal_phase_lake_surface_elevation_m(this.__wbg_ptr);
-        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
-        return v1;
-    }
-    /**
-     * @returns {Float64Array}
-     */
-    seasonal_phase_lake_volume_m3() {
-        const ret = wasm.wasmworldgenclimate_seasonal_phase_lake_volume_m3(this.__wbg_ptr);
-        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
-        return v1;
-    }
-    /**
-     * @returns {Float32Array}
-     */
-    seasonal_phase_local_runoff_m3_s() {
-        const ret = wasm.wasmworldgenclimate_seasonal_phase_local_runoff_m3_s(this.__wbg_ptr);
-        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
-        return v1;
-    }
-    /**
-     * @returns {Float32Array}
-     */
-    seasonal_phase_potential_discharge_m3_s() {
-        const ret = wasm.wasmworldgenclimate_seasonal_phase_potential_discharge_m3_s(this.__wbg_ptr);
-        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
-        return v1;
-    }
-    /**
      * @returns {Float32Array}
      */
     seasonal_phase_realized_discharge_m3_s() {
@@ -3347,15 +3302,6 @@ export class WasmWorldgenClimate {
      */
     seasonal_phase_snow_storage_mm() {
         const ret = wasm.wasmworldgenclimate_seasonal_phase_snow_storage_mm(this.__wbg_ptr);
-        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
-        return v1;
-    }
-    /**
-     * @returns {Float32Array}
-     */
-    seasonal_phase_snowmelt_runoff_m3_s() {
-        const ret = wasm.wasmworldgenclimate_seasonal_phase_snowmelt_runoff_m3_s(this.__wbg_ptr);
         var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
         return v1;

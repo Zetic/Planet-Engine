@@ -1,8 +1,8 @@
 use interlink_worldgen::{
     build_icosphere, generate_crust_and_history, generate_initial_topography, generate_lithosphere,
-    generate_tectonics, inherit_boundary_interfaces, inherit_physical_state, GeologyRequest,
-    GeologicalBoundaryRegime, LithosphereRequest, PlanetPhysicalParameters, TectonicsRequest,
-    TopographyRequest,
+    generate_tectonics, inherit_boundary_interfaces, inherit_physical_state,
+    GeologicalBoundaryRegime, GeologyRequest, LithosphereRequest, PlanetPhysicalParameters,
+    TectonicsRequest, TopographyRequest,
 };
 
 const CRUST_CONTINENTAL: u8 = 3;
@@ -60,12 +60,20 @@ struct InheritedOrogenProfile {
 impl InheritedOrogenProfile {
     fn shoulder_to_core(self) -> f64 {
         let core = self.core.mean();
-        if core > 0.0 { self.shoulder.mean() / core } else { 0.0 }
+        if core > 0.0 {
+            self.shoulder.mean() / core
+        } else {
+            0.0
+        }
     }
 
     fn background_to_core(self) -> f64 {
         let core = self.core.mean();
-        if core > 0.0 { self.background.mean() / core } else { 0.0 }
+        if core > 0.0 {
+            self.background.mean() / core
+        } else {
+            0.0
+        }
     }
 }
 
@@ -101,7 +109,9 @@ impl EnsembleSummary {
         self.measured += 1;
         self.core_sum_m += profile.core.mean();
         self.maximum_shoulder_ratio = self.maximum_shoulder_ratio.max(profile.shoulder_to_core());
-        self.maximum_background_ratio = self.maximum_background_ratio.max(profile.background_to_core());
+        self.maximum_background_ratio = self
+            .maximum_background_ratio
+            .max(profile.background_to_core());
         self.response_cv_sum += response_cv;
         self.minimum_response_cv = if self.measured == 1 {
             response_cv
@@ -115,7 +125,8 @@ impl EnsembleSummary {
         } else {
             self.minimum_suture_to_nonsuture
         };
-        self.maximum_suture_to_nonsuture = self.maximum_suture_to_nonsuture.max(suture_to_nonsuture);
+        self.maximum_suture_to_nonsuture =
+            self.maximum_suture_to_nonsuture.max(suture_to_nonsuture);
         self.minimum_strong_to_weak = if self.measured == 1 {
             strong_to_weak
         } else if strong_to_weak > 0.0 {
@@ -239,9 +250,9 @@ fn main() -> Result<(), String> {
                 &inherited.plate_ids,
             )
             .map_err(|error| error.to_string())?;
-            boundaries
-                .boundaries
-                .retain(|edge| edge.geological_regime != GeologicalBoundaryRegime::ContinentalCollision);
+            boundaries.boundaries.retain(|edge| {
+                edge.geological_regime != GeologicalBoundaryRegime::ContinentalCollision
+            });
             boundaries.boundary_hash ^= 0x6b51_2f9c_173d_a804;
             let terrain = generate_initial_topography(
                 &fine,

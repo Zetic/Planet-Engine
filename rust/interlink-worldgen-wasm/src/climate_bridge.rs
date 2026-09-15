@@ -121,7 +121,7 @@ impl WasmWorldgenClimate {
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
         report_generation_progress(progress, "lithosphere", 4, 1, 1);
         report_generation_progress(progress, "inheritance", 5, 0, 1);
-        let inherited = inherit_physical_state(
+        let mut inherited = inherit_physical_state(
             &fine_topology,
             coarse_level,
             &tectonics,
@@ -151,6 +151,7 @@ impl WasmWorldgenClimate {
         )
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
         report_generation_progress(progress, "topography", 7, 1, 1);
+        inherited.release_topography_scratch();
         let climate_request = ClimateRequest::new(seed.as_str());
         let climate_physical = climate_request.physical;
         report_generation_progress(
@@ -257,7 +258,7 @@ impl WasmWorldgenClimate {
         report_generation_progress(progress, "bounded-terrain-evolution", 14, 1, 1);
 
         report_generation_progress(progress, "post-erosion-hydrology", 15, 0, 1);
-        let reconciliation = generate_post_erosion_hydrology(
+        let mut reconciliation = generate_post_erosion_hydrology(
             &fine_topology,
             &terrain,
             &climate,
@@ -272,6 +273,12 @@ impl WasmWorldgenClimate {
         )
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
         report_generation_progress(progress, "post-erosion-hydrology", 15, 1, 1);
+
+        // These pre-erosion states have reached their final consumer. End their heap lifetime
+        // before WG-7D allocates another seasonal solution.
+        drop(seasonal);
+        drop(runoff);
+        reconciliation.compact_for_infill();
 
         report_generation_progress(progress, "lake-sediment-infill", 16, 0, 1);
         let infill = generate_lake_sediment_infill(
@@ -1318,28 +1325,10 @@ impl WasmWorldgenClimate {
             .metrics
             .maximum_seasonal_lake_level_range_m
     }
-    pub fn seasonal_phase_local_runoff_m3_s(&self) -> Vec<f32> {
-        self.infill
-            .reconciled_seasonal
-            .phase_local_runoff_m3_s
-            .clone()
-    }
-    pub fn seasonal_phase_snowmelt_runoff_m3_s(&self) -> Vec<f32> {
-        self.infill
-            .reconciled_seasonal
-            .phase_snowmelt_runoff_m3_s
-            .clone()
-    }
     pub fn seasonal_phase_snow_storage_mm(&self) -> Vec<f32> {
         self.infill
             .reconciled_seasonal
             .phase_snow_storage_mm
-            .clone()
-    }
-    pub fn seasonal_phase_potential_discharge_m3_s(&self) -> Vec<f32> {
-        self.infill
-            .reconciled_seasonal
-            .phase_potential_discharge_m3_s
             .clone()
     }
     pub fn seasonal_phase_realized_discharge_m3_s(&self) -> Vec<f32> {
@@ -1356,18 +1345,6 @@ impl WasmWorldgenClimate {
     }
     pub fn seasonal_flow_regime(&self) -> Vec<u8> {
         self.infill.reconciled_seasonal.flow_regime.clone()
-    }
-    pub fn seasonal_phase_lake_surface_elevation_m(&self) -> Vec<f32> {
-        self.infill
-            .reconciled_seasonal
-            .phase_lake_surface_elevation_m
-            .clone()
-    }
-    pub fn seasonal_phase_lake_area_m2(&self) -> Vec<f64> {
-        self.infill.reconciled_seasonal.phase_lake_area_m2.clone()
-    }
-    pub fn seasonal_phase_lake_volume_m3(&self) -> Vec<f64> {
-        self.infill.reconciled_seasonal.phase_lake_volume_m3.clone()
     }
 
     pub fn erosion_stage_id(&self) -> String {

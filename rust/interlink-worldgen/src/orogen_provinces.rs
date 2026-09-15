@@ -457,8 +457,8 @@ fn source_widths(
     kind: OrogenProvinceKind,
     system_has_endpoints: bool,
 ) -> (f64, f64, f64, f64, f64) {
-    let maturity = 0.42 * clamp01(traits.age_myr / 95.0)
-        + 0.58 * clamp01(traits.convergence_km / 3200.0);
+    let maturity =
+        0.42 * clamp01(traits.age_myr / 95.0) + 0.58 * clamp01(traits.convergence_km / 3200.0);
     let shortening = clamp01(traits.convergence_km / 3000.0);
     let local_control = (0.42
         + traits.weakness * 1.20
@@ -471,8 +471,7 @@ fn source_widths(
     let mut base = base_width_km(kind, maturity, traits.weakness) * local_control;
 
     let taper = if system_has_endpoints {
-        smoothstep(traits.along_fraction / 0.15)
-            * smoothstep((1.0 - traits.along_fraction) / 0.15)
+        smoothstep(traits.along_fraction / 0.15) * smoothstep((1.0 - traits.along_fraction) / 0.15)
     } else {
         1.0
     };
@@ -488,12 +487,14 @@ fn source_widths(
     };
     base = base.clamp(minimum, maximum);
 
-    let asymmetry = ((traits.strength_b - traits.strength_a) * 0.85
-        + (traits.fabric - 0.5) * 0.12)
+    let asymmetry = ((traits.strength_b - traits.strength_a) * 0.85 + (traits.fabric - 0.5) * 0.12)
         .clamp(-0.45, 0.45);
     let mut width_a = (base * (1.0 + asymmetry)).clamp(minimum * 0.70, maximum);
     let mut width_b = (base * (1.0 - asymmetry)).clamp(minimum * 0.70, maximum);
-    if matches!(kind, OrogenProvinceKind::CordilleranArc | OrogenProvinceKind::IslandArc) {
+    if matches!(
+        kind,
+        OrogenProvinceKind::CordilleranArc | OrogenProvinceKind::IslandArc
+    ) {
         if traits.overriding_plate == traits.plate_a {
             width_a = (base * 1.15).clamp(minimum, maximum);
             width_b = (base * 0.28).clamp(55.0, maximum);
@@ -638,7 +639,8 @@ fn nearest_sources<T: PlanetTopology>(
             if plate != source.plate_a && plate != source.plate_b {
                 continue;
             }
-            if distance[index] > 0.0 || (distance[index] == 0.0 && source_index < source_id[index]) {
+            if distance[index] > 0.0 || (distance[index] == 0.0 && source_index < source_id[index])
+            {
                 distance[index] = 0.0;
                 source_id[index] = source_index;
                 frontier.push(DistanceFrontier {
@@ -691,8 +693,21 @@ fn rasterize<T: PlanetTopology>(
     sources: &[BoundarySource],
     parameters: PlanetPhysicalParameters,
 ) -> (
-    Vec<u16>, Vec<u8>, Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>,
-    Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>,
+    Vec<u16>,
+    Vec<u8>,
+    Vec<f32>,
+    Vec<f32>,
+    Vec<f32>,
+    Vec<f32>,
+    Vec<f32>,
+    Vec<f32>,
+    Vec<f32>,
+    Vec<f32>,
+    Vec<f32>,
+    Vec<f32>,
+    Vec<f32>,
+    Vec<f32>,
+    Vec<f32>,
 ) {
     let count = topology.sample_count() as usize;
     let (distance, source_id) = nearest_sources(topology, tectonics, sources, parameters);
@@ -734,9 +749,16 @@ fn rasterize<T: PlanetTopology>(
         let overriding = plate == source.overriding_plate;
         let hinterland = plate == source.hinterland_plate;
         let foreland_side = plate == source.foreland_or_subducting_plate;
-        let subduction = matches!(source.kind, OrogenProvinceKind::CordilleranArc | OrogenProvinceKind::IslandArc);
+        let subduction = matches!(
+            source.kind,
+            OrogenProvinceKind::CordilleranArc | OrogenProvinceKind::IslandArc
+        );
         let side_amplitude = if subduction {
-            if overriding { 1.0 } else { 0.24 }
+            if overriding {
+                1.0
+            } else {
+                0.24
+            }
         } else if hinterland {
             1.0
         } else if foreland_side {
@@ -757,19 +779,32 @@ fn rasterize<T: PlanetTopology>(
                 | OrogenProvinceKind::TranspressionalOrogen
         );
         let root_value = if collision {
-            clamp01(source.core_strength * gaussian(x, 0.16, 0.44) * if hinterland { 1.0 } else { 0.78 })
+            clamp01(
+                source.core_strength
+                    * gaussian(x, 0.16, 0.44)
+                    * if hinterland { 1.0 } else { 0.78 },
+            )
         } else if overriding {
             clamp01(source.core_strength * gaussian(x, 0.34, 0.42) * 0.58)
         } else {
             clamp01(source.core_strength * gaussian(x, 0.05, 0.25) * 0.18)
         };
         let plateau_value = if source.kind == OrogenProvinceKind::CollisionalPlateau {
-            clamp01(source.maturity * source.shortening * gaussian(x, 0.46, 0.52) * if hinterland { 1.0 } else { 0.62 })
+            clamp01(
+                source.maturity
+                    * source.shortening
+                    * gaussian(x, 0.46, 0.52)
+                    * if hinterland { 1.0 } else { 0.62 },
+            )
         } else {
             0.0
         };
         let fold_value = if collision {
-            clamp01(source.core_strength * gaussian(x, 0.88, 0.36) * if foreland_side { 1.0 } else { 0.70 })
+            clamp01(
+                source.core_strength
+                    * gaussian(x, 0.88, 0.36)
+                    * if foreland_side { 1.0 } else { 0.70 },
+            )
         } else if overriding {
             clamp01(source.core_strength * gaussian(x, 0.62, 0.30) * 0.52)
         } else {
@@ -820,8 +855,21 @@ fn rasterize<T: PlanetTopology>(
     }
 
     (
-        province_ids, province_kind, orogenic, root, plateau, fold_thrust, foreland, arc,
-        backarc, suture, transpression, maturity, shortening, local_width, along_fraction,
+        province_ids,
+        province_kind,
+        orogenic,
+        root,
+        plateau,
+        fold_thrust,
+        foreland,
+        arc,
+        backarc,
+        suture,
+        transpression,
+        maturity,
+        shortening,
+        local_width,
+        along_fraction,
     )
 }
 
@@ -900,10 +948,24 @@ fn build_metrics<T: PlanetTopology>(
         transpressional_count: counts[5],
         orogenic_area_fraction: active_area / total_area.max(1.0e-12),
         mean_source_width_km: mean_width,
-        minimum_source_width_km: if min_width.is_finite() { min_width } else { 0.0 },
+        minimum_source_width_km: if min_width.is_finite() {
+            min_width
+        } else {
+            0.0
+        },
         maximum_source_width_km: max_width,
-        maximum_shortening_index: model.shortening_index.iter().copied().map(f64::from).fold(0.0, f64::max),
-        maximum_orogenic_intensity: model.orogenic_intensity.iter().copied().map(f64::from).fold(0.0, f64::max),
+        maximum_shortening_index: model
+            .shortening_index
+            .iter()
+            .copied()
+            .map(f64::from)
+            .fold(0.0, f64::max),
+        maximum_orogenic_intensity: model
+            .orogenic_intensity
+            .iter()
+            .copied()
+            .map(f64::from)
+            .fold(0.0, f64::max),
         province_hash: hash,
     }
 }
@@ -914,42 +976,76 @@ fn validate_model<T: PlanetTopology>(
 ) -> Result<(), WorldgenError> {
     let count = topology.sample_count() as usize;
     let lengths = [
-        model.province_ids.len(), model.province_kind.len(), model.orogenic_intensity.len(),
-        model.crustal_root_index.len(), model.plateau_index.len(), model.fold_thrust_index.len(),
-        model.foreland_basin_index.len(), model.volcanic_arc_index.len(),
-        model.backarc_extension_index.len(), model.suture_index.len(), model.transpression_index.len(),
-        model.maturity_index.len(), model.shortening_index.len(), model.local_width_km.len(),
+        model.province_ids.len(),
+        model.province_kind.len(),
+        model.orogenic_intensity.len(),
+        model.crustal_root_index.len(),
+        model.plateau_index.len(),
+        model.fold_thrust_index.len(),
+        model.foreland_basin_index.len(),
+        model.volcanic_arc_index.len(),
+        model.backarc_extension_index.len(),
+        model.suture_index.len(),
+        model.transpression_index.len(),
+        model.maturity_index.len(),
+        model.shortening_index.len(),
+        model.local_width_km.len(),
         model.source_along_strike_fraction.len(),
     ];
     if lengths.iter().any(|length| *length != count) {
-        return Err(WorldgenError::InvalidLithosphere("orogen province fields do not match topology sample count"));
+        return Err(WorldgenError::InvalidLithosphere(
+            "orogen province fields do not match topology sample count",
+        ));
     }
     let normalized: [&[f32]; 11] = [
-        &model.orogenic_intensity, &model.crustal_root_index, &model.plateau_index,
-        &model.fold_thrust_index, &model.foreland_basin_index, &model.volcanic_arc_index,
-        &model.backarc_extension_index, &model.suture_index, &model.transpression_index,
-        &model.maturity_index, &model.shortening_index,
+        &model.orogenic_intensity,
+        &model.crustal_root_index,
+        &model.plateau_index,
+        &model.fold_thrust_index,
+        &model.foreland_basin_index,
+        &model.volcanic_arc_index,
+        &model.backarc_extension_index,
+        &model.suture_index,
+        &model.transpression_index,
+        &model.maturity_index,
+        &model.shortening_index,
     ];
-    if normalized.iter().flat_map(|field| field.iter()).any(|value| {
-        !value.is_finite() || *value < 0.0 || *value > 1.0
-    }) {
-        return Err(WorldgenError::InvalidLithosphere("orogen province normalized field is outside [0,1]"));
+    if normalized
+        .iter()
+        .flat_map(|field| field.iter())
+        .any(|value| !value.is_finite() || *value < 0.0 || *value > 1.0)
+    {
+        return Err(WorldgenError::InvalidLithosphere(
+            "orogen province normalized field is outside [0,1]",
+        ));
     }
-    if model.local_width_km.iter().any(|value| !value.is_finite() || *value < 0.0 || *value > 2200.001) {
-        return Err(WorldgenError::InvalidLithosphere("orogen province width is outside supported bounds"));
+    if model
+        .local_width_km
+        .iter()
+        .any(|value| !value.is_finite() || *value < 0.0 || *value > 2200.001)
+    {
+        return Err(WorldgenError::InvalidLithosphere(
+            "orogen province width is outside supported bounds",
+        ));
     }
     for sample in 0..count {
         let id = model.province_ids[sample];
         if id > model.provinces.len() as u16 {
-            return Err(WorldgenError::InvalidLithosphere("orogen field references a missing province"));
+            return Err(WorldgenError::InvalidLithosphere(
+                "orogen field references a missing province",
+            ));
         }
         if id == 0 && model.province_kind[sample] != 0 {
-            return Err(WorldgenError::InvalidLithosphere("orogen kind is populated outside a province"));
+            return Err(WorldgenError::InvalidLithosphere(
+                "orogen kind is populated outside a province",
+            ));
         }
     }
     for (index, province) in model.provinces.iter().enumerate() {
         if province.id as usize != index + 1 || province.boundary_indices.is_empty() {
-            return Err(WorldgenError::InvalidLithosphere("orogen province identity or membership is invalid"));
+            return Err(WorldgenError::InvalidLithosphere(
+                "orogen province identity or membership is invalid",
+            ));
         }
     }
     Ok(())
@@ -964,22 +1060,37 @@ pub fn generate_tectonic_orogen_provinces<T: PlanetTopology>(
     request: &OrogenProvinceRequest,
     parameters: PlanetPhysicalParameters,
 ) -> Result<OrogenProvinceModel, WorldgenError> {
-    parameters.validate().map_err(WorldgenError::InvalidParameters)?;
+    parameters
+        .validate()
+        .map_err(WorldgenError::InvalidParameters)?;
     let count = topology.sample_count() as usize;
     if tectonics.plate_ids.len() != count
         || history.boundary_state.len() != tectonics.boundaries.len()
         || geology.crust_kind.len() != count
         || pre.intrinsic_strength_index.len() != count
     {
-        return Err(WorldgenError::InvalidLithosphere("orogen province upstream state does not match topology"));
+        return Err(WorldgenError::InvalidLithosphere(
+            "orogen province upstream state does not match topology",
+        ));
     }
 
     let stage_seed = random::derive_stage_seed(&request.seed, OROGEN_PROVINCE_NAMESPACE);
     let (provinces, sources) = build_provinces_and_sources(tectonics, history, geology, pre);
     let (
-        province_ids, province_kind, orogenic_intensity, crustal_root_index, plateau_index,
-        fold_thrust_index, foreland_basin_index, volcanic_arc_index, backarc_extension_index,
-        suture_index, transpression_index, maturity_index, shortening_index, local_width_km,
+        province_ids,
+        province_kind,
+        orogenic_intensity,
+        crustal_root_index,
+        plateau_index,
+        fold_thrust_index,
+        foreland_basin_index,
+        volcanic_arc_index,
+        backarc_extension_index,
+        suture_index,
+        transpression_index,
+        maturity_index,
+        shortening_index,
+        local_width_km,
         source_along_strike_fraction,
     ) = rasterize(topology, tectonics, &sources, parameters);
 
@@ -1038,7 +1149,9 @@ mod tests {
         PreOrogenicLithosphereRequest, TectonicHistoryRequest, TectonicsRequest,
     };
 
-    fn world(seed: &str) -> (
+    fn world(
+        seed: &str,
+    ) -> (
         crate::GeodesicTopology,
         TectonicModel,
         TectonicHistoryModel,
@@ -1047,11 +1160,24 @@ mod tests {
     ) {
         let topology = build_icosphere(4).unwrap();
         let planet = PlanetPhysicalParameters::earthlike_reference();
-        let tectonics = generate_tectonics(&topology, &TectonicsRequest::new(seed, 16), planet).unwrap();
-        let history = generate_tectonic_history(&topology, &tectonics, &TectonicHistoryRequest::new(seed), planet).unwrap();
-        let geology = generate_crust_and_history(&topology, &tectonics, &GeologyRequest::new(seed), planet).unwrap();
+        let tectonics =
+            generate_tectonics(&topology, &TectonicsRequest::new(seed, 16), planet).unwrap();
+        let history = generate_tectonic_history(
+            &topology,
+            &tectonics,
+            &TectonicHistoryRequest::new(seed),
+            planet,
+        )
+        .unwrap();
+        let geology =
+            generate_crust_and_history(&topology, &tectonics, &GeologyRequest::new(seed), planet)
+                .unwrap();
         let pre = generate_pre_orogenic_lithosphere(
-            &topology, &tectonics, &history, &geology, &PreOrogenicLithosphereRequest::new(seed),
+            &topology,
+            &tectonics,
+            &history,
+            &geology,
+            &PreOrogenicLithosphereRequest::new(seed),
         )
         .unwrap();
         (topology, tectonics, history, geology, pre)
@@ -1063,17 +1189,32 @@ mod tests {
         let (topology, tectonics, history, geology, pre) = world(seed);
         let planet = PlanetPhysicalParameters::earthlike_reference();
         let first = generate_tectonic_orogen_provinces(
-            &topology, &tectonics, &history, &geology, &pre, &OrogenProvinceRequest::new(seed), planet,
+            &topology,
+            &tectonics,
+            &history,
+            &geology,
+            &pre,
+            &OrogenProvinceRequest::new(seed),
+            planet,
         )
         .unwrap();
         let second = generate_tectonic_orogen_provinces(
-            &topology, &tectonics, &history, &geology, &pre, &OrogenProvinceRequest::new(seed), planet,
+            &topology,
+            &tectonics,
+            &history,
+            &geology,
+            &pre,
+            &OrogenProvinceRequest::new(seed),
+            planet,
         )
         .unwrap();
         assert_eq!(first.metrics.province_hash, second.metrics.province_hash);
         assert_eq!(first.province_ids, second.province_ids);
         assert!(!first.provinces.is_empty());
-        assert!(first.orogenic_intensity.iter().all(|value| value.is_finite()));
+        assert!(first
+            .orogenic_intensity
+            .iter()
+            .all(|value| value.is_finite()));
     }
 
     #[test]
@@ -1082,7 +1223,13 @@ mod tests {
         let (topology, tectonics, history, geology, pre) = world(seed);
         let planet = PlanetPhysicalParameters::earthlike_reference();
         let baseline = generate_tectonic_orogen_provinces(
-            &topology, &tectonics, &history, &geology, &pre, &OrogenProvinceRequest::new(seed), planet,
+            &topology,
+            &tectonics,
+            &history,
+            &geology,
+            &pre,
+            &OrogenProvinceRequest::new(seed),
+            planet,
         )
         .unwrap();
         let mut mutated = geology.clone();
@@ -1093,10 +1240,19 @@ mod tests {
         mutated.crust_density_kg_per_m3.fill(3190.0);
         mutated.buoyancy_index.fill(-1.0);
         let changed = generate_tectonic_orogen_provinces(
-            &topology, &tectonics, &history, &mutated, &pre, &OrogenProvinceRequest::new(seed), planet,
+            &topology,
+            &tectonics,
+            &history,
+            &mutated,
+            &pre,
+            &OrogenProvinceRequest::new(seed),
+            planet,
         )
         .unwrap();
-        assert_eq!(baseline.metrics.province_hash, changed.metrics.province_hash);
+        assert_eq!(
+            baseline.metrics.province_hash,
+            changed.metrics.province_hash
+        );
     }
 
     #[test]

@@ -14,13 +14,9 @@ fn main() -> Result<(), String> {
     let fine = build_icosphere(fine_level).map_err(|error| error.to_string())?;
     let tectonics = generate_tectonics(&coarse, &TectonicsRequest::new(seed, 16), planet)
         .map_err(|error| error.to_string())?;
-    let geology = generate_crust_and_history(
-        &coarse,
-        &tectonics,
-        &GeologyRequest::new(seed),
-        planet,
-    )
-    .map_err(|error| error.to_string())?;
+    let geology =
+        generate_crust_and_history(&coarse, &tectonics, &GeologyRequest::new(seed), planet)
+            .map_err(|error| error.to_string())?;
     let lithosphere = generate_lithosphere(
         &coarse,
         &tectonics,
@@ -37,14 +33,9 @@ fn main() -> Result<(), String> {
         planet,
     )
     .map_err(|error| error.to_string())?;
-    let boundaries = inherit_boundary_interfaces(
-        &coarse,
-        &fine,
-        &tectonics,
-        &geology,
-        &inherited.plate_ids,
-    )
-    .map_err(|error| error.to_string())?;
+    let boundaries =
+        inherit_boundary_interfaces(&coarse, &fine, &tectonics, &geology, &inherited.plate_ids)
+            .map_err(|error| error.to_string())?;
     let terrain = generate_initial_topography(
         &fine,
         &inherited,
@@ -91,7 +82,11 @@ fn main() -> Result<(), String> {
     if active_samples == 0 || positive_orogen == 0 || negative_orogen == 0 {
         return Err("tectonic province topography did not exercise zoned relief".to_string());
     }
-    if terrain.solid_elevation_m.iter().any(|value| !value.is_finite()) {
+    if terrain
+        .solid_elevation_m
+        .iter()
+        .any(|value| !value.is_finite())
+    {
         return Err("tectonic province topography produced non-finite relief".to_string());
     }
     Ok(())

@@ -4,7 +4,7 @@ import test from 'node:test';
 import { WORLDGEN_PROTOCOL_VERSION } from '../dist/worldgen/protocol.js';
 
 test('WG-7A cumulative browser contract is protocol v18 and single-request', () => {
-  assert.equal(WORLDGEN_PROTOCOL_VERSION, 18);
+  assert.equal(WORLDGEN_PROTOCOL_VERSION, 19);
   const protocol = fs.readFileSync('src/worldgen/protocol.ts', 'utf8');
   const worker = fs.readFileSync('src/worldgen/worldgenWorker.ts', 'utf8');
   const bridge = fs.readFileSync('rust/interlink-worldgen-wasm/src/climate_bridge.rs', 'utf8');

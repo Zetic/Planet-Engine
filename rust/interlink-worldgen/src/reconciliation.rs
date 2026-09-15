@@ -157,6 +157,16 @@ fn hash_u8_slice(mut hash: u64, values: &[u8]) -> u64 {
     fnv_update(hash, values)
 }
 
+impl PostErosionHydrologyState {
+    /// Reduce WG-7C to the ancestry actually consumed by WG-7D.
+    /// The seasonal metrics/hash remain authoritative; full phase rasters are recomputed for
+    /// the post-infill surface and retaining both copies creates an avoidable L8 memory spike.
+    pub fn compact_for_infill(&mut self) {
+        self.reconciled_seasonal.phase_snow_storage_mm = Vec::new();
+        self.reconciled_seasonal.phase_realized_discharge_m3_s = Vec::new();
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn generate_post_erosion_hydrology(
     topology: &GeodesicTopology,

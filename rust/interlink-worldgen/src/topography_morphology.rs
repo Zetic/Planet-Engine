@@ -5,14 +5,8 @@ use crate::{
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 
-pub const TOPOGRAPHY_MORPHOLOGY_DISTANCE_BAND_EDGES_M: [f64; 6] = [
-    0.0,
-    100_000.0,
-    250_000.0,
-    500_000.0,
-    750_000.0,
-    1_000_000.0,
-];
+pub const TOPOGRAPHY_MORPHOLOGY_DISTANCE_BAND_EDGES_M: [f64; 6] =
+    [0.0, 100_000.0, 250_000.0, 500_000.0, 750_000.0, 1_000_000.0];
 pub const TOPOGRAPHY_MORPHOLOGY_OCEAN_AGE_BAND_EDGES_MYR: [f64; 7] =
     [0.0, 20.0, 50.0, 100.0, 150.0, 250.0, 500.0];
 pub const TOPOGRAPHY_MORPHOLOGY_QUIET_OCEAN_MIN_BOUNDARY_DISTANCE_M: f64 = 750_000.0;
@@ -147,9 +141,11 @@ fn validate_inputs(
             "WG-4 morphology fields are not aligned to the fine topology",
         ));
     }
-    if boundaries.boundaries.iter().any(|edge| {
-        edge.sample_a as usize >= count || edge.sample_b as usize >= count
-    }) {
+    if boundaries
+        .boundaries
+        .iter()
+        .any(|edge| edge.sample_a as usize >= count || edge.sample_b as usize >= count)
+    {
         return Err(WorldgenError::InvalidTopography(
             "WG-4 morphology boundary sample is outside the fine topology",
         ));
@@ -313,16 +309,15 @@ fn relief_profile(
         }
     }
     let peak_distance_m = if peak_mean_absolute_component_relief_m > 0.0 {
-        0.5 * (bands[peak_band_index].minimum_distance_m + bands[peak_band_index].maximum_distance_m)
+        0.5 * (bands[peak_band_index].minimum_distance_m
+            + bands[peak_band_index].maximum_distance_m)
     } else {
         0.0
     };
     let half_peak = peak_mean_absolute_component_relief_m * 0.5;
     let effective_half_peak_width_m = bands
         .iter()
-        .filter(|band| {
-            half_peak > 0.0 && band.mean_absolute_component_relief_m >= half_peak
-        })
+        .filter(|band| half_peak > 0.0 && band.mean_absolute_component_relief_m >= half_peak)
         .map(|band| band.maximum_distance_m)
         .fold(0.0_f64, f64::max);
 
@@ -413,12 +408,8 @@ fn quiet_ocean_morphology(
     planet: PlanetPhysicalParameters,
     terrain: &TopographyState,
 ) -> QuietOceanMorphology {
-    let (boundary_distance, _, _) = boundary_distances(
-        topology,
-        boundaries,
-        planet.radius_m,
-        |_| true,
-    );
+    let (boundary_distance, _, _) =
+        boundary_distances(topology, boundaries, planet.radius_m, |_| true);
     let count = topology.metrics().sample_count as usize;
     let mut eligible = vec![false; count];
     let mut oceanic_submerged_area_m2 = 0.0_f64;
@@ -429,7 +420,8 @@ fn quiet_ocean_morphology(
         if inherited.crust_kind[index] == CRUST_OCEANIC && terrain.submerged_mask[index] != 0 {
             let area = topology.dual_area_steradians()[index] * planet.radius_m * planet.radius_m;
             oceanic_submerged_area_m2 += area;
-            if boundary_distance[index] >= TOPOGRAPHY_MORPHOLOGY_QUIET_OCEAN_MIN_BOUNDARY_DISTANCE_M {
+            if boundary_distance[index] >= TOPOGRAPHY_MORPHOLOGY_QUIET_OCEAN_MIN_BOUNDARY_DISTANCE_M
+            {
                 eligible[index] = true;
                 quiet_area_m2 += area;
                 sample_count += 1;
@@ -552,42 +544,30 @@ pub fn analyze_topography_morphology(
 ) -> Result<TopographyMorphologyReport, WorldgenError> {
     validate_inputs(topology, inherited, boundaries, planet, terrain)?;
 
-    let (ridge_distance, ridge_edges, ridge_samples) = boundary_distances(
-        topology,
-        boundaries,
-        planet.radius_m,
-        |regime| regime == GeologicalBoundaryRegime::OceanicRidge,
-    );
-    let (rift_distance, rift_edges, rift_samples) = boundary_distances(
-        topology,
-        boundaries,
-        planet.radius_m,
-        |regime| regime == GeologicalBoundaryRegime::ContinentalRift,
-    );
-    let (transition_distance, transition_edges, transition_samples) = boundary_distances(
-        topology,
-        boundaries,
-        planet.radius_m,
-        |regime| regime == GeologicalBoundaryRegime::TransitionalDivergence,
-    );
-    let (subduction_distance, subduction_edges, subduction_samples) = boundary_distances(
-        topology,
-        boundaries,
-        planet.radius_m,
-        |regime| {
+    let (ridge_distance, ridge_edges, ridge_samples) =
+        boundary_distances(topology, boundaries, planet.radius_m, |regime| {
+            regime == GeologicalBoundaryRegime::OceanicRidge
+        });
+    let (rift_distance, rift_edges, rift_samples) =
+        boundary_distances(topology, boundaries, planet.radius_m, |regime| {
+            regime == GeologicalBoundaryRegime::ContinentalRift
+        });
+    let (transition_distance, transition_edges, transition_samples) =
+        boundary_distances(topology, boundaries, planet.radius_m, |regime| {
+            regime == GeologicalBoundaryRegime::TransitionalDivergence
+        });
+    let (subduction_distance, subduction_edges, subduction_samples) =
+        boundary_distances(topology, boundaries, planet.radius_m, |regime| {
             matches!(
                 regime,
                 GeologicalBoundaryRegime::OceanicSubduction
                     | GeologicalBoundaryRegime::OceanContinentSubduction
             )
-        },
-    );
-    let (collision_distance, collision_edges, collision_samples) = boundary_distances(
-        topology,
-        boundaries,
-        planet.radius_m,
-        |regime| regime == GeologicalBoundaryRegime::ContinentalCollision,
-    );
+        });
+    let (collision_distance, collision_edges, collision_samples) =
+        boundary_distances(topology, boundaries, planet.radius_m, |regime| {
+            regime == GeologicalBoundaryRegime::ContinentalCollision
+        });
 
     Ok(TopographyMorphologyReport {
         topology_level: topology.level(),
@@ -675,14 +655,11 @@ mod tests {
         let planet = PlanetPhysicalParameters::earthlike_reference();
         let coarse = build_icosphere(3).unwrap();
         let fine = build_icosphere(4).unwrap();
-        let tectonics = generate_tectonics(&coarse, &TectonicsRequest::new(seed, 8), planet).unwrap();
-        let geology = generate_crust_and_history(
-            &coarse,
-            &tectonics,
-            &GeologyRequest::new(seed),
-            planet,
-        )
-        .unwrap();
+        let tectonics =
+            generate_tectonics(&coarse, &TectonicsRequest::new(seed, 8), planet).unwrap();
+        let geology =
+            generate_crust_and_history(&coarse, &tectonics, &GeologyRequest::new(seed), planet)
+                .unwrap();
         let lithosphere = generate_lithosphere(
             &coarse,
             &tectonics,
@@ -692,14 +669,9 @@ mod tests {
         .unwrap();
         let inherited =
             inherit_physical_state(&fine, 3, &tectonics, &geology, &lithosphere, planet).unwrap();
-        let boundaries = inherit_boundary_interfaces(
-            &coarse,
-            &fine,
-            &tectonics,
-            &geology,
-            &inherited.plate_ids,
-        )
-        .unwrap();
+        let boundaries =
+            inherit_boundary_interfaces(&coarse, &fine, &tectonics, &geology, &inherited.plate_ids)
+                .unwrap();
         let terrain = generate_initial_topography(
             &fine,
             &inherited,
@@ -710,10 +682,11 @@ mod tests {
         .unwrap();
         let original = terrain.clone();
 
-        let first =
-            analyze_topography_morphology(&fine, &inherited, &boundaries, planet, &terrain).unwrap();
+        let first = analyze_topography_morphology(&fine, &inherited, &boundaries, planet, &terrain)
+            .unwrap();
         let second =
-            analyze_topography_morphology(&fine, &inherited, &boundaries, planet, &terrain).unwrap();
+            analyze_topography_morphology(&fine, &inherited, &boundaries, planet, &terrain)
+                .unwrap();
 
         assert_eq!(first, second);
         assert_eq!(terrain, original);
@@ -747,7 +720,10 @@ mod tests {
                     && band.submerged_area_fraction.is_finite()
             }));
         }
-        assert!(first.quiet_ocean.oceanic_submerged_area_fraction.is_finite());
+        assert!(first
+            .quiet_ocean
+            .oceanic_submerged_area_fraction
+            .is_finite());
         assert!(first.quiet_ocean.mean_gradient_m_per_km.is_finite());
         assert!(first.quiet_ocean.mean_gradient_turn_degrees.is_finite());
         assert!(first.quiet_ocean.rms_gradient_turn_degrees.is_finite());

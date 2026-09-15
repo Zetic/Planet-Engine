@@ -7,8 +7,8 @@ use crate::{
 };
 
 pub const SEASONAL_HYDROLOGY_STAGE_ID: &str = "hydrology:seasonal-hydrology";
-pub const SEASONAL_HYDROLOGY_STAGE_VERSION: u32 = 1;
-const SEASONAL_HYDROLOGY_NAMESPACE: &str = "hydrology:seasonal-hydrology:v1";
+pub const SEASONAL_HYDROLOGY_STAGE_VERSION: u32 = 2;
+const SEASONAL_HYDROLOGY_NAMESPACE: &str = "hydrology:seasonal-hydrology:v2";
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 const SECONDS_PER_DAY: f64 = 86_400.0;
@@ -156,26 +156,14 @@ impl SeasonalHydrologyMetrics {
 pub struct SeasonalHydrologyState {
     pub stage: StageIdentity,
     pub metrics: SeasonalHydrologyMetrics,
-    /// Phase-major local runoff rate: `phase * sample_count + sample`.
-    pub phase_local_runoff_m3_s: Vec<f32>,
-    /// Phase-major runoff whose timing is attributable to snowmelt.
-    pub phase_snowmelt_runoff_m3_s: Vec<f32>,
     /// Snow storage after each phase, in water-equivalent millimetres.
     pub phase_snow_storage_mm: Vec<f32>,
-    /// Phase-major potential discharge routed over the accepted WG-6A DAG.
-    pub phase_potential_discharge_m3_s: Vec<f32>,
     /// Phase-major realized discharge after dynamic WG-6C lake control volumes.
     pub phase_realized_discharge_m3_s: Vec<f32>,
     /// Fraction of orbital phases with numerically present realized flow.
     pub flow_presence_fraction: Vec<f32>,
     /// 0 = no realized flow, 1 = intermittent, 2 = perennial.
     pub flow_regime: Vec<u8>,
-    /// Phase-major lake surface elevation indexed by WG-6C lake-record order.
-    pub phase_lake_surface_elevation_m: Vec<f32>,
-    /// Phase-major lake area indexed by WG-6C lake-record order.
-    pub phase_lake_area_m2: Vec<f64>,
-    /// Phase-major lake volume indexed by WG-6C lake-record order.
-    pub phase_lake_volume_m3: Vec<f64>,
 }
 
 fn fnv_update(mut hash: u64, bytes: &[u8]) -> u64 {
@@ -687,16 +675,10 @@ pub(crate) fn generate_seasonal_hydrology_from_surface(
             derived_seed: stage_seed,
         },
         metrics,
-        phase_local_runoff_m3_s,
-        phase_snowmelt_runoff_m3_s,
         phase_snow_storage_mm,
-        phase_potential_discharge_m3_s,
         phase_realized_discharge_m3_s: lake_routing.phase_realized_discharge_m3_s,
         flow_presence_fraction: flow_classification.presence_fraction,
         flow_regime: flow_classification.regime,
-        phase_lake_surface_elevation_m: lake_routing.phase_lake_surface_elevation_m,
-        phase_lake_area_m2: lake_routing.phase_lake_area_m2,
-        phase_lake_volume_m3: lake_routing.phase_lake_volume_m3,
     })
 }
 

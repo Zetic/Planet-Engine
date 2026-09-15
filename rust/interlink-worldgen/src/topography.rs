@@ -1,9 +1,9 @@
+use crate::surface_water::solve_hydrostatic_surface_water_f64;
 use crate::{
     derive_stage_seed, GeodesicTopology, GeologicalBoundaryRegime, InheritedBoundarySet,
     InheritedPhysicalState, PlanetPhysicalParameters, StageIdentity, SubductionPolarity,
     WorldgenError,
 };
-use crate::surface_water::solve_hydrostatic_surface_water_f64;
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 
@@ -275,11 +275,11 @@ fn inherited_orogen_relief_response(inherited: &InheritedPhysicalState, index: u
         return 0.0;
     }
 
-    let te = ((f64::from(inherited.effective_elastic_thickness_km[index]) - 4.0) / 82.0)
-        .clamp(0.0, 1.0);
+    let te =
+        ((f64::from(inherited.effective_elastic_thickness_km[index]) - 4.0) / 82.0).clamp(0.0, 1.0);
     let weakness = f64::from(inherited.weakness_index[index]).clamp(0.0, 1.0);
-    let thickness = ((f64::from(inherited.crust_thickness_km[index]) - 28.0) / 28.0)
-        .clamp(0.0, 1.0);
+    let thickness =
+        ((f64::from(inherited.crust_thickness_km[index]) - 28.0) / 28.0).clamp(0.0, 1.0);
     let fabric = f64::from(inherited.structural_fabric_strength[index]).clamp(0.0, 1.0);
     let suture = if inherited.structural_zone_kind[index] == STRUCTURE_SUTURE {
         1.0
@@ -287,8 +287,7 @@ fn inherited_orogen_relief_response(inherited: &InheritedPhysicalState, index: u
         0.0
     };
 
-    let exponent = (1.30 + 0.22 * weakness - 0.16 * te - 0.08 * thickness
-        + 0.08 * suture * fabric)
+    let exponent = (1.30 + 0.22 * weakness - 0.16 * te - 0.08 * thickness + 0.08 * suture * fabric)
         .clamp(1.10, 1.55);
     let support = (0.94
         + 0.08 * te
@@ -420,14 +419,7 @@ fn boundary_source_fields(
     count: usize,
     inherited: &InheritedPhysicalState,
     boundaries: &InheritedBoundarySet,
-) -> (
-    Vec<f64>,
-    Vec<f64>,
-    Vec<f64>,
-    Vec<f64>,
-    Vec<f64>,
-    Vec<f64>,
-) {
+) -> (Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>) {
     let mut collision = vec![0.0_f64; count];
     let mut oceanic_ridge = vec![0.0_f64; count];
     let mut transitional_ridge = vec![0.0_f64; count];
@@ -1004,12 +996,8 @@ mod tests {
         let topography = generated("interlink-wg7c", None);
         let fine = build_icosphere(4).unwrap();
         let planet = PlanetPhysicalParameters::earthlike_reference();
-        let extracted = solve_hydrostatic_surface_water(
-            &fine,
-            &topography.solid_elevation_m,
-            planet,
-        )
-        .unwrap();
+        let extracted =
+            solve_hydrostatic_surface_water(&fine, &topography.solid_elevation_m, planet).unwrap();
 
         assert_eq!(extracted.submerged_mask, topography.submerged_mask);
         assert_eq!(
@@ -1018,7 +1006,8 @@ mod tests {
         );
         assert!(extracted.metrics.water_volume_relative_error < 1.0e-10);
         assert!(
-            (extracted.metrics.sea_level_m.unwrap() - topography.metrics.sea_level_m.unwrap()).abs()
+            (extracted.metrics.sea_level_m.unwrap() - topography.metrics.sea_level_m.unwrap())
+                .abs()
                 < 1.0e-3
         );
         let maximum_depth_delta = extracted
