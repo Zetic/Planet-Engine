@@ -27,17 +27,10 @@ jobs:
           from pathlib import Path
           path = Path('rust/interlink-worldgen-cli/examples/geology_orogen_geometry_acceptance.rs')
           text = path.read_text()
-          old = '''    if minimum_core < 0.80 {
-              return Err(format!(
-                  "orogen core continuity fell too low: {minimum_core:.4}"
-              ));
-          }
-          if !minimum_width_cv.is_finite() || mean_cv <= 0.0 {
-              return Err("orogen width diagnostics did not produce finite variation".to_string());
-          }
-          Ok(())
-          }'''
-          new = '''    if minimum_core < 0.95 {
+          start = text.index('    if minimum_core < 0.80 {')
+          end_marker = '    Ok(())\n}'
+          end = text.index(end_marker, start) + len(end_marker)
+          replacement = '''    if minimum_core < 0.95 {
               return Err(format!(
                   "orogen core continuity fell too low: {minimum_core:.4}"
               ));
@@ -66,8 +59,7 @@ jobs:
           }
           Ok(())
           }'''
-          assert old in text, 'geometry acceptance anchor missing'
-          path.write_text(text.replace(old, new, 1))
+          path.write_text(text[:start] + replacement + text[end:])
           PY
       - name: Install pinned Rust and browser target
         run: |
