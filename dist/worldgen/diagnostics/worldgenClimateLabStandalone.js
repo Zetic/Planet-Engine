@@ -1,8 +1,9 @@
 import { createWorldgenClient } from '../worldgenClient.js';
+import { createWorldgenCrashRecorder, installWorldgenGlobalFailureCapture } from '../worldgenCrashReport.js';
 import { worldCalibrationJson, worldCalibrationMarkdown } from '../calibrationPacket.js';
 import { mapVectorDelta, reconstructAnnualHarmonicFromBasis } from './worldgenClimateMath.js';
 import { L8GlobeRenderer, buildRgbaColors, cameraForWorldDirectionAtScreen, pickNearestSample, screenToWorldDirection } from './worldgenL8GlobeRenderer.js';
-import { WORLDGEN_BOUNDARY_CONVERGENT, WORLDGEN_BOUNDARY_DIVERGENT, WORLDGEN_BOUNDARY_TRANSFORM, WORLDGEN_CRUST_CONTINENTAL, WORLDGEN_CRUST_OCEANIC, WORLDGEN_CRUST_TRANSITIONAL, WORLDGEN_GEOLOGY_CONTINENTAL_COLLISION, WORLDGEN_GEOLOGY_CONTINENTAL_RIFT, WORLDGEN_GEOLOGY_OCEANIC_RIDGE, WORLDGEN_GEOLOGY_OCEANIC_SUBDUCTION, WORLDGEN_GEOLOGY_OCEAN_CONTINENT_SUBDUCTION, WORLDGEN_GEOLOGY_TRANSFORM, WORLDGEN_GEOLOGY_TRANSITIONAL_DIVERGENCE, WORLDGEN_STRUCTURE_CONTINENTAL_MARGIN, WORLDGEN_STRUCTURE_NONE, WORLDGEN_STRUCTURE_RIFT, WORLDGEN_STRUCTURE_SUTURE, WORLDGEN_STRUCTURE_TRANSFORM, WORLDGEN_INVALID_SAMPLE_ID, } from '../protocol.js';
+import { WORLDGEN_BOUNDARY_CONVERGENT, WORLDGEN_BOUNDARY_DIVERGENT, WORLDGEN_BOUNDARY_TRANSFORM, WORLDGEN_CRUST_CONTINENTAL, WORLDGEN_CRUST_OCEANIC, WORLDGEN_CRUST_TRANSITIONAL, WORLDGEN_GEOLOGY_CONTINENTAL_COLLISION, WORLDGEN_GEOLOGY_CONTINENTAL_RIFT, WORLDGEN_GEOLOGY_OCEANIC_RIDGE, WORLDGEN_GEOLOGY_OCEANIC_SUBDUCTION, WORLDGEN_GEOLOGY_OCEAN_CONTINENT_SUBDUCTION, WORLDGEN_GEOLOGY_TRANSFORM, WORLDGEN_GEOLOGY_TRANSITIONAL_DIVERGENCE, WORLDGEN_STRUCTURE_CONTINENTAL_MARGIN, WORLDGEN_STRUCTURE_NONE, WORLDGEN_STRUCTURE_RIFT, WORLDGEN_STRUCTURE_SUTURE, WORLDGEN_STRUCTURE_TRANSFORM, WORLDGEN_INVALID_SAMPLE_ID, WORLDGEN_PROTOCOL_VERSION, } from '../protocol.js';
 const PALETTE_STEPS = 256;
 const TWO_PI = Math.PI * 2;
 function element(id) {
@@ -1296,6 +1297,10 @@ const overlayInputs = Array.from(document.querySelectorAll('input[data-worldgen-
 const generate = element('worldgen-generate');
 const copyCalibration = element('worldgen-copy-calibration');
 const downloadCalibration = element('worldgen-download-calibration');
+const copyCrashReport = element('worldgen-copy-crash-report');
+const downloadCrashReport = element('worldgen-download-crash-report');
+const receiveOnlyDebug = element('worldgen-debug-receive-only');
+const debugSummary = element('worldgen-debug-summary');
 const status = element('worldgen-status');
 const generationProgress = element('worldgen-generation-progress');
 const generationStage = element('worldgen-generation-stage');
@@ -1306,7 +1311,12 @@ const metrics = element('worldgen-metrics');
 const surfaceCanvas = element('worldgen-surface');
 const canvas = element('worldgen-field');
 const globeRenderer = new L8GlobeRenderer(surfaceCanvas);
-const client = createWorldgenClient();
+const crashRecorder = createWorldgenCrashRecorder(WORLDGEN_PROTOCOL_VERSION);
+const removeGlobalFailureCapture = installWorldgenGlobalFailureCapture(crashRecorder);
+const client = createWorldgenClient({ onDiagnostic: diagnostic => {
+        crashRecorder.record('client', diagnostic.event, { requestId: diagnostic.requestId, commandType: diagnostic.commandType, ...diagnostic.details });
+        refreshCrashDebugSummary();
+    } });
 let current = null;
 let currentCalibrationRequest = null;
 let buffers = null;
@@ -1340,9 +1350,22 @@ const GENERATION_STAGE_LABELS = {
     'post-erosion-hydrology': 'Post-erosion hydrology reconciliation',
     'lake-sediment-infill': 'Lake sediment infill / final hydrology',
     packaging: 'Packaging / transfer',
+    'transport-ready': 'Worker result ready for transfer',
 };
 let generationStartedAt = 0;
 let generationTimerHandle = null;
+function refreshCrashDebugSummary() {
+    const snapshot = crashRecorder.snapshot();
+    copyCrashReport.disabled = !crashRecorder.hasAttempt();
+    downloadCrashReport.disabled = !crashRecorder.hasAttempt();
+    if (!crashRecorder.hasAttempt()) {
+        debugSummary.textContent = 'No generation attempt recorded yet.';
+        return;
+    }
+    const transport = snapshot.transport ? ` · packet ${snapshot.transport.totalMiB.toFixed(1)} MiB / ${snapshot.transport.arrayCount} arrays` : '';
+    const failure = snapshot.failure ? ` · ${snapshot.failure.name}: ${snapshot.failure.message}` : '';
+    debugSummary.textContent = `${snapshot.status} · last ${snapshot.lastCheckpoint ?? 'none'} · ${snapshot.events.length} events${transport}${failure}`;
+}
 function selectedOverlays() {
     return new Set(overlayInputs.filter(input => input.checked).map(input => input.value));
 }
@@ -1393,6 +1416,8 @@ function startGenerationTelemetry() {
     generationTimerHandle = setInterval(updateTimer, 100);
 }
 function handleGenerationProgress(progress) {
+    crashRecorder.recordProgress(progress);
+    refreshCrashDebugSummary();
     const stageFraction = progress.total > 0 ? Math.max(0, Math.min(1, progress.completed / progress.total)) : 0;
     generationProgress.value = Math.max(0, Math.min(100, (progress.stageIndex + stageFraction) / Math.max(1, progress.stageCount) * 100));
     generationStage.textContent = GENERATION_STAGE_LABELS[progress.stageId] ?? progress.stageId;
@@ -1598,6 +1623,32 @@ function calibrationFileStem(value) {
     const normalized = value.trim().replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
     return normalized || 'planet';
 }
+async function copyCrashReportToClipboard() {
+    if (!crashRecorder.hasAttempt())
+        return;
+    try {
+        await navigator.clipboard.writeText(crashRecorder.toMarkdown());
+        status.textContent = 'Copied the full worldgen crash/debug report to the clipboard.';
+    }
+    catch (error) {
+        status.textContent = `Could not copy crash report: ${error instanceof Error ? error.message : String(error)}`;
+    }
+}
+function downloadCrashReportJson() {
+    if (!crashRecorder.hasAttempt())
+        return;
+    const snapshot = crashRecorder.snapshot();
+    const blob = new Blob([crashRecorder.toJson()], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `planet-crash-report-${calibrationFileStem(snapshot.request?.seed ?? 'worldgen')}-${snapshot.runId.slice(0, 8)}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    status.textContent = 'Downloaded structured worldgen crash/debug report.';
+}
 async function copyCalibrationReport() {
     if (!current || !currentCalibrationRequest)
         return;
@@ -1624,14 +1675,23 @@ function downloadCalibrationReport() {
     status.textContent = 'Downloaded structured calibration packet.';
 }
 async function generatePlanet() {
+    const request = { seed: seed.value, coarseLevel: Number(coarseLevel.value), fineLevel: Number(fineLevel.value), plateCount: Number(plates.value) };
+    crashRecorder.startRun(request, receiveOnlyDebug.checked);
+    refreshCrashDebugSummary();
     generate.disabled = true;
     copyCalibration.disabled = true;
     downloadCalibration.disabled = true;
     startGenerationTelemetry();
-    status.textContent = 'Generating one physical planet through WG-7D lake sediment infill in Rust/WASM…';
+    status.textContent = receiveOnlyDebug.checked
+        ? 'Diagnostic receive-only run: generating through WG-7D and stopping immediately after transport / validation…'
+        : 'Generating one physical planet through WG-7D lake sediment infill in Rust/WASM…';
     try {
-        const request = { seed: seed.value, coarseLevel: Number(coarseLevel.value), fineLevel: Number(fineLevel.value), plateCount: Number(plates.value) };
+        crashRecorder.record('lab', 'generate-climate-await-begin', { receiveOnly: receiveOnlyDebug.checked });
         const loaded = await client.generateClimate(request, handleGenerationProgress);
+        crashRecorder.record('lab', 'generate-climate-promise-resolved', { fineSampleCount: loaded.metrics.fineSampleCount });
+        crashRecorder.recordResult(loaded);
+        crashRecorder.record('lab', 'identity-validation-begin');
+        refreshCrashDebugSummary();
         if (loaded.runoffMetrics.climateHash !== loaded.metrics.climateHash)
             throw new Error('WG-6B climate identity does not match accepted WG-5 forcing.');
         if (loaded.runoffMetrics.drainageHash !== loaded.drainageMetrics.drainageHash)
@@ -1698,11 +1758,27 @@ async function generatePlanet() {
             throw new Error('WG-7D final lake identity mismatch.');
         if (loaded.infillMetrics.postInfillSeasonalHash !== loaded.seasonalMetrics.seasonalHydrologyHash)
             throw new Error('WG-7D final seasonal identity mismatch.');
+        crashRecorder.record('lab', 'identity-validation-complete');
+        refreshCrashDebugSummary();
+        if (receiveOnlyDebug.checked) {
+            crashRecorder.record('lab', 'receive-only-viewer-skipped', { transportMiB: crashRecorder.snapshot().transport?.totalMiB });
+            finishGenerationTelemetry(loaded);
+            generationStage.textContent = 'Receive-only complete';
+            generationStep.textContent = 'Transport + identity validation succeeded; viewer allocation/render intentionally skipped';
+            generationTimer.textContent = formatDuration(performance.now() - generationStartedAt);
+            status.textContent = `Receive-only diagnostic succeeded: ${loaded.metrics.fineSampleCount.toLocaleString()} samples crossed the worker boundary. Viewer setup was skipped.`;
+            crashRecorder.complete('receive-only-complete');
+            refreshCrashDebugSummary();
+            return;
+        }
+        crashRecorder.record('lab', 'viewer-state-install-begin');
         current = loaded;
         currentCalibrationRequest = { seed: request.seed, plateCount: request.plateCount };
         copyCalibration.disabled = false;
         downloadCalibration.disabled = false;
+        crashRecorder.record('lab', 'viewer-projection-buffer-allocation-begin', { fineSampleCount: loaded.metrics.fineSampleCount });
         buffers = { x: new Float32Array(loaded.metrics.fineSampleCount), y: new Float32Array(loaded.metrics.fineSampleCount), visible: new Uint8Array(loaded.metrics.fineSampleCount) };
+        crashRecorder.record('lab', 'viewer-projection-buffer-allocation-complete', { bytes: buffers.x.byteLength + buffers.y.byteLength + buffers.visible.byteLength });
         styleCache = { result: null, key: '', sampleBuckets: [], boundaryBuckets: [] };
         edgeOverlayCache = { result: null, coastline: new Uint32Array(0), contours: [], evolvedContours: [], basinDivides: new Uint32Array(0), riverBuckets: [] };
         gpuColorCache = { result: null, key: '', colors: new Uint8Array(0), alpha: 0.94 };
@@ -1710,22 +1786,34 @@ async function generatePlanet() {
         projectedKey = '';
         selectedTile = null;
         inspectTile(null);
+        crashRecorder.record('lab', 'viewer-cache-reset-complete');
+        crashRecorder.record('lab', 'viewer-metrics-render-begin');
         showMetrics(loaded);
+        crashRecorder.record('lab', 'viewer-metrics-render-complete');
+        crashRecorder.record('lab', 'viewer-first-render-begin');
         redraw(false);
+        crashRecorder.record('lab', 'viewer-first-render-complete');
         updateAnimation();
+        crashRecorder.record('lab', 'viewer-animation-armed');
         finishGenerationTelemetry(loaded);
+        crashRecorder.record('lab', 'viewer-state-install-complete');
         generationStep.textContent = `${loaded.metrics.spinupYears} climate spin-up years · ${loaded.drainageMetrics.basinCount.toLocaleString()} basins · ${loaded.lakeMetrics.lakeCount.toLocaleString()} equilibrium lakes · ${loaded.evolutionMetrics.receiverChangedSampleCount.toLocaleString()} receivers changed after evolution · ${loaded.infillMetrics.filledDepressionCount.toLocaleString()} lake basins infilled`;
         generationTimer.textContent = formatDuration(performance.now() - generationStartedAt);
         status.textContent = `Planet ready through WG-7D: ${loaded.metrics.fineSampleCount.toLocaleString()} samples, ${loaded.evolutionMetrics.erodedSampleCount.toLocaleString()} evolved erosion cells, ${loaded.evolutionMetrics.receiverChangedSampleCount.toLocaleString()} drainage receivers changed, mean land |Δz| ${loaded.evolutionMetrics.meanLandAbsoluteTerrainChangeM.toFixed(3)} m, sediment closure ${loaded.evolutionMetrics.sedimentConservationRelativeError.toExponential(2)}.`;
+        crashRecorder.complete('completed');
+        refreshCrashDebugSummary();
     }
     catch (error) {
         if (generationTimerHandle) {
             clearInterval(generationTimerHandle);
             generationTimerHandle = null;
         }
+        crashRecorder.recordError(error, 'generate-planet');
+        const snapshot = crashRecorder.snapshot();
         generationStage.textContent = 'Generation failed';
-        generationStep.textContent = '';
+        generationStep.textContent = `Last checkpoint: ${snapshot.lastCheckpoint ?? 'unknown'}`;
         status.textContent = error instanceof Error ? error.message : String(error);
+        refreshCrashDebugSummary();
     }
     finally {
         generate.disabled = false;
@@ -1734,6 +1822,8 @@ async function generatePlanet() {
 generate.addEventListener('click', () => void generatePlanet());
 copyCalibration.addEventListener('click', () => void copyCalibrationReport());
 downloadCalibration.addEventListener('click', downloadCalibrationReport);
+copyCrashReport.addEventListener('click', () => void copyCrashReportToClipboard());
+downloadCrashReport.addEventListener('click', downloadCrashReportJson);
 projection.addEventListener('change', () => { updateCameraControls(); redraw(false); });
 preset.addEventListener('change', () => applyViewPreset(preset.value));
 visualization.addEventListener('change', () => { preset.value = 'custom'; styleCache = { result: null, key: '', sampleBuckets: [], boundaryBuckets: [] }; gpuColorCache = { result: null, key: '', colors: new Uint8Array(0), alpha: 0.94 }; redraw(false); updateAnimation(); });
@@ -1796,6 +1886,8 @@ window.addEventListener('beforeunload', () => {
         cancelAnimationFrame(animationRequest);
     if (cameraSettleHandle)
         clearTimeout(cameraSettleHandle);
+    crashRecorder.record('browser', 'beforeunload');
+    removeGlobalFailureCapture();
     globeRenderer.dispose();
     client.dispose();
 });
@@ -1803,6 +1895,7 @@ updateSeasonLabel();
 updateZoomLabel();
 updateCameraControls();
 updateOverlaySummary();
+refreshCrashDebugSummary();
 applyViewPreset(preset.value);
 generationStage.textContent = 'Ready for canonical L8 generation';
 generationStep.textContent = 'L5 coarse physical state → L8 final physical planet';

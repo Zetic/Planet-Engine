@@ -33,6 +33,7 @@ export interface WorldgenFieldStatistics { sampleCount: number; minimum: number;
 export interface WorldgenStageMetadata { id: string; version: number; stageSeed: string; durationMs: number; }
 export interface WorldgenUnseededStageMetadata { id: string; version: number; durationMs: number; }
 export interface WorldgenGenerationTiming { stageId: string; durationMs: number; }
+export interface WorldgenGenerationDiagnostics { transferBufferCount?: number; transferBytes?: number; note?: string; }
 export interface WorldgenGenerationProgress {
   stageId: string;
   stageIndex: number;
@@ -41,6 +42,7 @@ export interface WorldgenGenerationProgress {
   total: number;
   elapsedMs: number;
   stageElapsedMs: number;
+  diagnostics?: WorldgenGenerationDiagnostics;
 }
 export interface WorldgenSyntheticResult { engineVersion: number; width: number; height: number; values: Uint16Array; statistics: WorldgenFieldStatistics; stage: WorldgenStageMetadata; }
 
