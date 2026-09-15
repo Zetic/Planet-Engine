@@ -6,11 +6,12 @@ use crate::{
     TectonicHistoryModel, TectonicHistoryRequest, TectonicModel, TopographyMetrics,
     TopographyParameters, TopographyRequest, TopographyState, WorldgenError,
 };
+use std::collections::VecDeque;
 use std::ops::{Deref, DerefMut};
 
 pub const TECTONIC_TOPOGRAPHY_STAGE_ID: &str = "terrain:initial-topography";
-pub const TECTONIC_TOPOGRAPHY_STAGE_VERSION: u32 = 13;
-const TECTONIC_TOPOGRAPHY_NAMESPACE: &str = "terrain:boundary-localized-orogen-topography:v2";
+pub const TECTONIC_TOPOGRAPHY_STAGE_VERSION: u32 = 14;
+const TECTONIC_TOPOGRAPHY_NAMESPACE: &str = "terrain:orogen-topology-and-connected-ocean:v3";
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 const CRUST_OCEANIC: u8 = 1;
@@ -355,6 +356,72 @@ fn area_weighted_quantile(values: &[f64], areas: &[f64], q: f64) -> f64 {
     values.last().copied().unwrap_or(0.0)
 }
 
+fn major_ocean_reservoir_seed_mask(
+    topology: &GeodesicTopology,
+    crust_kind: &[u8],
+    provisional_submerged: &[u8],
+) -> Vec<u8> {
+    let count = topology.metrics().sample_count as usize;
+    let mut visited = vec![false; count];
+    let mut components: Vec<(f64, Vec<usize>)> = Vec::new();
+    let mut candidate_area = 0.0_f64;
+    let surface_area = topology.dual_area_steradians().iter().sum::<f64>();
+
+    for sample in 0..count {
+        if visited[sample]
+            || crust_kind[sample] != CRUST_OCEANIC
+            || provisional_submerged[sample] == 0
+        {
+            continue;
+        }
+        visited[sample] = true;
+        let mut queue = VecDeque::from([sample as u32]);
+        let mut members = Vec::new();
+        let mut area = 0.0_f64;
+        while let Some(current) = queue.pop_front() {
+            let index = current as usize;
+            members.push(index);
+            area += topology.dual_area_steradians()[index];
+            for neighbor in topology.neighbors(current) {
+                let neighbor = *neighbor as usize;
+                if !visited[neighbor]
+                    && crust_kind[neighbor] == CRUST_OCEANIC
+                    && provisional_submerged[neighbor] != 0
+                {
+                    visited[neighbor] = true;
+                    queue.push_back(neighbor as u32);
+                }
+            }
+        }
+        candidate_area += area;
+        components.push((area, members));
+    }
+
+    components.sort_by(|left, right| right.0.total_cmp(&left.0));
+    // Global ocean reservoirs must be broad components, not tiny trapped oceanic slivers.
+    // Marginal seas do not need to be seeds: they join automatically if a marine path reaches them.
+    let minimum_reservoir_area = (surface_area * 0.0025).max(candidate_area * 0.015);
+    let mut seeds = vec![0_u8; count];
+    let mut kept = 0usize;
+    for (area, members) in &components {
+        if *area + 1.0e-15 < minimum_reservoir_area {
+            continue;
+        }
+        kept += 1;
+        for sample in members {
+            seeds[*sample] = 1;
+        }
+    }
+    if kept == 0 {
+        if let Some((_, members)) = components.first() {
+            for sample in members {
+                seeds[*sample] = 1;
+            }
+        }
+    }
+    seeds
+}
+
 fn province_relief(inherited: &InheritedPhysicalState, index: usize) -> (f64, f64) {
     let intensity = f64::from(inherited.orogenic_history[index]).clamp(0.0, 1.0);
     let mountain_core = f64::from(inherited.mountain_core_index[index]).clamp(0.0, 1.0);
@@ -376,15 +443,15 @@ fn province_relief(inherited: &InheritedPhysicalState, index: usize) -> (f64, f6
     let broad_transmission = 0.72 + 0.28 * (1.0 - resistance);
 
     if subduction {
-        // Subduction topography is one-sided and arc-centred. The collision component is zero so
-        // an oceanic/continental margin cannot accidentally receive both a collision mountain and
-        // a volcanic arc at the same location.
-        let arc_relief = 1_850.0 * mountain_core
-            + volcanic_arc * (2_650.0 + 900.0 * maturity)
-            + 420.0 * fold
-            + 160.0 * intensity
-            - 900.0 * backarc
-            - 120.0 * suture;
+        // Back-arc extension is a conditional broad subsidence tendency, not a mandatory marine
+        // trench behind every volcanic arc.  Tie its modest deflection to the actual arc load.
+        let arc_load = (0.55 * mountain_core + 0.45 * volcanic_arc).clamp(0.0, 1.0);
+        let backarc_deflection = 260.0 * backarc * (0.25 + 0.75 * arc_load);
+        let arc_relief = 1_500.0 * mountain_core.powf(1.08)
+            + volcanic_arc * (2_450.0 + 800.0 * maturity)
+            + 360.0 * fold
+            + 120.0 * intensity
+            - backarc_deflection;
         return (0.0, arc_relief);
     }
 
@@ -393,16 +460,22 @@ fn province_relief(inherited: &InheritedPhysicalState, index: usize) -> (f64, f6
         CRUST_TRANSITIONAL => 0.62,
         _ => 1.0,
     };
+    // Foreland subsidence is flexural response to an actual mountain load.  v13 treated the
+    // foreland index itself as a -1.35 km topographic command, creating a continuous below-sea
+    // moat beside almost every range.  Keep the basin broad and shallow unless a substantial load
+    // exists, while moving more collision relief into the crustal root/hinterland.
+    let mountain_load = (0.58 * mountain_core + 0.27 * root + 0.15 * fold).clamp(0.0, 1.0);
+    let foreland_deflection = 320.0 * foreland * mountain_load.powf(1.20);
     let collision_relief = crust_scale
         * tectonic_gain
-        * (5_600.0 * mountain_core
-            + 2_450.0 * root * broad_transmission
-            + 1_650.0 * plateau * broad_transmission
-            + 1_900.0 * fold
-            + 2_500.0 * transpression
-            + 260.0 * intensity
-            - 1_350.0 * foreland
-            - 180.0 * suture);
+        * (4_300.0 * mountain_core.powf(1.10)
+            + 3_050.0 * root * broad_transmission
+            + 1_350.0 * plateau * broad_transmission
+            + 1_150.0 * fold
+            + 2_000.0 * transpression
+            + 180.0 * intensity
+            - foreland_deflection
+            - 70.0 * suture);
     (collision_relief, 0.0)
 }
 
@@ -443,13 +516,12 @@ pub fn generate_initial_topography(
         orogenic[i] = collision_relief;
         arc[i] = arc_relief;
 
-        // Remove most legacy collision-thickening isostatic imprint in areas where the old
-        // radial history was strong. New crustal-root/plateau fields now own that relief.
-        let legacy_orogen = f64::from(inherited.legacy.orogenic_history[i]).clamp(0.0, 1.0);
-        let debiased_isostasy =
-            f64::from(baseline.isostatic_elevation_m[i]) * (1.0 - 0.58 * legacy_orogen);
-
-        raw[i] = debiased_isostasy
+        // Preserve the actual crustal-isostatic state.  The causal cut already discards the
+        // legacy *orogenic elevation* field; attenuating all isostatic support wherever legacy
+        // orogenic history was strong carved an artificial low corridor around the replacement
+        // range.  Thick continental crust remains buoyant regardless of which relief model owns
+        // the active mountain load.
+        raw[i] = f64::from(baseline.isostatic_elevation_m[i])
             + f64::from(baseline.thermal_elevation_m[i])
             + orogenic[i]
             + f64::from(baseline.ridge_elevation_m[i])
@@ -474,8 +546,29 @@ pub fn generate_initial_topography(
         }
     }
 
+    // Global sea level may only inundate terrain that is reached from oceanic crust through
+    // a below-water path.  Closed continental depressions can remain below the global datum
+    // without becoming magic inland ocean; WG-6 is responsible for their lake hydrology.
     let solid_f32 = solid.iter().map(|value| *value as f32).collect::<Vec<_>>();
-    let water = crate::solve_hydrostatic_surface_water(topology, &solid_f32, planet)?;
+    // Use the old threshold solve only to discover broad submerged oceanic reservoirs.  It does
+    // not define final water state.  This prevents every tiny oceanic crust remnant from becoming
+    // an independent marine-water source inside a collision zone.
+    let provisional = crate::surface_water::solve_hydrostatic_surface_water_f64(
+        topology,
+        &solid,
+        planet,
+    )?;
+    let ocean_seed_mask = major_ocean_reservoir_seed_mask(
+        topology,
+        &inherited.crust_kind,
+        &provisional.submerged_mask,
+    );
+    let water = crate::surface_water::solve_hydrostatic_surface_water_connected_f64(
+        topology,
+        &solid,
+        planet,
+        &ocean_seed_mask,
+    )?;
     let sea_level = water.metrics.sea_level_m;
     let mut land_area = 0.0;
     let mut ocean_area = 0.0;
