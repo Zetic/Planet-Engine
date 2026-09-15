@@ -16,7 +16,9 @@ jobs:
         with:
           ref: fix/wg5-nonfatal-spinup
       - name: Apply rewrite
-        run: python3 scripts/apply-wg5-nonfatal-spinup.py
+        run: |
+          python3 scripts/apply-wg5-nonfatal-spinup.py
+          python3 scripts/fix-wg5-protocol-test-pins.py
       - name: Install Rust and browser target
         run: |
           rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown
