@@ -55,11 +55,17 @@ fn main() -> Result<(), String> {
         .iter()
         .filter(|value| **value > 0.20)
         .count();
-    let far_mountain_core_samples = inherited
+    let displaced_mountain_core_samples = inherited
         .mountain_core_index
         .iter()
         .zip(inherited.boundary_distance_km.iter())
-        .filter(|(core, distance)| **core > 0.20 && **distance >= 800.0)
+        .filter(|(core, distance)| **core > 0.20 && **distance >= 180.0)
+        .count();
+    let runaway_mountain_core_samples = inherited
+        .mountain_core_index
+        .iter()
+        .zip(inherited.boundary_distance_km.iter())
+        .filter(|(core, distance)| **core > 0.20 && **distance >= 2200.0)
         .count();
     let positive_orogen = terrain
         .orogenic_elevation_m
@@ -97,12 +103,13 @@ fn main() -> Result<(), String> {
     }
 
     println!(
-        "WG-4 orogen topology: stage=v{} provinces={} active_samples={} core={} far_core={} relief(+/-)={}/{} foreland_flood={}/{} orogen_flood={}/{} solid={:.0}..{:.0}m clamped={} land={:.1}% province_hash={} topo_hash={}",
+        "WG-4 orogen topology: stage=v{} provinces={} active_samples={} core={} displaced_core={} runaway_core={} relief(+/-)={}/{} foreland_flood={}/{} orogen_flood={}/{} solid={:.0}..{:.0}m clamped={} land={:.1}% province_hash={} topo_hash={}",
         terrain.stage.version,
         lithosphere.orogen_provinces.metrics.province_count,
         active_samples,
         mountain_core_samples,
-        far_mountain_core_samples,
+        displaced_mountain_core_samples,
+        runaway_mountain_core_samples,
         positive_orogen,
         negative_orogen,
         flooded_continental_foreland,
@@ -122,10 +129,11 @@ fn main() -> Result<(), String> {
     }
     if active_samples == 0
         || mountain_core_samples == 0
-        || far_mountain_core_samples != 0
+        || displaced_mountain_core_samples == 0
+        || runaway_mountain_core_samples != 0
         || positive_orogen == 0
     {
-        return Err("tectonic province topography did not exercise zoned relief".to_string());
+        return Err("tectonic province topography did not exercise structural-strand relief".to_string());
     }
     if continental_foreland > 0 && flooded_continental_foreland * 20 > continental_foreland {
         return Err(format!(
