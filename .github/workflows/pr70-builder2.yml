@@ -1,0 +1,44 @@
+name: PR70 Builder 2
+
+on:
+  push:
+    branches: [feat/tectonic-structural-strands]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply patch
+        run: python3 scripts/pr70_structural_strands_patch.py
+      - name: Format
+        run: cargo fmt --all
+      - name: Install Rust
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal --target wasm32-unknown-unknown
+          rustup default 1.98.1
+      - name: Check workspace
+        run: cargo check --workspace --all-targets
+      - name: Test WG-3.6
+        run: cargo test -p interlink-worldgen orogen_provinces
+      - name: Check browser bridge
+        run: cargo check -p interlink-worldgen-wasm --target wasm32-unknown-unknown
+      - name: Install wasm-bindgen
+        run: cargo install wasm-bindgen-cli --version 0.2.127 --locked
+      - name: Rebuild WASM
+        run: npm run build:worldgen-wasm
+      - name: Commit result
+        run: |
+          rm -f .github/workflows/pr70-builder2.yml
+          rm -f .github/workflows/pr70-structural-strands-build.yml
+          rm -f scripts/pr70_structural_strands_patch.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat(worldgen): extract tectonic structural strands"
+          git push origin HEAD:feat/tectonic-structural-strands
