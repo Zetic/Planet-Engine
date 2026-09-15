@@ -15,6 +15,7 @@ mod infill;
 mod lakes;
 mod lithosphere;
 mod parameters;
+mod pre_orogenic_lithosphere;
 mod random;
 mod reconciliation;
 mod refinement;
@@ -95,6 +96,12 @@ pub use lithosphere::{
     LITHOSPHERE_STAGE_VERSION, MAX_TECTONIC_FRAGMENTS,
 };
 pub use parameters::PlanetPhysicalParameters;
+pub use pre_orogenic_lithosphere::{
+    generate_pre_orogenic_lithosphere, InheritedStructureKind, PreOrogenicFragment,
+    PreOrogenicFragmentContact, PreOrogenicFragmentKind, PreOrogenicLithosphereMetrics,
+    PreOrogenicLithosphereModel, PreOrogenicLithosphereRequest, MAX_PRE_OROGENIC_FRAGMENTS,
+    PRE_OROGENIC_LITHOSPHERE_STAGE_ID, PRE_OROGENIC_LITHOSPHERE_STAGE_VERSION,
+};
 pub use random::derive_stage_seed;
 pub use reconciliation::{
     generate_post_erosion_hydrology, PostErosionHydrologyMetrics, PostErosionHydrologyParameters,
