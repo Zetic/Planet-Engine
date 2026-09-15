@@ -38,6 +38,15 @@ jobs:
               raise SystemExit('ocean seed marker missing')
           text = text.replace(marker, '''    let solid_f32 = solid.iter().map(|value| *value as f32).collect::<Vec<_>>();\n    let ocean_seed_mask = inherited\n        .crust_kind''', 1)
           causal.write_text(text)
+
+          orogen = Path('rust/interlink-worldgen/src/orogen_provinces.rs')
+          text = orogen.read_text()
+          text = text.replace(
+              'OrogenProvinceKind::CollisionalPlateau => (260.0, 1_100.0),',
+              'OrogenProvinceKind::CollisionalPlateau => (260.0, 980.0),',
+              1,
+          )
+          orogen.write_text(text)
           PY
       - name: Compile and run focused tests
         run: |
