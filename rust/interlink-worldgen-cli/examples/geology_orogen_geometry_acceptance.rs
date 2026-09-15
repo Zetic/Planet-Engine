@@ -356,13 +356,32 @@ fn main() -> Result<(), String> {
     if exercised < 10 {
         return Err(format!("orogen geometry exercised only {exercised} worlds"));
     }
-    if minimum_core < 0.80 {
+    if minimum_core < 0.95 {
         return Err(format!(
             "orogen core continuity fell too low: {minimum_core:.4}"
         ));
     }
-    if !minimum_width_cv.is_finite() || mean_cv <= 0.0 {
-        return Err("orogen width diagnostics did not produce finite variation".to_string());
+    if !minimum_width_cv.is_finite() || minimum_width_cv < 0.07 {
+        return Err(format!(
+            "orogen width variation remained too uniform: min CV {minimum_width_cv:.4}"
+        ));
+    }
+    if mean_cv < 0.09 {
+        return Err(format!(
+            "orogen mean width variation remained too uniform: {mean_cv:.4}"
+        ));
+    }
+    if endpoint_ratios.weight <= 0.0 || endpoint_ratios.mean() > 0.985 {
+        return Err(format!(
+            "orogen terminations did not taper enough: endpoint/interior {:.4}",
+            endpoint_ratios.mean()
+        ));
+    }
+    if asymmetry.weight <= 0.0 || asymmetry.mean() < 0.055 {
+        return Err(format!(
+            "collision-side width asymmetry remained too weak: {:.4}",
+            asymmetry.mean()
+        ));
     }
     Ok(())
 }
