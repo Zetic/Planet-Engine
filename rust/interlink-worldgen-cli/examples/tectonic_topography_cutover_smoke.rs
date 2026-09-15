@@ -1,8 +1,8 @@
 use interlink_worldgen::{
     build_icosphere, generate_crust_and_history, generate_initial_topography, generate_lithosphere,
-    generate_tectonics, inherit_boundary_interfaces, inherit_physical_state, GeologyRequest,
-    CrustKind, LithosphereRequest, OrogenProvinceKind, PlanetPhysicalParameters, TectonicsRequest, TopographyRequest,
-    TOPOGRAPHY_STAGE_VERSION,
+    generate_tectonics, inherit_boundary_interfaces, inherit_physical_state, CrustKind,
+    GeologyRequest, LithosphereRequest, OrogenProvinceKind, PlanetPhysicalParameters,
+    TectonicsRequest, TopographyRequest, TOPOGRAPHY_STAGE_VERSION,
 };
 
 fn main() -> Result<(), String> {
