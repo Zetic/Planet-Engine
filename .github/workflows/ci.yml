@@ -48,6 +48,7 @@ jobs:
           cargo run -p interlink-worldgen-cli --example tectonic_history_smoke
           cargo run -p interlink-worldgen-cli --example pre_orogenic_lithosphere_smoke
           cargo run -p interlink-worldgen-cli --example tectonic_orogen_provinces_smoke
+          cargo run -p interlink-worldgen-cli --example tectonic_topography_cutover_smoke
       - name: Compile browser bridge
         run: cargo check -p interlink-worldgen-wasm --target wasm32-unknown-unknown
 
