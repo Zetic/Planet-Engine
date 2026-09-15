@@ -17,7 +17,28 @@ jobs:
           ref: fix/orogen-topology-coastal-basins
           fetch-depth: 0
       - name: Apply rewrite
-        run: python3 scripts/apply-orogen-topology-rewrite.py
+        run: |
+          python3 scripts/apply-orogen-topology-rewrite.py
+          python3 - <<'PY'
+          from pathlib import Path
+
+          surface = Path('rust/interlink-worldgen/src/surface_water.rs')
+          text = surface.read_text()
+          text = text.replace(
+              'use crate::{GeodesicTopology, PlanetPhysicalParameters, WorldgenError};\nuse std::collections::VecDeque;',
+              'use crate::{GeodesicTopology, PlanetPhysicalParameters, PlanetTopology, WorldgenError};\nuse std::collections::VecDeque;',
+              1,
+          )
+          surface.write_text(text)
+
+          causal = Path('rust/interlink-worldgen/src/causal_pipeline.rs')
+          text = causal.read_text()
+          marker = '''    let ocean_seed_mask = inherited\n        .crust_kind'''
+          if marker not in text:
+              raise SystemExit('ocean seed marker missing')
+          text = text.replace(marker, '''    let solid_f32 = solid.iter().map(|value| *value as f32).collect::<Vec<_>>();\n    let ocean_seed_mask = inherited\n        .crust_kind''', 1)
+          causal.write_text(text)
+          PY
       - name: Compile and run focused tests
         run: |
           cargo check --workspace --all-targets
