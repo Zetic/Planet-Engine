@@ -1,0 +1,49 @@
+name: Apply boundary-localized orogen rewrite
+
+on:
+  push:
+    branches: [feat/wg4-boundary-localized-orogens]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ contains(github.event.head_commit.message, '[wg4-localized-driver]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/wg4-boundary-localized-orogens
+      - name: Apply rewrite
+        run: python3 scripts/apply-boundary-localized-orogens.py
+      - name: Install Rust and wasm target
+        run: |
+          rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown
+          rustup default stable
+      - name: Format
+        run: cargo fmt --all
+      - name: Compile workspace
+        run: cargo check --workspace --all-targets
+      - name: Test orogen mechanics
+        run: cargo test -p interlink-worldgen orogen_provinces
+      - name: Run province smoke
+        run: cargo run -p interlink-worldgen-cli --example tectonic_orogen_provinces_smoke
+      - name: Run topography smoke
+        run: cargo run -p interlink-worldgen-cli --example tectonic_topography_cutover_smoke
+      - name: Compile browser bridge
+        run: cargo check -p interlink-worldgen-wasm --target wasm32-unknown-unknown
+      - name: Browser build and regressions
+        run: |
+          npm ci
+          npm run build
+          npm run test:ts
+      - name: Commit rewrite
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add rust docs dist
+          git diff --cached --quiet && exit 0
+          git commit -m 'feat(worldgen): localize orogens to convergent boundaries [wg4-localized-applied]'
+          git push origin HEAD:feat/wg4-boundary-localized-orogens
