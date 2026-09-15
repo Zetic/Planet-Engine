@@ -41,10 +41,13 @@ jobs:
         run: cargo check --workspace --all-targets
       - name: Test pre-orogenic causal cut
         run: cargo test -p interlink-worldgen pre_orogenic
+      - name: Test tectonic orogen province invariants
+        run: cargo test -p interlink-worldgen tectonic_orogen
       - name: Smoke-test tectonic causal foundations
         run: |
           cargo run -p interlink-worldgen-cli --example tectonic_history_smoke
           cargo run -p interlink-worldgen-cli --example pre_orogenic_lithosphere_smoke
+          cargo run -p interlink-worldgen-cli --example tectonic_orogen_provinces_smoke
       - name: Compile browser bridge
         run: cargo check -p interlink-worldgen-wasm --target wasm32-unknown-unknown
 
