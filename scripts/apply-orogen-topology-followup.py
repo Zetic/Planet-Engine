@@ -1,4 +1,5 @@
 from pathlib import Path
+import subprocess
 
 
 def replace_once(path: str, old: str, new: str) -> None:
@@ -173,5 +174,10 @@ replace_once(
         }
 ''',
 )
+
+# The temporary helper is allowed to push source changes but the GitHub App token cannot update a
+# workflow file.  Keep the first helper's CI edit out of this generated commit; CI is patched
+# directly after the source commit lands.
+subprocess.run(["git", "checkout", "HEAD", "--", ".github/workflows/ci.yml"], check=True)
 
 print('ocean reservoir and isostasy follow-up applied')
