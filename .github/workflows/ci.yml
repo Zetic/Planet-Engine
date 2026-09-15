@@ -42,7 +42,7 @@ jobs:
       - name: Test pre-orogenic causal cut
         run: cargo test -p interlink-worldgen pre_orogenic
       - name: Test tectonic orogen province invariants
-        run: cargo test -p interlink-worldgen tectonic_orogen
+        run: cargo test -p interlink-worldgen orogen_provinces
       - name: Smoke-test tectonic causal foundations
         run: |
           cargo run -p interlink-worldgen-cli --example tectonic_history_smoke
