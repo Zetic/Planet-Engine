@@ -45,25 +45,27 @@ jobs:
           print(f'Climate packet fields: {len(fields)}; externally referenced: {len(used)}; transport-only candidates: {len(unused)}')
           print('TRANSPORT_ONLY_CANDIDATES=' + ','.join(x for x,_ in unused))
           PY
-      - name: Dynamic L8 WASM retention audit
+      - name: Dynamic canonical L8 WASM memory budget
         run: |
           cat > /tmp/memory-audit.mjs <<'JS'
           import { readFileSync } from 'node:fs';
           import { memoryUsage } from 'node:process';
           import { pathToFileURL } from 'node:url';
+          const MiB = 1048576;
           const moduleUrl = pathToFileURL(`${process.cwd()}/src/wasm-worldgen/interlink_worldgen_wasm.js`).href;
           const { initSync, WasmWorldgenClimate } = await import(moduleUrl);
-          const mib = n => (n / 1048576).toFixed(1);
+          const mib = n => (n / MiB).toFixed(1);
           const mem = label => {
             const m = memoryUsage();
             console.log(`MEM ${label} rss=${mib(m.rss)}MiB heap=${mib(m.heapUsed)}MiB arrayBuffers=${mib(m.arrayBuffers)}MiB external=${mib(m.external)}MiB`);
+            return m;
           };
           initSync({ module: readFileSync('src/wasm-worldgen/interlink_worldgen_wasm_bg.wasm') });
           mem('initialized');
           const started = performance.now();
           const output = new WasmWorldgenClimate('interlink-wg7c', 5, 8, 16, undefined);
           console.log(`CONSTRUCT ${(performance.now()-started).toFixed(0)}ms`);
-          mem('constructed');
+          const constructed = mem('constructed');
           const arrays = [];
           const proto = Object.getPrototypeOf(output);
           for (const name of Object.getOwnPropertyNames(proto).sort()) {
@@ -78,7 +80,15 @@ jobs:
           arrays.sort((a,b)=>b.bytes-a.bytes);
           console.log(`ARRAYS count=${arrays.length} bytes=${total} (${mib(total)}MiB)`);
           for (const x of arrays.slice(0,40)) console.log(`ARRAY ${x.name} ${mib(x.bytes)}MiB ${x.value.constructor.name} len=${x.value.length}`);
-          mem('packaged');
+          const packaged = mem('packaged');
+          const limits = {
+            constructedRssMiB: 1700,
+            packagedRssMiB: 2100,
+            packetMiB: 600,
+          };
+          if (constructed.rss > limits.constructedRssMiB * MiB) throw new Error(`constructed RSS ${mib(constructed.rss)}MiB exceeds ${limits.constructedRssMiB}MiB budget`);
+          if (packaged.rss > limits.packagedRssMiB * MiB) throw new Error(`packaged RSS ${mib(packaged.rss)}MiB exceeds ${limits.packagedRssMiB}MiB budget`);
+          if (total > limits.packetMiB * MiB) throw new Error(`browser packet ${mib(total)}MiB exceeds ${limits.packetMiB}MiB budget`);
           output.free();
           if (global.gc) { global.gc(); global.gc(); }
           mem('freed-wasm-object');
