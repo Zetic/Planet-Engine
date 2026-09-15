@@ -24,7 +24,6 @@ jobs:
           protocol = Path('src/worldgen/protocol.ts').read_text()
           start = protocol.index('export interface WorldgenClimateResult')
           body = protocol[start:]
-          # Stop at the next top-level exported interface after this one.
           m = re.search(r'\nexport interface ', body[len('export interface WorldgenClimateResult'):])
           if m:
               body = body[:len('export interface WorldgenClimateResult') + m.start()]
@@ -51,7 +50,9 @@ jobs:
           cat > /tmp/memory-audit.mjs <<'JS'
           import { readFileSync } from 'node:fs';
           import { memoryUsage } from 'node:process';
-          import { initSync, WasmWorldgenClimate } from `${process.cwd()}/src/wasm-worldgen/interlink_worldgen_wasm.js`;
+          import { pathToFileURL } from 'node:url';
+          const moduleUrl = pathToFileURL(`${process.cwd()}/src/wasm-worldgen/interlink_worldgen_wasm.js`).href;
+          const { initSync, WasmWorldgenClimate } = await import(moduleUrl);
           const mib = n => (n / 1048576).toFixed(1);
           const mem = label => {
             const m = memoryUsage();
@@ -81,7 +82,6 @@ jobs:
           output.free();
           if (global.gc) { global.gc(); global.gc(); }
           mem('freed-wasm-object');
-          // Hold JS arrays so this reports durable packet memory separately from WASM state.
           console.log(`HOLD ${arrays.length} arrays ${mib(total)}MiB`);
           JS
           /usr/bin/time -v node --expose-gc /tmp/memory-audit.mjs
