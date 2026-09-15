@@ -73,7 +73,7 @@ test('WG-7D final physical world uses post-infill terrain and final hydrology an
 test('WG-7D canonical browser drainage getters all source the post-infill state', () => {
   const bridge = fs.readFileSync('rust/interlink-worldgen-wasm/src/climate_bridge.rs', 'utf8');
   const start = bridge.indexOf('pub fn drainage_stage_id');
-  const end = bridge.indexOf('pub fn runoff_stage_id', start);
+  const end = bridge.indexOf('pub fn runoff_hash_hex', start);
   assert.notEqual(start, -1);
   assert.notEqual(end, -1);
   const drainageSection = bridge.slice(start, end);

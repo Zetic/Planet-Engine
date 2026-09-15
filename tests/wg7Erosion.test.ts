@@ -12,11 +12,14 @@ test('WG-7A cumulative browser contract is protocol v18 and single-request', () 
   const lab = fs.readFileSync('src/worldgen/diagnostics/worldgenClimateLabStandalone.ts', 'utf8');
   for (const field of [
     'erosionStage', 'erosionMetrics', 'effectiveDischargeM3S', 'channelSlope', 'channelWidthM',
-    'erodibilityIndex', 'streamPowerIndex', 'incisionPotentialMPerYear', 'localSedimentSupplyKgS',
-    'sedimentTransportCapacityKgS', 'sedimentLoadKgS', 'sedimentDepositionKgS',
+    'erodibilityIndex', 'incisionPotentialMPerYear', 'localSedimentSupplyKgS',
+    'sedimentLoadKgS', 'sedimentDepositionKgS',
   ]) {
     assert.match(protocol, new RegExp(field));
     assert.match(worker, new RegExp(field));
+  }
+  for (const removed of ['streamPowerIndex', 'sedimentTransportCapacityKgS']) {
+    assert.doesNotMatch(protocol, new RegExp(removed));
   }
   assert.match(bridge, /generate_fluvial_erosion_sediment/);
   assert.match(bridge, /fluvial-erosion-sediment/);

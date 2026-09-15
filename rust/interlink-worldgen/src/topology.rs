@@ -131,6 +131,17 @@ impl GeodesicTopology {
         }
         output
     }
+
+    /// Release topology geometry required only while physical solvers are running.
+    /// Positions and CSR adjacency remain for browser rendering, picking, and calibration.
+    pub fn release_post_generation_scratch(&mut self) {
+        self.faces = Vec::new();
+        self.neighbor_arc_lengths_rad = Vec::new();
+        self.neighbor_interface_arc_lengths_rad = Vec::new();
+        self.dual_area_steradians = Vec::new();
+        self.birth_levels = Vec::new();
+        self.parent_edges = Vec::new();
+    }
 }
 
 impl PlanetTopology for GeodesicTopology {

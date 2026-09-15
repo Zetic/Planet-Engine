@@ -66,7 +66,6 @@ export class WasmWorldgenClimate {
     drainage_land_area_m2(): number;
     drainage_land_sample_count(): number;
     drainage_ocean_sample_count(): number;
-    drainage_order(): Uint32Array;
     drainage_stage_id(): string;
     drainage_stage_seed_hex(): string;
     drainage_stage_version(): number;
@@ -100,7 +99,6 @@ export class WasmWorldgenClimate {
     evolved_eroded_sample_count(): number;
     evolved_solid_elevation_m(): Float32Array;
     evolved_surface_hash_hex(): string;
-    faces(): Uint32Array;
     final_lake_cycle_relative_change(): number;
     final_lake_surface_cycle_change_m(): number;
     final_temperature_rms_change_k(): number;
@@ -185,7 +183,6 @@ export class WasmWorldgenClimate {
     lake_runoff_hash_hex(): string;
     lake_sample_count(): number;
     lake_sediment_infill_hash_hex(): string;
-    lake_spill_samples(): Uint32Array;
     lake_stage_id(): string;
     lake_stage_seed_hex(): string;
     lake_stage_version(): number;
@@ -196,7 +193,6 @@ export class WasmWorldgenClimate {
     land_runoff_fraction(): number;
     lithosphere_hash_hex(): string;
     local_pressure_pa(): Float32Array;
-    local_runoff_m3_s(): Float32Array;
     local_runoff_mm(): Float32Array;
     local_sediment_supply_kg_s(): Float32Array;
     longitude_of_periapsis_rad(): number;
@@ -258,8 +254,6 @@ export class WasmWorldgenClimate {
     orbital_phase_count(): number;
     orogenic_elevation_m(): Float32Array;
     orogenic_history(): Float32Array;
-    outlet_kind(): Uint8Array;
-    outlet_sample(): Uint32Array;
     overflowing_lake_count(): number;
     p95_annual_precipitation_mm(): number;
     persistent_snow_area_fraction(): number;
@@ -321,9 +315,6 @@ export class WasmWorldgenClimate {
     runoff_fraction(): Float32Array;
     runoff_hash_hex(): string;
     runoff_parameter_hash_hex(): string;
-    runoff_stage_id(): string;
-    runoff_stage_seed_hex(): string;
-    runoff_stage_version(): number;
     sea_ice_area_fraction(): number;
     sea_ice_potential(): Float32Array;
     sea_level_m(): number;
@@ -353,7 +344,6 @@ export class WasmWorldgenClimate {
     sediment_conservation_relative_error(): number;
     sediment_deposition_kg_s(): Float32Array;
     sediment_load_kg_s(): Float32Array;
-    sediment_transport_capacity_kg_s(): Float32Array;
     snowfall_fraction(): Float32Array;
     snowmelt_runoff_fraction(): number;
     solid_elevation_m(): Float32Array;
@@ -363,7 +353,6 @@ export class WasmWorldgenClimate {
     stage_seed_hex(): string;
     stage_version(): number;
     stellar_flux_w_m2(): number;
-    stream_power_index(): Float32Array;
     strength_index(): Float32Array;
     structural_zone_kind(): Uint8Array;
     submerged_mask(): Uint8Array;
@@ -926,7 +915,6 @@ export interface InitOutput {
     readonly wasmworldgenclimate_drainage_land_area_m2: (a: number) => number;
     readonly wasmworldgenclimate_drainage_land_sample_count: (a: number) => number;
     readonly wasmworldgenclimate_drainage_ocean_sample_count: (a: number) => number;
-    readonly wasmworldgenclimate_drainage_order: (a: number) => [number, number];
     readonly wasmworldgenclimate_drainage_stage_id: (a: number) => [number, number];
     readonly wasmworldgenclimate_drainage_stage_seed_hex: (a: number) => [number, number];
     readonly wasmworldgenclimate_drainage_stage_version: (a: number) => number;
@@ -960,7 +948,6 @@ export interface InitOutput {
     readonly wasmworldgenclimate_evolved_eroded_sample_count: (a: number) => number;
     readonly wasmworldgenclimate_evolved_solid_elevation_m: (a: number) => [number, number];
     readonly wasmworldgenclimate_evolved_surface_hash_hex: (a: number) => [number, number];
-    readonly wasmworldgenclimate_faces: (a: number) => [number, number];
     readonly wasmworldgenclimate_final_lake_cycle_relative_change: (a: number) => number;
     readonly wasmworldgenclimate_final_lake_surface_cycle_change_m: (a: number) => number;
     readonly wasmworldgenclimate_final_temperature_rms_change_k: (a: number) => number;
@@ -1045,7 +1032,6 @@ export interface InitOutput {
     readonly wasmworldgenclimate_lake_runoff_hash_hex: (a: number) => [number, number];
     readonly wasmworldgenclimate_lake_sample_count: (a: number) => number;
     readonly wasmworldgenclimate_lake_sediment_infill_hash_hex: (a: number) => [number, number];
-    readonly wasmworldgenclimate_lake_spill_samples: (a: number) => [number, number];
     readonly wasmworldgenclimate_lake_stage_id: (a: number) => [number, number];
     readonly wasmworldgenclimate_lake_stage_seed_hex: (a: number) => [number, number];
     readonly wasmworldgenclimate_lake_stage_version: (a: number) => number;
@@ -1056,7 +1042,6 @@ export interface InitOutput {
     readonly wasmworldgenclimate_land_runoff_fraction: (a: number) => number;
     readonly wasmworldgenclimate_lithosphere_hash_hex: (a: number) => [number, number];
     readonly wasmworldgenclimate_local_pressure_pa: (a: number) => [number, number];
-    readonly wasmworldgenclimate_local_runoff_m3_s: (a: number) => [number, number];
     readonly wasmworldgenclimate_local_runoff_mm: (a: number) => [number, number];
     readonly wasmworldgenclimate_local_sediment_supply_kg_s: (a: number) => [number, number];
     readonly wasmworldgenclimate_longitude_of_periapsis_rad: (a: number) => number;
@@ -1118,8 +1103,6 @@ export interface InitOutput {
     readonly wasmworldgenclimate_orbital_phase_count: (a: number) => number;
     readonly wasmworldgenclimate_orogenic_elevation_m: (a: number) => [number, number];
     readonly wasmworldgenclimate_orogenic_history: (a: number) => [number, number];
-    readonly wasmworldgenclimate_outlet_kind: (a: number) => [number, number];
-    readonly wasmworldgenclimate_outlet_sample: (a: number) => [number, number];
     readonly wasmworldgenclimate_overflowing_lake_count: (a: number) => number;
     readonly wasmworldgenclimate_p95_annual_precipitation_mm: (a: number) => number;
     readonly wasmworldgenclimate_persistent_snow_area_fraction: (a: number) => number;
@@ -1181,9 +1164,6 @@ export interface InitOutput {
     readonly wasmworldgenclimate_runoff_fraction: (a: number) => [number, number];
     readonly wasmworldgenclimate_runoff_hash_hex: (a: number) => [number, number];
     readonly wasmworldgenclimate_runoff_parameter_hash_hex: (a: number) => [number, number];
-    readonly wasmworldgenclimate_runoff_stage_id: (a: number) => [number, number];
-    readonly wasmworldgenclimate_runoff_stage_seed_hex: (a: number) => [number, number];
-    readonly wasmworldgenclimate_runoff_stage_version: (a: number) => number;
     readonly wasmworldgenclimate_sea_ice_area_fraction: (a: number) => number;
     readonly wasmworldgenclimate_sea_ice_potential: (a: number) => [number, number];
     readonly wasmworldgenclimate_sea_level_m: (a: number) => number;
@@ -1213,7 +1193,6 @@ export interface InitOutput {
     readonly wasmworldgenclimate_sediment_conservation_relative_error: (a: number) => number;
     readonly wasmworldgenclimate_sediment_deposition_kg_s: (a: number) => [number, number];
     readonly wasmworldgenclimate_sediment_load_kg_s: (a: number) => [number, number];
-    readonly wasmworldgenclimate_sediment_transport_capacity_kg_s: (a: number) => [number, number];
     readonly wasmworldgenclimate_snowfall_fraction: (a: number) => [number, number];
     readonly wasmworldgenclimate_snowmelt_runoff_fraction: (a: number) => number;
     readonly wasmworldgenclimate_solid_elevation_m: (a: number) => [number, number];
@@ -1223,7 +1202,6 @@ export interface InitOutput {
     readonly wasmworldgenclimate_stage_seed_hex: (a: number) => [number, number];
     readonly wasmworldgenclimate_stage_version: (a: number) => number;
     readonly wasmworldgenclimate_stellar_flux_w_m2: (a: number) => number;
-    readonly wasmworldgenclimate_stream_power_index: (a: number) => [number, number];
     readonly wasmworldgenclimate_strength_index: (a: number) => [number, number];
     readonly wasmworldgenclimate_structural_zone_kind: (a: number) => [number, number];
     readonly wasmworldgenclimate_submerged_mask: (a: number) => [number, number];

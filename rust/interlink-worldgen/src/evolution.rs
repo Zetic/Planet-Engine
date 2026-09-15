@@ -183,6 +183,24 @@ pub struct TerrainEvolutionState {
     pub post_erosion_potential_discharge_m3_s: Vec<f32>,
 }
 
+impl TerrainEvolutionState {
+    pub fn release_post_infill_scratch(&mut self) {
+        self.applied_sediment_supply_kg_s = Vec::new();
+        self.applied_sediment_load_kg_s = Vec::new();
+        self.applied_land_deposition_kg_s = Vec::new();
+        self.post_erosion_drainage.receiver = Vec::new();
+        self.post_erosion_drainage.outlet_sample = Vec::new();
+        self.post_erosion_drainage.outlet_kind = Vec::new();
+        self.post_erosion_drainage.basin_id = Vec::new();
+        self.post_erosion_drainage.depression_id = Vec::new();
+        self.post_erosion_drainage.hydrologic_escape_elevation_m = Vec::new();
+        self.post_erosion_drainage.depression_depth_m = Vec::new();
+        self.post_erosion_drainage.drainage_order = Vec::new();
+        self.post_erosion_drainage.basins = Vec::new();
+        self.post_erosion_drainage.depressions = Vec::new();
+    }
+}
+
 #[derive(Debug)]
 struct AppliedSedimentRouting {
     load_kg_s: Vec<f32>,

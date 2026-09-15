@@ -148,6 +148,30 @@ impl InheritedPhysicalState {
         self.shortening_index = Vec::new();
         self.local_width_km = Vec::new();
         self.source_along_strike_fraction = Vec::new();
+
+        // Legacy inherited fields whose last consumer is WG-4. Preserve only browser diagnostics
+        // plus the four mechanical fields consumed later by WG-7A erosion.
+        self.legacy.crust_province_id = Vec::new();
+        self.legacy.crust_density_kg_per_m3 = Vec::new();
+        self.legacy.buoyancy_index = Vec::new();
+        self.legacy.orogenic_history = Vec::new();
+        self.legacy.rift_history = Vec::new();
+        self.legacy.subduction_history = Vec::new();
+        self.legacy.volcanic_arc_history = Vec::new();
+        self.legacy.transform_history = Vec::new();
+        self.legacy.subsidence_history = Vec::new();
+        self.legacy.basin_potential = Vec::new();
+        self.legacy.crustal_strain = Vec::new();
+        self.legacy.effective_elastic_thickness_km = Vec::new();
+        self.legacy.thermal_anomaly_index = Vec::new();
+        self.legacy.mantle_upwelling_index = Vec::new();
+        self.legacy.compensated_buoyancy_index = Vec::new();
+        self.legacy.fragment_ids = Vec::new();
+    }
+
+    /// WG-7A is the last consumer of inherited structural fabric.
+    pub fn release_post_erosion_scratch(&mut self) {
+        self.legacy.structural_fabric_strength = Vec::new();
     }
 }
 

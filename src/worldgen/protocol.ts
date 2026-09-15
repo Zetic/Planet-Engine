@@ -542,7 +542,6 @@ export interface WorldgenClimateResult {
   planet: WorldgenClimatePlanetProfile;
   climatePhysical: WorldgenClimatePhysicalProfile;
   positions: Float64Array;
-  faces: Uint32Array;
   neighborOffsets: Uint32Array;
   neighbors: Uint32Array;
   plateIds: Uint16Array;
@@ -614,14 +613,11 @@ export interface WorldgenClimateResult {
   drainageStage: WorldgenStageMetadata;
   drainageMetrics: WorldgenDrainageMetrics;
   receiver: Uint32Array;
-  outletSample: Uint32Array;
-  outletKind: Uint8Array;
   basinId: Uint32Array;
   depressionId: Uint32Array;
   hydrologicEscapeElevationM: Float32Array;
   depressionDepthM: Float32Array;
   contributingAreaM2: Float64Array;
-  drainageOrder: Uint32Array;
   basinOutletSamples: Uint32Array;
   basinOutletKinds: Uint8Array;
   basinAreasM2: Float64Array;
@@ -629,12 +625,10 @@ export interface WorldgenClimateResult {
   depressionFloorElevationsM: Float64Array;
   depressionSpillElevationsM: Float64Array;
   depressionAreasM2: Float64Array;
-  runoffStage: WorldgenStageMetadata;
   runoffMetrics: WorldgenRunoffMetrics;
   actualEvapotranspirationMm: Float32Array;
   localRunoffMm: Float32Array;
   runoffFraction: Float32Array;
-  localRunoffM3S: Float32Array;
   potentialDischargeM3S: Float32Array;
   lakeStage: WorldgenStageMetadata;
   lakeMetrics: WorldgenLakeMetrics;
@@ -649,7 +643,6 @@ export interface WorldgenClimateResult {
   lakeAreasM2: Float64Array;
   lakeVolumesM3: Float64Array;
   lakeOutflowsM3S: Float64Array;
-  lakeSpillSamples: Uint32Array;
   seasonalStage: WorldgenStageMetadata;
   seasonalMetrics: WorldgenSeasonalHydrologyMetrics;
   seasonalPhaseSnowStorageMm: Float32Array;
@@ -662,10 +655,8 @@ export interface WorldgenClimateResult {
   channelSlope: Float32Array;
   channelWidthM: Float32Array;
   erodibilityIndex: Float32Array;
-  streamPowerIndex: Float32Array;
   incisionPotentialMPerYear: Float32Array;
   localSedimentSupplyKgS: Float32Array;
-  sedimentTransportCapacityKgS: Float32Array;
   sedimentLoadKgS: Float32Array;
   sedimentDepositionKgS: Float32Array;
   evolutionStage: WorldgenStageMetadata;

@@ -560,15 +560,6 @@ export class WasmWorldgenClimate {
         return ret >>> 0;
     }
     /**
-     * @returns {Uint32Array}
-     */
-    drainage_order() {
-        const ret = wasm.wasmworldgenclimate_drainage_order(this.__wbg_ptr);
-        var v1 = getArrayU32FromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
-        return v1;
-    }
-    /**
      * @returns {string}
      */
     drainage_stage_id() {
@@ -958,15 +949,6 @@ export class WasmWorldgenClimate {
         } finally {
             wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
         }
-    }
-    /**
-     * @returns {Uint32Array}
-     */
-    faces() {
-        const ret = wasm.wasmworldgenclimate_faces(this.__wbg_ptr);
-        var v1 = getArrayU32FromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
-        return v1;
     }
     /**
      * @returns {number}
@@ -1829,15 +1811,6 @@ export class WasmWorldgenClimate {
         }
     }
     /**
-     * @returns {Uint32Array}
-     */
-    lake_spill_samples() {
-        const ret = wasm.wasmworldgenclimate_lake_spill_samples(this.__wbg_ptr);
-        var v1 = getArrayU32FromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
-        return v1;
-    }
-    /**
      * @returns {string}
      */
     lake_stage_id() {
@@ -1933,15 +1906,6 @@ export class WasmWorldgenClimate {
      */
     local_pressure_pa() {
         const ret = wasm.wasmworldgenclimate_local_pressure_pa(this.__wbg_ptr);
-        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
-        return v1;
-    }
-    /**
-     * @returns {Float32Array}
-     */
-    local_runoff_m3_s() {
-        const ret = wasm.wasmworldgenclimate_local_runoff_m3_s(this.__wbg_ptr);
         var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
         return v1;
@@ -2403,24 +2367,6 @@ export class WasmWorldgenClimate {
     orogenic_history() {
         const ret = wasm.wasmworldgenclimate_orogenic_history(this.__wbg_ptr);
         var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
-        return v1;
-    }
-    /**
-     * @returns {Uint8Array}
-     */
-    outlet_kind() {
-        const ret = wasm.wasmworldgenclimate_outlet_kind(this.__wbg_ptr);
-        var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
-        return v1;
-    }
-    /**
-     * @returns {Uint32Array}
-     */
-    outlet_sample() {
-        const ret = wasm.wasmworldgenclimate_outlet_sample(this.__wbg_ptr);
-        var v1 = getArrayU32FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
         return v1;
     }
@@ -3072,43 +3018,6 @@ export class WasmWorldgenClimate {
         }
     }
     /**
-     * @returns {string}
-     */
-    runoff_stage_id() {
-        let deferred1_0;
-        let deferred1_1;
-        try {
-            const ret = wasm.wasmworldgenclimate_runoff_stage_id(this.__wbg_ptr);
-            deferred1_0 = ret[0];
-            deferred1_1 = ret[1];
-            return getStringFromWasm0(ret[0], ret[1]);
-        } finally {
-            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
-        }
-    }
-    /**
-     * @returns {string}
-     */
-    runoff_stage_seed_hex() {
-        let deferred1_0;
-        let deferred1_1;
-        try {
-            const ret = wasm.wasmworldgenclimate_runoff_stage_seed_hex(this.__wbg_ptr);
-            deferred1_0 = ret[0];
-            deferred1_1 = ret[1];
-            return getStringFromWasm0(ret[0], ret[1]);
-        } finally {
-            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
-        }
-    }
-    /**
-     * @returns {number}
-     */
-    runoff_stage_version() {
-        const ret = wasm.wasmworldgenclimate_runoff_stage_version(this.__wbg_ptr);
-        return ret >>> 0;
-    }
-    /**
      * @returns {number}
      */
     sea_ice_area_fraction() {
@@ -3400,15 +3309,6 @@ export class WasmWorldgenClimate {
     /**
      * @returns {Float32Array}
      */
-    sediment_transport_capacity_kg_s() {
-        const ret = wasm.wasmworldgenclimate_sediment_transport_capacity_kg_s(this.__wbg_ptr);
-        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
-        return v1;
-    }
-    /**
-     * @returns {Float32Array}
-     */
     snowfall_fraction() {
         const ret = wasm.wasmworldgenclimate_snowfall_fraction(this.__wbg_ptr);
         var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
@@ -3490,15 +3390,6 @@ export class WasmWorldgenClimate {
     stellar_flux_w_m2() {
         const ret = wasm.wasmworldgenclimate_stellar_flux_w_m2(this.__wbg_ptr);
         return ret;
-    }
-    /**
-     * @returns {Float32Array}
-     */
-    stream_power_index() {
-        const ret = wasm.wasmworldgenclimate_stream_power_index(this.__wbg_ptr);
-        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
-        return v1;
     }
     /**
      * @returns {Float32Array}
