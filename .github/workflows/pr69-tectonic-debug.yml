@@ -1,0 +1,43 @@
+name: PR69 Tectonic Debug
+
+on:
+  pull_request:
+    paths:
+      - 'rust/**'
+      - '.github/workflows/pr69-tectonic-debug.yml'
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    env:
+      RUST_VERSION: '1.98.1'
+      WASM_BINDGEN_VERSION: '0.2.127'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned Rust and browser target
+        run: |
+          rustup toolchain install "${RUST_VERSION}" --profile minimal --target wasm32-unknown-unknown
+          rustup default "${RUST_VERSION}"
+      - name: Capture WG-3.6 invariant output
+        shell: bash
+        run: |
+          set +e
+          cargo test -p interlink-worldgen orogen_provinces -- --nocapture > /tmp/orogen-provinces.log 2>&1
+          echo $? > /tmp/orogen-provinces.exit
+          set -e
+      - name: Upload WG-3.6 test log
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr69-orogen-test-log
+          path: |
+            /tmp/orogen-provinces.log
+            /tmp/orogen-provinces.exit
+      - name: Install wasm-bindgen CLI
+        run: cargo +${RUST_VERSION} install wasm-bindgen-cli --version "${WASM_BINDGEN_VERSION}" --locked
+      - name: Rebuild WASM package
+        run: npm run build:worldgen-wasm
+      - name: Upload regenerated WASM package
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr69-wasm-package
+          path: src/wasm-worldgen
