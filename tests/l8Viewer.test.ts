@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import test from 'node:test';
 import type { WorldgenClimateResult } from '../dist/worldgen/protocol.js';
 import { buildDualCellGpuMesh, buildGpuPositions, cameraForWorldDirectionAtScreen, collectViewportSampleIndices, pickNearestSample, screenToWorldDirection } from '../dist/worldgen/diagnostics/worldgenL8GlobeRenderer.js';
+import { clampEquirectangularCenterLatitude, equirectangularCameraForWorldDirectionAtScreen, equirectangularScreenToWorldDirection } from '../dist/worldgen/diagnostics/worldgenClimateMath.js';
 
 test('L8 GPU upload converts protocol Float64 positions to Float32 values', () => {
   const protocolPositions = new Float64Array([1, 0, -0.5, Math.PI, -Math.E, 0.25]);
@@ -73,6 +74,18 @@ test('cursor-anchored zoom preserves the inspected world direction', () => {
   assert.ok(dot > 0.999999999, `zoom anchor drifted: dot=${dot}`);
 });
 
+
+test('equirectangular zoom preserves the world direction under the cursor', () => {
+  const initial = { centerLongitudeRad: 0.4, centerLatitudeRad: 0, zoom: 1 };
+  const x = 730, y = 180, width = 1100, height = 550;
+  const anchor = equirectangularScreenToWorldDirection(x, y, width, height, initial);
+  const zoomed = equirectangularCameraForWorldDirectionAtScreen(anchor, x, y, width, height, 6);
+  const recovered = equirectangularScreenToWorldDirection(x, y, width, height, zoomed);
+  const dot = anchor[0] * recovered[0] + anchor[1] * recovered[1] + anchor[2] * recovered[2];
+  assert.ok(dot > 0.999999999, `map zoom anchor drifted: dot=${dot}`);
+  assert.equal(clampEquirectangularCenterLatitude(0.6, 1), 0);
+});
+
 test('L8 picking refines from a coarse seed set through topology neighbors', () => {
   const result = {
     positions: new Float32Array([
@@ -102,6 +115,14 @@ test('L8 lab keeps one continuous GPU cell surface through zoom and interaction'
   assert.match(css, /#worldgen-surface/);
   assert.match(source, /new L8GlobeRenderer/);
   assert.match(source, /addEventListener\('wheel'/);
+  assert.match(source, /renderEquirectangularRaster/);
+  assert.match(source, /nearestMapSampleFromSeed/);
+  assert.match(source, /equirectangularCameraForWorldDirectionAtScreen/);
+  assert.match(source, /mapCenterLongitude/);
+  assert.match(css, /canvas\[hidden\] \{ display: none !important; \}/);
+  assert.match(html, /View zoom/);
+  assert.match(html, /Reset view/);
+  assert.match(html, /Click the globe or map to inspect/);
   assert.match(source, /'custom': \{ mode: 'physical-elevation', overlays: \[\] \}/);
   assert.match(html, /value="cell-boundaries" data-label="Physical cell boundaries"/);
   assert.doesNotMatch(html, /<option value="tiles">/);
