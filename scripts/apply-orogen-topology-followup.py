@@ -95,6 +95,24 @@ helper = r'''fn major_ocean_reservoir_seed_mask(
 replace_once(causal, marker, helper + marker)
 replace_once(
     causal,
+    '''        // Remove most legacy collision-thickening isostatic imprint in areas where the old
+        // radial history was strong. New crustal-root/plateau fields now own that relief.
+        let legacy_orogen = f64::from(inherited.legacy.orogenic_history[i]).clamp(0.0, 1.0);
+        let debiased_isostasy =
+            f64::from(baseline.isostatic_elevation_m[i]) * (1.0 - 0.58 * legacy_orogen);
+
+        raw[i] = debiased_isostasy
+''',
+    '''        // Preserve the actual crustal-isostatic state.  The causal cut already discards the
+        // legacy *orogenic elevation* field; attenuating all isostatic support wherever legacy
+        // orogenic history was strong carved an artificial low corridor around the replacement
+        // range.  Thick continental crust remains buoyant regardless of which relief model owns
+        // the active mountain load.
+        raw[i] = f64::from(baseline.isostatic_elevation_m[i])
+''',
+)
+replace_once(
+    causal,
     '''    let ocean_seed_mask = inherited
         .crust_kind
         .iter()
@@ -156,4 +174,4 @@ replace_once(
 ''',
 )
 
-print('ocean reservoir follow-up applied')
+print('ocean reservoir and isostasy follow-up applied')
