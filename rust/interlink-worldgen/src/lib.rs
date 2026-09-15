@@ -1,4 +1,5 @@
 mod boundary_refinement;
+mod causal_pipeline;
 mod climate;
 mod climate_calibration;
 mod climate_multiresolution;
@@ -36,6 +37,12 @@ use std::fmt;
 
 pub use boundary_refinement::{
     inherit_boundary_interfaces, InheritedBoundaryEdge, InheritedBoundarySet,
+};
+pub use causal_pipeline::{
+    generate_initial_topography, generate_lithosphere, inherit_physical_state,
+    InheritedPhysicalState, LithosphericModel,
+    TECTONIC_TOPOGRAPHY_STAGE_ID as TOPOGRAPHY_STAGE_ID,
+    TECTONIC_TOPOGRAPHY_STAGE_VERSION as TOPOGRAPHY_STAGE_VERSION,
 };
 pub use climate::{
     generate_coupled_climate, generate_coupled_climate_reference_with_diagnostics,
@@ -92,9 +99,9 @@ pub use lakes::{
     LAKE_STAGE_ID, LAKE_STAGE_VERSION,
 };
 pub use lithosphere::{
-    generate_lithosphere, LithosphereMetrics, LithosphereRequest, LithosphericModel,
-    StructuralZoneKind, TectonicFragment, TectonicFragmentKind, LITHOSPHERE_STAGE_ID,
-    LITHOSPHERE_STAGE_VERSION, MAX_TECTONIC_FRAGMENTS,
+    LithosphereMetrics, LithosphereRequest, StructuralZoneKind, TectonicFragment,
+    TectonicFragmentKind, LITHOSPHERE_STAGE_ID, LITHOSPHERE_STAGE_VERSION,
+    MAX_TECTONIC_FRAGMENTS,
 };
 pub use orogen_provinces::{
     generate_tectonic_orogen_provinces, OrogenProvince, OrogenProvinceKind,
@@ -115,10 +122,9 @@ pub use reconciliation::{
     POST_EROSION_HYDROLOGY_STAGE_VERSION,
 };
 pub use refinement::{
-    build_refinement_map, inherit_physical_state, refine_categorical_u16, refine_categorical_u8,
-    refine_scalar_f32, refine_scalar_f32_with_domains, refine_scalar_f64, refine_vector3_f64,
-    InheritedPhysicalState, RefinementMap, RefinementMetrics, MULTIRES_STAGE_ID,
-    MULTIRES_STAGE_VERSION,
+    build_refinement_map, refine_categorical_u16, refine_categorical_u8, refine_scalar_f32,
+    refine_scalar_f32_with_domains, refine_scalar_f64, refine_vector3_f64, RefinementMap,
+    RefinementMetrics, MULTIRES_STAGE_ID, MULTIRES_STAGE_VERSION,
 };
 pub use runoff::{
     generate_runoff_discharge, RunoffMetrics, RunoffParameters, RunoffRequest, RunoffState,
@@ -147,8 +153,7 @@ pub use tectonic_history::{
     TECTONIC_HISTORY_STAGE_ID, TECTONIC_HISTORY_STAGE_VERSION,
 };
 pub use topography::{
-    generate_initial_topography, TopographyMetrics, TopographyParameters, TopographyRequest,
-    TopographyState, TOPOGRAPHY_STAGE_ID, TOPOGRAPHY_STAGE_VERSION,
+    TopographyMetrics, TopographyParameters, TopographyRequest, TopographyState,
 };
 pub use topography_morphology::{
     analyze_topography_morphology, OceanAgeDepthMorphology, QuietOceanMorphology,
@@ -169,7 +174,7 @@ pub use world_calibration::{
     WORLD_CALIBRATION_RANKED_LIMIT, WORLD_CALIBRATION_SCHEMA_ID, WORLD_CALIBRATION_SCHEMA_VERSION,
 };
 
-pub const WORLDGEN_ENGINE_VERSION: u32 = 12;
+pub const WORLDGEN_ENGINE_VERSION: u32 = 13;
 pub const SYNTHETIC_STAGE_ID: &str = "foundation:synthetic";
 pub const SYNTHETIC_STAGE_VERSION: u32 = 1;
 const SYNTHETIC_NAMESPACE: &str = "worldgen:foundation:synthetic:v1";
