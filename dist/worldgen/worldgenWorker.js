@@ -615,7 +615,17 @@ workerScope.addEventListener('message', async (messageEvent) => {
         }
         if (command.type === 'generate-climate') {
             const result = await generateClimate(command);
-            workerScope.postMessage({ protocolVersion: WORLDGEN_PROTOCOL_VERSION, requestId: command.requestId, type: 'generated-climate', payload: result }, collectTransferables(result));
+            const transferables = collectTransferables(result);
+            const transferBytes = transferables.reduce((sum, item) => sum + (item instanceof ArrayBuffer ? item.byteLength : 0), 0);
+            workerScope.postMessage({
+                protocolVersion: WORLDGEN_PROTOCOL_VERSION, requestId: command.requestId, type: 'progress',
+                payload: {
+                    stageId: 'transport-ready', stageIndex: 17, stageCount: 18, completed: 1, total: 1,
+                    elapsedMs: result.stage.durationMs, stageElapsedMs: 0,
+                    diagnostics: { transferBufferCount: transferables.length, transferBytes, note: 'worker result materialized; next operation is generated-climate postMessage' },
+                },
+            });
+            workerScope.postMessage({ protocolVersion: WORLDGEN_PROTOCOL_VERSION, requestId: command.requestId, type: 'generated-climate', payload: result }, transferables);
             return;
         }
         throw new Error(`Unsupported worldgen command '${String(command.type)}'.`);

@@ -79,6 +79,16 @@ test('WG-5 Lab preserves viewport dimensions while splitting diagnostics, overla
   assert.match(source, /precipitationPhaseRateMmYear/);
   assert.match(source, /drawDiagnosticOverlays/);
   assert.match(source, /handleGenerationProgress/);
+  assert.match(html, /id=\"worldgen-copy-crash-report\"/);
+  assert.match(html, /id=\"worldgen-debug-receive-only\"/);
+  assert.match(source, /createWorldgenCrashRecorder/);
+  assert.match(source, /receive-only-viewer-skipped/);
+  const clientSource = fs.readFileSync('src/worldgen/worldgenClient.ts', 'utf8');
+  const workerSource = fs.readFileSync('src/worldgen/worldgenWorker.ts', 'utf8');
+  assert.match(clientSource, /messageerror/);
+  assert.match(clientSource, /result-message-resolving/);
+  assert.match(workerSource, /transport-ready/);
+  assert.match(workerSource, /transferBytes/);
 });
 
 test('WG-5 browser transport preserves seasonal SST and current harmonics', () => {

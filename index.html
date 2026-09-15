@@ -25,6 +25,9 @@
       <button id="worldgen-generate" type="button">Generate Planet</button>
       <button id="worldgen-copy-calibration" type="button" disabled>Copy LLM Summary</button>
       <button id="worldgen-download-calibration" type="button" disabled>Download Calibration JSON</button>
+      <button id="worldgen-copy-crash-report" type="button" disabled>Copy Crash Report</button>
+      <button id="worldgen-download-crash-report" type="button" disabled>Download Debug JSON</button>
+      <label class="worldgen-debug-toggle"><input id="worldgen-debug-receive-only" type="checkbox"> Debug: receive only (skip viewer)</label>
     </section>
 
     <p id="worldgen-status" class="worldgen-lab-status">Initializing Planet Engine Worker…</p>
@@ -229,6 +232,10 @@
         </div>
         <progress id="worldgen-generation-progress" max="100" value="0"></progress>
         <div id="worldgen-generation-profile" class="worldgen-generation-profile"></div>
+        <div class="worldgen-debug-report">
+          <strong>Crash debugger</strong>
+          <span id="worldgen-debug-summary">No generation attempt recorded yet.</span>
+        </div>
       </div>
       <div class="worldgen-lab-detail-block">
         <h2>Physical diagnostics</h2>
