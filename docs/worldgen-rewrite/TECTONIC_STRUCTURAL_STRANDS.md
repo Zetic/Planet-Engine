@@ -17,3 +17,7 @@ Shield/root support and fossil mobile-belt relief are strengthened so that stabl
 Same-seed physical-elevation maps should visibly differ from v4 even though coastlines and plate assembly remain unchanged. Mature continental collisions should contain separated or offset belts, literal convergent edges should often lie beside rather than under the highest range axis, junctions should spread into transfer complexes, and large continental interiors should show broad shield/mobile-belt structure rather than featureless procedural mottling. Subduction cordilleras may remain tightly boundary-correlated.
 
 Hydrology, erosion and climate are intentionally unchanged by this PR.
+
+## Verification
+
+The v5 invariants require off-boundary mountain cores while rejecting runaway multi-thousand-kilometre propagation. The WG-4 cutover smoke applies the same structural-strand acceptance after coarse-to-fine inheritance. Workspace compilation, causal-cut tests, WG-3.6 invariants, tectonic smoke tests, browser regressions, browser-bridge compilation, and committed WASM parity are the automated gates before same-seed visual acceptance.
