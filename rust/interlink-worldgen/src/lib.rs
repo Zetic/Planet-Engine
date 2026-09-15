@@ -14,6 +14,7 @@ mod hydroclimate;
 mod infill;
 mod lakes;
 mod lithosphere;
+mod orogen_provinces;
 mod parameters;
 mod pre_orogenic_lithosphere;
 mod random;
@@ -94,6 +95,11 @@ pub use lithosphere::{
     generate_lithosphere, LithosphereMetrics, LithosphereRequest, LithosphericModel,
     StructuralZoneKind, TectonicFragment, TectonicFragmentKind, LITHOSPHERE_STAGE_ID,
     LITHOSPHERE_STAGE_VERSION, MAX_TECTONIC_FRAGMENTS,
+};
+pub use orogen_provinces::{
+    generate_tectonic_orogen_provinces, OrogenProvince, OrogenProvinceKind,
+    OrogenProvinceMetrics, OrogenProvinceModel, OrogenProvinceRequest, OROGEN_PROVINCE_STAGE_ID,
+    OROGEN_PROVINCE_STAGE_VERSION,
 };
 pub use parameters::PlanetPhysicalParameters;
 pub use pre_orogenic_lithosphere::{
