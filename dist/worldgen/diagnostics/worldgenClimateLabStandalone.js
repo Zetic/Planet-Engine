@@ -1,7 +1,7 @@
 import { createWorldgenClient } from '../worldgenClient.js';
 import { createWorldgenCrashRecorder, installWorldgenGlobalFailureCapture } from '../worldgenCrashReport.js';
 import { worldCalibrationJson, worldCalibrationMarkdown } from '../calibrationPacket.js';
-import { mapVectorDelta, reconstructAnnualHarmonicFromBasis } from './worldgenClimateMath.js';
+import { clampEquirectangularCenterLatitude, equirectangularCameraForWorldDirectionAtScreen, equirectangularScreenToWorldDirection, mapVectorDelta, reconstructAnnualHarmonicFromBasis, wrapLongitudeRad } from './worldgenClimateMath.js';
 import { L8GlobeRenderer, buildRgbaColors, cameraForWorldDirectionAtScreen, pickNearestSample, screenToWorldDirection } from './worldgenL8GlobeRenderer.js';
 import { WORLDGEN_BOUNDARY_CONVERGENT, WORLDGEN_BOUNDARY_DIVERGENT, WORLDGEN_BOUNDARY_TRANSFORM, WORLDGEN_CRUST_CONTINENTAL, WORLDGEN_CRUST_OCEANIC, WORLDGEN_CRUST_TRANSITIONAL, WORLDGEN_GEOLOGY_CONTINENTAL_COLLISION, WORLDGEN_GEOLOGY_CONTINENTAL_RIFT, WORLDGEN_GEOLOGY_OCEANIC_RIDGE, WORLDGEN_GEOLOGY_OCEANIC_SUBDUCTION, WORLDGEN_GEOLOGY_OCEAN_CONTINENT_SUBDUCTION, WORLDGEN_GEOLOGY_TRANSFORM, WORLDGEN_GEOLOGY_TRANSITIONAL_DIVERGENCE, WORLDGEN_STRUCTURE_CONTINENTAL_MARGIN, WORLDGEN_STRUCTURE_NONE, WORLDGEN_STRUCTURE_RIFT, WORLDGEN_STRUCTURE_SUTURE, WORLDGEN_STRUCTURE_TRANSFORM, WORLDGEN_INVALID_SAMPLE_ID, WORLDGEN_PROTOCOL_VERSION, } from '../protocol.js';
 const PALETTE_STEPS = 256;
@@ -714,14 +714,25 @@ function projectSamples(result, projection, yaw, pitch, width, height, buffers, 
     const count = result.metrics.fineSampleCount;
     const positions = result.positions;
     if (projection === 'map') {
+        const safeZoom = Math.max(1, zoom);
+        const longitudeSpan = TWO_PI / safeZoom;
+        const latitudeSpan = Math.PI / safeZoom;
         for (let sample = 0; sample < count; sample += 1) {
             const offset = sample * 3;
             const px = positions[offset];
             const py = positions[offset + 1];
             const pz = positions[offset + 2];
-            buffers.x[sample] = (Math.atan2(py, px) + Math.PI) / TWO_PI * width;
-            buffers.y[sample] = (Math.PI / 2 - Math.asin(Math.max(-1, Math.min(1, pz)))) / Math.PI * height;
-            buffers.visible[sample] = 1;
+            const longitude = Math.atan2(py, px);
+            const latitude = Math.asin(Math.max(-1, Math.min(1, pz)));
+            const longitudeDelta = wrapLongitudeRad(longitude - yaw);
+            const latitudeDelta = latitude - pitch;
+            const x = width / 2 + longitudeDelta / longitudeSpan * width;
+            const y = height / 2 - latitudeDelta / latitudeSpan * height;
+            buffers.x[sample] = x;
+            buffers.y[sample] = y;
+            buffers.visible[sample] = Math.abs(longitudeDelta) <= longitudeSpan / 2 + 1e-9
+                && Math.abs(latitudeDelta) <= latitudeSpan / 2 + 1e-9
+                && x >= -2 && x <= width + 2 && y >= -2 && y <= height + 2 ? 1 : 0;
         }
         return;
     }
@@ -756,7 +767,7 @@ function screenTangentDelta(position, eastValue, northValue, projection, yaw, pi
         (eastValue * east[2] + northValue * north[2]) / speed,
     ];
     if (projection === 'map')
-        return mapVectorDelta(eastValue, northValue, lat, width, height);
+        return mapVectorDelta(eastValue, northValue, lat, width * Math.max(1, zoom), height * Math.max(1, zoom));
     const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
     const x1 = cy * tangent[0] - sy * tangent[1];
     const y1 = sy * tangent[0] + cy * tangent[1];
@@ -1016,6 +1027,133 @@ function drawDiagnosticOverlays(context, result, overlays, phase, projection, ya
         drawVectors(context, result, 'currents', phase, projection, yaw, pitch, width, height, buffers, animation, zoom);
 }
 let gpuColorCache = { result: null, key: '', colors: new Uint8Array(0), alpha: 0.94 };
+const mapRasterCanvas = document.createElement('canvas');
+let mapRasterCache = {
+    result: null,
+    lookupKey: '',
+    styleKey: '',
+    width: 0,
+    height: 0,
+    sampleIds: new Uint32Array(0),
+};
+function nearestMapSampleFromSeed(result, directionX, directionY, directionZ, seedSample) {
+    let bestSample = Math.max(0, Math.min(result.metrics.fineSampleCount - 1, seedSample));
+    let offset = bestSample * 3;
+    let bestDot = result.positions[offset] * directionX
+        + result.positions[offset + 1] * directionY
+        + result.positions[offset + 2] * directionZ;
+    while (true) {
+        let improved = false;
+        const start = result.neighborOffsets[bestSample];
+        const end = result.neighborOffsets[bestSample + 1];
+        for (let cursor = start; cursor < end; cursor += 1) {
+            const neighbor = result.neighbors[cursor];
+            offset = neighbor * 3;
+            const dot = result.positions[offset] * directionX
+                + result.positions[offset + 1] * directionY
+                + result.positions[offset + 2] * directionZ;
+            if (dot > bestDot + 1e-12) {
+                bestDot = dot;
+                bestSample = neighbor;
+                improved = true;
+            }
+        }
+        if (!improved)
+            return bestSample;
+    }
+}
+function ensureMapSampleLookup(result, centerLongitudeRad, centerLatitudeRad, zoom, width, height, interactive) {
+    const rasterScale = interactive && result.metrics.fineSampleCount > 100_000 ? 0.5 : 1;
+    const rasterWidth = Math.max(1, Math.round(width * rasterScale));
+    const rasterHeight = Math.max(1, Math.round(height * rasterScale));
+    const lookupKey = `${centerLongitudeRad.toFixed(7)}:${centerLatitudeRad.toFixed(7)}:${zoom.toFixed(5)}:${rasterWidth}:${rasterHeight}`;
+    if (mapRasterCache.result === result && mapRasterCache.lookupKey === lookupKey)
+        return mapRasterCache;
+    const required = rasterWidth * rasterHeight;
+    const sampleIds = mapRasterCache.sampleIds.length === required
+        ? mapRasterCache.sampleIds
+        : new Uint32Array(required);
+    const cosLongitude = new Float64Array(rasterWidth);
+    const sinLongitude = new Float64Array(rasterWidth);
+    const longitudeSpan = TWO_PI / Math.max(1, zoom);
+    const latitudeSpan = Math.PI / Math.max(1, zoom);
+    for (let x = 0; x < rasterWidth; x += 1) {
+        const longitude = centerLongitudeRad + ((x + 0.5) / rasterWidth - 0.5) * longitudeSpan;
+        cosLongitude[x] = Math.cos(longitude);
+        sinLongitude[x] = Math.sin(longitude);
+    }
+    let seedSample = 0;
+    for (let y = 0; y < rasterHeight; y += 1) {
+        const latitude = centerLatitudeRad + (0.5 - (y + 0.5) / rasterHeight) * latitudeSpan;
+        const cosLatitude = Math.cos(latitude);
+        const directionZ = Math.sin(latitude);
+        if (y === 0) {
+            const direction = [
+                cosLatitude * cosLongitude[0],
+                cosLatitude * sinLongitude[0],
+                directionZ,
+            ];
+            seedSample = pickNearestSample(result, direction);
+        }
+        else {
+            seedSample = sampleIds[(y - 1) * rasterWidth];
+        }
+        for (let x = 0; x < rasterWidth; x += 1) {
+            seedSample = nearestMapSampleFromSeed(result, cosLatitude * cosLongitude[x], cosLatitude * sinLongitude[x], directionZ, seedSample);
+            sampleIds[y * rasterWidth + x] = seedSample;
+        }
+    }
+    mapRasterCache = {
+        result,
+        lookupKey,
+        styleKey: '',
+        width: rasterWidth,
+        height: rasterHeight,
+        sampleIds,
+    };
+    return mapRasterCache;
+}
+function renderEquirectangularRaster(context, result, mode, phase, centerLongitudeRad, centerLatitudeRad, zoom, width, height, interactive, selectedSample) {
+    const lookup = ensureMapSampleLookup(result, centerLongitudeRad, centerLatitudeRad, zoom, width, height, interactive);
+    const gpu = ensureGpuColorCache(result, mode, phase);
+    const styleKey = `${lookup.lookupKey}:${gpu.key}:${gpu.alpha.toFixed(3)}:${selectedSample ?? -1}`;
+    if (mapRasterCanvas.width !== lookup.width)
+        mapRasterCanvas.width = lookup.width;
+    if (mapRasterCanvas.height !== lookup.height)
+        mapRasterCanvas.height = lookup.height;
+    const rasterContext = mapRasterCanvas.getContext('2d', { alpha: false });
+    if (!rasterContext)
+        throw new Error('Planet Engine Lab could not acquire the equirectangular raster context.');
+    if (lookup.styleKey !== styleKey) {
+        const image = rasterContext.createImageData(lookup.width, lookup.height);
+        const pixels = image.data;
+        const alpha = Math.max(0, Math.min(1, gpu.alpha));
+        const inverseAlpha = 1 - alpha;
+        for (let pixel = 0; pixel < lookup.sampleIds.length; pixel += 1) {
+            const sample = lookup.sampleIds[pixel];
+            const colorOffset = sample * 4;
+            let red = gpu.colors[colorOffset];
+            let green = gpu.colors[colorOffset + 1];
+            let blue = gpu.colors[colorOffset + 2];
+            if (sample === selectedSample) {
+                red = Math.round(red * 0.72 + 93 * 0.28);
+                green = Math.round(green * 0.72 + 224 * 0.28);
+                blue = Math.round(blue * 0.72 + 255 * 0.28);
+            }
+            const output = pixel * 4;
+            pixels[output] = Math.round(red * alpha + 8 * inverseAlpha);
+            pixels[output + 1] = Math.round(green * alpha + 16 * inverseAlpha);
+            pixels[output + 2] = Math.round(blue * alpha + 26 * inverseAlpha);
+            pixels[output + 3] = 255;
+        }
+        rasterContext.putImageData(image, 0, 0);
+        lookup.styleKey = styleKey;
+    }
+    context.save();
+    context.imageSmoothingEnabled = interactive && (lookup.width !== width || lookup.height !== height);
+    context.drawImage(mapRasterCanvas, 0, 0, lookup.width, lookup.height, 0, 0, width, height);
+    context.restore();
+}
 let projectedResult = null;
 let projectedKey = '';
 const GPU_SEASONAL_MODES = new Set(['seasonal-temperature', 'seasonal-sst', 'seasonal-precipitation', 'seasonal-realized-discharge', 'seasonal-snow-storage']);
@@ -1068,6 +1206,7 @@ function renderPlanet(surfaceCanvas, canvas, result, projection, mode, overlays,
     if (projection === 'globe') {
         const gpu = ensureGpuColorCache(result, mode, phase);
         surfaceCanvas.hidden = false;
+        surfaceCanvas.style.display = '';
         const gpuDrawn = globeRenderer.draw(result, gpu.colors, gpu.key, { yaw, pitch, zoom }, width, height, gpu.alpha, overlays.has('cell-boundaries'), selectedSample);
         if (gpuDrawn) {
             context.clearRect(0, 0, width, height);
@@ -1142,7 +1281,81 @@ function renderPlanet(surfaceCanvas, canvas, result, projection, mode, overlays,
             return;
         }
     }
+    if (projection === 'map') {
+        surfaceCanvas.hidden = true;
+        surfaceCanvas.style.display = 'none';
+        context.fillStyle = '#08101a';
+        context.fillRect(0, 0, width, height);
+        renderEquirectangularRaster(context, result, mode, phase, yaw, pitch, zoom, width, height, interactive, selectedSample);
+        const boundaryMode = mode === 'tectonic-boundaries' || mode === 'geological-boundaries' || mode === 'boundary-provenance';
+        const needsProjectedDecoration = overlays.size > 0
+            || mode === 'mesh'
+            || mode === 'winds'
+            || mode === 'currents'
+            || isDrainageMode(mode)
+            || boundaryMode;
+        if (!needsProjectedDecoration)
+            return;
+        ensureProjectedSamples(result, projection, yaw, pitch, width, height, buffers, zoom);
+        if (mode === 'mesh') {
+            context.beginPath();
+            context.strokeStyle = '#5d7890';
+            context.lineWidth = 0.55;
+            for (let sample = 0; sample < result.metrics.fineSampleCount; sample += 1) {
+                if (!buffers.visible[sample])
+                    continue;
+                const ax = buffers.x[sample], ay = buffers.y[sample];
+                for (let cursor = result.neighborOffsets[sample]; cursor < result.neighborOffsets[sample + 1]; cursor += 1) {
+                    const neighbor = result.neighbors[cursor];
+                    if (neighbor <= sample || !buffers.visible[neighbor])
+                        continue;
+                    const bx = buffers.x[neighbor];
+                    if (Math.abs(ax - bx) > width * 0.45)
+                        continue;
+                    context.moveTo(ax, ay);
+                    context.lineTo(bx, buffers.y[neighbor]);
+                }
+            }
+            context.stroke();
+        }
+        else {
+            if (isDrainageMode(mode)) {
+                if (mode === 'flow-direction')
+                    drawDrainageReceiverOverlay(context, result, projection, width, buffers);
+                if (mode === 'basins')
+                    drawDrainageOutlets(context, result, buffers);
+            }
+            const cacheKey = `${mode}:${GPU_SEASONAL_MODES.has(mode) ? phase.toFixed(3) : 'mean'}`;
+            if (styleCache.result !== result || styleCache.key !== cacheKey)
+                styleCache = buildStyleCache(result, mode, phase);
+            if (styleCache.boundaryBuckets.length > 0) {
+                context.lineCap = 'round';
+                context.lineWidth = mode === 'boundary-provenance' ? 1.4 : 2.0;
+                for (const bucket of styleCache.boundaryBuckets) {
+                    context.strokeStyle = bucket.color;
+                    context.beginPath();
+                    for (let cursor = 0; cursor < bucket.indices.length; cursor += 1) {
+                        const boundary = bucket.indices[cursor];
+                        const a = result.boundarySamples[boundary * 2], b = result.boundarySamples[boundary * 2 + 1];
+                        if (!buffers.visible[a] || !buffers.visible[b])
+                            continue;
+                        const ax = buffers.x[a], bx = buffers.x[b];
+                        if (Math.abs(ax - bx) > width * 0.45)
+                            continue;
+                        context.moveTo(ax, buffers.y[a]);
+                        context.lineTo(bx, buffers.y[b]);
+                    }
+                    context.stroke();
+                }
+            }
+            if (mode === 'winds' || mode === 'currents')
+                drawVectors(context, result, mode, phase, projection, yaw, pitch, width, height, buffers, animation, zoom);
+        }
+        drawDiagnosticOverlays(context, result, overlays, phase, projection, yaw, pitch, width, height, buffers, animation, zoom);
+        return;
+    }
     surfaceCanvas.hidden = true;
+    surfaceCanvas.style.display = 'none';
     context.fillStyle = '#08101a';
     context.fillRect(0, 0, width, height);
     ensureProjectedSamples(result, projection, yaw, pitch, width, height, buffers, projection === 'globe' ? zoom : 1);
@@ -1322,6 +1535,8 @@ let currentCalibrationRequest = null;
 let buffers = null;
 let yaw = -0.65;
 let pitch = 0.25;
+let mapCenterLongitude = 0;
+let mapCenterLatitude = 0;
 let zoom = 1;
 let selectedTile = null;
 let drag = null;
@@ -1456,7 +1671,8 @@ function updateSeasonLabel() { seasonValue.textContent = `${(orbitalPhase() * 10
 function redraw(interactive = false) {
     if (!current || !buffers)
         return;
-    renderPlanet(surfaceCanvas, canvas, current, projection.value, visualization.value, selectedOverlays(), orbitalPhase(), yaw, pitch, zoom, buffers, interactive, animationPhase, selectedTile);
+    const map = projection.value === 'map';
+    renderPlanet(surfaceCanvas, canvas, current, projection.value, visualization.value, selectedOverlays(), orbitalPhase(), map ? mapCenterLongitude : yaw, map ? mapCenterLatitude : pitch, zoom, buffers, interactive, animationPhase, selectedTile);
 }
 function scheduleRedraw(interactive) {
     if (frameRequest)
@@ -1471,6 +1687,8 @@ function scheduleSettledCameraRedraw() {
 function updateZoomLabel() { zoomValue.textContent = `${zoom.toFixed(1)}×`; }
 function setZoom(next, interactive = true) {
     zoom = Math.max(1, Math.min(24, next));
+    if (projection.value === 'map')
+        mapCenterLatitude = clampEquirectangularCenterLatitude(mapCenterLatitude, zoom);
     zoomControl.value = zoom.toFixed(1);
     updateZoomLabel();
     if (interactive) {
@@ -1481,13 +1699,12 @@ function setZoom(next, interactive = true) {
         redraw(false);
 }
 function updateCameraControls() {
-    const globe = projection.value === 'globe';
-    zoomControl.disabled = !globe;
-    resetCamera.disabled = !globe;
+    zoomControl.disabled = false;
+    resetCamera.disabled = false;
 }
 function inspectTile(sample) {
     if (!current || sample === null) {
-        cellInspector.textContent = 'Click the globe to inspect an L8 physical cell.';
+        cellInspector.textContent = 'Click the globe or map to inspect an L8 physical cell.';
         return;
     }
     const degree = current.neighborOffsets[sample + 1] - current.neighborOffsets[sample];
@@ -1497,12 +1714,18 @@ function inspectTile(sample) {
     cellInspector.textContent = `Cell ${sample.toLocaleString()} · ${degree === 5 ? 'pentagon' : 'hexagon'} · plate ${current.plateIds[sample].toLocaleString()} · ${surface} · ${basin}`;
 }
 function pickTileAtPointer(event) {
-    if (!current || projection.value !== 'globe')
+    if (!current)
         return null;
     const rect = canvas.getBoundingClientRect();
     const x = (event.clientX - rect.left) * canvas.width / Math.max(1, rect.width);
     const y = (event.clientY - rect.top) * canvas.height / Math.max(1, rect.height);
-    const direction = screenToWorldDirection(x, y, canvas.width, canvas.height, { yaw, pitch, zoom });
+    const direction = projection.value === 'map'
+        ? equirectangularScreenToWorldDirection(x, y, canvas.width, canvas.height, {
+            centerLongitudeRad: mapCenterLongitude,
+            centerLatitudeRad: mapCenterLatitude,
+            zoom,
+        })
+        : screenToWorldDirection(x, y, canvas.width, canvas.height, { yaw, pitch, zoom });
     return direction ? pickNearestSample(current, direction) : null;
 }
 function vectorAnimationFrame(timestampMs) {
@@ -1782,6 +2005,7 @@ async function generatePlanet() {
         styleCache = { result: null, key: '', sampleBuckets: [], boundaryBuckets: [] };
         edgeOverlayCache = { result: null, coastline: new Uint32Array(0), contours: [], evolvedContours: [], basinDivides: new Uint32Array(0), riverBuckets: [] };
         gpuColorCache = { result: null, key: '', colors: new Uint8Array(0), alpha: 0.94 };
+        mapRasterCache = { result: null, lookupKey: '', styleKey: '', width: 0, height: 0, sampleIds: new Uint32Array(0) };
         projectedResult = null;
         projectedKey = '';
         selectedTile = null;
@@ -1831,41 +2055,77 @@ overlayInputs.forEach(input => input.addEventListener('change', () => { preset.v
 season.addEventListener('input', () => { updateSeasonLabel(); styleCache = { result: null, key: '', sampleBuckets: [], boundaryBuckets: [] }; gpuColorCache = { result: null, key: '', colors: new Uint8Array(0), alpha: 0.94 }; redraw(false); });
 zoomControl.addEventListener('input', () => setZoom(Number(zoomControl.value), true));
 resetCamera.addEventListener('click', () => {
-    yaw = -0.65;
-    pitch = 0.25;
+    if (projection.value === 'map') {
+        mapCenterLongitude = 0;
+        mapCenterLatitude = 0;
+    }
+    else {
+        yaw = -0.65;
+        pitch = 0.25;
+    }
     selectedTile = null;
     inspectTile(null);
     setZoom(1, false);
 });
 canvas.addEventListener('wheel', event => {
-    if (projection.value !== 'globe' || !current)
+    if (!current)
         return;
     event.preventDefault();
     const rect = canvas.getBoundingClientRect();
     const canvasX = (event.clientX - rect.left) * canvas.width / Math.max(1, rect.width);
     const canvasY = (event.clientY - rect.top) * canvas.height / Math.max(1, rect.height);
-    const anchorDirection = screenToWorldDirection(canvasX, canvasY, canvas.width, canvas.height, { yaw, pitch, zoom });
     const nextZoom = Math.max(1, Math.min(24, zoom * Math.exp(-event.deltaY * 0.0015)));
-    if (anchorDirection) {
-        const camera = cameraForWorldDirectionAtScreen(anchorDirection, canvasX, canvasY, canvas.width, canvas.height, nextZoom, { yaw, pitch, zoom });
-        yaw = camera.yaw;
-        pitch = camera.pitch;
+    if (projection.value === 'map') {
+        const anchorDirection = equirectangularScreenToWorldDirection(canvasX, canvasY, canvas.width, canvas.height, {
+            centerLongitudeRad: mapCenterLongitude,
+            centerLatitudeRad: mapCenterLatitude,
+            zoom,
+        });
+        const camera = equirectangularCameraForWorldDirectionAtScreen(anchorDirection, canvasX, canvasY, canvas.width, canvas.height, nextZoom);
+        mapCenterLongitude = camera.centerLongitudeRad;
+        mapCenterLatitude = camera.centerLatitudeRad;
+    }
+    else {
+        const anchorDirection = screenToWorldDirection(canvasX, canvasY, canvas.width, canvas.height, { yaw, pitch, zoom });
+        if (anchorDirection) {
+            const camera = cameraForWorldDirectionAtScreen(anchorDirection, canvasX, canvasY, canvas.width, canvas.height, nextZoom, { yaw, pitch, zoom });
+            yaw = camera.yaw;
+            pitch = camera.pitch;
+        }
     }
     setZoom(nextZoom, true);
 }, { passive: false });
 canvas.addEventListener('pointerdown', event => {
-    if (projection.value !== 'globe')
+    if (!current)
         return;
-    drag = { x: event.clientX, y: event.clientY, yaw, pitch };
+    drag = {
+        x: event.clientX,
+        y: event.clientY,
+        yaw,
+        pitch,
+        mapLongitude: mapCenterLongitude,
+        mapLatitude: mapCenterLatitude,
+        projection: projection.value,
+    };
     canvas.setPointerCapture(event.pointerId);
 });
 canvas.addEventListener('pointermove', event => {
-    if (!drag || projection.value !== 'globe')
+    if (!drag || projection.value !== drag.projection)
         return;
-    const sensitivity = 0.007 / Math.sqrt(zoom);
-    yaw = drag.yaw + (event.clientX - drag.x) * sensitivity;
-    pitch = Math.max(-1.45, Math.min(1.45, drag.pitch + (event.clientY - drag.y) * sensitivity));
+    if (projection.value === 'map') {
+        const rect = canvas.getBoundingClientRect();
+        const longitudeSpan = TWO_PI / Math.max(1, zoom);
+        const latitudeSpan = Math.PI / Math.max(1, zoom);
+        mapCenterLongitude = wrapLongitudeRad(drag.mapLongitude - (event.clientX - drag.x) / Math.max(1, rect.width) * longitudeSpan);
+        mapCenterLatitude = clampEquirectangularCenterLatitude(drag.mapLatitude + (event.clientY - drag.y) / Math.max(1, rect.height) * latitudeSpan, zoom);
+    }
+    else {
+        const sensitivity = 0.007 / Math.sqrt(zoom);
+        yaw = drag.yaw + (event.clientX - drag.x) * sensitivity;
+        pitch = Math.max(-1.45, Math.min(1.45, drag.pitch + (event.clientY - drag.y) * sensitivity));
+    }
     scheduleRedraw(true);
+    scheduleSettledCameraRedraw();
 });
 canvas.addEventListener('pointerup', event => {
     const finishedDrag = drag;
