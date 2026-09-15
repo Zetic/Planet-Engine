@@ -120,8 +120,11 @@ impl DerefMut for InheritedPhysicalState {
     }
 }
 impl InheritedPhysicalState {
+    pub fn inheritance_hash(&self) -> u64 {
+        self.causal_inheritance_hash
+    }
     pub fn inheritance_hash_hex(&self) -> String {
-        format!("{:016x}", self.causal_inheritance_hash)
+        format!("{:016x}", self.inheritance_hash())
     }
     pub fn parameter_hash_hex(&self) -> String {
         self.legacy.parameter_hash_hex()

@@ -5,7 +5,7 @@ use crate::{
 };
 
 pub const FLUVIAL_EROSION_STAGE_ID: &str = "geomorphology:fluvial-erosion-sediment";
-pub const FLUVIAL_EROSION_STAGE_VERSION: u32 = 1;
+pub const FLUVIAL_EROSION_STAGE_VERSION: u32 = 2;
 const FLUVIAL_EROSION_NAMESPACE: &str = "geomorphology:fluvial-erosion-sediment:v1";
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
@@ -604,7 +604,7 @@ pub fn generate_fluvial_erosion_sediment(
     for value in [
         stage_seed,
         erosion_parameter_hash,
-        inherited.inheritance_hash,
+        inherited.inheritance_hash(),
         topography.metrics.topography_hash,
         drainage.metrics.drainage_hash,
         lakes.metrics.lake_hash,
@@ -645,7 +645,7 @@ pub fn generate_fluvial_erosion_sediment(
             maximum_sediment_load_kg_s: routing.maximum_load_kg_s,
             sediment_conservation_relative_error,
             erosion_parameter_hash,
-            inheritance_hash: inherited.inheritance_hash,
+            inheritance_hash: inherited.inheritance_hash(),
             topography_hash: topography.metrics.topography_hash,
             drainage_hash: drainage.metrics.drainage_hash,
             lake_hash: lakes.metrics.lake_hash,
