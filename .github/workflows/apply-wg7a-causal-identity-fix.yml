@@ -1,0 +1,43 @@
+name: Apply WG-7A causal identity fix
+
+on:
+  push:
+    branches: [feat/wg7a-causal-inheritance-identity]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ contains(github.event.head_commit.message, '[wg7a-causal-id-driver]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/wg7a-causal-inheritance-identity
+      - name: Apply causal identity fix
+        run: python3 scripts/apply-wg7a-causal-identity-fix.py
+      - name: Install Rust stable and wasm target
+        run: |
+          rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown
+          rustup default stable
+      - name: Compile workspace
+        run: cargo check --workspace --all-targets
+      - name: Run WG-7A causal identity smoke
+        run: cargo run -p interlink-worldgen-cli --example erosion_performance -- --seed ci-wg7a-causal-identity --coarse-level 3 --level 4 --plates 12 --runs 1
+      - name: Compile browser bridge
+        run: cargo check -p interlink-worldgen-wasm --target wasm32-unknown-unknown
+      - name: Browser build and regressions
+        run: |
+          npm ci
+          npm run build
+          npm run test:ts
+      - name: Commit fix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add rust .github/workflows/ci.yml dist
+          git diff --cached --quiet && exit 0
+          git commit -m 'fix(worldgen): preserve causal inheritance identity through WG-7A [wg7a-causal-id-applied]'
+          git push origin HEAD:feat/wg7a-causal-inheritance-identity
