@@ -5,6 +5,7 @@ on:
     branches: [perf/l8-memory-architecture]
   workflow_dispatch:
 
+# Canonical L5 -> L8 retained-state and browser-packet memory guard.
 jobs:
   audit:
     runs-on: ubuntu-latest
