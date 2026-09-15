@@ -20,21 +20,19 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - name: Apply integration patch
-        run: |
-          sed -i 's/transferables\.reduce((sum, item)/transferables.reduce<number>((sum, item)/' scripts/apply-worldgen-crash-report.py
-          python3 scripts/apply-worldgen-crash-report.py
+      - name: Apply debugger fixes
+        run: python3 scripts/fix-crash-recorder-env.py
       - name: Install dependencies
         run: npm ci
       - name: Build browser modules
         run: npm run build
       - name: Run TypeScript regressions
         run: npm run test:ts
-      - name: Commit integration
+      - name: Commit debugger fixes
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src index.html styles tests dist
+          git add src dist
           git diff --cached --quiet && exit 0
-          git commit -m 'feat(worldgen): add crash report diagnostics [crash-report-applied]'
+          git commit -m 'perf(worldgen): keep crash recorder instrumentation lightweight [crash-report-applied]'
           git push origin HEAD:feat/worldgen-crash-report
