@@ -8,7 +8,7 @@ use interlink_worldgen::{
 
 #[test]
 fn hydroclimate_stage_and_latent_energy_parameters_are_explicit() {
-    assert_eq!(CLIMATE_STAGE_VERSION, 7);
+    assert_eq!(CLIMATE_STAGE_VERSION, 8);
     let baseline = ClimateParameters::default();
 
     let mut changed_ocean = baseline;

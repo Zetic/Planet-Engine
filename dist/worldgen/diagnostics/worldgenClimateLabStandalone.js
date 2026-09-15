@@ -1447,7 +1447,7 @@ function finishGenerationTelemetry(result) {
     }
     generationProgress.value = 100;
     generationStage.textContent = 'Complete';
-    generationStep.textContent = `${result.metrics.spinupYears} climate spin-up years`;
+    generationStep.textContent = `${result.metrics.spinupYears} climate spin-up years${result.metrics.spinupConverged ? '' : ' · bounded fallback accepted'}`;
     generationTimer.textContent = formatDuration(result.stage.durationMs);
     showGenerationProfile(result);
 }
@@ -1546,7 +1546,7 @@ function showMetrics(result) {
     metric(metrics, 'Moisture limiter', `${(result.metrics.moistureTransportLimiterFraction * 100).toFixed(4)}% donor steps`);
     metric(metrics, 'Moisture substeps', `${result.metrics.maximumMoistureTransportSubsteps} maximum`);
     metric(metrics, 'Snow / sea ice potential', `${(result.metrics.persistentSnowAreaFraction * 100).toFixed(1)}% / ${(result.metrics.seaIceAreaFraction * 100).toFixed(1)}% area`);
-    metric(metrics, 'Spin-up', `${result.metrics.spinupYears} model years · ΔT ${result.metrics.finalTemperatureRmsChangeK.toFixed(3)} K RMS`);
+    metric(metrics, 'Spin-up', `${result.metrics.spinupYears} model years · ΔT ${result.metrics.finalTemperatureRmsChangeK.toFixed(3)} K RMS · ${result.metrics.spinupConverged ? 'converged' : `bounded fallback (target ≤ ${result.metrics.convergenceTemperatureRmsK.toFixed(3)} K)`}`);
     metric(metrics, 'Planet forcing', `${result.planet.stellarFluxWM2.toFixed(0)} W/m² · tilt ${(result.planet.axialTiltRad * 180 / Math.PI).toFixed(2)}° · e ${result.climatePhysical.orbitalEccentricity.toFixed(4)}`);
     metric(metrics, 'Land / ocean', `${(result.metrics.landAreaFraction * 100).toFixed(1)}% / ${(result.metrics.oceanAreaFraction * 100).toFixed(1)}%`);
     metric(metrics, 'Climate duration', `${result.stage.durationMs.toFixed(1)} ms`);

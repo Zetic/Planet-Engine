@@ -5,7 +5,7 @@ use crate::{
 
 const CLIMATE_NAMESPACE: &str = "climate:v1";
 pub const CLIMATE_STAGE_ID: &str = "climate:coupled-surface";
-pub const CLIMATE_STAGE_VERSION: u32 = 7;
+pub const CLIMATE_STAGE_VERSION: u32 = 8;
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 const STEFAN_BOLTZMANN: f64 = 5.670_374_419e-8;
@@ -380,6 +380,8 @@ pub struct ClimateMetrics {
     pub global_solver_sample_count: u32,
     pub orbital_phase_count: u8,
     pub spinup_years: u8,
+    pub spinup_converged: bool,
+    pub convergence_temperature_rms_k: f64,
     pub mean_temperature_k: f64,
     pub minimum_temperature_k: f64,
     pub maximum_temperature_k: f64,
@@ -2461,11 +2463,11 @@ pub(crate) fn generate_coupled_climate_reference_internal(
         }
     }
 
-    if final_temperature_rms_change > parameters.convergence_temperature_rms_k {
-        return Err(WorldgenError::InvalidClimate(
-            "WG-5 climate did not converge within the configured spin-up bound",
-        ));
-    }
+    // Reaching the deterministic spin-up bound without satisfying the configured
+    // temperature RMS target is a quality diagnostic, not an invalid physical state.
+    // Preserve the final bounded year and let downstream stages continue; hard failures
+    // remain reserved for invalid/non-finite state and conservation violations.
+    let spinup_converged = final_temperature_rms_change <= parameters.convergence_temperature_rms_k;
 
     let phase_count_f64 = phase_count as f64;
     let harmonic_scale = 2.0 / phase_count_f64;
@@ -2663,6 +2665,8 @@ pub(crate) fn generate_coupled_climate_reference_internal(
         global_solver_sample_count: sample_count as u32,
         orbital_phase_count: parameters.orbital_phase_count,
         spinup_years,
+        spinup_converged,
+        convergence_temperature_rms_k: parameters.convergence_temperature_rms_k,
         mean_temperature_k: mean_temperature,
         minimum_temperature_k: temperature_min_f32
             .iter()

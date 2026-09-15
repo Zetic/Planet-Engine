@@ -438,6 +438,12 @@ impl WasmWorldgenClimate {
     pub fn spinup_years(&self) -> u8 {
         self.climate.metrics.spinup_years
     }
+    pub fn spinup_converged(&self) -> bool {
+        self.climate.metrics.spinup_converged
+    }
+    pub fn convergence_temperature_rms_k(&self) -> f64 {
+        self.climate.metrics.convergence_temperature_rms_k
+    }
     pub fn mean_temperature_k(&self) -> f64 {
         self.climate.metrics.mean_temperature_k
     }

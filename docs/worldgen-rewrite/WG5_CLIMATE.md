@@ -83,7 +83,7 @@ The canonical quality target remains L7 (~163,842 output samples / ~56 km charac
 
 ## Acceptance and diagnostics hardening
 
-The public WG-5 generator now rejects a climate state if the configured annual temperature convergence tolerance is not reached or if the final atmospheric moisture budget exceeds the conservation tolerance. Native CLI, Rust callers, WASM, and browser generation therefore share the same acceptance contract.
+WG-5 temperature spin-up convergence is a quality diagnostic rather than a validity gate. The solver still stops early when the configured annual RMS target is reached, but if the deterministic maximum spin-up bound is exhausted it now returns the final bounded climate state with `spinup_converged = false` and records both the final RMS change and target tolerance. Native CLI, Rust callers, WASM, and browser generation therefore continue into downstream hydrology instead of rejecting an otherwise finite state. Hard failures remain reserved for invalid/non-finite model state and conservation failures such as atmospheric moisture-budget closure.
 
 `atmospheric_specific_heat_j_per_kg_k` now causally scales reduced atmospheric heat redistribution rather than acting only as hash metadata. Airless planets disable that atmospheric redistribution path entirely. Reported wind mean/max statistics are time-aware speed statistics over the retained final climatology year rather than magnitudes of annual-mean vector components, and the reported ocean divergence residual is the worst orbital-phase residual from the retained year.
 
