@@ -24,6 +24,7 @@ mod seasonal_flow;
 mod seasonal_lakes;
 mod surface_water;
 mod tectonics;
+mod tectonic_history;
 mod topography;
 mod topography_morphology;
 mod topology;
@@ -126,6 +127,11 @@ pub use tectonics::{
     generate_tectonics, PlateBoundaryEdge, PlateBoundaryKind, TectonicMetrics, TectonicModel,
     TectonicPlate, TectonicsRequest, MAX_TECTONIC_PLATES, MIN_TECTONIC_PLATES, TECTONICS_STAGE_ID,
     TECTONICS_STAGE_VERSION,
+};
+pub use tectonic_history::{
+    generate_tectonic_history, BoundaryHistoryState, TectonicBoundarySystem,
+    TectonicHistoryMetrics, TectonicHistoryModel, TectonicHistoryRequest,
+    TECTONIC_HISTORY_STAGE_ID, TECTONIC_HISTORY_STAGE_VERSION,
 };
 pub use topography::{
     generate_initial_topography, TopographyMetrics, TopographyParameters, TopographyRequest,
