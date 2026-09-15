@@ -1,7 +1,7 @@
 use interlink_worldgen::{
     build_icosphere, generate_crust_and_history, generate_pre_orogenic_lithosphere,
     generate_tectonic_history, generate_tectonics, GeologyRequest, PlanetPhysicalParameters,
-    PreOrogenicLithosphereRequest, TectonicHistoryRequest, TectonicsRequest,
+    PlanetTopology, PreOrogenicLithosphereRequest, TectonicHistoryRequest, TectonicsRequest,
 };
 
 fn main() -> Result<(), String> {
