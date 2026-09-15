@@ -34,32 +34,34 @@ jobs:
           code = workflow[start:end]
           code = '\n'.join(line[10:] if line.startswith('          ') else line for line in code.splitlines())
 
-          broken = """for method in [
-    'faces', 'outlet_sample', 'outlet_kind', 'drainage_order', 'local_runoff_m3_s',
-    'lake_spill_samples', 'stream_power_index', 'sediment_transport_capacity_kg_s',
-    'runoff_stage_id', 'runoff_stage_version', 'runoff_stage_seed_hex',
-]:
-    ib, n = re.subn(rf'\\s*{method}\\(\\):\\s*[^;]+;', '', ib, count=1)
-    if n != 1: raise SystemExit(f'worker interface method not removed: {method} ({n})')
-"""
-          fixed = """method_signatures = {
-    'faces': 'faces(): Uint32Array;',
-    'outlet_sample': 'outlet_sample(): Uint32Array;',
-    'outlet_kind': 'outlet_kind(): Uint8Array;',
-    'drainage_order': 'drainage_order(): Uint32Array;',
-    'local_runoff_m3_s': 'local_runoff_m3_s(): Float32Array;',
-    'lake_spill_samples': 'lake_spill_samples(): Uint32Array;',
-    'stream_power_index': 'stream_power_index(): Float32Array;',
-    'sediment_transport_capacity_kg_s': 'sediment_transport_capacity_kg_s(): Float32Array;',
-    'runoff_stage_id': 'runoff_stage_id(): string;',
-    'runoff_stage_version': 'runoff_stage_version(): number;',
-    'runoff_stage_seed_hex': 'runoff_stage_seed_hex(): string;',
-}
-for method, signature in method_signatures.items():
-    n = ib.count(signature)
-    if n != 1: raise SystemExit(f'worker interface method not removed: {method} ({n})')
-    ib = ib.replace(signature, '', 1)
-"""
+          broken = (
+              "for method in [\n"
+              "    'faces', 'outlet_sample', 'outlet_kind', 'drainage_order', 'local_runoff_m3_s',\n"
+              "    'lake_spill_samples', 'stream_power_index', 'sediment_transport_capacity_kg_s',\n"
+              "    'runoff_stage_id', 'runoff_stage_version', 'runoff_stage_seed_hex',\n"
+              "]:\n"
+              "    ib, n = re.subn(rf'\\s*{method}\\(\\):\\s*[^;]+;', '', ib, count=1)\n"
+              "    if n != 1: raise SystemExit(f'worker interface method not removed: {method} ({n})')\n"
+          )
+          fixed = (
+              "method_signatures = {\n"
+              "    'faces': 'faces(): Uint32Array;',\n"
+              "    'outlet_sample': 'outlet_sample(): Uint32Array;',\n"
+              "    'outlet_kind': 'outlet_kind(): Uint8Array;',\n"
+              "    'drainage_order': 'drainage_order(): Uint32Array;',\n"
+              "    'local_runoff_m3_s': 'local_runoff_m3_s(): Float32Array;',\n"
+              "    'lake_spill_samples': 'lake_spill_samples(): Uint32Array;',\n"
+              "    'stream_power_index': 'stream_power_index(): Float32Array;',\n"
+              "    'sediment_transport_capacity_kg_s': 'sediment_transport_capacity_kg_s(): Float32Array;',\n"
+              "    'runoff_stage_id': 'runoff_stage_id(): string;',\n"
+              "    'runoff_stage_version': 'runoff_stage_version(): number;',\n"
+              "    'runoff_stage_seed_hex': 'runoff_stage_seed_hex(): string;',\n"
+              "}\n"
+              "for method, signature in method_signatures.items():\n"
+              "    n = ib.count(signature)\n"
+              "    if n != 1: raise SystemExit(f'worker interface method not removed: {method} ({n})')\n"
+              "    ib = ib.replace(signature, '', 1)\n"
+          )
           if broken not in code:
               raise SystemExit('worker interface rewrite patch target missing')
           code = code.replace(broken, fixed, 1)
