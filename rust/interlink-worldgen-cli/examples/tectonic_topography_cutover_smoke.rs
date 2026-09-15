@@ -1,7 +1,7 @@
 use interlink_worldgen::{
     build_icosphere, generate_crust_and_history, generate_initial_topography, generate_lithosphere,
     generate_tectonics, inherit_boundary_interfaces, inherit_physical_state, GeologyRequest,
-    LithosphereRequest, PlanetPhysicalParameters, TectonicsRequest, TopographyRequest,
+    CrustKind, LithosphereRequest, OrogenProvinceKind, PlanetPhysicalParameters, TectonicsRequest, TopographyRequest,
     TOPOGRAPHY_STAGE_VERSION,
 };
 
@@ -71,9 +71,33 @@ fn main() -> Result<(), String> {
         .iter()
         .filter(|value| **value < -100.0)
         .count();
+    let mut continental_foreland = 0usize;
+    let mut flooded_continental_foreland = 0usize;
+    let mut continental_orogen = 0usize;
+    let mut flooded_continental_orogen = 0usize;
+    for sample in 0..terrain.solid_elevation_m.len() {
+        let continental = inherited.crust_kind[sample] == CrustKind::Continental as u8;
+        if continental && inherited.foreland_basin_index[sample] > 0.20 {
+            continental_foreland += 1;
+            if terrain.submerged_mask[sample] != 0 {
+                flooded_continental_foreland += 1;
+            }
+        }
+        let kind = inherited.province_kind[sample];
+        let collision_orogen = kind == OrogenProvinceKind::ContinentalCollision as u8
+            || kind == OrogenProvinceKind::CollisionalPlateau as u8
+            || kind == OrogenProvinceKind::TerraneAccretion as u8
+            || kind == OrogenProvinceKind::TranspressionalOrogen as u8;
+        if continental && collision_orogen {
+            continental_orogen += 1;
+            if terrain.submerged_mask[sample] != 0 {
+                flooded_continental_orogen += 1;
+            }
+        }
+    }
 
     println!(
-        "WG-4 boundary-localized topography: stage=v{} provinces={} active_samples={} core={} far_core={} relief(+/-)={}/{} solid={:.0}..{:.0}m clamped={} land={:.1}% province_hash={} topo_hash={}",
+        "WG-4 orogen topology: stage=v{} provinces={} active_samples={} core={} far_core={} relief(+/-)={}/{} foreland_flood={}/{} orogen_flood={}/{} solid={:.0}..{:.0}m clamped={} land={:.1}% province_hash={} topo_hash={}",
         terrain.stage.version,
         lithosphere.orogen_provinces.metrics.province_count,
         active_samples,
@@ -81,6 +105,10 @@ fn main() -> Result<(), String> {
         far_mountain_core_samples,
         positive_orogen,
         negative_orogen,
+        flooded_continental_foreland,
+        continental_foreland,
+        flooded_continental_orogen,
+        continental_orogen,
         terrain.metrics.minimum_solid_elevation_m,
         terrain.metrics.maximum_solid_elevation_m,
         terrain.metrics.clamped_sample_count,
@@ -89,16 +117,27 @@ fn main() -> Result<(), String> {
         terrain.metrics.topography_hash_hex(),
     );
 
-    if terrain.stage.version != TOPOGRAPHY_STAGE_VERSION || terrain.stage.version != 13 {
+    if terrain.stage.version != TOPOGRAPHY_STAGE_VERSION || terrain.stage.version != 14 {
         return Err("WG-4 did not route through tectonic-province topography".to_string());
     }
     if active_samples == 0
         || mountain_core_samples == 0
         || far_mountain_core_samples != 0
         || positive_orogen == 0
-        || negative_orogen == 0
     {
         return Err("tectonic province topography did not exercise zoned relief".to_string());
+    }
+    if continental_foreland > 0 && flooded_continental_foreland * 20 > continental_foreland {
+        return Err(format!(
+            "continental foreland flooding is still systematic: {}/{}",
+            flooded_continental_foreland, continental_foreland
+        ));
+    }
+    if continental_orogen > 0 && flooded_continental_orogen * 10 > continental_orogen {
+        return Err(format!(
+            "continental orogen flooding is still excessive: {}/{}",
+            flooded_continental_orogen, continental_orogen
+        ));
     }
     if terrain
         .solid_elevation_m

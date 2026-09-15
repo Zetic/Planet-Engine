@@ -7,8 +7,8 @@ use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 
 pub const OROGEN_PROVINCE_STAGE_ID: &str = "geology:tectonic-orogen-provinces";
-pub const OROGEN_PROVINCE_STAGE_VERSION: u32 = 2;
-const OROGEN_PROVINCE_NAMESPACE: &str = "worldgen:geology:tectonic-orogen-provinces:v2";
+pub const OROGEN_PROVINCE_STAGE_VERSION: u32 = 3;
+const OROGEN_PROVINCE_NAMESPACE: &str = "worldgen:geology:tectonic-orogen-provinces:v3";
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 const NO_PLATE: u16 = u16::MAX;
@@ -476,12 +476,14 @@ fn base_width_km(kind: OrogenProvinceKind, maturity: f64, weakness: f64) -> f64 
     // intentionally narrow enough that strong continental interiors can halt strain within
     // hundreds of kilometres while exceptional mature plateaus can still exceed 1000 km total.
     match kind {
-        OrogenProvinceKind::ContinentalCollision => 170.0 + maturity * 190.0 + weakness * 90.0,
-        OrogenProvinceKind::CollisionalPlateau => 300.0 + maturity * 310.0 + weakness * 130.0,
-        OrogenProvinceKind::CordilleranArc => 120.0 + maturity * 110.0 + weakness * 55.0,
-        OrogenProvinceKind::IslandArc => 90.0 + maturity * 95.0 + weakness * 45.0,
-        OrogenProvinceKind::TerraneAccretion => 135.0 + maturity * 145.0 + weakness * 75.0,
-        OrogenProvinceKind::TranspressionalOrogen => 85.0 + maturity * 100.0 + weakness * 45.0,
+        // Collision systems need room for a range + hinterland + fold/thrust transition.
+        // The v2 widths were narrow enough that the range itself became a coloured boundary line.
+        OrogenProvinceKind::ContinentalCollision => 220.0 + maturity * 260.0 + weakness * 110.0,
+        OrogenProvinceKind::CollisionalPlateau => 380.0 + maturity * 360.0 + weakness * 150.0,
+        OrogenProvinceKind::CordilleranArc => 135.0 + maturity * 125.0 + weakness * 60.0,
+        OrogenProvinceKind::IslandArc => 100.0 + maturity * 105.0 + weakness * 50.0,
+        OrogenProvinceKind::TerraneAccretion => 175.0 + maturity * 180.0 + weakness * 90.0,
+        OrogenProvinceKind::TranspressionalOrogen => 115.0 + maturity * 125.0 + weakness * 55.0,
     }
 }
 
@@ -511,12 +513,12 @@ fn source_widths(
     base *= 0.24 + taper * 0.76;
 
     let (minimum, maximum) = match kind {
-        OrogenProvinceKind::CollisionalPlateau => (220.0, 900.0),
-        OrogenProvinceKind::ContinentalCollision => (120.0, 560.0),
-        OrogenProvinceKind::TerraneAccretion => (100.0, 480.0),
-        OrogenProvinceKind::CordilleranArc => (85.0, 380.0),
-        OrogenProvinceKind::IslandArc => (65.0, 300.0),
-        OrogenProvinceKind::TranspressionalOrogen => (55.0, 260.0),
+        OrogenProvinceKind::CollisionalPlateau => (260.0, 980.0),
+        OrogenProvinceKind::ContinentalCollision => (150.0, 720.0),
+        OrogenProvinceKind::TerraneAccretion => (125.0, 620.0),
+        OrogenProvinceKind::CordilleranArc => (90.0, 420.0),
+        OrogenProvinceKind::IslandArc => (70.0, 340.0),
+        OrogenProvinceKind::TranspressionalOrogen => (70.0, 340.0),
     };
     base = base.clamp(minimum, maximum);
 
@@ -538,10 +540,25 @@ fn source_widths(
     }
 
     let orthogonality = 1.0 - clamp01(traits.obliquity_deg / 90.0);
+    // High mountains are not guaranteed merely because a boundary is convergent.  Require
+    // accumulated shortening, then let inherited weakness/discontinuities and curvature focus
+    // the load along strike.  This keeps convergent margins mountain-prone without turning every
+    // edge of the plate graph into an equally tall ribbon.
+    let shortening_gate = smoothstep(shortening / 0.55);
+    let tectonic_focus = clamp01(
+        0.28
+            + traits.weakness * 0.18
+            + traits.age_discontinuity * 0.20
+            + traits.province_boundary * 0.10
+            + clamp01(traits.curvature_deg / 90.0) * 0.14
+            + traits.fragment_contact * 0.10,
+    );
     let core_strength = clamp01(
-        (0.22 + maturity * 0.58 + shortening * 0.34)
-            * (0.70 + orthogonality * 0.30)
-            * (0.34 + taper * 0.66),
+        shortening_gate
+            * (0.32 + maturity * 0.68)
+            * (0.76 + orthogonality * 0.24)
+            * (0.42 + taper * 0.58)
+            * (0.82 + tectonic_focus * 0.18),
     );
     let te_norm = clamp01((traits.mean_te_km - 18.0) / 62.0);
     let plateau_eligibility = if kind == OrogenProvinceKind::CollisionalPlateau {
@@ -915,7 +932,7 @@ fn rasterize<T: PlanetTopology>(
                 // offset is in physical kilometres so a very broad province cannot push the arc
                 // thousands of kilometres into the overriding plate.
                 let arc_center_km = 145.0 + 120.0 * source.maturity + 35.0 * source.curvature;
-                let arc_sigma_km = 55.0 + 30.0 * (1.0 - resistance_value);
+                let arc_sigma_km = 80.0 + 45.0 * (1.0 - resistance_value);
                 let arc_profile = gaussian(distance_km, arc_center_km, arc_sigma_km);
                 let mountain = clamp01(
                     source.core_strength
@@ -939,7 +956,7 @@ fn rasterize<T: PlanetTopology>(
                         * gaussian(distance_km, arc_center_km, arc_sigma_km * 0.78),
                 );
                 let backarc_value = clamp01(
-                    source.maturity * gaussian(distance_km, arc_center_km + 220.0, 110.0) * 0.66,
+                    source.maturity * gaussian(distance_km, arc_center_km + 260.0, 180.0) * 0.42,
                 );
                 let suture_value =
                     clamp01(source.core_strength * gaussian(distance_km, 0.0, 70.0) * 0.16);
@@ -981,22 +998,22 @@ fn rasterize<T: PlanetTopology>(
                 0.76
             };
             let mountain = clamp01(
-                source.core_strength
-                    * gaussian(x, 0.10, 0.20)
+                source.core_strength.powf(1.08)
+                    * gaussian(x, 0.18, 0.32)
                     * side_amplitude
                     * (0.82 + 0.18 * transmission)
                     * reach_envelope,
             );
             let root_value = clamp01(
                 source.core_strength
-                    * gaussian(x, 0.18, 0.28)
+                    * gaussian(x, 0.30, 0.44)
                     * if hinterland { 1.0 } else { 0.78 }
                     * transmission,
             );
             let plateau_value = if source.kind == OrogenProvinceKind::CollisionalPlateau {
                 clamp01(
                     source.plateau_eligibility
-                        * gaussian(x, 0.50, 0.28)
+                        * gaussian(x, 0.62, 0.40)
                         * if hinterland { 1.0 } else { 0.22 }
                         * transmission,
                 )
@@ -1005,13 +1022,13 @@ fn rasterize<T: PlanetTopology>(
             };
             let fold_value = clamp01(
                 source.core_strength
-                    * gaussian(x, 0.64, 0.20)
+                    * gaussian(x, 0.86, 0.30)
                     * if foreland_side { 1.0 } else { 0.45 }
                     * (0.72 + 0.28 * transmission),
             );
             let foreland_value = if foreland_side {
                 clamp01(
-                    source.maturity * source.shortening * gaussian(x, 1.04, 0.17) * reach_envelope,
+                    source.maturity * source.shortening * gaussian(x, 1.22, 0.34) * reach_envelope * 0.62,
                 )
             } else {
                 0.0
@@ -1021,7 +1038,7 @@ fn rasterize<T: PlanetTopology>(
                 source.core_strength
                     * source.obliquity
                     * (0.72 + source.curvature * 0.28)
-                    * gaussian(x, 0.10, 0.16),
+                    * gaussian(x, 0.22, 0.28),
             );
             let intensity = mountain
                 .max(fold_value * 0.75)
