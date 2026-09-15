@@ -1,0 +1,39 @@
+name: Apply orogen topology rewrite
+
+on:
+  push:
+    branches: [fix/orogen-topology-coastal-basins]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ !contains(github.event.head_commit.message, '[topology-rewrite-applied]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/orogen-topology-coastal-basins
+          fetch-depth: 0
+      - name: Apply rewrite
+        run: python3 scripts/apply-orogen-topology-rewrite.py
+      - name: Compile and run focused tests
+        run: |
+          cargo check --workspace --all-targets
+          cargo test -p interlink-worldgen connected_ocean -- --nocapture
+          cargo test -p interlink-worldgen orogen_provinces -- --nocapture
+          cargo run -p interlink-worldgen-cli --example tectonic_topography_cutover_smoke
+      - name: Commit rewrite
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add rust/interlink-worldgen/src/orogen_provinces.rs \
+                  rust/interlink-worldgen/src/causal_pipeline.rs \
+                  rust/interlink-worldgen/src/surface_water.rs \
+                  rust/interlink-worldgen/src/lib.rs \
+                  rust/interlink-worldgen-cli/examples/tectonic_topography_cutover_smoke.rs \
+                  .github/workflows/ci.yml \
+                  docs/worldgen-rewrite/OROGEN_TOPOLOGY_AND_OCEAN_CONNECTIVITY.md
+          git commit -m "feat(worldgen): fix orogen topology and inland ocean flooding [topology-rewrite-applied]"
+          git push origin HEAD:fix/orogen-topology-coastal-basins
