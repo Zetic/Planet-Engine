@@ -1,4 +1,4 @@
-name: Bootstrap inherited-orogen geometry implementation
+name: Finalize inherited-orogen geometry implementation
 
 on:
   push:
@@ -8,34 +8,94 @@ on:
 permissions:
   contents: write
 
+env:
+  RUST_VERSION: '1.98.1'
+  WASM_BINDGEN_VERSION: '0.2.127'
+
 jobs:
-  patch-and-validate:
+  finalize:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Measure accepted v3 baseline geometry
-        run: cargo run --release -p interlink-worldgen-cli --example geology_orogen_geometry_acceptance
-      - name: Apply conservative WG-3 history geometry candidate
-        run: python3 scripts/bootstrap-orogen-geometry.py
-      - name: Format and validate focused geology changes
+      - name: Harden direct geometry acceptance
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          path = Path('rust/interlink-worldgen-cli/examples/geology_orogen_geometry_acceptance.rs')
+          text = path.read_text()
+          old = '''    if minimum_core < 0.80 {
+              return Err(format!(
+                  "orogen core continuity fell too low: {minimum_core:.4}"
+              ));
+          }
+          if !minimum_width_cv.is_finite() || mean_cv <= 0.0 {
+              return Err("orogen width diagnostics did not produce finite variation".to_string());
+          }
+          Ok(())
+          }'''
+          new = '''    if minimum_core < 0.95 {
+              return Err(format!(
+                  "orogen core continuity fell too low: {minimum_core:.4}"
+              ));
+          }
+          if !minimum_width_cv.is_finite() || minimum_width_cv < 0.07 {
+              return Err(format!(
+                  "orogen width variation remained too uniform: min CV {minimum_width_cv:.4}"
+              ));
+          }
+          if mean_cv < 0.09 {
+              return Err(format!(
+                  "orogen mean width variation remained too uniform: {mean_cv:.4}"
+              ));
+          }
+          if endpoint_ratios.weight <= 0.0 || endpoint_ratios.mean() > 0.985 {
+              return Err(format!(
+                  "orogen terminations did not taper enough: endpoint/interior {:.4}",
+                  endpoint_ratios.mean()
+              ));
+          }
+          if asymmetry.weight <= 0.0 || asymmetry.mean() < 0.055 {
+              return Err(format!(
+                  "collision-side width asymmetry remained too weak: {:.4}",
+                  asymmetry.mean()
+              ));
+          }
+          Ok(())
+          }'''
+          assert old in text, 'geometry acceptance anchor missing'
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Install pinned Rust and browser target
+        run: |
+          rustup toolchain install "${RUST_VERSION}" --profile minimal --target wasm32-unknown-unknown
+          rustup default "${RUST_VERSION}"
+      - name: Validate hardened direct geometry gate
         run: |
           cargo fmt --all
-          cargo test -p interlink-worldgen geology::tests -- --nocapture
           cargo run --release -p interlink-worldgen-cli --example geology_orogen_geometry_acceptance
-          cargo run --release -p interlink-worldgen-cli --example topography_inherited_orogen_morphology_acceptance
-          cargo run --release -p interlink-worldgen-cli --example topography_orogen_profile_acceptance
-      - name: Commit implementation without workflow edits
+      - name: Restore wasm-bindgen CLI cache
+        id: wasm-bindgen-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/wasm-bindgen*
+          key: ${{ runner.os }}-wasm-bindgen-cli-${{ env.WASM_BINDGEN_VERSION }}-rust-${{ env.RUST_VERSION }}
+      - name: Install pinned wasm-bindgen CLI
+        if: steps.wasm-bindgen-cache.outputs.cache-hit != 'true'
+        run: cargo +${RUST_VERSION} install wasm-bindgen-cli --version "${WASM_BINDGEN_VERSION}" --locked
+      - name: Rebuild committed browser WASM package
+        run: npm run build:worldgen-wasm
+      - name: Commit final diagnostic and WASM package
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add rust/interlink-worldgen/src/geology.rs rust/interlink-worldgen-cli/examples/geology_orogen_geometry_acceptance.rs docs/worldgen-rewrite/TOPOGRAPHY.md
+          git add rust/interlink-worldgen-cli/examples/geology_orogen_geometry_acceptance.rs src/wasm-worldgen
           if git diff --cached --quiet; then
-            echo "No implementation changes to commit"
+            echo "No finalization changes to commit"
             exit 0
           fi
-          git commit -m "feat(worldgen): diversify inherited orogen geometry"
+          git commit -m "test(worldgen): lock inherited-orogen geometry acceptance"
           git push origin HEAD:feat/wg4-diversify-inherited-orogen-geometry
