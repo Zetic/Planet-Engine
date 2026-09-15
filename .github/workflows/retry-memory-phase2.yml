@@ -1,0 +1,65 @@
+name: Validate memory architecture phase 2
+
+on:
+  push:
+    branches: [perf/l8-memory-architecture]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  rewrite:
+    if: ${{ !contains(github.event.head_commit.message, '[memory-phase2]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RUST_VERSION: '1.98.1'
+      WASM_BINDGEN_VERSION: '0.2.127'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/l8-memory-architecture
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Apply corrected phase 2 rewrite
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          workflow = Path('.github/workflows/apply-memory-phase2.yml').read_text()
+          start = workflow.index("          python3 - <<'PY'\n") + len("          python3 - <<'PY'\n")
+          end = workflow.index('\n          PY\n', start)
+          code = workflow[start:end]
+          code = '\n'.join(line[10:] if line.startswith('          ') else line for line in code.splitlines())
+          broken = "end = s.index('\\n}\\n\\n\\nexport interface WorldgenDrainageMetrics', start) + 2"
+          fixed = "end = s.index('export interface WorldgenDrainageMetrics', start)"
+          if broken not in code:
+              raise SystemExit('phase-2 protocol marker patch target missing')
+          Path('/tmp/memory-phase2.py').write_text(code.replace(broken, fixed, 1))
+          PY
+          python3 /tmp/memory-phase2.py
+          cargo fmt --all
+      - name: Compile and test Rust
+        run: |
+          rustup toolchain install "${RUST_VERSION}" --profile minimal --target wasm32-unknown-unknown
+          rustup default "${RUST_VERSION}"
+          cargo check --workspace --all-targets
+          cargo test -p interlink-worldgen --lib
+          cargo check -p interlink-worldgen-wasm --target wasm32-unknown-unknown
+      - name: Install wasm-bindgen and rebuild browser package
+        run: |
+          cargo install --locked wasm-bindgen-cli --version "${WASM_BINDGEN_VERSION}"
+          npm run build:worldgen-wasm
+      - name: Validate browser and lifecycle contracts
+        run: |
+          npm ci
+          npm run build
+          npm run test:ts
+      - name: Commit phase 2
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add rust src tests
+          git commit -m 'perf(worldgen): compact final L8 solver state [memory-phase2]'
+          git push origin HEAD:perf/l8-memory-architecture
