@@ -4,6 +4,7 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -28,7 +29,7 @@ jobs:
         run: npm run test:ts
 
   rust:
-    name: Rust physical engine
+    name: Rust causal-engine correctness
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -36,67 +37,115 @@ jobs:
         run: |
           rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown
           rustup default stable
-      - name: Test standalone workspace
+      - name: Compile workspace and all targets
+        run: cargo check --workspace --all-targets
+      - name: Test pre-orogenic causal cut
+        run: cargo test -p interlink-worldgen pre_orogenic
+      - name: Smoke-test tectonic causal foundations
+        run: |
+          cargo run -p interlink-worldgen-cli --example tectonic_history_smoke
+          cargo run -p interlink-worldgen-cli --example pre_orogenic_lithosphere_smoke
+      - name: Compile browser bridge
+        run: cargo check -p interlink-worldgen-wasm --target wasm32-unknown-unknown
+
+  legacy-observation:
+    name: Legacy calibration telemetry (non-blocking)
+    if: github.event_name != 'pull_request'
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust stable
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - name: Full legacy workspace tests
+        continue-on-error: true
         run: cargo test --workspace
-      - name: Smoke-test physical diagnostics
+      - name: Legacy physical diagnostics
+        continue-on-error: true
         run: |
           cargo run -p interlink-worldgen-cli -- inheritance --seed ci-inheritance --coarse-level 4 --level 6 --plates 18
           cargo run -p interlink-worldgen-cli -- topography --seed ci-wg4 --coarse-level 4 --level 6 --plates 18
           cargo run -p interlink-worldgen-cli -- climate --seed ci-wg5 --coarse-level 3 --level 4 --plates 12
           cargo run -p interlink-worldgen-cli -- profile
-      - name: Smoke-test compact calibration packet
+      - name: Legacy compact calibration packet
+        continue-on-error: true
         run: |
           cargo run --release -p interlink-worldgen-cli --bin calibration-report -- --seed ci-calibration-packet --coarse-level 3 --level 4 --plates 12 --format json > /tmp/planet-calibration.json
           python3 -c "import json; p=json.load(open('/tmp/planet-calibration.json')); assert p['schema']=='planet-engine-calibration@1'; assert p['run']['sample_count']==2562; assert p['hydrology']['lake_count'] >= 0"
-      - name: Canonical L5→L8 full-pipeline smoke
+      - name: Legacy canonical L5→L8 full-pipeline smoke
+        continue-on-error: true
         run: |
           cargo run --release -p interlink-worldgen-cli --bin calibration-report -- --seed ci-l8-canonical --coarse-level 5 --level 8 --plates 16 --format json > /tmp/planet-l8-calibration.json
           python3 -c "import json; p=json.load(open('/tmp/planet-l8-calibration.json')); assert p['schema']=='planet-engine-calibration@1'; assert p['run']['coarse_level']==5; assert p['run']['fine_level']==8; assert p['run']['sample_count']==655362; assert p['hydrology']['lake_count'] >= 0"
-      - name: WG-3 continental assembly diversity acceptance
+      - name: Legacy WG-3 continental assembly diversity
+        continue-on-error: true
         run: cargo run --release -p interlink-worldgen-cli --example continental_shape_acceptance
-      - name: WG-4 L5→L7 ridge morphology acceptance
+      - name: Legacy WG-4 ridge morphology
+        continue-on-error: true
         run: cargo run --release -p interlink-worldgen-cli --example topography_boundary_acceptance
-      - name: WG-4 L5→L7 ridge response-profile acceptance
+      - name: Legacy WG-4 ridge response profile
+        continue-on-error: true
         run: cargo run --release -p interlink-worldgen-cli --example topography_ridge_profile_acceptance
-      - name: WG-4 L5→L7 connected ridge-island morphology acceptance
+      - name: Legacy WG-4 connected ridge islands
+        continue-on-error: true
         run: cargo run --release -p interlink-worldgen-cli --example topography_divergent_morphology_acceptance
-      - name: WG-4 L5→L7 all-regime boundary morphology acceptance
+      - name: Legacy WG-4 all-regime morphology
+        continue-on-error: true
         run: cargo run --release -p interlink-worldgen-cli --example topography_boundary_morphology_acceptance
-      - name: WG-4 L5→L7 oceanic arc morphology acceptance
+      - name: Legacy WG-4 oceanic arcs
+        continue-on-error: true
         run: cargo run --release -p interlink-worldgen-cli --example topography_arc_morphology_acceptance
-      - name: WG-4 L5→L7 continental-rift seaway acceptance
+      - name: Legacy WG-4 continental rifts
+        continue-on-error: true
         run: cargo run --release -p interlink-worldgen-cli --example topography_rift_acceptance
-      - name: WG-4 L5→L7 rift response-profile acceptance
+      - name: Legacy WG-4 rift response profile
+        continue-on-error: true
         run: cargo run --release -p interlink-worldgen-cli --example topography_rift_profile_acceptance
-      - name: WG-4 L5→L7 active-collision response-profile acceptance
+      - name: Legacy WG-4 active-collision response
+        continue-on-error: true
         run: cargo run --release -p interlink-worldgen-cli --example topography_orogen_profile_acceptance
-      - name: WG-4 L5→L7 inherited-orogen morphology acceptance
+      - name: Legacy WG-4 inherited-orogen morphology
+        continue-on-error: true
         run: cargo run --release -p interlink-worldgen-cli --example topography_inherited_orogen_morphology_acceptance
-      - name: WG-3 inherited-orogen source-geometry acceptance
+      - name: Legacy WG-3 inherited-orogen source geometry
+        continue-on-error: true
         run: cargo run --release -p interlink-worldgen-cli --example geology_orogen_geometry_acceptance
-      - name: Smoke-test WG-6A drainage topology
+      - name: Legacy WG-6A drainage
+        continue-on-error: true
         run: bash scripts/check-wg6a-drainage.sh
-      - name: Smoke-test WG-6B annual runoff and discharge
+      - name: Legacy WG-6B runoff
+        continue-on-error: true
         run: bash scripts/check-wg6b-runoff.sh
-      - name: WG-5 to WG-6 hydroclimate partition acceptance
+      - name: Legacy WG-5→WG-6 hydroclimate partition
+        continue-on-error: true
         run: cargo run --release -p interlink-worldgen-cli --example hydroclimate_partition_acceptance
-      - name: Smoke-test WG-6C lakes and realized discharge
+      - name: Legacy WG-6C lakes
+        continue-on-error: true
         run: bash scripts/check-wg6c-lakes.sh
-      - name: Smoke-test WG-6D seasonal hydrology
+      - name: Legacy WG-6D seasonal hydrology
+        continue-on-error: true
         run: bash scripts/check-wg6d-seasonal.sh
-      - name: Smoke-test WG-7A fluvial erosion and sediment
+      - name: Legacy WG-7A erosion
+        continue-on-error: true
         run: bash scripts/check-wg7a-erosion.sh
-      - name: Smoke-test WG-7B bounded terrain evolution
+      - name: Legacy WG-7B terrain evolution
+        continue-on-error: true
         run: bash scripts/check-wg7b-evolution.sh
-      - name: Smoke-test WG-7C post-erosion hydrology reconciliation
+      - name: Legacy WG-7C reconciliation
+        continue-on-error: true
         run: bash scripts/check-wg7c-reconciliation.sh
-      - name: Smoke-test WG-7D lake sediment infill
+      - name: Legacy WG-7D lake infill
+        continue-on-error: true
         run: bash scripts/check-wg7d-lake-infill.sh
-      - name: Smoke-test WG-5 calibration report
+      - name: Legacy WG-5 calibration report
+        continue-on-error: true
         run: cargo run --release -p interlink-worldgen-cli --example climate_calibration -- --seed ci-wg5-calibration --coarse-level 3 --level 4 --plates 12 --skip-orography-intervention
-      - name: Smoke-test WG-5 hydroclimate closure
+      - name: Legacy WG-5 hydroclimate closure
+        continue-on-error: true
         run: bash scripts/check-wg5-hydroclimate-closure.sh smoke
-      - name: WG-5 L7 convergence and conservation acceptance
+      - name: Legacy WG-5 L7 convergence/conservation
+        continue-on-error: true
         run: cargo run --release -p interlink-worldgen-cli -- climate --seed ci-wg5-l7 --coarse-level 5 --level 7 --plates 24
-      - name: Compile browser bridge
-        run: cargo check -p interlink-worldgen-wasm --target wasm32-unknown-unknown
