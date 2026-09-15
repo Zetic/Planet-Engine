@@ -33,10 +33,110 @@ jobs:
 
           causal = Path('rust/interlink-worldgen/src/causal_pipeline.rs')
           text = causal.read_text()
-          marker = '''    let ocean_seed_mask = inherited\n        .crust_kind'''
+          text = text.replace(
+              'use std::ops::{Deref, DerefMut};',
+              'use std::collections::VecDeque;\nuse std::ops::{Deref, DerefMut};',
+              1,
+          )
+          marker = 'fn province_relief(inherited: &InheritedPhysicalState, index: usize) -> (f64, f64) {'
+          helper = r'''fn major_ocean_reservoir_seed_mask(
+    topology: &GeodesicTopology,
+    crust_kind: &[u8],
+    provisional_submerged: &[u8],
+) -> Vec<u8> {
+    let count = topology.metrics().sample_count as usize;
+    let mut visited = vec![false; count];
+    let mut components: Vec<(f64, Vec<usize>)> = Vec::new();
+    let mut candidate_area = 0.0_f64;
+    let surface_area = topology.dual_area_steradians().iter().sum::<f64>();
+
+    for sample in 0..count {
+        if visited[sample]
+            || crust_kind[sample] != CRUST_OCEANIC
+            || provisional_submerged[sample] == 0
+        {
+            continue;
+        }
+        visited[sample] = true;
+        let mut queue = VecDeque::from([sample as u32]);
+        let mut members = Vec::new();
+        let mut area = 0.0_f64;
+        while let Some(current) = queue.pop_front() {
+            let index = current as usize;
+            members.push(index);
+            area += topology.dual_area_steradians()[index];
+            for neighbor in topology.neighbors(current) {
+                let neighbor = *neighbor as usize;
+                if !visited[neighbor]
+                    && crust_kind[neighbor] == CRUST_OCEANIC
+                    && provisional_submerged[neighbor] != 0
+                {
+                    visited[neighbor] = true;
+                    queue.push_back(neighbor as u32);
+                }
+            }
+        }
+        candidate_area += area;
+        components.push((area, members));
+    }
+
+    components.sort_by(|left, right| right.0.total_cmp(&left.0));
+    let minimum_reservoir_area = (surface_area * 0.0025).max(candidate_area * 0.015);
+    let mut seeds = vec![0_u8; count];
+    let mut kept = 0usize;
+    for (area, members) in &components {
+        if *area + 1.0e-15 < minimum_reservoir_area {
+            continue;
+        }
+        kept += 1;
+        for sample in members {
+            seeds[*sample] = 1;
+        }
+    }
+    if kept == 0 {
+        if let Some((_, members)) = components.first() {
+            for sample in members {
+                seeds[*sample] = 1;
+            }
+        }
+    }
+    seeds
+}
+
+'''
           if marker not in text:
-              raise SystemExit('ocean seed marker missing')
-          text = text.replace(marker, '''    let solid_f32 = solid.iter().map(|value| *value as f32).collect::<Vec<_>>();\n    let ocean_seed_mask = inherited\n        .crust_kind''', 1)
+              raise SystemExit('province relief marker missing')
+          text = text.replace(marker, helper + marker, 1)
+
+          old = '''    let ocean_seed_mask = inherited
+        .crust_kind
+        .iter()
+        .map(|kind| u8::from(*kind == CRUST_OCEANIC))
+        .collect::<Vec<_>>();
+    let water = crate::surface_water::solve_hydrostatic_surface_water_connected_f64(
+'''
+          new = '''    // Identify the broad, already-submerged oceanic reservoirs first.  Using every oceanic
+    // crust sample as a seed bypasses topographic sills and lets tiny trapped oceanic slivers act
+    // as independent sources of marine water inside collision zones.
+    let provisional = crate::surface_water::solve_hydrostatic_surface_water_f64(
+        topology,
+        &solid,
+        planet,
+    )?;
+    let ocean_seed_mask = major_ocean_reservoir_seed_mask(
+        topology,
+        &inherited.crust_kind,
+        &provisional.submerged_mask,
+    );
+    let water = crate::surface_water::solve_hydrostatic_surface_water_connected_f64(
+'''
+          if old not in text:
+              raise SystemExit('ocean seed block missing')
+          text = text.replace(old, new, 1)
+          # TopographyState still stores the f32 solid field.
+          marker = '''    let provisional = crate::surface_water::solve_hydrostatic_surface_water_f64('''
+          text = text.replace(marker, '''    let solid_f32 = solid.iter().map(|value| *value as f32).collect::<Vec<_>>();
+    let provisional = crate::surface_water::solve_hydrostatic_surface_water_f64(''', 1)
           causal.write_text(text)
 
           orogen = Path('rust/interlink-worldgen/src/orogen_provinces.rs')
@@ -47,6 +147,36 @@ jobs:
               1,
           )
           orogen.write_text(text)
+
+          smoke = Path('rust/interlink-worldgen-cli/examples/tectonic_topography_cutover_smoke.rs')
+          text = smoke.read_text()
+          text = text.replace(
+              'CrustKind, LithosphereRequest, PlanetPhysicalParameters, TectonicsRequest, TopographyRequest,',
+              'CrustKind, LithosphereRequest, OrogenProvinceKind, PlanetPhysicalParameters, TectonicsRequest, TopographyRequest,',
+              1,
+          )
+          old = '''        if continental && inherited.province_ids[sample] != 0 {
+            continental_orogen += 1;
+            if terrain.submerged_mask[sample] != 0 {
+                flooded_continental_orogen += 1;
+            }
+        }
+'''
+          new = '''        let kind = inherited.province_kind[sample];
+        let collision_orogen = kind == OrogenProvinceKind::ContinentalCollision as u8
+            || kind == OrogenProvinceKind::CollisionalPlateau as u8
+            || kind == OrogenProvinceKind::TerraneAccretion as u8
+            || kind == OrogenProvinceKind::TranspressionalOrogen as u8;
+        if continental && collision_orogen {
+            continental_orogen += 1;
+            if terrain.submerged_mask[sample] != 0 {
+                flooded_continental_orogen += 1;
+            }
+        }
+'''
+          if old not in text:
+              raise SystemExit('collision orogen smoke marker missing')
+          smoke.write_text(text.replace(old, new, 1))
           PY
       - name: Compile and run focused tests
         run: |
