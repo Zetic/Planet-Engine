@@ -37,7 +37,7 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add rust .github/workflows/ci.yml dist
+          git add rust dist
           git diff --cached --quiet && exit 0
           git commit -m 'fix(worldgen): preserve causal inheritance identity through WG-7A [wg7a-causal-id-applied]'
           git push origin HEAD:feat/wg7a-causal-inheritance-identity
