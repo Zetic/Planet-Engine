@@ -67,4 +67,8 @@ For the same seed, the expected differences are substantial:
 
 The implementation adds unit coverage for deterministic stage output, preservation of the causal cut from legacy present-day orogenic fields, resistance-dependent deformation propagation, inherited-corridor axis migration, off-boundary mountain cores, persistent low-amplitude continental-interior structure, and valid province membership.
 
+The off-boundary invariant evaluates the structural profile directly instead of depending on one generated world's absolute mountain-core amplitude. A mature inherited collision must place a stronger mountain/root response hundreds of kilometres inland than at the literal boundary. This keeps the invariant tied to the intended v4 mechanics while allowing broad distributed ranges rather than forcing a narrow high-amplitude ribbon.
+
+The PR branch is also verified with the pinned Rust workspace checks and a regenerated committed browser WASM package before visual acceptance.
+
 Visual acceptance should compare identical seeds before/after with plate-boundary overlays both on and off. The important criterion is not zero correlation with plate boundaries; tectonics must remain causal. The criterion is that high-relief skeletons are no longer near-direct copies of the boundary graph, especially for continental collisions and junctions.
