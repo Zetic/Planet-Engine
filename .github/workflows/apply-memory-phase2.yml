@@ -1,0 +1,198 @@
+name: Apply memory architecture phase 2
+
+on:
+  push:
+    branches: [perf/l8-memory-architecture]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  rewrite:
+    if: ${{ !contains(github.event.head_commit.message, '[memory-phase2]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RUST_VERSION: '1.98.1'
+      WASM_BINDGEN_VERSION: '0.2.127'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/l8-memory-architecture
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Apply final-state compaction
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          def load(path): return Path(path).read_text()
+          def save(path, text): Path(path).write_text(text)
+          def replace_once(text, old, new, label):
+              n = text.count(old)
+              if n != 1:
+                  raise SystemExit(f'{label}: expected one match, found {n}')
+              return text.replace(old, new, 1)
+
+          # Solver topology is large. After WG-7D the browser only needs positions and adjacency.
+          p = 'rust/interlink-worldgen/src/topology.rs'
+          s = load(p)
+          anchor = '''    pub fn flattened_parent_edges(&self) -> Vec<u32> {\n        let mut output = Vec::with_capacity(self.parent_edges.len() * 2);\n        for edge in &self.parent_edges {\n            output.extend_from_slice(edge);\n        }\n        output\n    }\n'''
+          addition = anchor + '''\n    /// Release topology geometry required only while physical solvers are running.\n    /// Positions and CSR adjacency remain for browser rendering, picking, and calibration.\n    pub fn release_post_generation_scratch(&mut self) {\n        self.faces = Vec::new();\n        self.neighbor_arc_lengths_rad = Vec::new();\n        self.neighbor_interface_arc_lengths_rad = Vec::new();\n        self.dual_area_steradians = Vec::new();\n        self.birth_levels = Vec::new();\n        self.parent_edges = Vec::new();\n    }\n'''
+          s = replace_once(s, anchor, addition, 'topology scratch release')
+          save(p, s)
+
+          # The inherited fine state is a stage graph, not a permanent dump of every WG-3.75 raster.
+          p = 'rust/interlink-worldgen/src/causal_pipeline.rs'
+          s = load(p)
+          old = '''        self.local_width_km = Vec::new();\n        self.source_along_strike_fraction = Vec::new();\n    }\n}'''
+          new = '''        self.local_width_km = Vec::new();\n        self.source_along_strike_fraction = Vec::new();\n\n        // Legacy inherited fields whose last consumer is WG-4. Preserve only browser diagnostics\n        // plus the four mechanical fields consumed later by WG-7A erosion.\n        self.legacy.crust_province_id = Vec::new();\n        self.legacy.crust_density_kg_per_m3 = Vec::new();\n        self.legacy.buoyancy_index = Vec::new();\n        self.legacy.orogenic_history = Vec::new();\n        self.legacy.rift_history = Vec::new();\n        self.legacy.subduction_history = Vec::new();\n        self.legacy.volcanic_arc_history = Vec::new();\n        self.legacy.transform_history = Vec::new();\n        self.legacy.subsidence_history = Vec::new();\n        self.legacy.basin_potential = Vec::new();\n        self.legacy.crustal_strain = Vec::new();\n        self.legacy.effective_elastic_thickness_km = Vec::new();\n        self.legacy.thermal_anomaly_index = Vec::new();\n        self.legacy.mantle_upwelling_index = Vec::new();\n        self.legacy.compensated_buoyancy_index = Vec::new();\n        self.legacy.fragment_ids = Vec::new();\n    }\n\n    /// WG-7A is the last consumer of inherited structural fabric.\n    pub fn release_post_erosion_scratch(&mut self) {\n        self.legacy.structural_fabric_strength = Vec::new();\n    }\n}'''
+          s = replace_once(s, old, new, 'inherited lifecycle compaction')
+          save(p, s)
+
+          # WG-7B keeps several sediment-routing vectors solely for WG-7D. Release them afterward,
+          # and collapse its duplicate post-erosion drainage state to the one browser field retained.
+          p = 'rust/interlink-worldgen/src/evolution.rs'
+          s = load(p)
+          marker = '#[derive(Debug)]\nstruct AppliedSedimentRouting {'
+          impl_block = '''impl TerrainEvolutionState {\n    pub fn release_post_infill_scratch(&mut self) {\n        self.applied_sediment_supply_kg_s = Vec::new();\n        self.applied_sediment_load_kg_s = Vec::new();\n        self.applied_land_deposition_kg_s = Vec::new();\n        self.post_erosion_drainage.receiver = Vec::new();\n        self.post_erosion_drainage.outlet_sample = Vec::new();\n        self.post_erosion_drainage.outlet_kind = Vec::new();\n        self.post_erosion_drainage.basin_id = Vec::new();\n        self.post_erosion_drainage.depression_id = Vec::new();\n        self.post_erosion_drainage.hydrologic_escape_elevation_m = Vec::new();\n        self.post_erosion_drainage.depression_depth_m = Vec::new();\n        self.post_erosion_drainage.drainage_order = Vec::new();\n        self.post_erosion_drainage.basins = Vec::new();\n        self.post_erosion_drainage.depressions = Vec::new();\n    }\n}\n\n'''
+          if marker not in s: raise SystemExit('evolution marker missing')
+          s = s.replace(marker, impl_block + marker, 1)
+          save(p, s)
+
+          # Two WG-7A fields are construction/transport intermediates after WG-7D.
+          p = 'rust/interlink-worldgen/src/erosion.rs'
+          s = load(p)
+          marker = '#[derive(Debug)]\nstruct SedimentRoutingMetrics {'
+          impl_block = '''impl FluvialErosionState {\n    pub fn release_post_infill_scratch(&mut self) {\n        self.stream_power_index = Vec::new();\n        self.sediment_transport_capacity_kg_s = Vec::new();\n    }\n}\n\n'''
+          if marker not in s: raise SystemExit('erosion marker missing')
+          s = s.replace(marker, impl_block + marker, 1)
+          save(p, s)
+
+          # Final hydrology retains only arrays actually transported or rendered.
+          p = 'rust/interlink-worldgen/src/infill.rs'
+          s = load(p)
+          marker = 'fn fnv_update(mut hash: u64, bytes: &[u8]) -> u64 {'
+          impl_block = '''impl LakeSedimentInfillState {\n    pub fn release_post_generation_scratch(&mut self) {\n        self.post_infill_drainage.outlet_sample = Vec::new();\n        self.post_infill_drainage.outlet_kind = Vec::new();\n        self.post_infill_drainage.drainage_order = Vec::new();\n        self.reconciled_runoff.local_runoff_m3_s = Vec::new();\n    }\n}\n\n'''
+          if marker not in s: raise SystemExit('infill marker missing')
+          s = s.replace(marker, impl_block + marker, 1)
+          save(p, s)
+
+          # End upstream lifetimes as soon as the final consumer finishes and compact the returned
+          # WASM object to its durable browser-facing state.
+          p = 'rust/interlink-worldgen-wasm/src/climate_bridge.rs'
+          s = load(p)
+          s = replace_once(s, '        let fine_topology =\n            build_icosphere(fine_level)', '        let mut fine_topology =\n            build_icosphere(fine_level)', 'mutable fine topology')
+          s = replace_once(s, '        let erosion = generate_fluvial_erosion_sediment(\n', '        let mut erosion = generate_fluvial_erosion_sediment(\n', 'mutable erosion')
+          s = replace_once(s, '        let evolution = generate_bounded_terrain_evolution(\n', '        let mut evolution = generate_bounded_terrain_evolution(\n', 'mutable evolution')
+          s = replace_once(s, '        let infill = generate_lake_sediment_infill(\n', '        let mut infill = generate_lake_sediment_infill(\n', 'mutable infill')
+          after_topography = '        inherited.release_topography_scratch();\n'
+          lifetime_cut = after_topography + '''        let coarse_topology_hash = coarse_topology.metrics().topology_hash_hex();\n        let tectonic_hash = tectonics.metrics.tectonic_hash_hex();\n        let geology_hash = geology.metrics.geology_hash_hex();\n        let lithosphere_hash = lithosphere.metrics.lithosphere_hash_hex();\n        drop(lithosphere);\n        drop(geology);\n        drop(tectonics);\n        drop(coarse_topology);\n'''
+          s = replace_once(s, after_topography, lifetime_cut, 'coarse lifetime cut')
+          erosion_done = '        report_generation_progress(progress, "fluvial-erosion-sediment", 13, 1, 1);\n'
+          s = replace_once(s, erosion_done, erosion_done + '        inherited.release_post_erosion_scratch();\n', 'post erosion inherited cut')
+          infill_done = '        report_generation_progress(progress, "lake-sediment-infill", 16, 1, 1);\n'
+          s = replace_once(s, infill_done, infill_done + '''\n        evolution.release_post_infill_scratch();\n        erosion.release_post_infill_scratch();\n        infill.release_post_generation_scratch();\n        fine_topology.release_post_generation_scratch();\n        drop(drainage);\n        drop(lakes);\n''', 'final state compaction')
+          s = replace_once(s, '            coarse_topology_hash: coarse_topology.metrics().topology_hash_hex(),\n            tectonic_hash: tectonics.metrics.tectonic_hash_hex(),\n            geology_hash: geology.metrics.geology_hash_hex(),\n            lithosphere_hash: lithosphere.metrics.lithosphere_hash_hex(),', '            coarse_topology_hash,\n            tectonic_hash,\n            geology_hash,\n            lithosphere_hash,', 'cached upstream hashes')
+
+          # Remove WASM getters that no longer belong to the cumulative browser contract.
+          getter_names = [
+              'faces', 'outlet_sample', 'outlet_kind', 'drainage_order', 'local_runoff_m3_s',
+              'lake_spill_samples', 'stream_power_index', 'sediment_transport_capacity_kg_s',
+              'runoff_stage_id', 'runoff_stage_version', 'runoff_stage_seed_hex',
+          ]
+          for name in getter_names:
+              pattern = rf'\n    pub fn {name}\(&self\) -> [^{{]+\{{.*?\n    \}}\n'
+              s, n = re.subn(pattern, '\n', s, count=1, flags=re.S)
+              if n != 1: raise SystemExit(f'bridge getter not removed: {name} ({n})')
+          save(p, s)
+
+          # Protocol: remove transport-only cumulative fields. Other stage-specific contracts keep
+          # their full topology/physics payloads.
+          p = 'src/worldgen/protocol.ts'
+          s = load(p)
+          start = s.index('export interface WorldgenClimateResult')
+          end = s.index('\n}\n\n\nexport interface WorldgenDrainageMetrics', start) + 2
+          head, body, tail = s[:start], s[start:end], s[end:]
+          for field in [
+              'faces', 'outletSample', 'outletKind', 'drainageOrder', 'runoffStage',
+              'localRunoffM3S', 'lakeSpillSamples', 'streamPowerIndex', 'sedimentTransportCapacityKgS',
+          ]:
+              body, n = re.subn(rf'^\s{{2}}{field}:.*\n', '', body, count=1, flags=re.M)
+              if n != 1: raise SystemExit(f'protocol field not removed: {field} ({n})')
+          save(p, head + body + tail)
+
+          # Worker: keep the WASM interface and extraction in exact lockstep with protocol.
+          p = 'src/worldgen/worldgenWorker.ts'
+          s = load(p)
+          iface_start = s.index('interface WasmWorldgenClimate')
+          iface_end = s.index('\n}\n', iface_start) + 2
+          ih, ib, it = s[:iface_start], s[iface_start:iface_end], s[iface_end:]
+          for method in [
+              'faces', 'outlet_sample', 'outlet_kind', 'drainage_order', 'local_runoff_m3_s',
+              'lake_spill_samples', 'stream_power_index', 'sediment_transport_capacity_kg_s',
+              'runoff_stage_id', 'runoff_stage_version', 'runoff_stage_seed_hex',
+          ]:
+              ib, n = re.subn(rf'\s*{method}\(\):\s*[^;]+;', '', ib, count=1)
+              if n != 1: raise SystemExit(f'worker interface method not removed: {method} ({n})')
+          s = ih + ib + it
+          gen_start = s.index("async function generateClimate")
+          gen_end = s.index('\nfunction collectTransferables', gen_start)
+          gh, gb, gt = s[:gen_start], s[gen_start:gen_end], s[gen_end:]
+          extraction = {
+              'faces': 'faces', 'outletSample': 'outlet_sample', 'outletKind': 'outlet_kind',
+              'drainageOrder': 'drainage_order', 'localRunoffM3S': 'local_runoff_m3_s',
+              'lakeSpillSamples': 'lake_spill_samples', 'streamPowerIndex': 'stream_power_index',
+              'sedimentTransportCapacityKgS': 'sediment_transport_capacity_kg_s',
+          }
+          for camel, snake in extraction.items():
+              gb, n = re.subn(rf'\s*const {camel} = output\.{snake}\(\);', '', gb, count=1)
+              if n != 1: raise SystemExit(f'worker extraction not removed: {camel} ({n})')
+              gb, n = re.subn(rf'\b{camel}\s*,\s*', '', gb, count=1)
+              if n != 1: raise SystemExit(f'worker result property not removed: {camel} ({n})')
+          gb, n = re.subn(r'\s*runoffStage:\s*\{[^\n]+\},\n', '\n', gb, count=1)
+          if n != 1: raise SystemExit(f'runoffStage result property not removed ({n})')
+          s = gh + gb + gt
+          save(p, s)
+
+          # Contract tests keep only browser-visible WG-7A diagnostics and explicitly guard against
+          # reintroducing the two removed dense erosion arrays.
+          p = 'tests/wg7Erosion.test.ts'
+          s = load(p)
+          s = s.replace("    'erodibilityIndex', 'streamPowerIndex', 'incisionPotentialMPerYear', 'localSedimentSupplyKgS',\n    'sedimentTransportCapacityKgS', 'sedimentLoadKgS', 'sedimentDepositionKgS',", "    'erodibilityIndex', 'incisionPotentialMPerYear', 'localSedimentSupplyKgS',\n    'sedimentLoadKgS', 'sedimentDepositionKgS',", 1)
+          needle = "  assert.match(bridge, /generate_fluvial_erosion_sediment/);\n"
+          replacement = "  for (const removed of ['streamPowerIndex', 'sedimentTransportCapacityKgS']) {\n    assert.doesNotMatch(protocol, new RegExp(removed));\n  }\n" + needle
+          s = replace_once(s, needle, replacement, 'erosion dead-field assertions')
+          save(p, s)
+
+          # A dedicated contract test documents all dead cumulative fields removed in protocol v19.
+          p = 'tests/worldgenMemoryArchitecture.test.ts'
+          save(p, '''import assert from 'node:assert/strict';\nimport fs from 'node:fs';\nimport test from 'node:test';\n\ntest('cumulative L8 protocol excludes solver-only transport fields', () => {\n  const protocol = fs.readFileSync('src/worldgen/protocol.ts', 'utf8');\n  const start = protocol.indexOf('export interface WorldgenClimateResult');\n  const end = protocol.indexOf('export interface WorldgenDrainageMetrics', start);\n  const climate = protocol.slice(start, end);\n  for (const field of ['faces', 'outletSample', 'outletKind', 'drainageOrder', 'runoffStage', 'localRunoffM3S', 'lakeSpillSamples', 'streamPowerIndex', 'sedimentTransportCapacityKgS']) {\n    assert.doesNotMatch(climate, new RegExp(`\\\\b${field}:`));\n  }\n});\n\ntest('final WASM object explicitly releases solver lifetimes', () => {\n  const bridge = fs.readFileSync('rust/interlink-worldgen-wasm/src/climate_bridge.rs', 'utf8');\n  const topology = fs.readFileSync('rust/interlink-worldgen/src/topology.rs', 'utf8');\n  const causal = fs.readFileSync('rust/interlink-worldgen/src/causal_pipeline.rs', 'utf8');\n  for (const term of ['release_topography_scratch', 'release_post_erosion_scratch', 'release_post_infill_scratch', 'release_post_generation_scratch']) assert.match(bridge, new RegExp(term));\n  assert.match(topology, /release_post_generation_scratch/);\n  assert.match(causal, /structural_fabric_strength = Vec::new/);\n});\n''')
+          PY
+          cargo fmt --all
+      - name: Compile and test Rust
+        run: |
+          rustup toolchain install "${RUST_VERSION}" --profile minimal --target wasm32-unknown-unknown
+          rustup default "${RUST_VERSION}"
+          cargo check --workspace --all-targets
+          cargo test -p interlink-worldgen --lib
+          cargo check -p interlink-worldgen-wasm --target wasm32-unknown-unknown
+      - name: Rebuild browser WASM
+        run: |
+          cargo install --locked wasm-bindgen-cli --version "${WASM_BINDGEN_VERSION}"
+          npm run build:worldgen-wasm
+      - name: Validate browser and lifecycle contracts
+        run: |
+          npm ci
+          npm run build
+          npm run test:ts
+      - name: Commit phase 2
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add rust src tests
+          git commit -m 'perf(worldgen): compact final L8 solver state [memory-phase2]'
+          git push origin HEAD:perf/l8-memory-architecture
