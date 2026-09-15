@@ -1405,6 +1405,7 @@ export interface InitOutput {
     readonly wasmworldgeninheritance_neighbor_offsets: (a: number) => [number, number];
     readonly wasmworldgeninheritance_neighbors: (a: number) => [number, number];
     readonly wasmworldgeninheritance_new: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
+    readonly wasmworldgeninheritance_ocean_water_density_kg_per_m3: (a: number) => number;
     readonly wasmworldgeninheritance_orogenic_history: (a: number) => [number, number];
     readonly wasmworldgeninheritance_parameter_hash_hex: (a: number) => [number, number];
     readonly wasmworldgeninheritance_plate_count: (a: number) => number;
@@ -1421,6 +1422,7 @@ export interface InitOutput {
     readonly wasmworldgeninheritance_subduction_history: (a: number) => [number, number];
     readonly wasmworldgeninheritance_subduction_polarities: (a: number) => [number, number];
     readonly wasmworldgeninheritance_subsidence_history: (a: number) => [number, number];
+    readonly wasmworldgeninheritance_surface_water_mass_kg: (a: number) => number;
     readonly wasmworldgeninheritance_tectonic_hash_hex: (a: number) => [number, number];
     readonly wasmworldgeninheritance_thermal_anomaly_index: (a: number) => [number, number];
     readonly wasmworldgeninheritance_transform_history: (a: number) => [number, number];
@@ -1555,6 +1557,7 @@ export interface InitOutput {
     readonly wasmworldgentopography_neighbor_offsets: (a: number) => [number, number];
     readonly wasmworldgentopography_neighbors: (a: number) => [number, number];
     readonly wasmworldgentopography_new: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
+    readonly wasmworldgentopography_ocean_water_density_kg_per_m3: (a: number) => number;
     readonly wasmworldgentopography_orogenic_elevation_m: (a: number) => [number, number];
     readonly wasmworldgentopography_orogenic_history: (a: number) => [number, number];
     readonly wasmworldgentopography_p05_solid_elevation_m: (a: number) => number;
@@ -1574,6 +1577,7 @@ export interface InitOutput {
     readonly wasmworldgentopography_strength_index: (a: number) => [number, number];
     readonly wasmworldgentopography_structural_zone_kind: (a: number) => [number, number];
     readonly wasmworldgentopography_submerged_mask: (a: number) => [number, number];
+    readonly wasmworldgentopography_surface_water_mass_kg: (a: number) => number;
     readonly wasmworldgentopography_tectonic_hash_hex: (a: number) => [number, number];
     readonly wasmworldgentopography_thermal_elevation_m: (a: number) => [number, number];
     readonly wasmworldgentopography_topography_hash_hex: (a: number) => [number, number];
@@ -1605,10 +1609,8 @@ export interface InitOutput {
     readonly worldgen_protocol_version: () => number;
     readonly wasmworldgentopography_fine_boundary_edge_count: (a: number) => number;
     readonly wasmworldgentopography_sea_level_m: (a: number) => number;
-    readonly wasmworldgeninheritance_ocean_water_density_kg_per_m3: (a: number) => number;
     readonly wasmworldgeninheritance_radius_m: (a: number) => number;
     readonly wasmworldgeninheritance_surface_gravity_m_s2: (a: number) => number;
-    readonly wasmworldgeninheritance_surface_water_mass_kg: (a: number) => number;
     readonly wasmworldgenlithosphere_boundary_edge_count: (a: number) => number;
     readonly wasmworldgentectonics_boundary_edge_count: (a: number) => number;
     readonly wasmworldgentectonics_transform_edge_count: (a: number) => number;
@@ -1616,10 +1618,8 @@ export interface InitOutput {
     readonly wasmworldgentopography_maximum_solid_elevation_m: (a: number) => number;
     readonly wasmworldgentopography_minimum_solid_elevation_m: (a: number) => number;
     readonly wasmworldgentopography_ocean_area_fraction: (a: number) => number;
-    readonly wasmworldgentopography_ocean_water_density_kg_per_m3: (a: number) => number;
     readonly wasmworldgentopography_radius_m: (a: number) => number;
     readonly wasmworldgentopography_surface_gravity_m_s2: (a: number) => number;
-    readonly wasmworldgentopography_surface_water_mass_kg: (a: number) => number;
     readonly wasmworldgentopography_target_water_volume_m3: (a: number) => number;
     readonly wasmworldgentopology_area_coefficient_of_variation: (a: number) => number;
     readonly wasmworldgentopology_edge_coefficient_of_variation: (a: number) => number;
