@@ -1,0 +1,198 @@
+name: Apply memory architecture rewrite
+
+on:
+  push:
+    branches: [perf/l8-memory-architecture]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-memory-architecture
+  cancel-in-progress: true
+
+jobs:
+  rewrite:
+    if: ${{ !contains(github.event.head_commit.message, '[memory-rewrite]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/l8-memory-architecture
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Apply lifetime and packet rewrite
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          def load(path): return Path(path).read_text()
+          def save(path, text): Path(path).write_text(text)
+          def replace_once(text, old, new, label):
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected one match, found {count}')
+              return text.replace(old, new, 1)
+
+          # 1. Seasonal state becomes a durable-physics state, not a dump of every working buffer.
+          p = 'rust/interlink-worldgen/src/seasonal.rs'
+          s = load(p)
+          s = replace_once(s,
+              'pub const SEASONAL_HYDROLOGY_STAGE_VERSION: u32 = 1;\nconst SEASONAL_HYDROLOGY_NAMESPACE: &str = "hydrology:seasonal-hydrology:v1";',
+              'pub const SEASONAL_HYDROLOGY_STAGE_VERSION: u32 = 2;\nconst SEASONAL_HYDROLOGY_NAMESPACE: &str = "hydrology:seasonal-hydrology:v2";',
+              'seasonal version')
+          for block in [
+              '    /// Phase-major local runoff rate: `phase * sample_count + sample`.\n    pub phase_local_runoff_m3_s: Vec<f32>,\n    /// Phase-major runoff whose timing is attributable to snowmelt.\n    pub phase_snowmelt_runoff_m3_s: Vec<f32>,\n',
+              '    /// Phase-major potential discharge routed over the accepted WG-6A DAG.\n    pub phase_potential_discharge_m3_s: Vec<f32>,\n',
+              '    /// Phase-major lake surface elevation indexed by WG-6C lake-record order.\n    pub phase_lake_surface_elevation_m: Vec<f32>,\n    /// Phase-major lake area indexed by WG-6C lake-record order.\n    pub phase_lake_area_m2: Vec<f64>,\n    /// Phase-major lake volume indexed by WG-6C lake-record order.\n    pub phase_lake_volume_m3: Vec<f64>,\n',
+          ]:
+              if block not in s: raise SystemExit('seasonal struct block missing')
+              s = s.replace(block, '', 1)
+          for line in [
+              '        phase_local_runoff_m3_s,\n',
+              '        phase_snowmelt_runoff_m3_s,\n',
+              '        phase_potential_discharge_m3_s,\n',
+              '        phase_lake_surface_elevation_m: lake_routing.phase_lake_surface_elevation_m,\n',
+              '        phase_lake_area_m2: lake_routing.phase_lake_area_m2,\n',
+              '        phase_lake_volume_m3: lake_routing.phase_lake_volume_m3,\n',
+          ]:
+              if line not in s: raise SystemExit(f'seasonal return line missing: {line.strip()}')
+              s = s.replace(line, '', 1)
+          save(p, s)
+
+          # 2. PR61 causal fields are explicit WG-4 scratch and are released before climate/hydrology.
+          p = 'rust/interlink-worldgen/src/causal_pipeline.rs'
+          s = load(p)
+          anchor = '''    pub fn orogen_province_hash_hex(&self) -> String {\n        format!("{:016x}", self.orogen_province_hash)\n    }\n'''
+          addition = anchor + '''\n    /// Release fine-grid tectonic province scratch once WG-4 has materialized durable relief.\n    /// `orogenic_history` remains because it is an interactive browser diagnostic; the other\n    /// province rasters are construction intermediates and must not survive into WG-5+.\n    pub fn release_topography_scratch(&mut self) {\n        self.province_ids = Vec::new();\n        self.province_kind = Vec::new();\n        self.volcanic_arc_history = Vec::new();\n        self.crustal_root_index = Vec::new();\n        self.plateau_index = Vec::new();\n        self.fold_thrust_index = Vec::new();\n        self.foreland_basin_index = Vec::new();\n        self.backarc_extension_index = Vec::new();\n        self.suture_index = Vec::new();\n        self.transpression_index = Vec::new();\n        self.maturity_index = Vec::new();\n        self.shortening_index = Vec::new();\n        self.local_width_km = Vec::new();\n        self.source_along_strike_fraction = Vec::new();\n    }\n'''
+          s = replace_once(s, anchor, addition, 'causal scratch release')
+          save(p, s)
+
+          # 3. WG-7C can discard its phase payload after its reconciliation diagnostics are fixed.
+          p = 'rust/interlink-worldgen/src/reconciliation.rs'
+          s = load(p)
+          marker = '#[allow(clippy::too_many_arguments)]\npub fn generate_post_erosion_hydrology('
+          impl_block = '''impl PostErosionHydrologyState {\n    /// Reduce WG-7C to the ancestry actually consumed by WG-7D.\n    /// The seasonal metrics/hash remain authoritative; full phase rasters are recomputed for\n    /// the post-infill surface and retaining both copies creates an avoidable L8 memory spike.\n    pub fn compact_for_infill(&mut self) {\n        self.reconciled_seasonal.phase_snow_storage_mm = Vec::new();\n        self.reconciled_seasonal.phase_realized_discharge_m3_s = Vec::new();\n    }\n}\n\n'''
+          if marker not in s: raise SystemExit('reconciliation function marker missing')
+          s = s.replace(marker, impl_block + marker, 1)
+          save(p, s)
+
+          # 4. Cumulative WASM pipeline actively ends lifetimes instead of relying on scope-end drops.
+          p = 'rust/interlink-worldgen-wasm/src/climate_bridge.rs'
+          s = load(p)
+          s = replace_once(s, '        let inherited = inherit_physical_state(\n', '        let mut inherited = inherit_physical_state(\n', 'mutable inherited')
+          topography_done = '        report_generation_progress(progress, "topography", 7, 1, 1);\n'
+          s = replace_once(s, topography_done, topography_done + '        inherited.release_topography_scratch();\n', 'release WG4 scratch')
+          s = replace_once(s, '        let reconciliation = generate_post_erosion_hydrology(\n', '        let mut reconciliation = generate_post_erosion_hydrology(\n', 'mutable reconciliation')
+          reconcile_done = '        report_generation_progress(progress, "post-erosion-hydrology", 15, 1, 1);\n'
+          s = replace_once(s, reconcile_done, reconcile_done + '''\n        // These pre-erosion states have reached their final consumer. End their heap lifetime\n        // before WG-7D allocates another seasonal solution.\n        drop(seasonal);\n        drop(runoff);\n        reconciliation.compact_for_infill();\n''', 'hydrology lifetime cut')
+          # Delete browser getters for working-only seasonal buffers removed from durable state.
+          for name in [
+              'seasonal_phase_local_runoff_m3_s',
+              'seasonal_phase_snowmelt_runoff_m3_s',
+              'seasonal_phase_potential_discharge_m3_s',
+              'seasonal_phase_lake_surface_elevation_m',
+              'seasonal_phase_lake_area_m2',
+              'seasonal_phase_lake_volume_m3',
+          ]:
+              pattern = rf'\n    pub fn {name}\(&self\) -> Vec<[^>]+> \{{.*?\n    \}}\n'
+              s, n = re.subn(pattern, '\n', s, count=1, flags=re.S)
+              if n != 1: raise SystemExit(f'climate bridge getter not removed: {name} ({n})')
+          save(p, s)
+
+          # 5. Browser protocol no longer transports working-only seasonal buffers.
+          p = 'src/worldgen/protocol.ts'
+          s = load(p)
+          s = replace_once(s, 'export const WORLDGEN_PROTOCOL_VERSION = 18;', 'export const WORLDGEN_PROTOCOL_VERSION = 19;', 'browser protocol')
+          start = s.index('export interface WorldgenClimateResult')
+          end = s.find('\nexport interface ', start + 10)
+          if end < 0: end = len(s)
+          head, body, tail = s[:start], s[start:end], s[end:]
+          for field in [
+              'seasonalPhaseLocalRunoffM3S', 'seasonalPhaseSnowmeltRunoffM3S',
+              'seasonalPhasePotentialDischargeM3S', 'seasonalPhaseLakeSurfaceElevationM',
+              'seasonalPhaseLakeAreaM2', 'seasonalPhaseLakeVolumeM3',
+          ]:
+              body, n = re.subn(rf'^\s{{2}}{field}:.*\n', '', body, count=1, flags=re.M)
+              if n != 1: raise SystemExit(f'protocol climate field not removed: {field} ({n})')
+          save(p, head + body + tail)
+
+          # 6. Keep Rust/WASM protocol in lockstep.
+          p = 'rust/interlink-worldgen-wasm/src/lib.rs'
+          s = load(p)
+          s = replace_once(s, 'pub const WORLDGEN_WASM_PROTOCOL_VERSION: u32 = 18;', 'pub const WORLDGEN_WASM_PROTOCOL_VERSION: u32 = 19;', 'wasm protocol')
+          save(p, s)
+
+          # 7. Worker: remove obsolete seasonal getters/packet fields and replace hand-written\n          # transfer lists with exhaustive buffer discovery, preventing future accidental clones.
+          p = 'src/worldgen/worldgenWorker.ts'
+          s = load(p)
+          for method in [
+              'seasonal_phase_local_runoff_m3_s', 'seasonal_phase_snowmelt_runoff_m3_s',
+              'seasonal_phase_potential_discharge_m3_s', 'seasonal_phase_lake_surface_elevation_m',
+              'seasonal_phase_lake_area_m2', 'seasonal_phase_lake_volume_m3',
+          ]:
+              s, n = re.subn(rf'\s*{method}\(\):\s*(?:Float32Array|Float64Array);', '', s, count=1)
+              if n != 1: raise SystemExit(f'worker interface method not removed: {method} ({n})')
+          mapping = {
+              'seasonalPhaseLocalRunoffM3S': 'seasonal_phase_local_runoff_m3_s',
+              'seasonalPhaseSnowmeltRunoffM3S': 'seasonal_phase_snowmelt_runoff_m3_s',
+              'seasonalPhasePotentialDischargeM3S': 'seasonal_phase_potential_discharge_m3_s',
+              'seasonalPhaseLakeSurfaceElevationM': 'seasonal_phase_lake_surface_elevation_m',
+              'seasonalPhaseLakeAreaM2': 'seasonal_phase_lake_area_m2',
+              'seasonalPhaseLakeVolumeM3': 'seasonal_phase_lake_volume_m3',
+          }
+          for camel, snake in mapping.items():
+              s, n = re.subn(rf'\s*const {camel} = output\.{snake}\(\);', '', s, count=1)
+              if n != 1: raise SystemExit(f'worker extraction not removed: {camel} ({n})')
+              # Remove shorthand property from the returned climate object (including an adjacent comma).
+              s, n = re.subn(rf'\b{camel}\s*,\s*', '', s, count=1)
+              if n != 1: raise SystemExit(f'worker result field not removed: {camel} ({n})')
+          helper_marker = "workerScope.addEventListener('message', async messageEvent => {"
+          helper = '''function collectTransferables(value: unknown): Transferable[] {\n  const buffers = new Set<ArrayBuffer>();\n  const visit = (candidate: unknown): void => {\n    if (ArrayBuffer.isView(candidate)) {\n      if (candidate.buffer instanceof ArrayBuffer) buffers.add(candidate.buffer);\n      return;\n    }\n    if (candidate instanceof ArrayBuffer) { buffers.add(candidate); return; }\n    if (Array.isArray(candidate)) { for (const item of candidate) visit(item); return; }\n    if (candidate && typeof candidate === 'object') {\n      for (const item of Object.values(candidate as Record<string, unknown>)) visit(item);\n    }\n  };\n  visit(value);\n  return [...buffers];\n}\n\n'''
+          if helper_marker not in s: raise SystemExit('worker listener marker missing')
+          s = s.replace(helper_marker, helper + helper_marker, 1)
+          # Every successful result post is currently a single-line explicit transfer list.
+          pattern = r"workerScope\.postMessage\((\{ protocolVersion: WORLDGEN_PROTOCOL_VERSION, requestId: command\.requestId, type: 'generated-[^']+', payload: result \}), \[[^\n]*\]\); return;"
+          s, n = re.subn(pattern, r'workerScope.postMessage(\1, collectTransferables(result)); return;', s)
+          if n != 9: raise SystemExit(f'expected to replace 9 explicit result transfer lists, got {n}')
+          save(p, s)
+
+          # 8. Seasonal browser contract test now asserts only durable/used phase payloads survive.
+          p = 'tests/wg6Seasonal.test.ts'
+          s = load(p)
+          s = replace_once(s, 'assert.equal(WORLDGEN_PROTOCOL_VERSION, 18);', 'assert.equal(WORLDGEN_PROTOCOL_VERSION, 19);', 'seasonal protocol test')
+          old = '''  for (const field of [\n    'seasonalStage', 'seasonalMetrics', 'seasonalPhaseLocalRunoffM3S',\n    'seasonalPhaseSnowmeltRunoffM3S', 'seasonalPhaseSnowStorageMm',\n    'seasonalPhasePotentialDischargeM3S', 'seasonalPhaseRealizedDischargeM3S',\n    'seasonalFlowPresenceFraction', 'seasonalFlowRegime',\n    'seasonalPhaseLakeSurfaceElevationM', 'seasonalPhaseLakeAreaM2', 'seasonalPhaseLakeVolumeM3',\n  ]) {\n'''
+          new = '''  for (const field of [\n    'seasonalStage', 'seasonalMetrics', 'seasonalPhaseSnowStorageMm',\n    'seasonalPhaseRealizedDischargeM3S', 'seasonalFlowPresenceFraction', 'seasonalFlowRegime',\n  ]) {\n'''
+          s = replace_once(s, old, new, 'seasonal durable fields')
+          s = s.replace("  for (const mode of ['seasonal-realized-discharge'", "  for (const removed of ['seasonalPhaseLocalRunoffM3S', 'seasonalPhaseSnowmeltRunoffM3S', 'seasonalPhasePotentialDischargeM3S', 'seasonalPhaseLakeSurfaceElevationM', 'seasonalPhaseLakeAreaM2', 'seasonalPhaseLakeVolumeM3']) {\n    assert.doesNotMatch(protocol, new RegExp(removed));\n  }\n  for (const mode of ['seasonal-realized-discharge'", 1)
+          save(p, s)
+
+          # 9. Documentation records the durable-vs-working state boundary.
+          p = 'docs/worldgen-rewrite/WG6_HYDROLOGY.md'
+          s = load(p)
+          old = '''`SeasonalHydrologyState` exposes:\n\n- phase-major `phase_local_runoff_m3_s`;\n- phase-major `phase_snowmelt_runoff_m3_s`;\n- phase-major `phase_snow_storage_mm`;\n- phase-major `phase_potential_discharge_m3_s`;\n- phase-major `phase_realized_discharge_m3_s`;\n- per-sample `flow_presence_fraction` and `flow_regime`;\n- phase-major lake surface elevation, area, and volume in WG-6C lake-record order;'''
+          new = '''`SeasonalHydrologyState` retains only durable phase payloads needed by downstream physics or interactive diagnostics:\n\n- phase-major `phase_snow_storage_mm`;\n- phase-major `phase_realized_discharge_m3_s`;\n- per-sample `flow_presence_fraction` and `flow_regime`.\n\nLocal runoff, snowmelt runoff, potential discharge, and lake-cycle phase rasters remain solver working buffers. They still contribute to seasonal metrics and the deterministic stage hash, but are discarded before WG-7 so multiple 24-phase working sets cannot accumulate in the canonical L8 pipeline.'''
+          if old not in s: raise SystemExit('WG6 durable output doc block missing')
+          s = s.replace(old, new, 1)
+          save(p, s)
+          PY
+          cargo fmt --all
+      - name: Validate rewrite
+        run: |
+          npm ci
+          npm run build
+          npm run test:ts
+          cargo check --workspace --all-targets
+          cargo test -p interlink-worldgen seasonal
+          cargo check -p interlink-worldgen-wasm --target wasm32-unknown-unknown
+      - name: Commit rewrite
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add rust src tests docs
+          git commit -m 'perf(worldgen): compact L8 stage lifetimes [memory-rewrite]'
+          git push origin HEAD:perf/l8-memory-architecture
