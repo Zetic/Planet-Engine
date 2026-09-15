@@ -4,7 +4,7 @@ import test from 'node:test';
 import { WORLDGEN_PROTOCOL_VERSION } from '../dist/worldgen/protocol.js';
 
 test('WG-7A cumulative browser contract is protocol v18 and single-request', () => {
-  assert.equal(WORLDGEN_PROTOCOL_VERSION, 18);
+  assert.equal(WORLDGEN_PROTOCOL_VERSION, 19);
   const protocol = fs.readFileSync('src/worldgen/protocol.ts', 'utf8');
   const worker = fs.readFileSync('src/worldgen/worldgenWorker.ts', 'utf8');
   const bridge = fs.readFileSync('rust/interlink-worldgen-wasm/src/climate_bridge.rs', 'utf8');
@@ -12,11 +12,14 @@ test('WG-7A cumulative browser contract is protocol v18 and single-request', () 
   const lab = fs.readFileSync('src/worldgen/diagnostics/worldgenClimateLabStandalone.ts', 'utf8');
   for (const field of [
     'erosionStage', 'erosionMetrics', 'effectiveDischargeM3S', 'channelSlope', 'channelWidthM',
-    'erodibilityIndex', 'streamPowerIndex', 'incisionPotentialMPerYear', 'localSedimentSupplyKgS',
-    'sedimentTransportCapacityKgS', 'sedimentLoadKgS', 'sedimentDepositionKgS',
+    'erodibilityIndex', 'incisionPotentialMPerYear', 'localSedimentSupplyKgS',
+    'sedimentLoadKgS', 'sedimentDepositionKgS',
   ]) {
     assert.match(protocol, new RegExp(field));
     assert.match(worker, new RegExp(field));
+  }
+  for (const removed of ['streamPowerIndex', 'sedimentTransportCapacityKgS']) {
+    assert.doesNotMatch(protocol, new RegExp(removed));
   }
   assert.match(bridge, /generate_fluvial_erosion_sediment/);
   assert.match(bridge, /fluvial-erosion-sediment/);

@@ -26,8 +26,8 @@ mod seasonal;
 mod seasonal_flow;
 mod seasonal_lakes;
 mod surface_water;
-mod tectonics;
 mod tectonic_history;
+mod tectonics;
 mod topography;
 mod topography_morphology;
 mod topology;
@@ -40,8 +40,7 @@ pub use boundary_refinement::{
 };
 pub use causal_pipeline::{
     generate_initial_topography, generate_lithosphere, inherit_physical_state,
-    InheritedPhysicalState, LithosphericModel,
-    TECTONIC_TOPOGRAPHY_STAGE_ID as TOPOGRAPHY_STAGE_ID,
+    InheritedPhysicalState, LithosphericModel, TECTONIC_TOPOGRAPHY_STAGE_ID as TOPOGRAPHY_STAGE_ID,
     TECTONIC_TOPOGRAPHY_STAGE_VERSION as TOPOGRAPHY_STAGE_VERSION,
 };
 pub use climate::{
@@ -100,12 +99,11 @@ pub use lakes::{
 };
 pub use lithosphere::{
     LithosphereMetrics, LithosphereRequest, StructuralZoneKind, TectonicFragment,
-    TectonicFragmentKind, LITHOSPHERE_STAGE_ID, LITHOSPHERE_STAGE_VERSION,
-    MAX_TECTONIC_FRAGMENTS,
+    TectonicFragmentKind, LITHOSPHERE_STAGE_ID, LITHOSPHERE_STAGE_VERSION, MAX_TECTONIC_FRAGMENTS,
 };
 pub use orogen_provinces::{
-    generate_tectonic_orogen_provinces, OrogenProvince, OrogenProvinceKind,
-    OrogenProvinceMetrics, OrogenProvinceModel, OrogenProvinceRequest, OROGEN_PROVINCE_STAGE_ID,
+    generate_tectonic_orogen_provinces, OrogenProvince, OrogenProvinceKind, OrogenProvinceMetrics,
+    OrogenProvinceModel, OrogenProvinceRequest, OROGEN_PROVINCE_STAGE_ID,
     OROGEN_PROVINCE_STAGE_VERSION,
 };
 pub use parameters::PlanetPhysicalParameters;
@@ -142,19 +140,17 @@ pub use seasonal_flow::{
 pub use surface_water::{
     solve_hydrostatic_surface_water, HydrostaticSurfaceWaterMetrics, HydrostaticSurfaceWaterState,
 };
-pub use tectonics::{
-    generate_tectonics, PlateBoundaryEdge, PlateBoundaryKind, TectonicMetrics, TectonicModel,
-    TectonicPlate, TectonicsRequest, MAX_TECTONIC_PLATES, MIN_TECTONIC_PLATES, TECTONICS_STAGE_ID,
-    TECTONICS_STAGE_VERSION,
-};
 pub use tectonic_history::{
     generate_tectonic_history, BoundaryHistoryState, TectonicBoundarySystem,
     TectonicHistoryMetrics, TectonicHistoryModel, TectonicHistoryRequest,
     TECTONIC_HISTORY_STAGE_ID, TECTONIC_HISTORY_STAGE_VERSION,
 };
-pub use topography::{
-    TopographyMetrics, TopographyParameters, TopographyRequest, TopographyState,
+pub use tectonics::{
+    generate_tectonics, PlateBoundaryEdge, PlateBoundaryKind, TectonicMetrics, TectonicModel,
+    TectonicPlate, TectonicsRequest, MAX_TECTONIC_PLATES, MIN_TECTONIC_PLATES, TECTONICS_STAGE_ID,
+    TECTONICS_STAGE_VERSION,
 };
+pub use topography::{TopographyMetrics, TopographyParameters, TopographyRequest, TopographyState};
 pub use topography_morphology::{
     analyze_topography_morphology, OceanAgeDepthMorphology, QuietOceanMorphology,
     TopographyDistanceBandMorphology, TopographyMorphologyFeature, TopographyMorphologyReport,

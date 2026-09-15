@@ -84,7 +84,10 @@ pub struct TectonicHistoryModel {
 
 impl TectonicHistoryModel {
     pub fn boundary_system_ids(&self) -> Vec<u32> {
-        self.boundary_state.iter().map(|state| state.system_id).collect()
+        self.boundary_state
+            .iter()
+            .map(|state| state.system_id)
+            .collect()
     }
 
     pub fn boundary_event_ages_myr(&self) -> Vec<f32> {
@@ -358,7 +361,11 @@ fn fnv_update(mut hash: u64, bytes: &[u8]) -> u64 {
     hash
 }
 
-fn history_hash(stage_seed: u64, systems: &[TectonicBoundarySystem], states: &[BoundaryHistoryState]) -> u64 {
+fn history_hash(
+    stage_seed: u64,
+    systems: &[TectonicBoundarySystem],
+    states: &[BoundaryHistoryState],
+) -> u64 {
     let mut hash = 0xcbf29ce484222325_u64;
     hash = fnv_update(hash, b"tectonics:history-systems:v1\0");
     hash = fnv_update(hash, &stage_seed.to_le_bytes());
@@ -378,7 +385,10 @@ fn history_hash(stage_seed: u64, systems: &[TectonicBoundarySystem], states: &[B
         hash = fnv_update(hash, &state.system_id.to_le_bytes());
         hash = fnv_update(hash, &state.along_strike_fraction.to_bits().to_le_bytes());
         hash = fnv_update(hash, &state.event_age_myr.to_bits().to_le_bytes());
-        hash = fnv_update(hash, &state.cumulative_convergence_km.to_bits().to_le_bytes());
+        hash = fnv_update(
+            hash,
+            &state.cumulative_convergence_km.to_bits().to_le_bytes(),
+        );
         hash = fnv_update(hash, &state.cumulative_extension_km.to_bits().to_le_bytes());
         hash = fnv_update(hash, &state.cumulative_shear_km.to_bits().to_le_bytes());
     }
@@ -554,10 +564,10 @@ pub fn generate_tectonic_history<T: PlanetTopology>(
             PlateBoundaryKind::Transform => transform_system_count += 1,
         }
         maximum_event_age_myr = maximum_event_age_myr.max(f64::from(system.event_age_myr));
-        maximum_cumulative_convergence_km = maximum_cumulative_convergence_km
-            .max(f64::from(system.cumulative_convergence_km));
-        maximum_cumulative_extension_km = maximum_cumulative_extension_km
-            .max(f64::from(system.cumulative_extension_km));
+        maximum_cumulative_convergence_km =
+            maximum_cumulative_convergence_km.max(f64::from(system.cumulative_convergence_km));
+        maximum_cumulative_extension_km =
+            maximum_cumulative_extension_km.max(f64::from(system.cumulative_extension_km));
         obliquity_sum += f64::from(system.mean_obliquity_deg);
     }
     let mean_obliquity_deg = if systems.is_empty() {
@@ -610,7 +620,11 @@ mod tests {
         assert_eq!(first.metrics.history_hash, second.metrics.history_hash);
         assert_eq!(first.boundary_state.len(), tectonics.boundaries.len());
         assert_eq!(
-            first.systems.iter().map(|system| system.boundary_indices.len()).sum::<usize>(),
+            first
+                .systems
+                .iter()
+                .map(|system| system.boundary_indices.len())
+                .sum::<usize>(),
             tectonics.boundaries.len()
         );
         assert!(first

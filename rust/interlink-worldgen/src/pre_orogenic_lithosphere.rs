@@ -221,7 +221,9 @@ fn diffuse_memory<T: PlanetTopology>(
                 .map(|neighbor| current[*neighbor as usize])
                 .sum::<f64>()
                 / neighbors.len() as f64;
-            next[index] = current[index].max(neighbor_mean * retention).clamp(0.0, 1.0);
+            next[index] = current[index]
+                .max(neighbor_mean * retention)
+                .clamp(0.0, 1.0);
         }
         std::mem::swap(&mut current, &mut next);
     }
@@ -294,7 +296,11 @@ fn static_crust_indices<T: PlanetTopology>(
                 kind_mismatch += 1.0;
             }
             let other_age = f64::from(geology.crust_age_myr[ni]);
-            let scale = if kind == CrustKind::Oceanic as u8 { 180.0 } else { 1800.0 };
+            let scale = if kind == CrustKind::Oceanic as u8 {
+                180.0
+            } else {
+                1800.0
+            };
             max_age_delta = max_age_delta.max(((age - other_age).abs() / scale).clamp(0.0, 1.0));
         }
         let degree = neighbors.len() as f64;
@@ -357,16 +363,12 @@ fn build_pre_orogenic_state<T: PlanetTopology>(
             _ => 0.08 * (1.0 - age_factor),
         };
         let thermal_state = clamp_signed(
-            mantle * 0.62
-                + young_thermal * 0.42
-                + rift_memory[sample] * 0.18
-                - age_factor * 0.16,
+            mantle * 0.62 + young_thermal * 0.42 + rift_memory[sample] * 0.18 - age_factor * 0.16,
         );
 
         let suture = if crust != CrustKind::Oceanic as u8 {
             clamp01(
-                province_boundary[sample] * 0.72
-                    + age_discontinuity[sample] * 0.46
+                province_boundary[sample] * 0.72 + age_discontinuity[sample] * 0.46
                     - margin[sample] * 0.22,
             )
         } else {
@@ -378,10 +380,18 @@ fn build_pre_orogenic_state<T: PlanetTopology>(
             0.0
         };
         let rift = rift_memory[sample]
-            * if crust == CrustKind::Oceanic as u8 { 0.45 } else { 1.0 };
+            * if crust == CrustKind::Oceanic as u8 {
+                0.45
+            } else {
+                1.0
+            };
         let shear = shear_memory[sample];
         let continental_margin = margin[sample]
-            * if crust == CrustKind::Oceanic as u8 { 0.70 } else { 1.0 };
+            * if crust == CrustKind::Oceanic as u8 {
+                0.70
+            } else {
+                1.0
+            };
         let inherited_fabric = suture
             .max(craton_boundary)
             .max(rift)
@@ -422,21 +432,14 @@ fn build_pre_orogenic_state<T: PlanetTopology>(
                 + craton_boundary * 0.12,
         );
         let intrinsic_strength = clamp01(
-            base_strength
-                + age_factor * 0.25
-                + interior_coherence * 0.12
-                + inherited * 0.065
+            base_strength + age_factor * 0.25 + interior_coherence * 0.12 + inherited * 0.065
                 - thermal_state.max(0.0) * 0.24
                 - damage * 0.38,
         );
         let intrinsic_weakness = clamp01(
-            1.0 - intrinsic_strength
-                + inherited_fabric * 0.22
-                + thermal_state.max(0.0) * 0.10,
+            1.0 - intrinsic_strength + inherited_fabric * 0.22 + thermal_state.max(0.0) * 0.10,
         );
-        let te_km = (4.0
-            + intrinsic_strength * 80.0
-            + age_factor * 8.0
+        let te_km = (4.0 + intrinsic_strength * 80.0 + age_factor * 8.0
             - thermal_state.max(0.0) * 12.0
             - inherited_fabric * 6.0)
             .clamp(4.0, 92.0);
@@ -464,8 +467,14 @@ fn build_pre_orogenic_state<T: PlanetTopology>(
         thermal,
         fabric,
         structure,
-        province_boundary.into_iter().map(|value| value as f32).collect(),
-        age_discontinuity.into_iter().map(|value| value as f32).collect(),
+        province_boundary
+            .into_iter()
+            .map(|value| value as f32)
+            .collect(),
+        age_discontinuity
+            .into_iter()
+            .map(|value| value as f32)
+            .collect(),
         rift_memory.into_iter().map(|value| value as f32).collect(),
         shear_memory.into_iter().map(|value| value as f32).collect(),
         propensity,
@@ -475,7 +484,9 @@ fn build_pre_orogenic_state<T: PlanetTopology>(
 fn dominant_province(samples: &[u32], geology: &CrustalModel) -> u16 {
     let mut counts = BTreeMap::<u16, u32>::new();
     for sample in samples {
-        *counts.entry(geology.crust_province_id[*sample as usize]).or_default() += 1;
+        *counts
+            .entry(geology.crust_province_id[*sample as usize])
+            .or_default() += 1;
     }
     counts
         .into_iter()
@@ -501,7 +512,11 @@ fn collect_fragment_components<T: PlanetTopology>(
     let eligible = (0..count)
         .map(|sample| {
             let crust = geology.crust_kind[sample];
-            let threshold = if crust == CrustKind::Oceanic as u8 { 0.66 } else { 0.56 };
+            let threshold = if crust == CrustKind::Oceanic as u8 {
+                0.66
+            } else {
+                0.56
+            };
             f64::from(propensity[sample]) >= threshold
                 && f64::from(weakness[sample]) >= 0.42
                 && (f64::from(fabric[sample]) >= 0.24
@@ -654,8 +669,8 @@ fn build_fragments<T: PlanetTopology>(
                 u64::from(component.seed_sample)
                     ^ u64::from(fragment_id).wrapping_mul(0x9e37_79b9_7f4a_7c15),
             );
-            let perturb_scale =
-                parent_speed * (0.04 + component.mean_weakness * 0.14 + component.mean_fabric * 0.05);
+            let perturb_scale = parent_speed
+                * (0.04 + component.mean_weakness * 0.14 + component.mean_fabric * 0.05);
             [
                 parent_velocity[0] + perturb_direction[0] * perturb_scale,
                 parent_velocity[1] + perturb_direction[1] * perturb_scale,
@@ -711,7 +726,9 @@ fn build_fragment_contacts<T: PlanetTopology>(
             let ni = neighbor as usize;
             let domain_a = domain_ids[index];
             let domain_b = domain_ids[ni];
-            if domain_a == domain_b || (domain_a < macro_domain_count && domain_b < macro_domain_count) {
+            if domain_a == domain_b
+                || (domain_a < macro_domain_count && domain_b < macro_domain_count)
+            {
                 continue;
             }
             let key = if domain_a < domain_b {
@@ -787,7 +804,10 @@ fn model_hash(model: &PreOrogenicLithosphereModel) -> u64 {
         hash = fnv_update(hash, &contact.domain_b.to_le_bytes());
         hash = fnv_update(hash, &contact.edge_count.to_le_bytes());
         hash = fnv_update(hash, &contact.boundary_length_rad.to_bits().to_le_bytes());
-        hash = fnv_update(hash, &contact.mean_strength_contrast.to_bits().to_le_bytes());
+        hash = fnv_update(
+            hash,
+            &contact.mean_strength_contrast.to_bits().to_le_bytes(),
+        );
     }
     hash
 }
@@ -1055,7 +1075,9 @@ mod tests {
         GeologyRequest, PlanetPhysicalParameters, TectonicHistoryRequest, TectonicsRequest,
     };
 
-    fn generate(seed: &str) -> (
+    fn generate(
+        seed: &str,
+    ) -> (
         crate::GeodesicTopology,
         TectonicModel,
         TectonicHistoryModel,
@@ -1064,12 +1086,8 @@ mod tests {
     ) {
         let topology = build_icosphere(4).unwrap();
         let parameters = PlanetPhysicalParameters::earthlike_reference();
-        let tectonics = generate_tectonics(
-            &topology,
-            &TectonicsRequest::new(seed, 16),
-            parameters,
-        )
-        .unwrap();
+        let tectonics =
+            generate_tectonics(&topology, &TectonicsRequest::new(seed, 16), parameters).unwrap();
         let history = generate_tectonic_history(
             &topology,
             &tectonics,

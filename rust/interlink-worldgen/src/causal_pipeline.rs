@@ -1,8 +1,8 @@
 use crate::{
     derive_stage_seed, generate_pre_orogenic_lithosphere, generate_tectonic_history,
-    generate_tectonic_orogen_provinces, GeodesicTopology, InheritedBoundarySet,
-    LithosphereRequest, OrogenProvinceModel, OrogenProvinceRequest, PlanetPhysicalParameters,
-    PlanetTopology, PreOrogenicLithosphereModel, PreOrogenicLithosphereRequest, StageIdentity,
+    generate_tectonic_orogen_provinces, GeodesicTopology, InheritedBoundarySet, LithosphereRequest,
+    OrogenProvinceModel, OrogenProvinceRequest, PlanetPhysicalParameters, PlanetTopology,
+    PreOrogenicLithosphereModel, PreOrogenicLithosphereRequest, StageIdentity,
     TectonicHistoryModel, TectonicHistoryRequest, TectonicModel, TopographyMetrics,
     TopographyParameters, TopographyRequest, TopographyState, WorldgenError,
 };
@@ -129,6 +129,50 @@ impl InheritedPhysicalState {
     pub fn orogen_province_hash_hex(&self) -> String {
         format!("{:016x}", self.orogen_province_hash)
     }
+
+    /// Release fine-grid tectonic province scratch once WG-4 has materialized durable relief.
+    /// `orogenic_history` remains because it is an interactive browser diagnostic; the other
+    /// province rasters are construction intermediates and must not survive into WG-5+.
+    pub fn release_topography_scratch(&mut self) {
+        self.province_ids = Vec::new();
+        self.province_kind = Vec::new();
+        self.volcanic_arc_history = Vec::new();
+        self.crustal_root_index = Vec::new();
+        self.plateau_index = Vec::new();
+        self.fold_thrust_index = Vec::new();
+        self.foreland_basin_index = Vec::new();
+        self.backarc_extension_index = Vec::new();
+        self.suture_index = Vec::new();
+        self.transpression_index = Vec::new();
+        self.maturity_index = Vec::new();
+        self.shortening_index = Vec::new();
+        self.local_width_km = Vec::new();
+        self.source_along_strike_fraction = Vec::new();
+
+        // Legacy inherited fields whose last consumer is WG-4. Preserve only browser diagnostics
+        // plus the four mechanical fields consumed later by WG-7A erosion.
+        self.legacy.crust_province_id = Vec::new();
+        self.legacy.crust_density_kg_per_m3 = Vec::new();
+        self.legacy.buoyancy_index = Vec::new();
+        self.legacy.orogenic_history = Vec::new();
+        self.legacy.rift_history = Vec::new();
+        self.legacy.subduction_history = Vec::new();
+        self.legacy.volcanic_arc_history = Vec::new();
+        self.legacy.transform_history = Vec::new();
+        self.legacy.subsidence_history = Vec::new();
+        self.legacy.basin_potential = Vec::new();
+        self.legacy.crustal_strain = Vec::new();
+        self.legacy.effective_elastic_thickness_km = Vec::new();
+        self.legacy.thermal_anomaly_index = Vec::new();
+        self.legacy.mantle_upwelling_index = Vec::new();
+        self.legacy.compensated_buoyancy_index = Vec::new();
+        self.legacy.fragment_ids = Vec::new();
+    }
+
+    /// WG-7A is the last consumer of inherited structural fabric.
+    pub fn release_post_erosion_scratch(&mut self) {
+        self.legacy.structural_fabric_strength = Vec::new();
+    }
 }
 
 fn fnv_update(mut hash: u64, bytes: &[u8]) -> u64 {
@@ -253,7 +297,8 @@ fn mechanically_filter(
             let weakness = f64::from(inherited.weakness_index[sample]).clamp(0.0, 1.0);
             let fabric = f64::from(inherited.structural_fabric_strength[sample]).clamp(0.0, 1.0);
             let mut lambda = parameters.mechanical_filter_min_lambda
-                + (parameters.mechanical_filter_max_lambda - parameters.mechanical_filter_min_lambda)
+                + (parameters.mechanical_filter_max_lambda
+                    - parameters.mechanical_filter_min_lambda)
                     * te;
             // Preserve tectonic province edges much more strongly than the old broad smoothing pass.
             lambda *= (1.0 - 0.62 * weakness) * (1.0 - 0.30 * fabric);
@@ -324,9 +369,8 @@ fn province_relief(inherited: &InheritedPhysicalState, index: usize) -> (f64, f6
             - 1_650.0 * foreland
             - 260.0 * suture);
 
-    let arc_relief = volcanic_arc * (2_450.0 + 1_500.0 * maturity)
-        + 320.0 * intensity
-        - 1_050.0 * backarc;
+    let arc_relief =
+        volcanic_arc * (2_450.0 + 1_500.0 * maturity) + 320.0 * intensity - 1_050.0 * backarc;
     (collision_relief, arc_relief)
 }
 
@@ -345,11 +389,7 @@ pub fn generate_initial_topography(
     // Compute the accepted non-orogenic WG-4 components, then discard the legacy radial
     // collision/arc fields before constructing the final surface.
     let baseline = crate::topography::generate_initial_topography(
-        topology,
-        inherited,
-        boundaries,
-        planet,
-        request,
+        topology, inherited, boundaries, planet, request,
     )?;
     let count = topology.metrics().sample_count as usize;
     if inherited.orogenic_history.len() != count
@@ -372,8 +412,8 @@ pub fn generate_initial_topography(
         // Remove most legacy collision-thickening isostatic imprint in areas where the old
         // radial history was strong. New crustal-root/plateau fields now own that relief.
         let legacy_orogen = f64::from(inherited.legacy.orogenic_history[i]).clamp(0.0, 1.0);
-        let debiased_isostasy = f64::from(baseline.isostatic_elevation_m[i])
-            * (1.0 - 0.58 * legacy_orogen);
+        let debiased_isostasy =
+            f64::from(baseline.isostatic_elevation_m[i]) * (1.0 - 0.58 * legacy_orogen);
 
         raw[i] = debiased_isostasy
             + f64::from(baseline.thermal_elevation_m[i])
@@ -421,8 +461,16 @@ pub fn generate_initial_topography(
         }
     }
     let total_area = land_area + ocean_area;
-    let land_area_fraction = if total_area > 0.0 { land_area / total_area } else { 1.0 };
-    let ocean_area_fraction = if total_area > 0.0 { ocean_area / total_area } else { 0.0 };
+    let land_area_fraction = if total_area > 0.0 {
+        land_area / total_area
+    } else {
+        1.0
+    };
+    let ocean_area_fraction = if total_area > 0.0 {
+        ocean_area / total_area
+    } else {
+        0.0
+    };
     let mean_land_elevation_m = if land_area > 0.0 {
         land_elevation_area_sum / land_area
     } else {
@@ -445,9 +493,15 @@ pub fn generate_initial_topography(
     topography_hash = fnv_update(topography_hash, &stage_seed.to_le_bytes());
     topography_hash = fnv_update(topography_hash, &parameter_hash.to_le_bytes());
     topography_hash = fnv_update(topography_hash, &planet.parameter_hash().to_le_bytes());
-    topography_hash = fnv_update(topography_hash, &inherited.causal_inheritance_hash.to_le_bytes());
+    topography_hash = fnv_update(
+        topography_hash,
+        &inherited.causal_inheritance_hash.to_le_bytes(),
+    );
     topography_hash = fnv_update(topography_hash, &boundaries.boundary_hash.to_le_bytes());
-    topography_hash = fnv_update(topography_hash, &inherited.orogen_province_hash.to_le_bytes());
+    topography_hash = fnv_update(
+        topography_hash,
+        &inherited.orogen_province_hash.to_le_bytes(),
+    );
     for value in &solid {
         topography_hash = fnv_update(topography_hash, &value.to_bits().to_le_bytes());
     }
@@ -462,9 +516,21 @@ pub fn generate_initial_topography(
         minimum_solid_elevation_m,
         maximum_solid_elevation_m,
         mean_solid_elevation_m: area_weighted_mean(&solid, topology.dual_area_steradians()),
-        p05_solid_elevation_m: area_weighted_quantile(&solid, topology.dual_area_steradians(), 0.05),
-        median_solid_elevation_m: area_weighted_quantile(&solid, topology.dual_area_steradians(), 0.50),
-        p95_solid_elevation_m: area_weighted_quantile(&solid, topology.dual_area_steradians(), 0.95),
+        p05_solid_elevation_m: area_weighted_quantile(
+            &solid,
+            topology.dual_area_steradians(),
+            0.05,
+        ),
+        median_solid_elevation_m: area_weighted_quantile(
+            &solid,
+            topology.dual_area_steradians(),
+            0.50,
+        ),
+        p95_solid_elevation_m: area_weighted_quantile(
+            &solid,
+            topology.dual_area_steradians(),
+            0.95,
+        ),
         sea_level_m: sea_level,
         land_area_fraction,
         ocean_area_fraction,

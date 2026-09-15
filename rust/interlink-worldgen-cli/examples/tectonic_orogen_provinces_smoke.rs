@@ -18,13 +18,9 @@ fn main() -> Result<(), String> {
         planet,
     )
     .map_err(|error| error.to_string())?;
-    let geology = generate_crust_and_history(
-        &topology,
-        &tectonics,
-        &GeologyRequest::new(seed),
-        planet,
-    )
-    .map_err(|error| error.to_string())?;
+    let geology =
+        generate_crust_and_history(&topology, &tectonics, &GeologyRequest::new(seed), planet)
+            .map_err(|error| error.to_string())?;
     let pre = generate_pre_orogenic_lithosphere(
         &topology,
         &tectonics,

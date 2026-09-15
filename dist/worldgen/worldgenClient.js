@@ -2,34 +2,66 @@ import { WORLDGEN_PROTOCOL_VERSION, validateClimateRequest, validateDrainageRequ
 export function createWorldgenClient() {
     const workerUrl = new URL('./worldgenWorker.js', import.meta.url);
     workerUrl.searchParams.set('v', String(WORLDGEN_PROTOCOL_VERSION));
-    const worker = new Worker(workerUrl, { type: 'module' });
     const pending = new Map();
     let nextRequestId = 1;
     let disposed = false;
-    function rejectAll(message) { for (const request of pending.values())
-        request.reject(new Error(message)); pending.clear(); }
-    worker.addEventListener('message', (event) => {
-        const message = event.data;
-        if (!message || message.protocolVersion !== WORLDGEN_PROTOCOL_VERSION)
+    let recycleWhenIdle = false;
+    let worker;
+    function rejectAll(message) {
+        for (const request of pending.values())
+            request.reject(new Error(message));
+        pending.clear();
+    }
+    function spawnWorker() {
+        const next = new Worker(workerUrl, { type: 'module' });
+        next.addEventListener('message', (event) => {
+            if (next !== worker)
+                return;
+            const message = event.data;
+            if (!message || message.protocolVersion !== WORLDGEN_PROTOCOL_VERSION)
+                return;
+            const request = pending.get(message.requestId);
+            if (!request)
+                return;
+            if (message.type === 'progress') {
+                request.progress?.(message.payload);
+                return;
+            }
+            pending.delete(message.requestId);
+            if (message.type === 'generated-climate')
+                recycleWhenIdle = true;
+            if (message.type === 'error')
+                request.reject(new Error(message.payload.message));
+            else
+                request.resolve(message.payload);
+            if (recycleWhenIdle && pending.size === 0 && !disposed)
+                recycleWorker();
+        });
+        next.addEventListener('error', event => {
+            if (next !== worker || disposed)
+                return;
+            rejectAll(event.message || 'Planet Engine Worker failed.');
+            recycleWorker();
+        });
+        return next;
+    }
+    function recycleWorker() {
+        if (disposed)
             return;
-        const request = pending.get(message.requestId);
-        if (!request)
-            return;
-        if (message.type === 'progress') {
-            request.progress?.(message.payload);
-            return;
-        }
-        pending.delete(message.requestId);
-        if (message.type === 'error')
-            request.reject(new Error(message.payload.message));
-        else
-            request.resolve(message.payload);
-    });
-    worker.addEventListener('error', event => rejectAll(event.message || 'Planet Engine Worker failed.'));
+        const previous = worker;
+        const replacement = spawnWorker();
+        worker = replacement;
+        recycleWhenIdle = false;
+        previous.terminate();
+    }
+    worker = spawnWorker();
     function request(command, progress) {
         if (disposed)
             return Promise.reject(new Error('Planet Engine client is disposed.'));
-        return new Promise((resolve, reject) => { pending.set(command.requestId, { resolve: result => resolve(result), reject, progress }); worker.postMessage(command); });
+        return new Promise((resolve, reject) => {
+            pending.set(command.requestId, { resolve: result => resolve(result), reject, progress });
+            worker.postMessage(command);
+        });
     }
     return {
         generateSynthetic(input) { validateSyntheticRequest(input); return request(worldgenSyntheticCommand(nextRequestId++, input)); },
@@ -41,7 +73,12 @@ export function createWorldgenClient() {
         generateTopography(input) { validateTopographyRequest(input); return request(worldgenTopographyCommand(nextRequestId++, input)); },
         generateClimate(input, onProgress) { validateClimateRequest(input); return request(worldgenClimateCommand(nextRequestId++, input), onProgress); },
         generateDrainage(input) { validateDrainageRequest(input); return request(worldgenDrainageCommand(nextRequestId++, input)); },
-        dispose() { if (disposed)
-            return; disposed = true; worker.terminate(); rejectAll('Planet Engine client was disposed.'); },
+        dispose() {
+            if (disposed)
+                return;
+            disposed = true;
+            worker.terminate();
+            rejectAll('Planet Engine client was disposed.');
+        },
     };
 }

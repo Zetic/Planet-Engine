@@ -38,13 +38,9 @@ fn run(seed: &str, cohort: &str) -> Result<(), String> {
     let fine = build_icosphere(7).map_err(|error| error.to_string())?;
     let tectonics = generate_tectonics(&coarse, &TectonicsRequest::new(seed, 16), planet)
         .map_err(|error| error.to_string())?;
-    let geology = generate_crust_and_history(
-        &coarse,
-        &tectonics,
-        &GeologyRequest::new(seed),
-        planet,
-    )
-    .map_err(|error| error.to_string())?;
+    let geology =
+        generate_crust_and_history(&coarse, &tectonics, &GeologyRequest::new(seed), planet)
+            .map_err(|error| error.to_string())?;
     let lithosphere = generate_lithosphere(
         &coarse,
         &tectonics,
@@ -54,14 +50,9 @@ fn run(seed: &str, cohort: &str) -> Result<(), String> {
     .map_err(|error| error.to_string())?;
     let inherited = inherit_physical_state(&fine, 5, &tectonics, &geology, &lithosphere, planet)
         .map_err(|error| error.to_string())?;
-    let boundaries = inherit_boundary_interfaces(
-        &coarse,
-        &fine,
-        &tectonics,
-        &geology,
-        &inherited.plate_ids,
-    )
-    .map_err(|error| error.to_string())?;
+    let boundaries =
+        inherit_boundary_interfaces(&coarse, &fine, &tectonics, &geology, &inherited.plate_ids)
+            .map_err(|error| error.to_string())?;
     let terrain = generate_initial_topography(
         &fine,
         &inherited,
@@ -70,14 +61,8 @@ fn run(seed: &str, cohort: &str) -> Result<(), String> {
         &TopographyRequest::new(seed),
     )
     .map_err(|error| error.to_string())?;
-    let report = analyze_topography_morphology(
-        &fine,
-        &inherited,
-        &boundaries,
-        planet,
-        &terrain,
-    )
-    .map_err(|error| error.to_string())?;
+    let report = analyze_topography_morphology(&fine, &inherited, &boundaries, planet, &terrain)
+        .map_err(|error| error.to_string())?;
 
     println!(
         "world\t{cohort}\t{seed}\tlevel={}\tsamples={}\ttopography_hash={:016x}\tboundary_hash={:016x}",

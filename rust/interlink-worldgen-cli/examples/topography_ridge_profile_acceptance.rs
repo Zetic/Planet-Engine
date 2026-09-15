@@ -8,14 +8,7 @@ use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 
 const DISTANCE_EPSILON_M: f64 = 1.0e-6;
-const BAND_EDGES_M: [f64; 6] = [
-    0.0,
-    100_000.0,
-    250_000.0,
-    500_000.0,
-    750_000.0,
-    1_000_000.0,
-];
+const BAND_EDGES_M: [f64; 6] = [0.0, 100_000.0, 250_000.0, 500_000.0, 750_000.0, 1_000_000.0];
 
 #[derive(Clone, Copy, Debug)]
 struct QueueEntry {
@@ -244,12 +237,8 @@ fn main() -> Result<(), String> {
         )
         .map_err(|error| error.to_string())?;
 
-        let profile = attributed_ridge_profile(
-            &fine,
-            &boundaries,
-            planet,
-            &terrain.ridge_elevation_m,
-        );
+        let profile =
+            attributed_ridge_profile(&fine, &boundaries, planet, &terrain.ridge_elevation_m);
         if profile.source_edge_count == 0 {
             continue;
         }

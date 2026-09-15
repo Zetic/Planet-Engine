@@ -1,0 +1,98 @@
+name: Memory architecture audit
+
+on:
+  push:
+    branches: [perf/l8-memory-architecture]
+  workflow_dispatch:
+
+# Canonical L5 -> L8 retained-state and browser-packet memory guard.
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/l8-memory-architecture
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Static climate packet usage audit
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          protocol = Path('src/worldgen/protocol.ts').read_text()
+          start = protocol.index('export interface WorldgenClimateResult')
+          body = protocol[start:]
+          m = re.search(r'\nexport interface ', body[len('export interface WorldgenClimateResult'):])
+          if m:
+              body = body[:len('export interface WorldgenClimateResult') + m.start()]
+          fields = []
+          for line in body.splitlines()[1:]:
+              mm = re.match(r'\s{2}([A-Za-z_][A-Za-z0-9_]*)(?:\?|):', line)
+              if mm:
+                  fields.append(mm.group(1))
+          consumers = []
+          for p in Path('src').rglob('*.ts'):
+              if p.as_posix() in {'src/worldgen/protocol.ts','src/worldgen/worldgenWorker.ts'}:
+                  continue
+              consumers.append((p, p.read_text()))
+          unused = []
+          used = []
+          for field in fields:
+              hits = [p.as_posix() for p, text in consumers if re.search(rf'\b(?:result|payload|world)\s*\.\s*{re.escape(field)}\b', text)]
+              (used if hits else unused).append((field, hits))
+          print(f'Climate packet fields: {len(fields)}; externally referenced: {len(used)}; transport-only candidates: {len(unused)}')
+          print('TRANSPORT_ONLY_CANDIDATES=' + ','.join(x for x,_ in unused))
+          PY
+      - name: Dynamic canonical L8 WASM memory budget
+        run: |
+          cat > /tmp/memory-audit.mjs <<'JS'
+          import { readFileSync } from 'node:fs';
+          import { memoryUsage } from 'node:process';
+          import { pathToFileURL } from 'node:url';
+          const MiB = 1048576;
+          const moduleUrl = pathToFileURL(`${process.cwd()}/src/wasm-worldgen/interlink_worldgen_wasm.js`).href;
+          const { initSync, WasmWorldgenClimate } = await import(moduleUrl);
+          const mib = n => (n / MiB).toFixed(1);
+          const mem = label => {
+            const m = memoryUsage();
+            console.log(`MEM ${label} rss=${mib(m.rss)}MiB heap=${mib(m.heapUsed)}MiB arrayBuffers=${mib(m.arrayBuffers)}MiB external=${mib(m.external)}MiB`);
+            return m;
+          };
+          initSync({ module: readFileSync('src/wasm-worldgen/interlink_worldgen_wasm_bg.wasm') });
+          mem('initialized');
+          const started = performance.now();
+          const output = new WasmWorldgenClimate('interlink-wg7c', 5, 8, 16, undefined);
+          console.log(`CONSTRUCT ${(performance.now()-started).toFixed(0)}ms`);
+          const constructed = mem('constructed');
+          const arrays = [];
+          const proto = Object.getPrototypeOf(output);
+          for (const name of Object.getOwnPropertyNames(proto).sort()) {
+            if (name === 'constructor' || name === 'free' || name.startsWith('__')) continue;
+            const fn = output[name];
+            if (typeof fn !== 'function' || fn.length !== 0) continue;
+            let value;
+            try { value = fn.call(output); } catch { continue; }
+            if (ArrayBuffer.isView(value)) arrays.push({ name, bytes: value.byteLength, value });
+          }
+          const total = arrays.reduce((s,x)=>s+x.bytes,0);
+          arrays.sort((a,b)=>b.bytes-a.bytes);
+          console.log(`ARRAYS count=${arrays.length} bytes=${total} (${mib(total)}MiB)`);
+          for (const x of arrays.slice(0,40)) console.log(`ARRAY ${x.name} ${mib(x.bytes)}MiB ${x.value.constructor.name} len=${x.value.length}`);
+          const packaged = mem('packaged');
+          const limits = {
+            constructedRssMiB: 1200,
+            packagedRssMiB: 1650,
+            packetMiB: 460,
+          };
+          if (constructed.rss > limits.constructedRssMiB * MiB) throw new Error(`constructed RSS ${mib(constructed.rss)}MiB exceeds ${limits.constructedRssMiB}MiB budget`);
+          if (packaged.rss > limits.packagedRssMiB * MiB) throw new Error(`packaged RSS ${mib(packaged.rss)}MiB exceeds ${limits.packagedRssMiB}MiB budget`);
+          if (total > limits.packetMiB * MiB) throw new Error(`browser packet ${mib(total)}MiB exceeds ${limits.packetMiB}MiB budget`);
+          output.free();
+          if (global.gc) { global.gc(); global.gc(); }
+          mem('freed-wasm-object');
+          console.log(`HOLD ${arrays.length} arrays ${mib(total)}MiB`);
+          JS
+          /usr/bin/time -v node --expose-gc /tmp/memory-audit.mjs

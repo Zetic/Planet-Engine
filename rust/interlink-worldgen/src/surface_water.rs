@@ -165,11 +165,8 @@ fn solve_hydrostatic_surface_water_impl(
 
     let count = topology.metrics().sample_count as usize;
     let target_water_volume_m3 = planet.surface_water_volume_m3();
-    let (sea_level_m, solved_water_volume_m3, water_volume_relative_error) = solve_sea_level(
-        solid_elevation_m,
-        topology.dual_area_steradians(),
-        planet,
-    );
+    let (sea_level_m, solved_water_volume_m3, water_volume_relative_error) =
+        solve_sea_level(solid_elevation_m, topology.dual_area_steradians(), planet);
 
     let mut elevation_above_sea_level_m = vec![0.0_f32; count];
     let mut water_depth_m = vec![0.0_f32; count];
@@ -314,11 +311,15 @@ mod tests {
         let topology = build_icosphere(1).unwrap();
         let surface = synthetic_surface(&topology);
         let offset_m = 512.0_f32;
-        let shifted = surface.iter().map(|value| *value + offset_m).collect::<Vec<_>>();
+        let shifted = surface
+            .iter()
+            .map(|value| *value + offset_m)
+            .collect::<Vec<_>>();
         let planet = PlanetPhysicalParameters::earthlike_reference();
         let base = solve_hydrostatic_surface_water(&topology, &surface, planet).unwrap();
         let translated = solve_hydrostatic_surface_water(&topology, &shifted, planet).unwrap();
-        let sea_level_delta = translated.metrics.sea_level_m.unwrap() - base.metrics.sea_level_m.unwrap();
+        let sea_level_delta =
+            translated.metrics.sea_level_m.unwrap() - base.metrics.sea_level_m.unwrap();
         assert!((sea_level_delta - f64::from(offset_m)).abs() < 1.0e-9);
         assert_eq!(base.submerged_mask, translated.submerged_mask);
         assert_eq!(base.water_depth_m, translated.water_depth_m);
@@ -331,7 +332,8 @@ mod tests {
         let mut surface = vec![1_000.0_f32; count];
         surface[0] = -1_000.0;
         let mut planet = PlanetPhysicalParameters::earthlike_reference();
-        let physical_cell_area_m2 = topology.dual_area_steradians()[0] * planet.radius_m * planet.radius_m;
+        let physical_cell_area_m2 =
+            topology.dual_area_steradians()[0] * planet.radius_m * planet.radius_m;
         let target_volume_m3 = 100.0 * physical_cell_area_m2;
         planet.surface_water_mass_kg = target_volume_m3 * planet.ocean_water_density_kg_per_m3;
         let state = solve_hydrostatic_surface_water(&topology, &surface, planet).unwrap();

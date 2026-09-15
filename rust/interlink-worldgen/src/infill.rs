@@ -158,6 +158,15 @@ pub struct LakeSedimentInfillState {
     pub reconciled_seasonal: SeasonalHydrologyState,
 }
 
+impl LakeSedimentInfillState {
+    pub fn release_post_generation_scratch(&mut self) {
+        self.post_infill_drainage.outlet_sample = Vec::new();
+        self.post_infill_drainage.outlet_kind = Vec::new();
+        self.post_infill_drainage.drainage_order = Vec::new();
+        self.reconciled_runoff.local_runoff_m3_s = Vec::new();
+    }
+}
+
 fn fnv_update(mut hash: u64, bytes: &[u8]) -> u64 {
     for byte in bytes {
         hash ^= u64::from(*byte);

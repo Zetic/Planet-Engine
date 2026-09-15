@@ -432,15 +432,13 @@ Submerged samples are excluded from the dry/intermittent/perennial land counts. 
 
 ## WG-6D state contract
 
-`SeasonalHydrologyState` exposes:
+`SeasonalHydrologyState` retains only durable phase payloads needed by downstream physics or interactive diagnostics:
 
-- phase-major `phase_local_runoff_m3_s`;
-- phase-major `phase_snowmelt_runoff_m3_s`;
 - phase-major `phase_snow_storage_mm`;
-- phase-major `phase_potential_discharge_m3_s`;
 - phase-major `phase_realized_discharge_m3_s`;
-- per-sample `flow_presence_fraction` and `flow_regime`;
-- phase-major lake surface elevation, area, and volume in WG-6C lake-record order;
+- per-sample `flow_presence_fraction` and `flow_regime`.
+
+Local runoff, snowmelt runoff, potential discharge, and lake-cycle phase rasters remain solver working buffers. They still contribute to seasonal metrics and the deterministic stage hash, but are discarded before WG-7 so multiple 24-phase working sets cannot accumulate in the canonical L8 pipeline.
 - annual local-runoff target closure and phase-routing conservation diagnostics;
 - annual-mean terminal realized discharge, lake precipitation, lake evaporation, and unreleased storage diagnostics;
 - bounded seasonal lake-cycle convergence diagnostics;

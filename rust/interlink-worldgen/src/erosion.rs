@@ -210,6 +210,13 @@ pub struct FluvialErosionState {
     pub sediment_deposition_kg_s: Vec<f32>,
 }
 
+impl FluvialErosionState {
+    pub fn release_post_infill_scratch(&mut self) {
+        self.stream_power_index = Vec::new();
+        self.sediment_transport_capacity_kg_s = Vec::new();
+    }
+}
+
 #[derive(Debug)]
 struct SedimentRoutingMetrics {
     total_land_deposition_kg_s: f64,
