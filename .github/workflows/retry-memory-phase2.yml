@@ -1,4 +1,4 @@
-name: Validate memory architecture phase 2
+name: Finalize memory architecture phase 2
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   rewrite:
-    if: ${{ !contains(github.event.head_commit.message, '[memory-phase2]') }}
+    if: ${{ contains(github.event.head_commit.message, '[phase2-driver]') || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -27,16 +27,43 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+
           workflow = Path('.github/workflows/apply-memory-phase2.yml').read_text()
           start = workflow.index("          python3 - <<'PY'\n") + len("          python3 - <<'PY'\n")
           end = workflow.index('\n          PY\n', start)
           code = workflow[start:end]
           code = '\n'.join(line[10:] if line.startswith('          ') else line for line in code.splitlines())
-          broken = "end = s.index('\\n}\\n\\n\\nexport interface WorldgenDrainageMetrics', start) + 2"
-          fixed = "end = s.index('export interface WorldgenDrainageMetrics', start)"
+
+          broken = """for method in [
+    'faces', 'outlet_sample', 'outlet_kind', 'drainage_order', 'local_runoff_m3_s',
+    'lake_spill_samples', 'stream_power_index', 'sediment_transport_capacity_kg_s',
+    'runoff_stage_id', 'runoff_stage_version', 'runoff_stage_seed_hex',
+]:
+    ib, n = re.subn(rf'\\s*{method}\\(\\):\\s*[^;]+;', '', ib, count=1)
+    if n != 1: raise SystemExit(f'worker interface method not removed: {method} ({n})')
+"""
+          fixed = """method_signatures = {
+    'faces': 'faces(): Uint32Array;',
+    'outlet_sample': 'outlet_sample(): Uint32Array;',
+    'outlet_kind': 'outlet_kind(): Uint8Array;',
+    'drainage_order': 'drainage_order(): Uint32Array;',
+    'local_runoff_m3_s': 'local_runoff_m3_s(): Float32Array;',
+    'lake_spill_samples': 'lake_spill_samples(): Uint32Array;',
+    'stream_power_index': 'stream_power_index(): Float32Array;',
+    'sediment_transport_capacity_kg_s': 'sediment_transport_capacity_kg_s(): Float32Array;',
+    'runoff_stage_id': 'runoff_stage_id(): string;',
+    'runoff_stage_version': 'runoff_stage_version(): number;',
+    'runoff_stage_seed_hex': 'runoff_stage_seed_hex(): string;',
+}
+for method, signature in method_signatures.items():
+    n = ib.count(signature)
+    if n != 1: raise SystemExit(f'worker interface method not removed: {method} ({n})')
+    ib = ib.replace(signature, '', 1)
+"""
           if broken not in code:
-              raise SystemExit('phase-2 protocol marker patch target missing')
-          Path('/tmp/memory-phase2.py').write_text(code.replace(broken, fixed, 1))
+              raise SystemExit('worker interface rewrite patch target missing')
+          code = code.replace(broken, fixed, 1)
+          Path('/tmp/memory-phase2.py').write_text(code)
           PY
           python3 /tmp/memory-phase2.py
           cargo fmt --all
@@ -47,7 +74,7 @@ jobs:
           cargo check --workspace --all-targets
           cargo test -p interlink-worldgen --lib
           cargo check -p interlink-worldgen-wasm --target wasm32-unknown-unknown
-      - name: Install wasm-bindgen and rebuild browser package
+      - name: Rebuild browser WASM
         run: |
           cargo install --locked wasm-bindgen-cli --version "${WASM_BINDGEN_VERSION}"
           npm run build:worldgen-wasm
