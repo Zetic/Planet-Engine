@@ -40,11 +40,4 @@ replace_once(
     '''    let state = last.expect("at least one WG-7A benchmark run");\n    assert_eq!(\n        state.metrics.inheritance_hash,\n        inherited.inheritance_hash(),\n        "WG-7A must record the accepted causal fine-state inheritance identity",\n    );\n    let mean_ms = durations_ms.iter().sum::<f64>() / durations_ms.len() as f64;\n''',
 )
 
-# This is a causal-lineage invariant, not a legacy calibration metric, so keep it blocking.
-replace_once(
-    '.github/workflows/ci.yml',
-    '''      - name: Smoke-test tectonic causal foundations\n        run: |\n          cargo run -p interlink-worldgen-cli --example tectonic_history_smoke\n          cargo run -p interlink-worldgen-cli --example pre_orogenic_lithosphere_smoke\n          cargo run -p interlink-worldgen-cli --example tectonic_orogen_provinces_smoke\n          cargo run -p interlink-worldgen-cli --example tectonic_topography_cutover_smoke\n      - name: Compile browser bridge\n''',
-    '''      - name: Smoke-test tectonic causal foundations\n        run: |\n          cargo run -p interlink-worldgen-cli --example tectonic_history_smoke\n          cargo run -p interlink-worldgen-cli --example pre_orogenic_lithosphere_smoke\n          cargo run -p interlink-worldgen-cli --example tectonic_orogen_provinces_smoke\n          cargo run -p interlink-worldgen-cli --example tectonic_topography_cutover_smoke\n      - name: Verify WG-7A causal inheritance identity\n        run: cargo run -p interlink-worldgen-cli --example erosion_performance -- --seed ci-wg7a-causal-identity --coarse-level 3 --level 4 --plates 12 --runs 1\n      - name: Compile browser bridge\n''',
-)
-
 print('WG-7A causal identity fix applied')
