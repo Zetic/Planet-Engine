@@ -1,16 +1,16 @@
 use crate::{
     derive_stage_seed, generate_pre_orogenic_lithosphere, generate_tectonic_history,
     generate_tectonic_orogen_provinces, GeodesicTopology, InheritedBoundarySet, LithosphereRequest,
-    OrogenProvinceModel, OrogenProvinceRequest, PlanetPhysicalParameters, PlanetTopology,
-    PreOrogenicLithosphereModel, PreOrogenicLithosphereRequest, StageIdentity,
+    OrogenProvinceKind, OrogenProvinceModel, OrogenProvinceRequest, PlanetPhysicalParameters,
+    PlanetTopology, PreOrogenicLithosphereModel, PreOrogenicLithosphereRequest, StageIdentity,
     TectonicHistoryModel, TectonicHistoryRequest, TectonicModel, TopographyMetrics,
     TopographyParameters, TopographyRequest, TopographyState, WorldgenError,
 };
 use std::ops::{Deref, DerefMut};
 
 pub const TECTONIC_TOPOGRAPHY_STAGE_ID: &str = "terrain:initial-topography";
-pub const TECTONIC_TOPOGRAPHY_STAGE_VERSION: u32 = 12;
-const TECTONIC_TOPOGRAPHY_NAMESPACE: &str = "terrain:tectonic-province-topography:v1";
+pub const TECTONIC_TOPOGRAPHY_STAGE_VERSION: u32 = 13;
+const TECTONIC_TOPOGRAPHY_NAMESPACE: &str = "terrain:boundary-localized-orogen-topography:v2";
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 const CRUST_OCEANIC: u8 = 1;
@@ -94,6 +94,9 @@ pub struct InheritedPhysicalState {
     // Deliberately shadows the legacy field so existing browser diagnostics named
     // "Orogenic history" now visualize the new province intensity rather than the old tube field.
     pub orogenic_history: Vec<f32>,
+    pub boundary_distance_km: Vec<f32>,
+    pub mountain_core_index: Vec<f32>,
+    pub interior_resistance_index: Vec<f32>,
     pub volcanic_arc_history: Vec<f32>,
     pub crustal_root_index: Vec<f32>,
     pub plateau_index: Vec<f32>,
@@ -139,6 +142,9 @@ impl InheritedPhysicalState {
     pub fn release_topography_scratch(&mut self) {
         self.province_ids = Vec::new();
         self.province_kind = Vec::new();
+        self.boundary_distance_km = Vec::new();
+        self.mountain_core_index = Vec::new();
+        self.interior_resistance_index = Vec::new();
         self.volcanic_arc_history = Vec::new();
         self.crustal_root_index = Vec::new();
         self.plateau_index = Vec::new();
@@ -219,6 +225,9 @@ pub fn inherit_physical_state(
     let province_ids = crate::refinement::refine_categorical_u16(map, &orogens.province_ids)?;
     let province_kind = crate::refinement::refine_categorical_u8(map, &orogens.province_kind)?;
     let orogenic_history = refine(&orogens.orogenic_intensity)?;
+    let boundary_distance_km = refine(&orogens.boundary_distance_km)?;
+    let mountain_core_index = refine(&orogens.mountain_core_index)?;
+    let interior_resistance_index = refine(&orogens.interior_resistance_index)?;
     let volcanic_arc_history = refine(&orogens.volcanic_arc_index)?;
     let crustal_root_index = refine(&orogens.crustal_root_index)?;
     let plateau_index = refine(&orogens.plateau_index)?;
@@ -246,6 +255,9 @@ pub fn inherit_physical_state(
         province_ids,
         province_kind,
         orogenic_history,
+        boundary_distance_km,
+        mountain_core_index,
+        interior_resistance_index,
         volcanic_arc_history,
         crustal_root_index,
         plateau_index,
@@ -345,6 +357,8 @@ fn area_weighted_quantile(values: &[f64], areas: &[f64], q: f64) -> f64 {
 
 fn province_relief(inherited: &InheritedPhysicalState, index: usize) -> (f64, f64) {
     let intensity = f64::from(inherited.orogenic_history[index]).clamp(0.0, 1.0);
+    let mountain_core = f64::from(inherited.mountain_core_index[index]).clamp(0.0, 1.0);
+    let resistance = f64::from(inherited.interior_resistance_index[index]).clamp(0.0, 1.0);
     let root = f64::from(inherited.crustal_root_index[index]).clamp(0.0, 1.0);
     let plateau = f64::from(inherited.plateau_index[index]).clamp(0.0, 1.0);
     let fold = f64::from(inherited.fold_thrust_index[index]).clamp(0.0, 1.0);
@@ -355,26 +369,41 @@ fn province_relief(inherited: &InheritedPhysicalState, index: usize) -> (f64, f6
     let transpression = f64::from(inherited.transpression_index[index]).clamp(0.0, 1.0);
     let maturity = f64::from(inherited.maturity_index[index]).clamp(0.0, 1.0);
     let shortening = f64::from(inherited.shortening_index[index]).clamp(0.0, 1.0);
+    let kind = inherited.province_kind[index];
+    let subduction = kind == OrogenProvinceKind::CordilleranArc as u8
+        || kind == OrogenProvinceKind::IslandArc as u8;
+    let tectonic_gain = 0.82 + 0.18 * maturity + 0.22 * shortening;
+    let broad_transmission = 0.72 + 0.28 * (1.0 - resistance);
+
+    if subduction {
+        // Subduction topography is one-sided and arc-centred. The collision component is zero so
+        // an oceanic/continental margin cannot accidentally receive both a collision mountain and
+        // a volcanic arc at the same location.
+        let arc_relief = 1_850.0 * mountain_core
+            + volcanic_arc * (2_650.0 + 900.0 * maturity)
+            + 420.0 * fold
+            + 160.0 * intensity
+            - 900.0 * backarc
+            - 120.0 * suture;
+        return (0.0, arc_relief);
+    }
 
     let crust_scale = match inherited.crust_kind[index] {
         CRUST_OCEANIC => 0.18,
         CRUST_TRANSITIONAL => 0.62,
         _ => 1.0,
     };
-    let tectonic_gain = 0.62 + 0.48 * maturity + 0.52 * shortening;
     let collision_relief = crust_scale
         * tectonic_gain
-        * (5_200.0 * root
-            + 4_000.0 * plateau
-            + 2_350.0 * fold
-            + 2_850.0 * transpression
-            + 750.0 * intensity
-            - 1_650.0 * foreland
-            - 260.0 * suture);
-
-    let arc_relief =
-        volcanic_arc * (2_450.0 + 1_500.0 * maturity) + 320.0 * intensity - 1_050.0 * backarc;
-    (collision_relief, arc_relief)
+        * (5_600.0 * mountain_core
+            + 2_450.0 * root * broad_transmission
+            + 1_650.0 * plateau * broad_transmission
+            + 1_900.0 * fold
+            + 2_500.0 * transpression
+            + 260.0 * intensity
+            - 1_350.0 * foreland
+            - 180.0 * suture);
+    (collision_relief, 0.0)
 }
 
 pub fn generate_initial_topography(
@@ -397,6 +426,8 @@ pub fn generate_initial_topography(
     let count = topology.metrics().sample_count as usize;
     if inherited.orogenic_history.len() != count
         || inherited.crustal_root_index.len() != count
+        || inherited.mountain_core_index.len() != count
+        || inherited.boundary_distance_km.len() != count
         || inherited.province_ids.len() != count
     {
         return Err(WorldgenError::InvalidTopography(

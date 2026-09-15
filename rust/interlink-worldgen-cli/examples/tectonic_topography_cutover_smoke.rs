@@ -50,6 +50,17 @@ fn main() -> Result<(), String> {
         .iter()
         .filter(|value| **value > 0.05)
         .count();
+    let mountain_core_samples = inherited
+        .mountain_core_index
+        .iter()
+        .filter(|value| **value > 0.20)
+        .count();
+    let far_mountain_core_samples = inherited
+        .mountain_core_index
+        .iter()
+        .zip(inherited.boundary_distance_km.iter())
+        .filter(|(core, distance)| **core > 0.20 && **distance >= 800.0)
+        .count();
     let positive_orogen = terrain
         .orogenic_elevation_m
         .iter()
@@ -62,10 +73,12 @@ fn main() -> Result<(), String> {
         .count();
 
     println!(
-        "WG-4 tectonic topography cutover: stage=v{} provinces={} active_samples={} relief(+/-)={}/{} solid={:.0}..{:.0}m clamped={} land={:.1}% province_hash={} topo_hash={}",
+        "WG-4 boundary-localized topography: stage=v{} provinces={} active_samples={} core={} far_core={} relief(+/-)={}/{} solid={:.0}..{:.0}m clamped={} land={:.1}% province_hash={} topo_hash={}",
         terrain.stage.version,
         lithosphere.orogen_provinces.metrics.province_count,
         active_samples,
+        mountain_core_samples,
+        far_mountain_core_samples,
         positive_orogen,
         negative_orogen,
         terrain.metrics.minimum_solid_elevation_m,
@@ -76,10 +89,15 @@ fn main() -> Result<(), String> {
         terrain.metrics.topography_hash_hex(),
     );
 
-    if terrain.stage.version != TOPOGRAPHY_STAGE_VERSION || terrain.stage.version != 12 {
+    if terrain.stage.version != TOPOGRAPHY_STAGE_VERSION || terrain.stage.version != 13 {
         return Err("WG-4 did not route through tectonic-province topography".to_string());
     }
-    if active_samples == 0 || positive_orogen == 0 || negative_orogen == 0 {
+    if active_samples == 0
+        || mountain_core_samples == 0
+        || far_mountain_core_samples != 0
+        || positive_orogen == 0
+        || negative_orogen == 0
+    {
         return Err("tectonic province topography did not exercise zoned relief".to_string());
     }
     if terrain
