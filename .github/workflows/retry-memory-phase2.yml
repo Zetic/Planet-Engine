@@ -68,6 +68,16 @@ jobs:
           Path('/tmp/memory-phase2.py').write_text(code)
           PY
           python3 /tmp/memory-phase2.py
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('tests/worldgenCompositeViews.test.ts')
+          s = p.read_text()
+          old = "const end = bridge.indexOf('pub fn runoff_stage_id', start);"
+          new = "const end = bridge.indexOf('pub fn runoff_hash_hex', start);"
+          if s.count(old) != 1:
+              raise SystemExit('WG-7D drainage section marker target missing')
+          p.write_text(s.replace(old, new, 1))
+          PY
           cargo fmt --all
       - name: Compile and test Rust
         run: |
