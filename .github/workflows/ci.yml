@@ -51,6 +51,8 @@ jobs:
           cargo run -p interlink-worldgen-cli --example tectonic_topography_cutover_smoke
       - name: Verify historical lithosphere lineage and projection
         run: cargo run --release -p interlink-worldgen-cli --example historical_lithosphere_acceptance
+      - name: Verify L5 to L8 historical memory and performance
+        run: cargo run --release -p interlink-worldgen-cli --example historical_lithosphere_performance
       - name: Compile browser bridge
         run: cargo check -p interlink-worldgen-wasm --target wasm32-unknown-unknown
 
