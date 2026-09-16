@@ -17,18 +17,32 @@ jobs:
           ref: feat/tectonic-synthesis-cleanup
           fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
       - name: Apply synthesis edits
         run: python scripts/apply-tectonic-synthesis-cleanup.py
       - name: Format Rust
         run: cargo fmt --all
-      - name: Compile and test historical lithosphere
+      - name: Test historical synthesis
         run: cargo test -p interlink-worldgen historical_lithosphere -- --nocapture
+      - name: Compile browser bridge
+        run: cargo check -p interlink-worldgen-wasm --target wasm32-unknown-unknown
+      - name: Build browser modules
+        run: npm run build
+      - name: Run browser regressions
+        run: npm run test:ts
       - name: Commit synthesis implementation
         run: |
-          if ! git diff --quiet -- rust/interlink-worldgen/src/historical_lithosphere.rs; then
+          if ! git diff --quiet; then
             git config user.name 'github-actions[bot]'
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git add rust/interlink-worldgen/src/historical_lithosphere.rs
-            git commit -m 'feat(worldgen): compact modern plates and assemble continental crust'
+            git add rust src index.html README.md tests .github/workflows/ci.yml
+            git add -u inheritance.html src/worldgen/diagnostics/worldgenInheritanceLabStandalone.ts || true
+            git commit -m 'feat(worldgen): unify historical diagnostics in the main lab'
             git push origin HEAD:feat/tectonic-synthesis-cleanup
           fi
