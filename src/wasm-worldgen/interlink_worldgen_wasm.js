@@ -4936,6 +4936,15 @@ export class WasmWorldgenInheritance {
         wasm.__wbg_wasmworldgeninheritance_free(ptr, 0);
     }
     /**
+     * @returns {Float32Array}
+     */
+    active_orogen_intensity() {
+        const ret = wasm.wasmworldgeninheritance_active_orogen_intensity(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
      * @returns {number}
      */
     added_sample_count() {
@@ -5192,6 +5201,15 @@ export class WasmWorldgenInheritance {
         }
     }
     /**
+     * @returns {Float32Array}
+     */
+    fossil_orogen_intensity() {
+        const ret = wasm.wasmworldgeninheritance_fossil_orogen_intensity(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
      * @returns {Uint16Array}
      */
     fragment_ids() {
@@ -5267,6 +5285,66 @@ export class WasmWorldgenInheritance {
     /**
      * @returns {string}
      */
+    historical_morphology_hash_hex() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmworldgeninheritance_historical_morphology_hash_hex(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    historical_rift_age_myr() {
+        const ret = wasm.wasmworldgeninheritance_historical_rift_age_myr(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    historical_rift_intensity() {
+        const ret = wasm.wasmworldgeninheritance_historical_rift_intensity(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    historical_shear_intensity() {
+        const ret = wasm.wasmworldgeninheritance_historical_shear_intensity(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    historical_suture_age_myr() {
+        const ret = wasm.wasmworldgeninheritance_historical_suture_age_myr(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    historical_suture_intensity() {
+        const ret = wasm.wasmworldgeninheritance_historical_suture_intensity(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {string}
+     */
     inheritance_hash_hex() {
         let deferred1_0;
         let deferred1_1;
@@ -5309,6 +5387,24 @@ export class WasmWorldgenInheritance {
         const ret = wasm.wasmworldgeninheritance_kinematic_domain_ids(this.__wbg_ptr);
         var v1 = getArrayU16FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 2, 2);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    latest_historical_event_age_myr() {
+        const ret = wasm.wasmworldgeninheritance_latest_historical_event_age_myr(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Uint8Array}
+     */
+    latest_historical_event_kind() {
+        const ret = wasm.wasmworldgeninheritance_latest_historical_event_kind(this.__wbg_ptr);
+        var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
         return v1;
     }
     /**
@@ -5434,6 +5530,15 @@ export class WasmWorldgenInheritance {
         } finally {
             wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
         }
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    passive_margin_index() {
+        const ret = wasm.wasmworldgeninheritance_passive_margin_index(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
     }
     /**
      * @returns {number}
