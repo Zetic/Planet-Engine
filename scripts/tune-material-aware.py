@@ -39,20 +39,41 @@ fn target_plate_fractions(signals: &MaterialSignals, plate_count: usize) -> Vec<
     targets
 }
 
-fn measured_plate_fractions<T: PlanetTopology>(
+fn connected_plate_fractions<T: PlanetTopology>(
     topology: &T,
     owners: &[u16],
-    plate_count: usize,
+    cores: &[u32],
 ) -> Vec<f64> {
-    let mut areas = vec![0.0_f64; plate_count];
     let mut total_area = 0.0_f64;
     for sample in 0..topology.sample_count() {
-        let area = topology.area_steradians(sample);
-        total_area += area;
-        areas[owners[sample as usize] as usize] += area;
+        total_area += topology.area_steradians(sample);
     }
     let total_area = total_area.max(1.0e-12);
-    areas.into_iter().map(|area| area / total_area).collect()
+    let mut fractions = vec![0.0_f64; cores.len()];
+    let mut seen = vec![false; owners.len()];
+
+    for (plate, core) in cores.iter().copied().enumerate() {
+        let plate_id = plate as u16;
+        if owners[core as usize] != plate_id {
+            continue;
+        }
+        seen.fill(false);
+        seen[core as usize] = true;
+        let mut queue = VecDeque::from([core]);
+        let mut area = 0.0_f64;
+        while let Some(sample) = queue.pop_front() {
+            area += topology.area_steradians(sample);
+            for neighbor in topology.neighbors(sample) {
+                let ni = *neighbor as usize;
+                if !seen[ni] && owners[ni] == plate_id {
+                    seen[ni] = true;
+                    queue.push_back(*neighbor);
+                }
+            }
+        }
+        fractions[plate] = area / total_area;
+    }
+    fractions
 }
 
 fn calibrate_area_biases<T: PlanetTopology>(
@@ -65,7 +86,7 @@ fn calibrate_area_biases<T: PlanetTopology>(
     signals: &MaterialSignals,
 ) {
     let targets = target_plate_fractions(signals, fields.len());
-    for _ in 0..96 {
+    for _ in 0..120 {
         let owners = assign_from_fields(
             topology,
             model,
@@ -75,21 +96,21 @@ fn calibrate_area_biases<T: PlanetTopology>(
             stress_axes,
             signals,
         );
-        let current = measured_plate_fractions(topology, &owners, fields.len());
+        let current = connected_plate_fractions(topology, &owners, cores);
         let mut maximum_error = 0.0_f64;
         let mut minimum_fraction = 1.0_f64;
         for plate in 0..fields.len() {
             let error = targets[plate] - current[plate];
             maximum_error = maximum_error.max(error.abs());
             minimum_fraction = minimum_fraction.min(current[plate]);
-            let mut correction = (error * 2.4).clamp(-0.025, 0.025);
+            let mut correction = (error * 1.8).clamp(-0.018, 0.018);
             if current[plate] < 0.008 {
-                correction = correction.max(0.018);
+                correction = correction.max(0.014);
             }
             fields[plate].area_bias =
-                (fields[plate].area_bias + correction).clamp(-0.80, 0.80);
+                (fields[plate].area_bias + correction).clamp(-0.90, 0.90);
         }
-        if minimum_fraction >= 0.012 && maximum_error < 0.006 {
+        if minimum_fraction >= 0.012 && maximum_error < 0.007 {
             break;
         }
     }
