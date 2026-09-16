@@ -11,7 +11,7 @@ seed + engine/stage versions
           ↓
 WG-1 hierarchical geodesic sphere
           ↓
-historical lithosphere: ancestral plates → persistent crust fragments → modern ownership
+historical lithosphere: ancestral plates → persistent fragments → bounded epochs → modern ownership
           ↓
 WG-2 modern macro tectonics and rigid kinematics
           ↓
@@ -42,7 +42,7 @@ WG-7C post-erosion hydrology reconciliation
 WG-7D bounded lake-sediment infill + final hydrology rebuild
 ```
 
-The historical-material frontend is causally upstream of modern WG-2/WG-3 authority. It first creates an ancestral plate partition and persistent crust fragments, assigns plate/fragment-owned continental, transitional, and oceanic material, derives oceanic birth age from ancestral spreading geometry, records sparse tectonic events, and consolidates ancestral ownership into the modern plate partition. Public WG-2 is the modern kinematic projection of that history; public WG-3 consumes the same material ancestry rather than regenerating crust from a global affinity field. WG-3.75 carries the accepted identity chain to the fine topology. `inheritance.html` exposes origin plate → persistent fragment → current plate diagnostics, including fossil discontinuities retained inside modern plates.
+The historical-material frontend is causally upstream of modern WG-2/WG-3 authority. It first creates an ancestral plate partition and persistent crust fragments, assigns plate/fragment-owned continental, transitional, and oceanic material, derives oceanic birth age from ancestral spreading geometry, and records sparse tectonic events. A bounded coarse epoch pass creates explicit parent/child fragment lineage without retaining per-epoch dense world state, after which ancestral domains are consolidated into the modern ownership partition. Public WG-2 is the modern kinematic projection of that history; public WG-3 consumes the same material ancestry rather than regenerating crust from a global affinity field. WG-3.75 carries the accepted origin → fragment → current-owner identity chain to the fine topology. `inheritance.html` exposes those identities together with WG-3 crust provenance, fossil internal discontinuities, and oceanic birth-age span.
 
 WG-5 derives deterministic seasonal insolation, temperature and pressure, rotation-sensitive prevailing winds, mass-projected wind-driven surface-ocean circulation, sea-surface temperature and conservative ocean heat transport, atmospheric moisture, precipitation, aridity, and snow/sea-ice potential from the accepted WG-4 physical planet. Orbital phases are generation-time climatology samples; the Lab season slider reconstructs stored seasonal harmonics and does not run a live climate simulation.
 
@@ -64,7 +64,7 @@ Gameplay Regions, Features, resource nodes, selection, factories, and the indust
 - `src/worldgen` — browser protocol, Worker/client transport, and diagnostics.
 - `src/wasm-worldgen` — committed packaged Planet Engine WASM assets.
 - `index.html` — single cumulative Planet Engine Lab entrypoint.
-- `inheritance.html` — focused historical material-ancestry diagnostic for origin plates, persistent fragments, and current ownership.
+- `inheritance.html` — focused historical material-ancestry diagnostic for origin plates, persistent fragments, WG-3 provenance, and current ownership.
 - `docs/worldgen-rewrite` — architecture, determinism, resolution, geology, lithosphere, topography, climate, hydrology, erosion/sediment, parameters, and validation contracts.
 
 ## Development
