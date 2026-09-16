@@ -1,9 +1,10 @@
 use crate::{
-    derive_stage_seed, generate_historical_lithosphere, CrustKind, CrustalModel, GeologyMetrics,
-    GeologicalBoundary, GeologicalBoundaryRegime, HistoricalEventKind, HistoricalLithosphereModel,
-    HistoricalLithosphereRequest, PlanetPhysicalParameters, PlanetTopology, PlateBoundaryEdge,
-    PlateBoundaryKind, PlateScaleClass, PlateSummary, StageIdentity, SubductionPolarity,
-    TectonicMetrics, TectonicModel, TectonicPlate, WorldgenError, GEOLOGY_STAGE_ID,
+    build_refinement_map, derive_stage_seed, generate_historical_lithosphere, refine_categorical_u16,
+    refine_categorical_u8, refine_scalar_f32_with_domains, CrustKind, CrustalModel, GeodesicTopology,
+    GeologyMetrics, GeologicalBoundary, GeologicalBoundaryRegime, HistoricalEventKind,
+    HistoricalLithosphereModel, HistoricalLithosphereRequest, PlanetPhysicalParameters, PlanetTopology,
+    PlateBoundaryEdge, PlateBoundaryKind, PlateScaleClass, PlateSummary, RefinementMap, StageIdentity,
+    SubductionPolarity, TectonicMetrics, TectonicModel, TectonicPlate, WorldgenError, GEOLOGY_STAGE_ID,
     GEOLOGY_STAGE_VERSION, TECTONICS_STAGE_ID, TECTONICS_STAGE_VERSION,
 };
 use std::f64::consts::PI;
@@ -16,6 +17,8 @@ const HISTORICAL_PROPERTIES_NAMESPACE: &str =
     "worldgen:geology:historical-lithosphere:crust-properties:v1";
 const HISTORICAL_HISTORY_NAMESPACE: &str =
     "worldgen:geology:historical-lithosphere:event-raster:v1";
+pub const HISTORICAL_INHERITANCE_STAGE_ID: &str = "geology:historical-inheritance";
+pub const HISTORICAL_INHERITANCE_STAGE_VERSION: u32 = 1;
 const OCEANIC_PROVINCE_BIT: u16 = 0x8000;
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
@@ -26,6 +29,24 @@ pub struct HistoricalFrontend {
     pub historical: HistoricalLithosphereModel,
     pub tectonics: TectonicModel,
     pub geology: CrustalModel,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct InheritedHistoricalIdentity {
+    pub stage: StageIdentity,
+    pub map: RefinementMap,
+    pub origin_plate_ids: Vec<u16>,
+    pub fragment_ids: Vec<u16>,
+    pub current_plate_ids: Vec<u16>,
+    pub crust_kind: Vec<u8>,
+    pub crust_birth_age_myr: Vec<f32>,
+    pub identity_hash: u64,
+}
+
+impl InheritedHistoricalIdentity {
+    pub fn identity_hash_hex(&self) -> String {
+        format!("{:016x}", self.identity_hash)
+    }
 }
 
 fn fnv_update(mut hash: u64, bytes: &[u8]) -> u64 {
@@ -345,6 +366,7 @@ pub fn project_historical_modern_tectonics<T: PlanetTopology>(
         .map(|plate| plate.reference_speed_mm_per_year(planet.radius_m))
         .sum::<f64>()
         / plates.len() as f64;
+    let minimum_seed_separation_rad = minimum_seed_separation(topology, &plates);
     let stage_seed = derive_stage_seed(seed, MODERN_TECTONICS_NAMESPACE);
     let tectonic_hash = modern_tectonic_hash(
         stage_seed,
@@ -373,7 +395,7 @@ pub fn project_historical_modern_tectonics<T: PlanetTopology>(
             minimum_plate_area_fraction,
             maximum_plate_area_fraction,
             mean_plate_area_fraction: 1.0 / historical.metrics.modern_plate_count as f64,
-            minimum_seed_separation_rad: minimum_seed_separation(topology, &plates),
+            minimum_seed_separation_rad,
             mean_reference_speed_mm_per_year,
             tectonic_hash,
         },
@@ -598,7 +620,7 @@ fn build_history_fields<T: PlanetTopology>(
     let mut arc_seed = vec![0.0_f64; count];
     let mut transform_seed = vec![0.0_f64; count];
 
-    let mut register = |field: &mut [f64], sample: u32, strength: f64| {
+    let register = |field: &mut [f64], sample: u32, strength: f64| {
         let index = sample as usize;
         if index < field.len() {
             field[index] = field[index].max(strength.clamp(0.0, 1.0));
@@ -1044,6 +1066,59 @@ pub fn project_historical_crust<T: PlanetTopology>(
     Ok(model)
 }
 
+pub fn inherit_historical_identity(
+    fine_topology: &GeodesicTopology,
+    coarse_level: u8,
+    historical: &HistoricalLithosphereModel,
+) -> Result<InheritedHistoricalIdentity, WorldgenError> {
+    let map = build_refinement_map(fine_topology, coarse_level)?;
+    if map.metrics.coarse_sample_count != historical.metrics.sample_count {
+        return Err(WorldgenError::InvalidRefinement(
+            "historical identity coarse sample count does not match refinement source",
+        ));
+    }
+    let origin_plate_ids = refine_categorical_u16(&map, &historical.origin_plate_ids)?;
+    let fragment_ids = refine_categorical_u16(&map, &historical.fragment_ids)?;
+    let current_plate_ids = refine_categorical_u16(&map, &historical.current_plate_ids)?;
+    let crust_kind = refine_categorical_u8(&map, &historical.crust_kind)?;
+    let crust_birth_age_myr = refine_scalar_f32_with_domains(
+        fine_topology,
+        coarse_level,
+        &historical.crust_birth_age_myr,
+        &map,
+        &historical.fragment_ids,
+    )?;
+
+    let mut hash = FNV_OFFSET_BASIS;
+    hash = fnv_update(hash, HISTORICAL_INHERITANCE_STAGE_ID.as_bytes());
+    hash = fnv_update(hash, &historical.metrics.history_hash.to_le_bytes());
+    hash = fnv_update(hash, &map.metrics.provenance_hash.to_le_bytes());
+    for values in [&origin_plate_ids, &fragment_ids, &current_plate_ids] {
+        for value in values {
+            hash = fnv_update(hash, &value.to_le_bytes());
+        }
+    }
+    hash = fnv_update(hash, &crust_kind);
+    for value in &crust_birth_age_myr {
+        hash = fnv_update(hash, &value.to_bits().to_le_bytes());
+    }
+
+    Ok(InheritedHistoricalIdentity {
+        stage: StageIdentity {
+            id: HISTORICAL_INHERITANCE_STAGE_ID,
+            version: HISTORICAL_INHERITANCE_STAGE_VERSION,
+            derived_seed: historical.metrics.history_hash,
+        },
+        map,
+        origin_plate_ids,
+        fragment_ids,
+        current_plate_ids,
+        crust_kind,
+        crust_birth_age_myr,
+        identity_hash: hash,
+    })
+}
+
 pub fn generate_historical_frontend<T: PlanetTopology>(
     topology: &T,
     request: &HistoricalLithosphereRequest,
@@ -1131,5 +1206,44 @@ mod tests {
                 boundary.plate_b
             );
         }
+    }
+
+    #[test]
+    fn historical_identity_inherits_to_fine_topology_without_erasing_lineage() {
+        let coarse_level = 3;
+        let coarse = build_icosphere(coarse_level).unwrap();
+        let fine = build_icosphere(5).unwrap();
+        let frontend = generate_historical_frontend(
+            &coarse,
+            &HistoricalLithosphereRequest::new("historical-inheritance", 10),
+            PlanetPhysicalParameters::earthlike_reference(),
+        )
+        .unwrap();
+        let inherited =
+            inherit_historical_identity(&fine, coarse_level, &frontend.historical).unwrap();
+        assert_eq!(
+            inherited.origin_plate_ids.len(),
+            fine.metrics().sample_count as usize
+        );
+        assert_eq!(inherited.fragment_ids.len(), fine.metrics().sample_count as usize);
+        assert_eq!(
+            inherited.current_plate_ids.len(),
+            fine.metrics().sample_count as usize
+        );
+        for sample in 0..coarse.metrics().sample_count as usize {
+            assert_eq!(
+                inherited.origin_plate_ids[sample],
+                frontend.historical.origin_plate_ids[sample]
+            );
+            assert_eq!(
+                inherited.fragment_ids[sample],
+                frontend.historical.fragment_ids[sample]
+            );
+            assert_eq!(
+                inherited.current_plate_ids[sample],
+                frontend.historical.current_plate_ids[sample]
+            );
+        }
+        assert_ne!(inherited.identity_hash, 0);
     }
 }
