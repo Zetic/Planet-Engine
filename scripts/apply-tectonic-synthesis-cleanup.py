@@ -1,486 +1,215 @@
 from pathlib import Path
 import re
 
-path = Path('rust/interlink-worldgen/src/historical_lithosphere.rs')
-text = path.read_text()
-text = text.replace('use std::collections::{BTreeMap, BTreeSet};', 'use std::collections::{BTreeMap, BTreeSet, VecDeque};')
-text = text.replace('pub const HISTORICAL_LITHOSPHERE_STAGE_VERSION: u32 = 1;', 'pub const HISTORICAL_LITHOSPHERE_STAGE_VERSION: u32 = 2;')
-text = text.replace('worldgen:geology:historical-lithosphere:v1', 'worldgen:geology:historical-lithosphere:v2')
-text = text.replace('worldgen:geology:historical-lithosphere:crust:v1', 'worldgen:geology:historical-lithosphere:crust:v2')
-text = text.replace('worldgen:geology:historical-lithosphere:modern:v1', 'worldgen:geology:historical-lithosphere:modern:v2')
 
-new_crust = r'''fn build_continental_assemblies(
-    ancestral: &TectonicModel,
-    seed: u64,
-) -> (Vec<bool>, Vec<u16>) {
-    let count = ancestral.plates.len();
-    let mut carriers = (0..count)
-        .map(|plate| {
-            unit_random(seed ^ (plate as u64).wrapping_mul(0xa076_1d64_78bd_642f)) > 0.55
-        })
-        .collect::<Vec<_>>();
-    if !carriers.iter().any(|carrier| *carrier) {
-        if let Some((largest, _)) = ancestral
-            .plates
-            .iter()
-            .enumerate()
-            .max_by(|(_, left), (_, right)| left.area_steradians.total_cmp(&right.area_steradians))
-        {
-            carriers[largest] = true;
-        }
-    }
+def replace_once(text: str, old: str, new: str, label: str) -> str:
+    count = text.count(old)
+    assert count == 1, f"{label}: expected 1 occurrence, found {count}"
+    return text.replace(old, new, 1)
 
-    let mut pair_kinds = BTreeMap::<(u16, u16), [u32; 3]>::new();
-    for boundary in &ancestral.boundaries {
-        let pair = if boundary.plate_a < boundary.plate_b {
-            (boundary.plate_a, boundary.plate_b)
-        } else {
-            (boundary.plate_b, boundary.plate_a)
-        };
-        let counts = pair_kinds.entry(pair).or_insert([0; 3]);
-        match boundary.kind {
-            PlateBoundaryKind::Convergent => counts[0] += 1,
-            PlateBoundaryKind::Divergent => counts[1] += 1,
-            PlateBoundaryKind::Transform => counts[2] += 1,
-        }
-    }
 
-    let mut assemblies = (0..count as u16).collect::<Vec<_>>();
-    for ((plate_a, plate_b), counts) in pair_kinds {
-        if !carriers[plate_a as usize] || !carriers[plate_b as usize] {
-            continue;
-        }
-        let total = f64::from(counts.iter().sum::<u32>().max(1));
-        let convergence_fraction = f64::from(counts[0]) / total;
-        let divergence_fraction = f64::from(counts[1]) / total;
-        let transform_fraction = f64::from(counts[2]) / total;
-        let stream = seed
-            ^ u64::from(plate_a).wrapping_mul(0x9e37_79b9_7f4a_7c15)
-            ^ u64::from(plate_b).wrapping_mul(0xbf58_476d_1ce4_e5b9);
-        let weld = divergence_fraction < 0.34
-            && (convergence_fraction >= 0.34
-                || (transform_fraction >= 0.55 && unit_random(stream) > 0.32));
-        if !weld {
-            continue;
-        }
-        let keep = assemblies[plate_a as usize].min(assemblies[plate_b as usize]);
-        let remove = assemblies[plate_a as usize].max(assemblies[plate_b as usize]);
-        if keep == remove {
-            continue;
-        }
-        for assembly in &mut assemblies {
-            if *assembly == remove {
-                *assembly = keep;
-            }
-        }
-    }
+# Physical output changes in this PR require a new engine identity.
+lib = Path('rust/interlink-worldgen/src/lib.rs')
+text = lib.read_text()
+text = replace_once(text, 'pub const WORLDGEN_ENGINE_VERSION: u32 = 16;', 'pub const WORLDGEN_ENGINE_VERSION: u32 = 17;', 'engine version')
+lib.write_text(text)
 
-    let mut compact = BTreeMap::<u16, u16>::new();
-    for assembly in &assemblies {
-        if !compact.contains_key(assembly) {
-            let next = compact.len() as u16;
-            compact.insert(*assembly, next);
-        }
-    }
-    for assembly in &mut assemblies {
-        *assembly = compact[assembly];
-    }
-    (carriers, assemblies)
-}
+# The cumulative browser packet now carries compact historical identity/morphology fields.
+wasm_lib = Path('rust/interlink-worldgen-wasm/src/lib.rs')
+text = wasm_lib.read_text()
+text = replace_once(text, 'pub const WORLDGEN_WASM_PROTOCOL_VERSION: u32 = 20;', 'pub const WORLDGEN_WASM_PROTOCOL_VERSION: u32 = 21;', 'wasm protocol')
+wasm_lib.write_text(text)
 
-fn build_plate_owned_crust<T: PlanetTopology>(
-    topology: &T,
-    fragment_ids: &[u16],
-    fragments: &mut [CrustFragment],
-    seed: u64,
-    planet: PlanetPhysicalParameters,
-    ancestral: &TectonicModel,
-) -> (Vec<u8>, Vec<f32>) {
-    let (plate_carriers, plate_assemblies) = build_continental_assemblies(ancestral, seed);
-    let count = topology.sample_count() as usize;
-    let sample_origin = fragment_ids
-        .iter()
-        .map(|fragment| fragments[*fragment as usize].origin_plate_id)
-        .collect::<Vec<_>>();
-    let sample_assembly = sample_origin
-        .iter()
-        .map(|origin| plate_assemblies[*origin as usize])
-        .collect::<Vec<_>>();
-    let sample_carrier = sample_origin
-        .iter()
-        .map(|origin| plate_carriers[*origin as usize])
-        .collect::<Vec<_>>();
+protocol = Path('src/worldgen/protocol.ts')
+text = protocol.read_text()
+text = replace_once(text, 'export const WORLDGEN_PROTOCOL_VERSION = 20;', 'export const WORLDGEN_PROTOCOL_VERSION = 21;', 'browser protocol')
+needle = '''  positions: Float64Array;\n  neighborOffsets: Uint32Array;\n  neighbors: Uint32Array;\n  plateIds: Uint16Array;\n  crustKind: Uint8Array;\n'''
+replacement = '''  positions: Float64Array;\n  neighborOffsets: Uint32Array;\n  neighbors: Uint32Array;\n  originPlateIds: Uint16Array;\n  historicalFragmentIds: Uint16Array;\n  currentPlateIds: Uint16Array;\n  crustProvinceId: Uint16Array;\n  crustBirthAgeMyr: Float32Array;\n  latestHistoricalEventKind: Uint8Array;\n  latestHistoricalEventAgeMyr: Float32Array;\n  historicalRiftIntensity: Float32Array;\n  historicalRiftAgeMyr: Float32Array;\n  historicalShearIntensity: Float32Array;\n  historicalSutureIntensity: Float32Array;\n  historicalSutureAgeMyr: Float32Array;\n  passiveMarginIndex: Float32Array;\n  activeOrogenIntensity: Float32Array;\n  fossilOrogenIntensity: Float32Array;\n  plateIds: Uint16Array;\n  crustKind: Uint8Array;\n'''
+# Only change the cumulative climate packet, not earlier result interfaces.
+start = text.index('export interface WorldgenClimateResult')
+prefix, body = text[:start], text[start:]
+body = replace_once(body, needle, replacement, 'climate historical packet fields')
+protocol.write_text(prefix + body)
 
-    // Distance inward from the edge of an assembled continental material domain. Internal
-    // fragment and welded ancestral-plate contacts are deliberately ignored here: they remain
-    // provenance/suture structure, not automatic seaways.
-    let mut depth = vec![u16::MAX; count];
-    let mut queue = VecDeque::<u32>::new();
-    for sample in 0..topology.sample_count() {
-        let index = sample as usize;
-        if !sample_carrier[index] {
-            continue;
-        }
-        let assembly = sample_assembly[index];
-        let edge = topology.neighbors(sample).iter().any(|neighbor| {
-            let ni = *neighbor as usize;
-            !sample_carrier[ni] || sample_assembly[ni] != assembly
-        });
-        if edge {
-            depth[index] = 0;
-            queue.push_back(sample);
-        }
-    }
-    while let Some(sample) = queue.pop_front() {
-        let index = sample as usize;
-        let assembly = sample_assembly[index];
-        let next_depth = depth[index].saturating_add(1);
-        for neighbor in topology.neighbors(sample) {
-            let ni = *neighbor as usize;
-            if !sample_carrier[ni] || sample_assembly[ni] != assembly || depth[ni] != u16::MAX {
-                continue;
-            }
-            depth[ni] = next_depth;
-            queue.push_back(*neighbor);
-        }
-    }
+# Make the cumulative WASM generator own the historical frontend rather than reconstructing
+# modern WG2/WG3/WG3.5 independently, and retain only compact fine diagnostic fields.
+bridge = Path('rust/interlink-worldgen-wasm/src/climate_bridge.rs')
+text = bridge.read_text()
+text = replace_once(
+    text,
+    'use interlink_worldgen::{\n',
+    'use interlink_worldgen::{\n    build_historical_tectonic_morphology, generate_historical_frontend,\n    generate_lithosphere_from_history, inherit_historical_identity, HistoricalLithosphereRequest,\n    InheritedHistoricalIdentity,\n',
+    'climate historical imports',
+)
+text = replace_once(
+    text,
+    '    inherited: InheritedPhysicalState,\n    boundaries: InheritedBoundarySet,\n',
+    '''    inherited: InheritedPhysicalState,\n    historical_identity: InheritedHistoricalIdentity,\n    historical_morphology_hash: String,\n    latest_event_kind: Vec<u8>,\n    latest_event_age_myr: Vec<f32>,\n    historical_rift_intensity: Vec<f32>,\n    historical_rift_age_myr: Vec<f32>,\n    historical_shear_intensity: Vec<f32>,\n    historical_suture_intensity: Vec<f32>,\n    historical_suture_age_myr: Vec<f32>,\n    passive_margin_index: Vec<f32>,\n    active_orogen_intensity: Vec<f32>,\n    fossil_orogen_intensity: Vec<f32>,\n    boundaries: InheritedBoundarySet,\n''',
+    'climate struct history fields',
+)
+pattern = re.compile(
+    r'''        report_generation_progress\(progress, "tectonics", 2, 0, 1\);\n.*?        report_generation_progress\(progress, "lithosphere", 4, 1, 1\);\n''',
+    re.S,
+)
+new_pipeline = '''        report_generation_progress(progress, "tectonics", 2, 0, 1);\n        let frontend = generate_historical_frontend(\n            &coarse_topology,\n            &HistoricalLithosphereRequest::new(seed.as_str(), plate_count),\n            planet,\n        )\n        .map_err(|error| JsValue::from_str(&error.to_string()))?;\n        report_generation_progress(progress, "tectonics", 2, 1, 1);\n        report_generation_progress(progress, "geology", 3, 0, 1);\n        let historical_identity = inherit_historical_identity(\n            &fine_topology,\n            coarse_level,\n            &frontend.historical,\n        )\n        .map_err(|error| JsValue::from_str(&error.to_string()))?;\n        let morphology = build_historical_tectonic_morphology(\n            &coarse_topology,\n            &frontend.historical,\n            &frontend.tectonics,\n            seed.as_str(),\n        )\n        .map_err(|error| JsValue::from_str(&error.to_string()))?;\n        report_generation_progress(progress, "geology", 3, 1, 1);\n        report_generation_progress(progress, "lithosphere", 4, 0, 1);\n        let lithosphere = generate_lithosphere_from_history(\n            &coarse_topology,\n            &frontend.historical,\n            &frontend.tectonics,\n            &frontend.geology,\n            &LithosphereRequest::new(seed.as_str()),\n        )\n        .map_err(|error| JsValue::from_str(&error.to_string()))?;\n        let tectonics = frontend.tectonics;\n        let geology = frontend.geology;\n        report_generation_progress(progress, "lithosphere", 4, 1, 1);\n'''
+text, count = pattern.subn(new_pipeline, text, count=1)
+assert count == 1, f'climate historical pipeline replacement count={count}'
+inherit_done = '        report_generation_progress(progress, "inheritance", 5, 1, 1);\n'
+history_projection = '''        report_generation_progress(progress, "inheritance", 5, 1, 1);\n        let nearest = &inherited.map.nearest_coarse_source;\n        let inherit_f32 = |values: &[f32]| {\n            nearest\n                .iter()\n                .map(|source| values[*source as usize])\n                .collect::<Vec<_>>()\n        };\n        let inherit_u8 = |values: &[u8]| {\n            nearest\n                .iter()\n                .map(|source| values[*source as usize])\n                .collect::<Vec<_>>()\n        };\n        let latest_event_kind = inherit_u8(&morphology.latest_event_kind);\n        let latest_event_age_myr = inherit_f32(&morphology.latest_event_age_myr);\n        let historical_rift_intensity = inherit_f32(&morphology.rift_intensity);\n        let historical_rift_age_myr = inherit_f32(&morphology.rift_age_myr);\n        let historical_shear_intensity = inherit_f32(&morphology.shear_intensity);\n        let historical_suture_intensity = inherit_f32(&morphology.suture_intensity);\n        let historical_suture_age_myr = inherit_f32(&morphology.suture_age_myr);\n        let passive_margin_index = inherit_f32(&morphology.passive_margin_index);\n        let active_orogen_intensity = inherit_f32(&morphology.active_orogen_intensity);\n        let fossil_orogen_intensity = inherit_f32(&morphology.fossil_orogen_intensity);\n        let historical_morphology_hash = morphology.metrics.morphology_hash_hex();\n'''
+text = replace_once(text, inherit_done, history_projection, 'historical morphology projection')
+text = replace_once(
+    text,
+    '            fine_topology,\n            inherited,\n            boundaries,\n',
+    '''            fine_topology,\n            inherited,\n            historical_identity,\n            historical_morphology_hash,\n            latest_event_kind,\n            latest_event_age_myr,\n            historical_rift_intensity,\n            historical_rift_age_myr,\n            historical_shear_intensity,\n            historical_suture_intensity,\n            historical_suture_age_myr,\n            passive_margin_index,\n            active_orogen_intensity,\n            fossil_orogen_intensity,\n            boundaries,\n''',
+    'climate Self history fields',
+)
+getter_anchor = '''    pub fn neighbors(&self) -> Vec<u32> {\n        self.fine_topology.neighbor_indices().to_vec()\n    }\n\n'''
+history_getters = '''    pub fn neighbors(&self) -> Vec<u32> {\n        self.fine_topology.neighbor_indices().to_vec()\n    }\n\n    pub fn historical_identity_hash_hex(&self) -> String {\n        self.historical_identity.identity_hash_hex()\n    }\n    pub fn historical_morphology_hash_hex(&self) -> String {\n        self.historical_morphology_hash.clone()\n    }\n    pub fn origin_plate_ids(&self) -> Vec<u16> {\n        self.historical_identity.origin_plate_ids.clone()\n    }\n    pub fn historical_fragment_ids(&self) -> Vec<u16> {\n        self.historical_identity.fragment_ids.clone()\n    }\n    pub fn current_plate_ids(&self) -> Vec<u16> {\n        self.historical_identity.current_plate_ids.clone()\n    }\n    pub fn crust_province_id(&self) -> Vec<u16> {\n        self.inherited.crust_province_id.clone()\n    }\n    pub fn crust_birth_age_myr(&self) -> Vec<f32> {\n        self.historical_identity.crust_birth_age_myr.clone()\n    }\n    pub fn latest_historical_event_kind(&self) -> Vec<u8> {\n        self.latest_event_kind.clone()\n    }\n    pub fn latest_historical_event_age_myr(&self) -> Vec<f32> {\n        self.latest_event_age_myr.clone()\n    }\n    pub fn historical_rift_intensity(&self) -> Vec<f32> {\n        self.historical_rift_intensity.clone()\n    }\n    pub fn historical_rift_age_myr(&self) -> Vec<f32> {\n        self.historical_rift_age_myr.clone()\n    }\n    pub fn historical_shear_intensity(&self) -> Vec<f32> {\n        self.historical_shear_intensity.clone()\n    }\n    pub fn historical_suture_intensity(&self) -> Vec<f32> {\n        self.historical_suture_intensity.clone()\n    }\n    pub fn historical_suture_age_myr(&self) -> Vec<f32> {\n        self.historical_suture_age_myr.clone()\n    }\n    pub fn passive_margin_index(&self) -> Vec<f32> {\n        self.passive_margin_index.clone()\n    }\n    pub fn active_orogen_intensity(&self) -> Vec<f32> {\n        self.active_orogen_intensity.clone()\n    }\n    pub fn fossil_orogen_intensity(&self) -> Vec<f32> {\n        self.fossil_orogen_intensity.clone()\n    }\n\n'''
+text = replace_once(text, getter_anchor, history_getters, 'historical climate getters')
+bridge.write_text(text)
 
-    let assembly_count = plate_assemblies.iter().copied().max().map(|value| value as usize + 1).unwrap_or(0);
-    let mut max_depth = vec![0_u16; assembly_count];
-    for sample in 0..count {
-        if sample_carrier[sample] && depth[sample] != u16::MAX {
-            let assembly = sample_assembly[sample] as usize;
-            max_depth[assembly] = max_depth[assembly].max(depth[sample]);
-        }
-    }
+# Worker typing and packet construction.
+worker = Path('src/worldgen/worldgenWorker.ts')
+text = worker.read_text()
+wasm_methods_anchor = '  positions(): Float64Array;  neighbor_offsets(): Uint32Array; neighbors(): Uint32Array;\n  plate_ids(): Uint16Array; crust_kind(): Uint8Array;'
+wasm_methods_replacement = '''  positions(): Float64Array;  neighbor_offsets(): Uint32Array; neighbors(): Uint32Array;\n  historical_identity_hash_hex(): string; historical_morphology_hash_hex(): string;\n  origin_plate_ids(): Uint16Array; historical_fragment_ids(): Uint16Array; current_plate_ids(): Uint16Array; crust_province_id(): Uint16Array; crust_birth_age_myr(): Float32Array;\n  latest_historical_event_kind(): Uint8Array; latest_historical_event_age_myr(): Float32Array; historical_rift_intensity(): Float32Array; historical_rift_age_myr(): Float32Array; historical_shear_intensity(): Float32Array; historical_suture_intensity(): Float32Array; historical_suture_age_myr(): Float32Array; passive_margin_index(): Float32Array; active_orogen_intensity(): Float32Array; fossil_orogen_intensity(): Float32Array;\n  plate_ids(): Uint16Array; crust_kind(): Uint8Array;'''
+text = replace_once(text, wasm_methods_anchor, wasm_methods_replacement, 'WasmClimate history methods')
+climate_arrays = '''    const plateIds = output.plate_ids(); const crustKind = output.crust_kind(); const nearestCoarseSource = output.nearest_coarse_source();'''
+climate_arrays_new = '''    const originPlateIds = output.origin_plate_ids(); const historicalFragmentIds = output.historical_fragment_ids(); const currentPlateIds = output.current_plate_ids(); const crustProvinceId = output.crust_province_id(); const crustBirthAgeMyr = output.crust_birth_age_myr();\n    const latestHistoricalEventKind = output.latest_historical_event_kind(); const latestHistoricalEventAgeMyr = output.latest_historical_event_age_myr(); const historicalRiftIntensity = output.historical_rift_intensity(); const historicalRiftAgeMyr = output.historical_rift_age_myr(); const historicalShearIntensity = output.historical_shear_intensity(); const historicalSutureIntensity = output.historical_suture_intensity(); const historicalSutureAgeMyr = output.historical_suture_age_myr(); const passiveMarginIndex = output.passive_margin_index(); const activeOrogenIntensity = output.active_orogen_intensity(); const fossilOrogenIntensity = output.fossil_orogen_intensity();\n    const plateIds = output.plate_ids(); const crustKind = output.crust_kind(); const nearestCoarseSource = output.nearest_coarse_source();'''
+# This string also appears in topography packaging; apply only in generateClimate tail.
+climate_start = text.index('async function generateClimate')
+prefix, tail = text[:climate_start], text[climate_start:]
+tail = replace_once(tail, climate_arrays, climate_arrays_new, 'worker climate historical arrays')
+result_anchor = '      positions, neighborOffsets, neighbors, plateIds, crustKind, nearestCoarseSource, inheritedSampleMask, crustAgeMyr, crustThicknessKm,'
+result_new = '      positions, neighborOffsets, neighbors, originPlateIds, historicalFragmentIds, currentPlateIds, crustProvinceId, crustBirthAgeMyr, latestHistoricalEventKind, latestHistoricalEventAgeMyr, historicalRiftIntensity, historicalRiftAgeMyr, historicalShearIntensity, historicalSutureIntensity, historicalSutureAgeMyr, passiveMarginIndex, activeOrogenIntensity, fossilOrogenIntensity, plateIds, crustKind, nearestCoarseSource, inheritedSampleMask, crustAgeMyr, crustThicknessKm,'
+tail = replace_once(tail, result_anchor, result_new, 'worker climate result history fields')
+worker.write_text(prefix + tail)
 
-    let divergent_samples = ancestral
-        .boundaries
-        .iter()
-        .filter(|boundary| boundary.kind == PlateBoundaryKind::Divergent)
-        .flat_map(|boundary| [boundary.sample_a, boundary.sample_b])
-        .collect::<Vec<_>>();
+# Main interactive lab: put the historical ancestry/morphology views directly beside production output.
+index = Path('index.html')
+text = index.read_text()
+text = replace_once(
+    text,
+    '        <p>Generate one deterministic physical planet through WG-7D, then inspect topology, tectonics, geology, lithosphere, initial topography, climate, canonical final drainage, lakes, seasonal realized flow, erosive forcing, sediment routing, terrain evolution, post-erosion reconciliation, and lake-sediment infill from one matched physical state.</p>',
+    '        <p>Generate one deterministic physical planet through WG-7D, then inspect historical material ancestry, tectonic synthesis, geology, lithosphere, topography, climate, hydrology, erosion, sediment routing, terrain evolution, reconciliation, and lake-sediment infill from one matched physical state.</p>',
+    'main lab header',
+)
+tectonics_group = '          <optgroup label="Tectonics">\n            <option value="plates">Macro plate ownership</option>'
+historical_group = '''          <optgroup label="Historical material / tectonic synthesis">\n            <option value="historical-origin">Ancestral origin plates</option>\n            <option value="historical-fragments">Persistent crust fragments</option>\n            <option value="historical-current">Current plate ownership</option>\n            <option value="historical-provenance">WG-3 crust provenance</option>\n            <option value="historical-crust-birth-age">Crust formation / birth age</option>\n            <option value="historical-event">Latest historical event type</option>\n            <option value="historical-event-age">Latest historical event age</option>\n            <option value="historical-rift">Historical rift intensity</option>\n            <option value="historical-rift-age">Historical rift age</option>\n            <option value="historical-shear">Historical shear intensity</option>\n            <option value="historical-suture">Historical suture intensity</option>\n            <option value="historical-suture-age">Historical suture age</option>\n            <option value="historical-passive-margin">Passive margin potential</option>\n            <option value="historical-active-orogen">Active orogen intensity</option>\n            <option value="historical-fossil-orogen">Fossil orogen intensity</option>\n          </optgroup>\n          <optgroup label="Tectonics">\n            <option value="plates">Macro plate ownership</option>'''
+text = replace_once(text, tectonics_group, historical_group, 'historical main-lab options')
+index.write_text(text)
 
-    let mut crust_kind = vec![CrustKind::Oceanic as u8; count];
-    let mut birth_age = vec![0.0_f32; count];
-    let mut kind_counts = vec![[0_u32; 3]; fragments.len()];
-    let mut thickness_sums = vec![0.0_f64; fragments.len()];
-    let mut density_sums = vec![0.0_f64; fragments.len()];
+lab = Path('src/worldgen/diagnostics/worldgenClimateLabStandalone.ts')
+text = lab.read_text()
+plate_color = "function plateColor(id: number): string { return `hsl(${(id * 137.507764 + 18) % 360} 60% 55%)`; }"
+color_helpers = plate_color + '''\nfunction historicalIdentityColor(id: number, offset = 42): string { return `hsl(${(id * 137.507764 + offset) % 360} 62% 55%)`; }\nfunction historicalEventColor(kind: number): string {\n  if (kind === 1) return '#f59e42';\n  if (kind === 2) return '#50b9e8';\n  if (kind === 3) return '#7656d6';\n  if (kind === 4) return '#e94f4f';\n  if (kind === 5) return '#e8d35a';\n  if (kind === 6) return '#5dd18b';\n  if (kind === 7) return '#c178df';\n  return '#101923';\n}'''
+text = replace_once(text, plate_color, color_helpers, 'historical lab colors')
+scalar_anchor = "    case 'crust-age': return { values: result.crustAgeMyr, minimum: 0, maximum: 3_500, lowHue: 205, highHue: 24 };"
+scalar_history = '''    case 'historical-crust-birth-age': return { values: result.crustBirthAgeMyr, minimum: 0, maximum: 3_500, lowHue: 205, highHue: 24 };\n    case 'historical-event-age': return { values: result.latestHistoricalEventAgeMyr, minimum: 0, maximum: 350, lowHue: 205, highHue: 24 };\n    case 'historical-rift': return { values: result.historicalRiftIntensity, minimum: 0, maximum: 1, lowHue: 210, highHue: 25 };\n    case 'historical-rift-age': return { values: result.historicalRiftAgeMyr, minimum: 0, maximum: 350, lowHue: 205, highHue: 24 };\n    case 'historical-shear': return { values: result.historicalShearIntensity, minimum: 0, maximum: 1, lowHue: 210, highHue: 55 };\n    case 'historical-suture': return { values: result.historicalSutureIntensity, minimum: 0, maximum: 1, lowHue: 210, highHue: 350 };\n    case 'historical-suture-age': return { values: result.historicalSutureAgeMyr, minimum: 0, maximum: 350, lowHue: 205, highHue: 24 };\n    case 'historical-passive-margin': return { values: result.passiveMarginIndex, minimum: 0, maximum: 1, lowHue: 215, highHue: 155 };\n    case 'historical-active-orogen': return { values: result.activeOrogenIntensity, minimum: 0, maximum: 1, lowHue: 215, highHue: 15 };\n    case 'historical-fossil-orogen': return { values: result.fossilOrogenIntensity, minimum: 0, maximum: 1, lowHue: 215, highHue: 285 };\n''' + scalar_anchor
+text = replace_once(text, scalar_anchor, scalar_history, 'historical scalar modes')
+land_water = "  if (mode === 'land-water') return result.submergedMask[sample] ? '#214d7a' : '#a99b72';\n"
+historical_colors = land_water + '''  if (mode === 'historical-origin') return historicalIdentityColor(result.originPlateIds[sample]!, 42);\n  if (mode === 'historical-fragments') return historicalIdentityColor(result.historicalFragmentIds[sample]!, 104);\n  if (mode === 'historical-current') return historicalIdentityColor(result.currentPlateIds[sample]!, 18);\n  if (mode === 'historical-provenance') return historicalIdentityColor(result.crustProvinceId[sample]! & 0x7fff, 154);\n  if (mode === 'historical-event') return historicalEventColor(result.latestHistoricalEventKind[sample]!);\n'''
+text = replace_once(text, land_water, historical_colors, 'historical categorical modes')
+lab.write_text(text)
 
-    for sample in 0..topology.sample_count() {
-        let sample_index = sample as usize;
-        let fragment = fragment_ids[sample_index] as usize;
-        let edge_warp = unit_random(
-            seed ^ u64::from(sample).wrapping_mul(0xe703_7ed1_a0b4_28db) ^ (fragment as u64),
-        );
-        let kind = if sample_carrier[sample_index] {
-            let assembly = sample_assembly[sample_index] as usize;
-            let maximum = max_depth[assembly].max(1);
-            let inward = if depth[sample_index] == u16::MAX {
-                1.0
-            } else {
-                f64::from(depth[sample_index]) / f64::from(maximum)
-            };
-            let continental_cut = (0.18 + (edge_warp - 0.5) * 0.08).clamp(0.12, 0.24);
-            let transitional_cut = (0.045 + (edge_warp - 0.5) * 0.035).clamp(0.02, 0.08);
-            if inward >= continental_cut {
-                CrustKind::Continental
-            } else if inward >= transitional_cut {
-                CrustKind::Transitional
-            } else {
-                CrustKind::Oceanic
-            }
-        } else {
-            CrustKind::Oceanic
-        };
-        crust_kind[sample_index] = kind as u8;
+# Browser regressions now enforce that the cumulative lab is the only interactive test surface.
+Path('tests/historicalAncestryBrowser.test.ts').write_text(r'''import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import test from 'node:test';
 
-        let local_random = unit_random(
-            seed ^ u64::from(sample).wrapping_mul(0x8ebc_6af0_9c88_c6e3) ^ 0x243f_6a88_85a3_08d3,
-        );
-        let (age, thickness, density, kind_index) = match kind {
-            CrustKind::Continental => (
-                650.0 + 2800.0 * unit_random(seed ^ (fragment as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15)),
-                31.0 + 13.0 * local_random,
-                2720.0 + 90.0 * (1.0 - local_random),
-                2,
-            ),
-            CrustKind::Transitional => (
-                120.0 + 900.0 * unit_random(seed ^ (fragment as u64).wrapping_mul(0xbf58_476d_1ce4_e5b9)),
-                15.0 + 14.0 * local_random,
-                2820.0 + 110.0 * (1.0 - local_random),
-                1,
-            ),
-            CrustKind::Oceanic => {
-                let position = topology.unit_position(sample);
-                let nearest_ridge_rad = divergent_samples
-                    .iter()
-                    .map(|ridge| arc_radians(position, topology.unit_position(*ridge)))
-                    .fold(f64::INFINITY, f64::min);
-                let age = if nearest_ridge_rad.is_finite() {
-                    let distance_km = nearest_ridge_rad * planet.radius_m / 1000.0;
-                    (distance_km / 32.0).clamp(0.0, 220.0)
-                } else {
-                    110.0 + 90.0 * local_random
-                };
-                (age, 5.8 + 1.8 * local_random, 2870.0 + 120.0 * (1.0 - local_random), 0)
-            }
-        };
-        birth_age[sample_index] = age as f32;
-        kind_counts[fragment][kind_index] += 1;
-        thickness_sums[fragment] += thickness;
-        density_sums[fragment] += density;
-    }
+test('main Planet Engine lab exposes historical material and tectonic morphology diagnostics', () => {
+  const html = fs.readFileSync('index.html', 'utf8');
+  for (const label of [
+    'Ancestral origin plates',
+    'Persistent crust fragments',
+    'Current plate ownership',
+    'WG-3 crust provenance',
+    'Crust formation / birth age',
+    'Latest historical event type',
+    'Historical rift intensity',
+    'Historical suture intensity',
+    'Passive margin potential',
+    'Active orogen intensity',
+    'Fossil orogen intensity',
+  ]) assert.match(html, new RegExp(label));
+  assert.equal(fs.existsSync('inheritance.html'), false);
+  assert.equal(fs.existsSync('src/worldgen/diagnostics/worldgenInheritanceLabStandalone.ts'), false);
+});
 
-    for (index, fragment) in fragments.iter_mut().enumerate() {
-        let dominant = kind_counts[index]
-            .iter()
-            .enumerate()
-            .max_by_key(|(kind, count)| (**count, *kind))
-            .map(|(kind, _)| kind)
-            .unwrap_or(0);
-        fragment.dominant_crust_kind = match dominant {
-            2 => CrustKind::Continental as u8,
-            1 => CrustKind::Transitional as u8,
-            _ => CrustKind::Oceanic as u8,
-        };
-        let count = f64::from(fragment.sample_count.max(1));
-        fragment.mean_thickness_km = (thickness_sums[index] / count) as f32;
-        fragment.mean_density_kg_per_m3 = (density_sums[index] / count) as f32;
-        fragment.birth_age_myr = if fragment.dominant_crust_kind == CrustKind::Continental as u8 {
-            (650.0 + 2800.0 * unit_random(seed ^ (index as u64).wrapping_mul(0x517c_c1b7_2722_0a95))) as f32
-        } else {
-            (80.0 + 140.0 * unit_random(seed ^ (index as u64).wrapping_mul(0x6a09_e667_f3bc_c909))) as f32
-        };
-    }
+test('cumulative protocol carries compact historical diagnostics', () => {
+  const protocol = fs.readFileSync('src/worldgen/protocol.ts', 'utf8');
+  for (const field of [
+    'originPlateIds', 'historicalFragmentIds', 'currentPlateIds', 'crustProvinceId',
+    'crustBirthAgeMyr', 'latestHistoricalEventKind', 'historicalRiftIntensity',
+    'historicalSutureIntensity', 'passiveMarginIndex', 'activeOrogenIntensity',
+    'fossilOrogenIntensity',
+  ]) assert.match(protocol, new RegExp(`${field}:`));
+});
 
-    (crust_kind, birth_age)
-}
+test('cumulative WASM bridge derives historical diagnostics from the same frontend', () => {
+  const bridge = fs.readFileSync('rust/interlink-worldgen-wasm/src/climate_bridge.rs', 'utf8');
+  const worker = fs.readFileSync('src/worldgen/worldgenWorker.ts', 'utf8');
+  assert.match(bridge, /generate_historical_frontend/);
+  assert.match(bridge, /inherit_historical_identity/);
+  assert.match(bridge, /build_historical_tectonic_morphology/);
+  assert.match(bridge, /generate_lithosphere_from_history/);
+  for (const method of ['origin_plate_ids', 'historical_fragment_ids', 'current_plate_ids', 'historical_suture_intensity', 'fossil_orogen_intensity']) {
+    assert.match(bridge, new RegExp(`fn ${method}`));
+    assert.match(worker, new RegExp(`${method}\\(\\)`));
+  }
+});
+''')
 
-'''
-text, count = re.subn(r'fn build_plate_owned_crust<T: PlanetTopology>\(.*?\n}\n\nfn group_ancestral_plates', new_crust + 'fn group_ancestral_plates', text, flags=re.S)
-assert count == 1, count
+Path('tests/rendererPerformance.test.ts').write_text(r'''import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import test from 'node:test';
 
-new_group = r'''fn group_ancestral_plates(
-    ancestral: &TectonicModel,
-    modern_plate_count: u16,
-    seed: u64,
-) -> Vec<u16> {
-    let count = ancestral.plates.len();
-    let mut groups = (0..count as u16).collect::<Vec<_>>();
-    let mut active = count;
-    let total_area = ancestral
-        .plates
-        .iter()
-        .map(|plate| plate.area_steradians)
-        .sum::<f64>()
-        .max(1.0e-12);
+const source = fs.readFileSync('src/worldgen/diagnostics/worldgenClimateLabStandalone.ts', 'utf8');
 
-    while active > modern_plate_count as usize {
-        let mut area = BTreeMap::<u16, f64>::new();
-        let mut velocity_sum = BTreeMap::<u16, [f64; 3]>::new();
-        let mut members = BTreeMap::<u16, u32>::new();
-        for (plate_index, plate) in ancestral.plates.iter().enumerate() {
-            let group = groups[plate_index];
-            *area.entry(group).or_insert(0.0) += plate.area_steradians;
-            *members.entry(group).or_insert(0) += 1;
-            let sum = velocity_sum.entry(group).or_insert([0.0; 3]);
-            for axis in 0..3 {
-                sum[axis] += plate.angular_velocity_rad_per_myr[axis] * plate.area_steradians;
-            }
-        }
+test('main cumulative renderer coalesces pointer motion to animation frames', () => {
+  assert.match(source, /requestAnimationFrame\(/);
+  assert.match(source, /frameRequest !== null/);
+});
 
-        let mut contacts = BTreeMap::<(u16, u16), u32>::new();
-        let mut perimeter = BTreeMap::<u16, u32>::new();
-        for boundary in &ancestral.boundaries {
-            let group_a = groups[boundary.plate_a as usize];
-            let group_b = groups[boundary.plate_b as usize];
-            if group_a == group_b {
-                continue;
-            }
-            let pair = if group_a < group_b { (group_a, group_b) } else { (group_b, group_a) };
-            *contacts.entry(pair).or_insert(0) += 1;
-            *perimeter.entry(group_a).or_insert(0) += 1;
-            *perimeter.entry(group_b).or_insert(0) += 1;
-        }
+test('main cumulative renderer reuses projection storage', () => {
+  assert.match(source, /ProjectionBuffers/);
+  assert.match(source, /new Float32Array\(sampleCount\)/);
+  assert.match(source, /new Uint8Array\(sampleCount\)/);
+});
 
-        let enclosed_after_merge = |merge_a: u16, merge_b: u16| -> usize {
-            let keep = merge_a.min(merge_b);
-            let remove = merge_a.max(merge_b);
-            let mut neighbors = BTreeMap::<u16, BTreeSet<u16>>::new();
-            for &(left, right) in contacts.keys() {
-                let mapped_left = if left == remove { keep } else { left };
-                let mapped_right = if right == remove { keep } else { right };
-                if mapped_left == mapped_right {
-                    continue;
-                }
-                neighbors.entry(mapped_left).or_default().insert(mapped_right);
-                neighbors.entry(mapped_right).or_default().insert(mapped_left);
-            }
-            neighbors
-                .iter()
-                .filter(|(group, adjacent)| **group != keep && adjacent.len() == 1 && adjacent.contains(&keep))
-                .count()
-        };
+test('main cumulative equirectangular diagnostics avoid oversized static Canvas paths', () => {
+  assert.match(source, /const fastPoints = \(projection === 'map' \|\| interactive\) && count > 20_000/);
+  assert.match(source, /if \(fastPoints\) context\.fillRect\(x - 0\.75, y - 0\.75, 1\.5, 1\.5\)/);
+});
+''')
 
-        let mut best: Option<(f64, u16, u16)> = None;
-        for (&(group_a, group_b), &shared_contact) in &contacts {
-            let area_a = area[&group_a];
-            let area_b = area[&group_b];
-            let velocity_a_sum = velocity_sum[&group_a];
-            let velocity_b_sum = velocity_sum[&group_b];
-            let velocity_a = [
-                velocity_a_sum[0] / area_a.max(1.0e-12),
-                velocity_a_sum[1] / area_a.max(1.0e-12),
-                velocity_a_sum[2] / area_a.max(1.0e-12),
-            ];
-            let velocity_b = [
-                velocity_b_sum[0] / area_b.max(1.0e-12),
-                velocity_b_sum[1] / area_b.max(1.0e-12),
-                velocity_b_sum[2] / area_b.max(1.0e-12),
-            ];
-            let velocity_cost = vector_distance(velocity_a, velocity_b);
-            let merged_area = area_a + area_b;
-            let merged_fraction = merged_area / total_area;
-            let balance_cost = (area_a - area_b).abs() / merged_area.max(1.0e-12);
-            let contact_fraction = f64::from(shared_contact)
-                / f64::from(perimeter[&group_a].min(perimeter[&group_b]).max(1));
-            let compactness_cost = 1.0 - contact_fraction.clamp(0.0, 1.0);
-            let dominance_cost = ((merged_fraction - 0.30).max(0.0) / 0.20).powi(2);
-            let enclosure_cost = enclosed_after_merge(group_a, group_b) as f64;
-            let member_total = f64::from(members[&group_a] + members[&group_b]);
-            let member_imbalance = f64::from(members[&group_a].max(members[&group_b])) / member_total.max(1.0);
-            let tie = unit_random(
-                seed ^ u64::from(group_a).wrapping_mul(0x9e37_79b9_7f4a_7c15)
-                    ^ u64::from(group_b).wrapping_mul(0xbf58_476d_1ce4_e5b9),
-            ) * 1.0e-6;
-            let score = velocity_cost * 32.0
-                + compactness_cost * 0.30
-                + balance_cost * 0.05
-                + dominance_cost * 1.80
-                + enclosure_cost * 4.0
-                + member_imbalance * 0.04
-                + tie;
-            let candidate = (score, group_a.min(group_b), group_a.max(group_b));
-            if best.map(|current| candidate < current).unwrap_or(true) {
-                best = Some(candidate);
-            }
-        }
-        let Some((_, keep, remove)) = best else {
-            break;
-        };
-        for group in &mut groups {
-            if *group == remove {
-                *group = keep;
-            }
-        }
-        active -= 1;
-    }
+rewrite = Path('tests/worldgenRewrite.test.ts')
+text = rewrite.read_text()
+text = text.replace('const PROTOCOL = 20;', 'const PROTOCOL = 21;')
+text = text.replace("test('Planet Engine browser protocol v18 preserves WG-0 through WG-3.75 contracts'", "test('Planet Engine browser protocol v21 preserves WG-0 through WG-3.75 contracts'")
+text = text.replace("    'src/worldgen/diagnostics/worldgenInheritanceLabStandalone.ts',\n", '')
+pattern = re.compile(r"test\('WG-3\.75 inheritance diagnostic remains available as an upstream debugging surface'.*?\n}\);", re.S)
+replacement = r'''test('historical ancestry diagnostics are consolidated into the cumulative lab', () => {
+  const html = fs.readFileSync('index.html', 'utf8');
+  const source = fs.readFileSync('src/worldgen/diagnostics/worldgenClimateLabStandalone.ts', 'utf8');
+  assert.match(html, /historical-origin/);
+  assert.match(html, /historical-suture/);
+  assert.match(source, /originPlateIds/);
+  assert.match(source, /historicalFragmentIds/);
+  assert.match(source, /fossilOrogenIntensity/);
+  assert.equal(fs.existsSync('inheritance.html'), false);
+});'''
+text, count = pattern.subn(replacement, text, count=1)
+assert count == 1, f'worldgenRewrite inheritance test replacement={count}'
+rewrite.write_text(text)
 
-    let mut compact = BTreeMap::<u16, u16>::new();
-    for group in &groups {
-        if !compact.contains_key(group) {
-            let next = compact.len() as u16;
-            compact.insert(*group, next);
-        }
-    }
-    groups.into_iter().map(|group| compact[&group]).collect()
-}
+readme = Path('README.md')
+text = readme.read_text()
+text = text.replace('`inheritance.html` exposes those identities together with WG-3 crust provenance, fossil internal', '`index.html` exposes those identities together with WG-3 crust provenance, fossil internal')
+text = re.sub(r'\n- `inheritance\.html` — focused historical material-ancestry diagnostic[^\n]*', '', text)
+readme.write_text(text)
 
-'''
-text, count = re.subn(r'fn group_ancestral_plates\(.*?\n}\n\nfn event_kind_for_boundary', new_group + 'fn event_kind_for_boundary', text, flags=re.S)
-assert count == 1, count
-
-# Add topology/assembly regressions alongside the existing unit tests.
-needle = '''    #[test]\n    fn historical_lithosphere_preserves_three_identity_levels() {'''
-insert = r'''    fn single_neighbor_plate_count<T: PlanetTopology>(
-        topology: &T,
-        plate_ids: &[u16],
-        plate_count: u16,
-    ) -> usize {
-        let mut neighbors = vec![BTreeSet::<u16>::new(); plate_count as usize];
-        for sample in 0..topology.sample_count() {
-            let plate = plate_ids[sample as usize];
-            for neighbor in topology.neighbors(sample) {
-                let other = plate_ids[*neighbor as usize];
-                if other != plate {
-                    neighbors[plate as usize].insert(other);
-                }
-            }
-        }
-        neighbors.iter().filter(|adjacent| adjacent.len() == 1).count()
-    }
-
-    fn continental_components<T: PlanetTopology>(topology: &T, crust_kind: &[u8]) -> (usize, f64) {
-        let mut visited = vec![false; topology.sample_count() as usize];
-        let mut components = 0usize;
-        let mut largest_area = 0.0f64;
-        let total_area = (0..topology.sample_count())
-            .map(|sample| topology.area_steradians(sample))
-            .sum::<f64>()
-            .max(1.0e-12);
-        for start in 0..topology.sample_count() {
-            let si = start as usize;
-            if visited[si] || crust_kind[si] == CrustKind::Oceanic as u8 {
-                continue;
-            }
-            components += 1;
-            visited[si] = true;
-            let mut queue = VecDeque::from([start]);
-            let mut area = 0.0;
-            while let Some(sample) = queue.pop_front() {
-                area += topology.area_steradians(sample);
-                for neighbor in topology.neighbors(sample) {
-                    let ni = *neighbor as usize;
-                    if !visited[ni] && crust_kind[ni] != CrustKind::Oceanic as u8 {
-                        visited[ni] = true;
-                        queue.push_back(*neighbor);
-                    }
-                }
-            }
-            largest_area = largest_area.max(area);
-        }
-        (components, largest_area / total_area)
-    }
-
-    #[test]
-    fn modern_plate_synthesis_avoids_enclosed_single_neighbor_plates() {
-        let topology = build_icosphere(4).unwrap();
-        let planet = PlanetPhysicalParameters::earthlike_reference();
-        for seed in ["plate-topology-a", "plate-topology-b", "interlink-wg7c", "plate-topology-d"] {
-            let model = generate_historical_lithosphere(
-                &topology,
-                &HistoricalLithosphereRequest::new(seed, 16),
-                planet,
-            )
-            .unwrap();
-            assert_eq!(
-                single_neighbor_plate_count(&topology, &model.current_plate_ids, 16),
-                0,
-                "seed {seed} produced a modern plate enclosed by one neighbor"
-            );
-        }
-    }
-
-    #[test]
-    fn continental_assemblies_are_broader_than_fragment_islands() {
-        let topology = build_icosphere(4).unwrap();
-        let planet = PlanetPhysicalParameters::earthlike_reference();
-        for seed in ["continent-assembly-a", "interlink-wg7c", "continent-assembly-c"] {
-            let model = generate_historical_lithosphere(
-                &topology,
-                &HistoricalLithosphereRequest::new(seed, 16),
-                planet,
-            )
-            .unwrap();
-            let (components, largest_fraction) = continental_components(&topology, &model.crust_kind);
-            assert!(components < model.metrics.fragment_count as usize / 2, "seed {seed} remained fragment-island dominated");
-            assert!(largest_fraction >= 0.06, "seed {seed} lacked a substantial assembled continent");
-        }
-    }
-
-    #[test]
-    fn historical_lithosphere_preserves_three_identity_levels() {'''
-assert needle in text
-text = text.replace(needle, insert)
-path.write_text(text)
+# The old separate interactive lab is intentionally retired. Programmatic inheritance APIs remain.
+for obsolete in [Path('inheritance.html'), Path('src/worldgen/diagnostics/worldgenInheritanceLabStandalone.ts')]:
+    if obsolete.exists():
+        obsolete.unlink()
