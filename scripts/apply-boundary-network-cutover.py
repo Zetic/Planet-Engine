@@ -22,8 +22,8 @@ path.write_text(text)
 
 ci_path = Path('.github/workflows/ci.yml')
 ci = ci_path.read_text()
-anchor = '      - name: Verify dynamic modern plate geometry\n        run: cargo run -p interlink-worldgen-cli --example dynamic_plate_geometry_acceptance\n'
-addition = anchor + '      - name: Verify boundary-first modern plate geometry\n        run: cargo run -p interlink-worldgen-cli --example boundary_network_geometry_acceptance\n'
+anchor = '      - name: Verify dynamic modern plate geometry\n        run: cargo run --release -p interlink-worldgen-cli --example dynamic_plate_geometry_acceptance\n'
+addition = anchor + '      - name: Verify boundary-first modern plate geometry\n        run: cargo run --release -p interlink-worldgen-cli --example boundary_network_geometry_acceptance\n'
 if 'Verify boundary-first modern plate geometry' not in ci:
     if anchor not in ci:
         raise SystemExit('CI dynamic geometry anchor missing')
