@@ -22,6 +22,23 @@ s = s.replace(
     '        0.30\n    } else if crust_kind == CrustKind::Transitional as u8 {\n        0.20\n    } else {\n        0.065',
 )
 
+# A modern kinematic field may move relative to its inherited material, but its
+# authoritative connectivity seed must remain inside the provisional material domain.
+# Otherwise repair_connectivity can erase the inherited domain and leave only the
+# forced single-sample core, which is the collapse seen in the geometry gate.
+old_core_guard = '''            if used[index] {
+                continue;
+            }
+            let alignment = dot(topology.unit_position(sample), field.center);'''
+new_core_guard = '''            if used[index] || initial[index] as usize != plate {
+                continue;
+            }
+            let alignment = dot(topology.unit_position(sample), field.center);'''
+if old_core_guard in s:
+    s = s.replace(old_core_guard, new_core_guard, 1)
+elif new_core_guard not in s:
+    raise SystemExit('choose_field_cores guard not found')
+
 marker = '\nfn repair_connectivity<T: PlanetTopology>(\n'
 if 'fn calibrate_area_biases<T: PlanetTopology>' not in s:
     insert = '''
