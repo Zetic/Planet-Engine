@@ -1,5 +1,5 @@
 use interlink_worldgen::{
-    build_icosphere, generate_historical_frontend, generate_lithosphere, CrustalModel,
+    build_icosphere, generate_historical_frontend, generate_lithosphere_from_history, CrustalModel,
     GeodesicTopology, HistoricalLithosphereRequest, LithosphereRequest, LithosphericModel,
     PlanetPhysicalParameters, TectonicModel, WORLDGEN_ENGINE_VERSION,
 };
@@ -24,23 +24,22 @@ impl WasmWorldgenLithosphere {
         let topology =
             build_icosphere(level).map_err(|error| JsValue::from_str(&error.to_string()))?;
         let parameters = PlanetPhysicalParameters::earthlike_reference();
-        // Historical material is authoritative before WG-3.5 mechanics. The compatibility
-        // tectonic/geology views below are projections of that persistent ancestry.
         let frontend = generate_historical_frontend(
             &topology,
             &HistoricalLithosphereRequest::new(seed.as_str(), plate_count),
             parameters,
         )
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
-        let tectonics = frontend.tectonics;
-        let geology = frontend.geology;
-        let inner = generate_lithosphere(
+        let inner = generate_lithosphere_from_history(
             &topology,
-            &tectonics,
-            &geology,
+            &frontend.historical,
+            &frontend.tectonics,
+            &frontend.geology,
             &LithosphereRequest::new(seed),
         )
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        let tectonics = frontend.tectonics;
+        let geology = frontend.geology;
         Ok(Self {
             topology,
             tectonics,
