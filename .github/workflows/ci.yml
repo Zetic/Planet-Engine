@@ -53,6 +53,8 @@ jobs:
         run: cargo run --release -p interlink-worldgen-cli --example historical_lithosphere_acceptance
       - name: Verify event-driven tectonic morphology
         run: cargo run --release -p interlink-worldgen-cli --example historical_morphology_acceptance
+      - name: Verify historical passive-margin shelves
+        run: cargo test -p interlink-worldgen historical_passive_margins_create_bounded_shelf_subsidence -- --exact
       - name: Verify L5 to L8 historical memory and performance
         run: cargo run --release -p interlink-worldgen-cli --example historical_lithosphere_performance
       - name: Compile browser bridge
