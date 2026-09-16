@@ -28,11 +28,15 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Apply boundary-first cutover
-        run: python scripts/apply-boundary-network-cutover.py
+        run: |
+          python scripts/apply-boundary-network-cutover.py
+          python scripts/tune-boundary-network-topography.py
       - name: Format Rust
         run: cargo fmt --all
       - name: Compile workspace
         run: cargo check --workspace --all-targets
+      - name: Run WG-4 topography acceptance
+        run: cargo run -p interlink-worldgen-cli --example tectonic_topography_cutover_smoke
       - name: Run boundary-first geometry acceptance
         run: cargo run -p interlink-worldgen-cli --example boundary_network_geometry_acceptance
       - name: Run dynamic migration geometry acceptance
@@ -41,8 +45,6 @@ jobs:
         run: cargo run -p interlink-worldgen-cli --example historical_lithosphere_acceptance
       - name: Run historical morphology acceptance
         run: cargo run -p interlink-worldgen-cli --example historical_morphology_acceptance
-      - name: Run WG-4 topography acceptance
-        run: cargo run -p interlink-worldgen-cli --example tectonic_topography_cutover_smoke
       - name: Install pinned wasm-bindgen CLI
         run: cargo +${RUST_VERSION} install wasm-bindgen-cli --version "${WASM_BINDGEN_VERSION}" --locked
       - name: Regenerate committed WASM package
@@ -59,7 +61,9 @@ jobs:
             rust/interlink-worldgen/src/lib.rs \
             rust/interlink-worldgen/src/boundary_plate_geometry.rs \
             rust/interlink-worldgen/src/dynamic_plate_evolution.rs \
+            rust/interlink-worldgen/src/causal_pipeline.rs \
             rust/interlink-worldgen-cli/examples/boundary_network_geometry_acceptance.rs \
+            rust/interlink-worldgen-cli/examples/tectonic_topography_cutover_smoke.rs \
             src/wasm-worldgen
           if git diff --cached --quiet; then
             echo 'No generated boundary-first changes to commit.'
