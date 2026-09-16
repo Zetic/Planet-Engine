@@ -8,10 +8,12 @@ test('historical material ancestry browser diagnostic exposes all three identity
   assert.match(html, /origin_plate_ids/);
   assert.match(html, /historical_fragment_ids/);
   assert.match(html, /current_plate_ids/);
+  assert.match(html, /crust_province_id/);
   assert.match(html, /crust_birth_age_myr/);
   assert.match(html, /Ancestral origin plates/);
   assert.match(html, /Persistent crust fragments/);
   assert.match(html, /Current plate ownership/);
+  assert.match(html, /WG-3 crust provenance/);
   assert.match(html, /Fossil discontinuities/);
   assert.match(html, /Oceanic birth-age span/);
 });
