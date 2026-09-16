@@ -1,11 +1,9 @@
-use crate::{
-    derive_stage_seed, HistoricalLithosphereModel, PlanetTopology, WorldgenError,
-};
+use crate::{derive_stage_seed, HistoricalLithosphereModel, PlanetTopology, WorldgenError};
 use std::collections::{BTreeMap, VecDeque};
 
 const BOUNDARY_FIELD_NAMESPACE: &str = "worldgen:geology:boundary-first-plates:v1";
-const KINEMATIC_EPOCHS: usize = 12;
-const EPOCH_DURATION_MYR: f64 = 6.0;
+const KINEMATIC_EPOCHS: usize = 10;
+const EPOCH_DURATION_MYR: f64 = 3.0;
 
 #[derive(Clone, Copy, Debug)]
 struct PlateField {
@@ -14,9 +12,6 @@ struct PlateField {
     tangent_v: [f64; 3],
     angular_velocity: [f64; 3],
     area_bias: f64,
-    ellipticity: f64,
-    triangularity: f64,
-    stress_coupling: f64,
 }
 
 fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
@@ -83,7 +78,10 @@ fn rotate_vector(value: [f64; 3], angular_velocity: [f64; 3], dt_myr: f64) -> [f
     let cos_angle = angle.cos();
     let sin_angle = angle.sin();
     let rotated = add(
-        add(scale(value, cos_angle), scale(cross(axis, value), sin_angle)),
+        add(
+            scale(value, cos_angle),
+            scale(cross(axis, value), sin_angle),
+        ),
         scale(axis, dot(axis, value) * (1.0 - cos_angle)),
     );
     normalize_or(rotated, value)
@@ -118,63 +116,59 @@ fn plate_angular_velocities<T: PlanetTopology>(
 
 fn choose_plate_cores<T: PlanetTopology>(
     topology: &T,
-    owners: &[u16],
+    _owners: &[u16],
     plate_count: usize,
     seed: u64,
 ) -> Result<Vec<u32>, WorldgenError> {
-    let mut depth = vec![u16::MAX; owners.len()];
-    let mut queue = VecDeque::<u32>::new();
-    for sample in 0..topology.sample_count() {
-        let index = sample as usize;
-        if topology
-            .neighbors(sample)
-            .iter()
-            .any(|neighbor| owners[*neighbor as usize] != owners[index])
-        {
-            depth[index] = 0;
-            queue.push_back(sample);
-        }
+    if (topology.sample_count() as usize) < plate_count || plate_count == 0 {
+        return Err(WorldgenError::InvalidTectonics(
+            "boundary-first synthesis cannot place the requested plate cores",
+        ));
     }
-    while let Some(sample) = queue.pop_front() {
-        let index = sample as usize;
-        let owner = owners[index];
-        let next = depth[index].saturating_add(1);
-        for neighbor in topology.neighbors(sample) {
-            let ni = *neighbor as usize;
-            if owners[ni] == owner && depth[ni] == u16::MAX {
-                depth[ni] = next;
-                queue.push_back(*neighbor);
+    let first = (0..topology.sample_count())
+        .max_by(|left, right| {
+            let left_score =
+                unit_random(seed ^ u64::from(*left).wrapping_mul(0x9e37_79b9_7f4a_7c15));
+            let right_score =
+                unit_random(seed ^ u64::from(*right).wrapping_mul(0x9e37_79b9_7f4a_7c15));
+            left_score
+                .total_cmp(&right_score)
+                .then_with(|| right.cmp(left))
+        })
+        .unwrap_or(0);
+    let mut cores = vec![first];
+    while cores.len() < plate_count {
+        let mut best_sample = None;
+        let mut best_score = f64::NEG_INFINITY;
+        for sample in 0..topology.sample_count() {
+            if cores.contains(&sample) {
+                continue;
+            }
+            let position = topology.unit_position(sample);
+            let separation = cores
+                .iter()
+                .map(|core| {
+                    dot(position, topology.unit_position(*core))
+                        .clamp(-1.0, 1.0)
+                        .acos()
+                })
+                .fold(std::f64::consts::PI, f64::min);
+            let jitter = unit_random(
+                seed ^ u64::from(sample).wrapping_mul(0xbf58_476d_1ce4_e5b9)
+                    ^ (cores.len() as u64).wrapping_mul(0x94d0_49bb_1331_11eb),
+            ) * 0.045;
+            let score = separation + jitter;
+            if score > best_score || (score == best_score && Some(sample) < best_sample) {
+                best_score = score;
+                best_sample = Some(sample);
             }
         }
-    }
-
-    let mut cores = vec![u32::MAX; plate_count];
-    let mut best_depth = vec![0_u16; plate_count];
-    let mut best_tie = vec![f64::NEG_INFINITY; plate_count];
-    for sample in 0..topology.sample_count() {
-        let index = sample as usize;
-        let plate = owners[index] as usize;
-        if plate >= plate_count {
+        let Some(sample) = best_sample else {
             return Err(WorldgenError::InvalidTectonics(
-                "boundary-first synthesis received an invalid plate owner",
+                "boundary-first synthesis exhausted spherical core candidates",
             ));
-        }
-        let tie = unit_random(
-            seed ^ u64::from(sample).wrapping_mul(0x9e37_79b9_7f4a_7c15),
-        );
-        if cores[plate] == u32::MAX
-            || depth[index] > best_depth[plate]
-            || (depth[index] == best_depth[plate] && tie > best_tie[plate])
-        {
-            cores[plate] = sample;
-            best_depth[plate] = depth[index];
-            best_tie[plate] = tie;
-        }
-    }
-    if cores.iter().any(|sample| *sample == u32::MAX) {
-        return Err(WorldgenError::InvalidTectonics(
-            "boundary-first synthesis received an empty modern plate",
-        ));
+        };
+        cores.push(sample);
     }
     Ok(cores)
 }
@@ -213,62 +207,95 @@ fn build_fields<T: PlanetTopology>(
                 center,
                 tangent_u,
                 tangent_v,
-                angular_velocity: angular_velocity[plate],
-                area_bias: (unit_random(seed ^ stream ^ 0xe703_7ed1_a0b4_28db) - 0.5) * 0.18,
-                ellipticity: (unit_random(seed ^ stream ^ 0x8ebc_6af0_9c88_c6e3) - 0.5) * 0.34,
-                triangularity: (unit_random(seed ^ stream ^ 0x5899_65cc_7537_4cc3) - 0.5) * 0.16,
-                stress_coupling: (unit_random(seed ^ stream ^ 0x1d8e_4e27_c47d_124f) - 0.5) * 0.16,
+                angular_velocity: angular_velocity[initial[*core as usize] as usize],
+                area_bias: (unit_random(seed ^ stream ^ 0xe703_7ed1_a0b4_28db) - 0.5) * 0.04,
             }
         })
         .collect()
 }
 
 fn evolve_fields(fields: &mut [PlateField]) {
+    const MIN_CORE_SEPARATION_RAD: f64 = 0.34;
     for _ in 0..KINEMATIC_EPOCHS {
-        for field in fields.iter_mut() {
-            field.center = rotate_vector(field.center, field.angular_velocity, EPOCH_DURATION_MYR);
-            field.tangent_u = rotate_vector(
-                field.tangent_u,
-                field.angular_velocity,
-                EPOCH_DURATION_MYR,
-            );
-            field.tangent_v = normalize_or(
-                cross(field.center, field.tangent_u),
-                field.tangent_v,
-            );
+        let proposals = fields
+            .iter()
+            .map(|field| {
+                (
+                    rotate_vector(field.center, field.angular_velocity, EPOCH_DURATION_MYR),
+                    rotate_vector(field.tangent_u, field.angular_velocity, EPOCH_DURATION_MYR),
+                )
+            })
+            .collect::<Vec<_>>();
+        let mut blocked = vec![false; fields.len()];
+        for left in 0..fields.len() {
+            for right in (left + 1)..fields.len() {
+                let separation = dot(proposals[left].0, proposals[right].0)
+                    .clamp(-1.0, 1.0)
+                    .acos();
+                if separation < MIN_CORE_SEPARATION_RAD {
+                    blocked[left] = true;
+                    blocked[right] = true;
+                }
+            }
+        }
+        for (index, field) in fields.iter_mut().enumerate() {
+            if blocked[index] {
+                continue;
+            }
+            field.center = proposals[index].0;
+            field.tangent_u = proposals[index].1;
+            field.tangent_v = normalize_or(cross(field.center, field.tangent_u), field.tangent_v);
         }
     }
+}
+
+fn warp_position(position: [f64; 3], stress_axes: [[f64; 3]; 2]) -> [f64; 3] {
+    let a = stress_axes[0];
+    let b = stress_axes[1];
+    let da = dot(position, a);
+    let db = dot(position, b);
+    let tangent_a = sub(a, scale(position, da));
+    let tangent_b = sub(b, scale(position, db));
+    let warp = add(scale(tangent_a, 0.085 * db), scale(tangent_b, -0.065 * da));
+    normalize_or(add(position, warp), position)
 }
 
 fn field_score(
     position: [f64; 3],
     field: PlateField,
     stress_axes: [[f64; 3]; 2],
-    ancestry_match: bool,
+    _ancestry_match: bool,
 ) -> f64 {
-    let cosine = dot(position, field.center).clamp(-1.0, 1.0);
-    let distance = cosine.acos();
-    let tangent_raw = sub(position, scale(field.center, cosine));
-    let tangent = normalize_or(tangent_raw, field.tangent_u);
-    let u = dot(tangent, field.tangent_u);
-    let v = dot(tangent, field.tangent_v);
-    let radial = distance.sin().abs();
-
-    let elliptic = field.ellipticity * radial * (u * u - v * v);
-    let triangular = field.triangularity * radial * u * (3.0 * v * v - u * u);
-    let stress = field.stress_coupling
-        * dot(position, stress_axes[0])
-        * dot(position, stress_axes[1]);
-    let ancestry = if ancestry_match { 0.035 } else { 0.0 };
-
-    // The geodesic term remains dominant. Low-frequency anisotropy can bend a boundary, but it
-    // cannot create the long tendrils and horseshoe wraps produced by local ownership growth.
-    let far_cap = if distance > 1.80 {
-        (distance - 1.80) * 3.5
+    let warped = warp_position(position, stress_axes);
+    let distance = dot(warped, field.center).clamp(-1.0, 1.0).acos();
+    let far_cap = if distance > 1.65 {
+        (distance - 1.65) * 4.0
     } else {
         0.0
     };
-    -distance + elliptic + triangular + stress + field.area_bias + ancestry - far_cap
+    -distance + field.area_bias - far_cap
+}
+
+fn choose_field_cores<T: PlanetTopology>(topology: &T, fields: &[PlateField]) -> Vec<u32> {
+    let mut used = vec![false; topology.sample_count() as usize];
+    let mut cores = Vec::with_capacity(fields.len());
+    for field in fields {
+        let mut best_sample = 0_u32;
+        let mut best_alignment = f64::NEG_INFINITY;
+        for sample in 0..topology.sample_count() {
+            if used[sample as usize] {
+                continue;
+            }
+            let alignment = dot(topology.unit_position(sample), field.center);
+            if alignment > best_alignment {
+                best_alignment = alignment;
+                best_sample = sample;
+            }
+        }
+        used[best_sample as usize] = true;
+        cores.push(best_sample);
+    }
+    cores
 }
 
 fn assign_from_fields<T: PlanetTopology>(
@@ -285,13 +312,8 @@ fn assign_from_fields<T: PlanetTopology>(
         let mut best_plate = 0_u16;
         let mut best_score = f64::NEG_INFINITY;
         for (plate, field) in fields.iter().copied().enumerate() {
-            let score = field_score(
-                position,
-                field,
-                stress_axes,
-                initial[index] == plate as u16,
-            );
-            if score > best_score || (score == best_score && plate as u16 < best_plate) {
+            let score = field_score(position, field, stress_axes, initial[index] == plate as u16);
+            if score > best_score || (score == best_score && (plate as u16) < best_plate) {
                 best_score = score;
                 best_plate = plate as u16;
             }
@@ -413,22 +435,16 @@ pub(crate) fn synthesize_boundary_first_ownership<T: PlanetTopology>(
     let plate_count = model.metrics.modern_plate_count as usize;
     let initial = &model.current_plate_ids;
     let stage_seed = derive_stage_seed(seed, BOUNDARY_FIELD_NAMESPACE);
-    let cores = choose_plate_cores(topology, initial, plate_count, stage_seed)?;
-    let mut fields = build_fields(topology, model, initial, &cores, stage_seed);
+    let initial_cores = choose_plate_cores(topology, initial, plate_count, stage_seed)?;
+    let mut fields = build_fields(topology, model, initial, &initial_cores, stage_seed);
     evolve_fields(&mut fields);
+    let cores = choose_field_cores(topology, &fields);
     let stress_axes = [
         random_unit_vector(stage_seed, 0xd6e8_feb8_6659_fd93),
         random_unit_vector(stage_seed, 0xa5a3_56d5_2f62_56d5),
     ];
     let mut owners = assign_from_fields(topology, &fields, initial, &cores, stress_axes);
-    repair_connectivity(
-        topology,
-        &mut owners,
-        &fields,
-        initial,
-        &cores,
-        stress_axes,
-    );
+    repair_connectivity(topology, &mut owners, &fields, initial, &cores, stress_axes);
     validate_nonempty(&owners, plate_count)?;
     Ok(owners)
 }

@@ -466,6 +466,22 @@ fn province_relief(inherited: &InheritedPhysicalState, index: usize) -> (f64, f6
     // exists, while moving more collision relief into the crustal root/hinterland.
     let mountain_load = (0.58 * mountain_core + 0.27 * root + 0.15 * fold).clamp(0.0, 1.0);
     let foreland_deflection = 320.0 * foreland * mountain_load.powf(1.20);
+    // Boundary-first modern plates distribute collision systems more evenly and expose broad
+    // low-core portions of accretion belts that the old ownership-growth geometry often buried
+    // inside a larger domain. Preserve those mechanically active continental belts with a
+    // moderate crustal-thickening pedestal rather than forcing every accepted orogen to depend
+    // on a narrow mountain-core raster. Terrane accretion receives the stronger support because
+    // its added crust is mechanically real even where the topographic core remains coastal.
+    let continental_collision_pedestal = if kind == OrogenProvinceKind::ContinentalCollision as u8 {
+        820.0 * intensity * (0.55 + 0.45 * shortening)
+    } else {
+        0.0
+    };
+    let terrane_accretion_pedestal = if kind == OrogenProvinceKind::TerraneAccretion as u8 {
+        3_000.0 * intensity * (0.55 + 0.45 * maturity)
+    } else {
+        0.0
+    };
     let collision_relief = crust_scale
         * tectonic_gain
         * (4_300.0 * mountain_core.powf(1.10)
@@ -474,6 +490,8 @@ fn province_relief(inherited: &InheritedPhysicalState, index: usize) -> (f64, f6
             + 1_150.0 * fold
             + 2_000.0 * transpression
             + 360.0 * intensity
+            + continental_collision_pedestal
+            + terrane_accretion_pedestal
             - foreland_deflection
             - 70.0 * suture);
     (collision_relief, 0.0)

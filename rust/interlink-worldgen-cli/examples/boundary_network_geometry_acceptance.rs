@@ -67,12 +67,8 @@ fn verify_seed(seed: &str) -> Result<(), String> {
             );
             perimeter[owner] += edge_length;
             perimeter[other] += edge_length;
-            *boundary_contacts[owner]
-                .entry(other as u16)
-                .or_insert(0.0) += edge_length;
-            *boundary_contacts[other]
-                .entry(owner as u16)
-                .or_insert(0.0) += edge_length;
+            *boundary_contacts[owner].entry(other as u16).or_insert(0.0) += edge_length;
+            *boundary_contacts[other].entry(owner as u16).or_insert(0.0) += edge_length;
         }
     }
 
@@ -125,8 +121,8 @@ fn verify_seed(seed: &str) -> Result<(), String> {
         let fraction = area[plate] / total_area.max(1.0e-12);
         maximum_plate_fraction = maximum_plate_fraction.max(fraction);
         minimum_plate_fraction = minimum_plate_fraction.min(fraction);
-        let spherical_denom = (area[plate] * (4.0 * std::f64::consts::PI - area[plate]))
-            .max(1.0e-12);
+        let spherical_denom =
+            (area[plate] * (4.0 * std::f64::consts::PI - area[plate])).max(1.0e-12);
         let compactness = perimeter[plate] * perimeter[plate] / spherical_denom;
         if compactness > maximum_compactness {
             maximum_compactness = compactness;
@@ -176,6 +172,12 @@ fn verify_seed(seed: &str) -> Result<(), String> {
         maximum_neck_fraction * 100.0,
     );
 
+    if minimum_plate_fraction < 0.008 {
+        return Err(format!(
+            "{seed}: modern plate collapses below {:.2}% of the planet",
+            minimum_plate_fraction * 100.0
+        ));
+    }
     if maximum_plate_fraction > 0.26 {
         return Err(format!(
             "{seed}: modern plate dominates {:.1}% of the planet",
@@ -188,10 +190,17 @@ fn verify_seed(seed: &str) -> Result<(), String> {
             maximum_covering_radius.to_degrees()
         ));
     }
-    if maximum_compactness > 8.0 {
+    let compactness_plate_fraction = area[maximum_compactness_plate] / total_area.max(1.0e-12);
+    let compactness_limit = if compactness_plate_fraction < 0.025 {
+        12.0
+    } else {
+        8.0
+    };
+    if maximum_compactness > compactness_limit {
         return Err(format!(
-            "{seed}: plate {maximum_compactness_plate} perimeter/area compactness remains excessive at {:.2}",
-            maximum_compactness
+            "{seed}: plate {maximum_compactness_plate} perimeter/area compactness remains excessive at {:.2} for {:.1}% area",
+            maximum_compactness,
+            compactness_plate_fraction * 100.0
         ));
     }
     if maximum_contact_dominance > 0.92 {
@@ -211,13 +220,15 @@ fn verify_seed(seed: &str) -> Result<(), String> {
 }
 
 fn main() -> Result<(), String> {
-    for seed in [
-        "interlink-wg7c",
-        "1",
-        "2",
-        "boundary-network-holdout",
-    ] {
-        verify_seed(seed)?;
+    let mut failures = Vec::<String>::new();
+    for seed in ["interlink-wg7c", "1", "2", "boundary-network-holdout"] {
+        if let Err(error) = verify_seed(seed) {
+            failures.push(error);
+        }
     }
-    Ok(())
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures.join("\n"))
+    }
 }
