@@ -17,9 +17,6 @@ on:
       - 'scripts/build-worldgen-wasm.sh'
       - 'src/wasm-worldgen/**'
 
-permissions:
-  contents: write
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -34,9 +31,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.ref || github.ref }}
-          fetch-depth: 0
       - name: Install pinned Rust and browser target
         run: |
           rustup toolchain install "${RUST_VERSION}" --profile minimal --target wasm32-unknown-unknown
@@ -62,15 +56,5 @@ jobs:
           name: worldgen-wasm-package
           path: src/wasm-worldgen
           retention-days: 3
-      - name: Sync generated package for PR B
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'feat/material-history-tectonic-morphology'
-        run: |
-          if ! git diff --quiet -- src/wasm-worldgen; then
-            git config user.name 'github-actions[bot]'
-            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git add src/wasm-worldgen
-            git commit -m 'build(worldgen): refresh generated wasm package for engine v16'
-            git push origin HEAD:${GITHUB_HEAD_REF}
-          fi
       - name: Verify committed WASM package parity
         run: git diff --exit-code -- src/wasm-worldgen
