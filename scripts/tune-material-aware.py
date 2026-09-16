@@ -7,24 +7,24 @@ s = p.read_text()
 # low-order shape terms must not overwhelm connected plate viability.
 s = s.replace(
     '(area_ratio.ln() * 0.105).clamp(-0.18, 0.22)',
-    '(area_ratio.ln() * 0.040).clamp(-0.08, 0.11)',
+    '(area_ratio.ln() * 0.032).clamp(-0.065, 0.09)',
 )
 s = s.replace(
     '* 0.24,\n                bend:',
-    '* 0.075,\n                bend:',
+    '* 0.060,\n                bend:',
 )
 s = s.replace(
     '* 0.18,\n            }',
-    '* 0.050,\n            }',
+    '* 0.040,\n            }',
 )
 s = s.replace(
     '        0.34\n    } else if crust_kind == CrustKind::Transitional as u8 {\n        0.23\n    } else {\n        0.075',
-    '        0.27\n    } else if crust_kind == CrustKind::Transitional as u8 {\n        0.18\n    } else {\n        0.060',
+    '        0.26\n    } else if crust_kind == CrustKind::Transitional as u8 {\n        0.175\n    } else {\n        0.058',
 )
 
-# Select each material-domain core deep inside its own domain while discouraging cores
-# from clustering against an already-selected neighbor. This is not global equal spacing:
-# the candidate remains strictly inside its inherited material owner.
+# Select each core inside its inherited material domain, with only a local crowding
+# penalty. This prevents pathological clustered centers without returning to global
+# equal-spacing/Voronoi initialization.
 old_score = '''            let score = depth_bonus + crust_bonus - corridor_penalty + jitter;
             let candidate = (score, sample);'''
 new_score = '''            let position = topology.unit_position(sample);
@@ -46,7 +46,6 @@ if old_score in s:
 elif 'minimum_core_separation' not in s:
     raise SystemExit('choose_plate_cores score not found')
 
-# Connectivity seed remains inside inherited material.
 old_core_guard = '''            if used[index] {
                 continue;
             }
@@ -60,7 +59,7 @@ if old_core_guard in s:
 elif new_core_guard not in s:
     raise SystemExit('choose_field_cores guard not found')
 
-# Bound finite field drift to ~18 degrees around the inherited material anchor.
+# Bound finite field drift so the kinematic potential cannot outrun its material plate.
 old_evolve = '''fn evolve_fields(fields: &mut [PlateField]) {
     const MIN_CORE_SEPARATION_RAD: f64 = 0.20;
     for _ in 0..KINEMATIC_EPOCHS {
@@ -112,8 +111,8 @@ new_evolve = '''fn limit_angular_drift(anchor: [f64; 3], proposed: [f64; 3], max
 }
 
 fn evolve_fields(fields: &mut [PlateField]) {
-    const MIN_CORE_SEPARATION_RAD: f64 = 0.20;
-    const MAX_MATERIAL_DRIFT_RAD: f64 = 0.31;
+    const MIN_CORE_SEPARATION_RAD: f64 = 0.22;
+    const MAX_MATERIAL_DRIFT_RAD: f64 = 0.24;
     let anchors = fields.iter().map(|field| field.center).collect::<Vec<_>>();
     for _ in 0..KINEMATIC_EPOCHS {
         let proposals = fields
@@ -158,6 +157,37 @@ if old_evolve in s:
 elif 'MAX_MATERIAL_DRIFT_RAD' not in s:
     raise SystemExit('evolve_fields block not found')
 
+# Each continuous field receives a compact local kinematic basin. This does not dictate
+# the outer plate shape; it only prevents capacity balancing from manufacturing a thin
+# enclosed island after a field loses all natural territory around its own center.
+old_distance = '''    let far_cap = if distance > 1.72 {
+        (distance - 1.72) * 4.0
+    } else {
+        0.0
+    };
+
+    // Low-order anisotropy keeps boundaries freeform without reverting to local cellular growth.'''
+new_distance = '''    let far_cap = if distance > 1.72 {
+        (distance - 1.72) * 4.0
+    } else {
+        0.0
+    };
+    let core_support = ((0.30 - distance).max(0.0) / 0.30).powi(2) * 0.34;
+
+    // Low-order anisotropy keeps boundaries freeform without reverting to local cellular growth.'''
+if old_distance in s:
+    s = s.replace(old_distance, new_distance, 1)
+elif 'let core_support' not in s:
+    raise SystemExit('field distance block not found')
+old_return = '''    -distance + field.area_bias + shape + ancestry - far_cap
+}'''
+new_return = '''    -distance + field.area_bias + shape + ancestry + core_support - far_cap
+}'''
+if old_return in s:
+    s = s.replace(old_return, new_return, 1)
+elif '+ core_support - far_cap' not in s:
+    raise SystemExit('field score return not found')
+
 marker = '\nfn repair_connectivity<T: PlanetTopology>(\n'
 if 'fn calibrate_area_biases<T: PlanetTopology>' not in s:
     insert = '''
@@ -166,7 +196,7 @@ fn target_plate_fractions(signals: &MaterialSignals, plate_count: usize) -> Vec<
     let mut targets = signals
         .plate_area_fraction
         .iter()
-        .map(|fraction| (fraction * 0.64 + mean * 0.36).max(0.020))
+        .map(|fraction| (fraction * 0.62 + mean * 0.38).max(0.020))
         .collect::<Vec<_>>();
     let total = targets.iter().sum::<f64>().max(1.0e-12);
     for target in &mut targets {
@@ -222,7 +252,7 @@ fn calibrate_area_biases<T: PlanetTopology>(
     signals: &MaterialSignals,
 ) {
     let targets = target_plate_fractions(signals, fields.len());
-    for _ in 0..96 {
+    for _ in 0..80 {
         let owners = assign_from_fields(
             topology,
             model,
@@ -239,12 +269,12 @@ fn calibrate_area_biases<T: PlanetTopology>(
             let error = targets[plate] - current[plate];
             maximum_error = maximum_error.max(error.abs());
             minimum_fraction = minimum_fraction.min(current[plate]);
-            let mut correction = (error * 1.35).clamp(-0.012, 0.012);
+            let mut correction = (error * 1.20).clamp(-0.010, 0.010);
             if current[plate] < 0.010 {
-                correction = correction.max(0.010);
+                correction = correction.max(0.008);
             }
             fields[plate].area_bias =
-                (fields[plate].area_bias + correction).clamp(-0.58, 0.58);
+                (fields[plate].area_bias + correction).clamp(-0.48, 0.48);
         }
         if minimum_fraction >= 0.014 && maximum_error < 0.006 {
             break;
