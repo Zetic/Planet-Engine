@@ -87,8 +87,9 @@ pub use geology::{
     SubductionPolarity, GEOLOGY_STAGE_ID, GEOLOGY_STAGE_VERSION,
 };
 pub use historical_frontend::{
-    generate_historical_frontend, project_historical_crust, project_historical_modern_tectonics,
-    HistoricalFrontend,
+    generate_historical_frontend, inherit_historical_identity, project_historical_crust,
+    project_historical_modern_tectonics, HistoricalFrontend, InheritedHistoricalIdentity,
+    HISTORICAL_INHERITANCE_STAGE_ID, HISTORICAL_INHERITANCE_STAGE_VERSION,
 };
 pub use historical_lithosphere::{
     generate_historical_lithosphere, CrustFragment, HistoricalEventKind,
