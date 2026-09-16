@@ -61,7 +61,7 @@ fn candidate_split_plans(model: &HistoricalLithosphereModel, stage_seed: u64) ->
             }
         }
 
-        if fragment.sample_count as usize < MIN_SPLIT_SAMPLES {
+        if (fragment.sample_count as usize) < MIN_SPLIT_SAMPLES {
             continue;
         }
         let stream = stage_seed
