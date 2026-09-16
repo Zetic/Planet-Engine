@@ -5059,7 +5059,6 @@ export class WasmWorldgenInheritance {
         return v1;
     }
     /**
-     * Expose causal formation/birth age through the accepted diagnostic age channel.
      * @returns {Float32Array}
      */
     crust_age_myr() {
@@ -5096,8 +5095,6 @@ export class WasmWorldgenInheritance {
         return v1;
     }
     /**
-     * Browser WG-3.75 diagnostics now treat the province channel as ancestral material provenance.
-     * The internal physical state still retains fragment-owned compatibility provinces for solvers.
      * @returns {Uint16Array}
      */
     crust_province_id() {
@@ -5195,8 +5192,6 @@ export class WasmWorldgenInheritance {
         }
     }
     /**
-     * Fragment IDs are now the persistent historical material fragments introduced before modern
-     * plate synthesis, rather than the legacy post-crust mechanical refinement fragments.
      * @returns {Uint16Array}
      */
     fragment_ids() {

@@ -550,17 +550,10 @@ export class WasmWorldgenInheritance {
     coarse_sample_count(): number;
     coarse_topology_hash_hex(): string;
     compensated_buoyancy_index(): Float32Array;
-    /**
-     * Expose causal formation/birth age through the accepted diagnostic age channel.
-     */
     crust_age_myr(): Float32Array;
     crust_birth_age_myr(): Float32Array;
     crust_density_kg_per_m3(): Float32Array;
     crust_kind(): Uint8Array;
-    /**
-     * Browser WG-3.75 diagnostics now treat the province channel as ancestral material provenance.
-     * The internal physical state still retains fragment-owned compatibility provinces for solvers.
-     */
     crust_province_id(): Uint16Array;
     crust_thickness_km(): Float32Array;
     crustal_strain(): Float32Array;
@@ -572,10 +565,6 @@ export class WasmWorldgenInheritance {
     fine_level(): number;
     fine_sample_count(): number;
     fine_topology_hash_hex(): string;
-    /**
-     * Fragment IDs are now the persistent historical material fragments introduced before modern
-     * plate synthesis, rather than the legacy post-crust mechanical refinement fragments.
-     */
     fragment_ids(): Uint16Array;
     fragmentation_propensity(): Float32Array;
     generator_version(): number;
@@ -1394,6 +1383,7 @@ export interface InitOutput {
     readonly wasmworldgeninheritance_coarse_topology_hash_hex: (a: number) => [number, number];
     readonly wasmworldgeninheritance_compensated_buoyancy_index: (a: number) => [number, number];
     readonly wasmworldgeninheritance_crust_age_myr: (a: number) => [number, number];
+    readonly wasmworldgeninheritance_crust_birth_age_myr: (a: number) => [number, number];
     readonly wasmworldgeninheritance_crust_density_kg_per_m3: (a: number) => [number, number];
     readonly wasmworldgeninheritance_crust_kind: (a: number) => [number, number];
     readonly wasmworldgeninheritance_crust_province_id: (a: number) => [number, number];
@@ -1410,6 +1400,7 @@ export interface InitOutput {
     readonly wasmworldgeninheritance_fragmentation_propensity: (a: number) => [number, number];
     readonly wasmworldgeninheritance_geological_boundary_regimes: (a: number) => [number, number];
     readonly wasmworldgeninheritance_geology_hash_hex: (a: number) => [number, number];
+    readonly wasmworldgeninheritance_historical_fragment_ids: (a: number) => [number, number];
     readonly wasmworldgeninheritance_historical_identity_hash_hex: (a: number) => [number, number];
     readonly wasmworldgeninheritance_inheritance_hash_hex: (a: number) => [number, number];
     readonly wasmworldgeninheritance_inherited_sample_mask: (a: number) => [number, number];
@@ -1425,9 +1416,11 @@ export interface InitOutput {
     readonly wasmworldgeninheritance_neighbors: (a: number) => [number, number];
     readonly wasmworldgeninheritance_new: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
     readonly wasmworldgeninheritance_ocean_water_density_kg_per_m3: (a: number) => number;
+    readonly wasmworldgeninheritance_origin_plate_ids: (a: number) => [number, number];
     readonly wasmworldgeninheritance_orogenic_history: (a: number) => [number, number];
     readonly wasmworldgeninheritance_parameter_hash_hex: (a: number) => [number, number];
     readonly wasmworldgeninheritance_plate_count: (a: number) => number;
+    readonly wasmworldgeninheritance_plate_ids: (a: number) => [number, number];
     readonly wasmworldgeninheritance_positions: (a: number) => [number, number];
     readonly wasmworldgeninheritance_provenance_hash_hex: (a: number) => [number, number];
     readonly wasmworldgeninheritance_radius_m: (a: number) => number;
@@ -1661,10 +1654,6 @@ export interface InitOutput {
     readonly wasmworldgentopography_generator_version: (a: number) => number;
     readonly wasmworldgentopology_generator_version: (a: number) => number;
     readonly wasmworldgentopography_has_sea_level: (a: number) => number;
-    readonly wasmworldgeninheritance_crust_birth_age_myr: (a: number) => [number, number];
-    readonly wasmworldgeninheritance_historical_fragment_ids: (a: number) => [number, number];
-    readonly wasmworldgeninheritance_origin_plate_ids: (a: number) => [number, number];
-    readonly wasmworldgeninheritance_plate_ids: (a: number) => [number, number];
     readonly wasmworldgenlithosphere_level: (a: number) => number;
     readonly wasmworldgenlithosphere_plate_count: (a: number) => number;
     readonly wasmworldgentectonics_level: (a: number) => number;
