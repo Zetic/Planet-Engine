@@ -26,10 +26,14 @@ jobs:
       - run: npm ci
       - name: Apply synthesis edits
         run: python scripts/apply-tectonic-synthesis-cleanup.py
+      - name: Apply final synthesis fixes and gates
+        run: python scripts/finalize-tectonic-synthesis-cleanup.py
       - name: Format Rust
         run: cargo fmt --all
       - name: Test historical synthesis
         run: cargo test -p interlink-worldgen historical_lithosphere -- --nocapture
+      - name: Test event-driven morphology
+        run: cargo run --release -p interlink-worldgen-cli --example historical_morphology_acceptance
       - name: Compile browser bridge
         run: cargo check -p interlink-worldgen-wasm --target wasm32-unknown-unknown
       - name: Build browser modules
