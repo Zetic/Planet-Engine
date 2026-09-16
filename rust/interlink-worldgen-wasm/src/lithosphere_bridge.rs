@@ -1,7 +1,7 @@
 use interlink_worldgen::{
-    build_icosphere, generate_crust_and_history, generate_lithosphere, generate_tectonics,
-    CrustalModel, GeodesicTopology, GeologyRequest, LithosphereRequest, LithosphericModel,
-    PlanetPhysicalParameters, TectonicModel, TectonicsRequest, WORLDGEN_ENGINE_VERSION,
+    build_icosphere, generate_historical_frontend, generate_lithosphere, CrustalModel,
+    GeodesicTopology, HistoricalLithosphereRequest, LithosphereRequest, LithosphericModel,
+    PlanetPhysicalParameters, TectonicModel, WORLDGEN_ENGINE_VERSION,
 };
 use wasm_bindgen::prelude::*;
 
@@ -24,19 +24,14 @@ impl WasmWorldgenLithosphere {
         let topology =
             build_icosphere(level).map_err(|error| JsValue::from_str(&error.to_string()))?;
         let parameters = PlanetPhysicalParameters::earthlike_reference();
-        let tectonics = generate_tectonics(
+        let frontend = generate_historical_frontend(
             &topology,
-            &TectonicsRequest::new(seed.as_str(), plate_count),
+            &HistoricalLithosphereRequest::new(seed.as_str(), plate_count),
             parameters,
         )
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
-        let geology = generate_crust_and_history(
-            &topology,
-            &tectonics,
-            &GeologyRequest::new(seed.as_str()),
-            parameters,
-        )
-        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        let tectonics = frontend.tectonics;
+        let geology = frontend.geology;
         let inner = generate_lithosphere(
             &topology,
             &tectonics,
