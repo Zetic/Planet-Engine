@@ -50,5 +50,11 @@ jobs:
           wasm-bindgen --version
       - name: Rebuild committed browser WASM package
         run: npm run build:worldgen-wasm
+      - name: Upload rebuilt WASM package
+        uses: actions/upload-artifact@v4
+        with:
+          name: worldgen-wasm-package
+          path: src/wasm-worldgen
+          retention-days: 3
       - name: Verify committed WASM package parity
         run: git diff --exit-code -- src/wasm-worldgen
