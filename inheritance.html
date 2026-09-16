@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Planet Engine · Historical Material Ancestry</title>
+  <link rel="stylesheet" href="styles/base.css">
+  <link rel="stylesheet" href="styles/worldgenLab.css">
+  <style>
+    .ancestry-note { max-width: 80rem; line-height: 1.55; color: #b8c8d8; }
+    .ancestry-note code { color: #e8f1f8; }
+    .ancestry-nav { margin-top: 0.75rem; }
+    .ancestry-nav a { color: #8ed8ff; }
+  </style>
+</head>
+<body class="worldgen-lab-body">
+  <main class="worldgen-lab">
+    <header class="worldgen-lab-header">
+      <div>
+        <p class="worldgen-lab-kicker">PLANET ENGINE · HISTORICAL LITHOSPHERE</p>
+        <h1>MATERIAL ANCESTRY LAB</h1>
+        <p class="ancestry-note">Inspect the persistent material identity chain produced before modern plate ownership: ancestral origin plate → crust fragment → current kinematic plate. This diagnostic uses the accepted WG-3.75 inheritance result, so the same causal material identities are shown after coarse-to-fine inheritance.</p>
+        <p class="ancestry-nav"><a href="index.html">Return to the cumulative physical-world lab</a></p>
+      </div>
+    </header>
+
+    <section class="worldgen-lab-controls" aria-label="Historical ancestry generation controls">
+      <label>Seed <input id="ancestry-seed" type="text" value="interlink-wg7c"></label>
+      <label>Coarse physical level <input id="ancestry-coarse-level" type="number" min="0" max="6" value="4"></label>
+      <label>Fine diagnostic level <input id="ancestry-fine-level" type="number" min="0" max="8" value="6"></label>
+      <label>Modern plate count <input id="ancestry-plates" type="number" min="4" max="48" value="16"></label>
+      <button id="ancestry-generate" type="button">Generate Ancestry</button>
+      <label>Diagnostic
+        <select id="ancestry-view">
+          <option value="origin">Ancestral origin plates</option>
+          <option value="fragment">Persistent crust fragments</option>
+          <option value="current">Current plate ownership</option>
+          <option value="crust-kind">Crust material class</option>
+          <option value="crust-age">Crust formation / birth age</option>
+          <option value="coarse-source">Fine-sample coarse provenance</option>
+        </select>
+      </label>
+    </section>
+
+    <p id="ancestry-status" class="worldgen-lab-status">Ready.</p>
+
+    <section class="worldgen-lab-grid">
+      <div class="worldgen-lab-viewport">
+        <canvas id="ancestry-field" aria-label="Historical material ancestry map"></canvas>
+      </div>
+      <aside class="worldgen-lab-diagnostics">
+        <h2>Lineage diagnostics</h2>
+        <div id="ancestry-metrics" class="worldgen-lab-metrics"></div>
+        <p class="ancestry-note"><code>crustProvinceId</code> is intentionally ancestry-authoritative on this diagnostic path and carries ancestral origin-plate provenance. <code>fragmentIds</code> carries persistent historical crust fragments. <code>plateIds</code> is modern/current kinematic ownership.</p>
+      </aside>
+    </section>
+  </main>
+
+  <script type="module">
+    import { createWorldgenClient } from './dist/worldgen/worldgenClient.js';
+    import {
+      WORLDGEN_CRUST_CONTINENTAL,
+      WORLDGEN_CRUST_OCEANIC,
+      WORLDGEN_CRUST_TRANSITIONAL,
+    } from './dist/worldgen/protocol.js';
+
+    const seed = document.getElementById('ancestry-seed');
+    const coarseLevel = document.getElementById('ancestry-coarse-level');
+    const fineLevel = document.getElementById('ancestry-fine-level');
+    const plates = document.getElementById('ancestry-plates');
+    const generate = document.getElementById('ancestry-generate');
+    const view = document.getElementById('ancestry-view');
+    const status = document.getElementById('ancestry-status');
+    const metrics = document.getElementById('ancestry-metrics');
+    const canvas = document.getElementById('ancestry-field');
+    const client = createWorldgenClient();
+    let current = null;
+
+    function metric(label, value) {
+      const item = document.createElement('div');
+      const key = document.createElement('strong');
+      const detail = document.createElement('span');
+      key.textContent = label;
+      detail.textContent = value;
+      item.append(key, detail);
+      metrics.appendChild(item);
+    }
+
+    function identityColor(id, offset = 18) {
+      return `hsl(${(id * 137.507764 + offset) % 360} 62% 55%)`;
+    }
+
+    function crustColor(kind) {
+      if (kind === WORLDGEN_CRUST_CONTINENTAL) return '#b79a72';
+      if (kind === WORLDGEN_CRUST_TRANSITIONAL) return '#9aab87';
+      if (kind === WORLDGEN_CRUST_OCEANIC) return '#477aa3';
+      return '#d7e2ef';
+    }
+
+    function ageColor(age) {
+      const t = Math.max(0, Math.min(1, age / 3500));
+      const hue = 205 + (24 - 205) * t;
+      return `hsl(${hue} 68% ${38 + t * 22}%)`;
+    }
+
+    function distinctCount(values) {
+      const ids = new Set();
+      for (const value of values) ids.add(value);
+      return ids.size;
+    }
+
+    function lineageDiagnostics(result) {
+      const originsByCurrent = new Map();
+      const fragmentsByCurrent = new Map();
+      let internalOriginEdges = 0;
+      let internalFragmentEdges = 0;
+      let oceanAgeMin = Number.POSITIVE_INFINITY;
+      let oceanAgeMax = Number.NEGATIVE_INFINITY;
+
+      for (let sample = 0; sample < result.metrics.fineSampleCount; sample += 1) {
+        const currentPlate = result.plateIds[sample];
+        const originPlate = result.crustProvinceId[sample];
+        const fragment = result.fragmentIds[sample];
+        let origins = originsByCurrent.get(currentPlate);
+        if (!origins) originsByCurrent.set(currentPlate, origins = new Set());
+        origins.add(originPlate);
+        let fragments = fragmentsByCurrent.get(currentPlate);
+        if (!fragments) fragmentsByCurrent.set(currentPlate, fragments = new Set());
+        fragments.add(fragment);
+
+        if (result.crustKind[sample] === WORLDGEN_CRUST_OCEANIC) {
+          const age = result.crustAgeMyr[sample];
+          oceanAgeMin = Math.min(oceanAgeMin, age);
+          oceanAgeMax = Math.max(oceanAgeMax, age);
+        }
+
+        for (let cursor = result.neighborOffsets[sample]; cursor < result.neighborOffsets[sample + 1]; cursor += 1) {
+          const neighbor = result.neighbors[cursor];
+          if (neighbor <= sample || result.plateIds[neighbor] !== currentPlate) continue;
+          if (result.crustProvinceId[neighbor] !== originPlate) internalOriginEdges += 1;
+          if (result.fragmentIds[neighbor] !== fragment) internalFragmentEdges += 1;
+        }
+      }
+
+      let multiOriginCurrent = 0;
+      let multiFragmentCurrent = 0;
+      for (const origins of originsByCurrent.values()) if (origins.size > 1) multiOriginCurrent += 1;
+      for (const fragments of fragmentsByCurrent.values()) if (fragments.size > 1) multiFragmentCurrent += 1;
+      return {
+        multiOriginCurrent,
+        multiFragmentCurrent,
+        internalOriginEdges,
+        internalFragmentEdges,
+        oceanAgeMin,
+        oceanAgeMax,
+      };
+    }
+
+    function render(result) {
+      const width = 1100;
+      const height = 550;
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext('2d');
+      if (!context) return;
+      context.fillStyle = '#08101a';
+      context.fillRect(0, 0, width, height);
+      const mode = view.value;
+      const count = result.metrics.fineSampleCount;
+      const radius = count > 100000 ? 0.7 : count > 30000 ? 1.0 : count > 5000 ? 1.7 : 2.8;
+      const buckets = new Map();
+
+      for (let sample = 0, offset = 0; sample < count; sample += 1, offset += 3) {
+        let color;
+        if (mode === 'origin') color = identityColor(result.crustProvinceId[sample], 42);
+        else if (mode === 'fragment') color = identityColor(result.fragmentIds[sample], 96);
+        else if (mode === 'current') color = identityColor(result.plateIds[sample], 18);
+        else if (mode === 'crust-kind') color = crustColor(result.crustKind[sample]);
+        else if (mode === 'crust-age') color = ageColor(result.crustAgeMyr[sample]);
+        else color = identityColor(result.nearestCoarseSource[sample], 210);
+        let samples = buckets.get(color);
+        if (!samples) buckets.set(color, samples = []);
+        samples.push([sample, offset]);
+      }
+
+      for (const [color, samples] of buckets) {
+        context.fillStyle = color;
+        context.beginPath();
+        for (const [, offset] of samples) {
+          const px = result.positions[offset];
+          const py = result.positions[offset + 1];
+          const pz = result.positions[offset + 2];
+          const lon = Math.atan2(py, px);
+          const lat = Math.asin(Math.max(-1, Math.min(1, pz)));
+          const x = (lon + Math.PI) / (2 * Math.PI) * width;
+          const y = (Math.PI / 2 - lat) / Math.PI * height;
+          context.moveTo(x + radius, y);
+          context.arc(x, y, radius, 0, Math.PI * 2);
+        }
+        context.fill();
+      }
+    }
+
+    function showMetrics(result) {
+      metrics.replaceChildren();
+      const lineage = lineageDiagnostics(result);
+      metric('Engine / stage', `v${result.engineVersion} · ${result.stage.id}@${result.stage.version}`);
+      metric('Resolution', `L${result.coarseLevel} → L${result.fineLevel}`);
+      metric('Samples', `${result.metrics.coarseSampleCount.toLocaleString()} → ${result.metrics.fineSampleCount.toLocaleString()}`);
+      metric('Identity levels', `${distinctCount(result.crustProvinceId)} origin plates · ${distinctCount(result.fragmentIds)} fragments · ${distinctCount(result.plateIds)} current plates`);
+      metric('Mixed current plates', `${lineage.multiOriginCurrent} multi-origin · ${lineage.multiFragmentCurrent} multi-fragment`);
+      metric('Fossil discontinuities', `${lineage.internalOriginEdges.toLocaleString()} internal origin edges · ${lineage.internalFragmentEdges.toLocaleString()} internal fragment edges`);
+      metric('Oceanic birth-age span', Number.isFinite(lineage.oceanAgeMin) ? `${lineage.oceanAgeMin.toFixed(1)}–${lineage.oceanAgeMax.toFixed(1)} Myr` : 'No oceanic samples');
+      metric('Inheritance hash', result.metrics.inheritanceHash);
+      metric('Upstream hashes', `T ${result.metrics.tectonicHash} · G ${result.metrics.geologyHash} · L ${result.metrics.lithosphereHash}`);
+    }
+
+    async function generatePlanet() {
+      generate.disabled = true;
+      status.textContent = 'Generating historical material ancestry and inheriting it to the diagnostic topology…';
+      try {
+        const result = await client.generateInheritance({
+          seed: seed.value,
+          coarseLevel: Number(coarseLevel.value),
+          fineLevel: Number(fineLevel.value),
+          plateCount: Number(plates.value),
+        });
+        current = result;
+        showMetrics(result);
+        render(result);
+        status.textContent = `Ready: ${distinctCount(result.crustProvinceId)} ancestral origins → ${distinctCount(result.fragmentIds)} persistent fragments → ${distinctCount(result.plateIds)} current plates.`;
+      } catch (error) {
+        status.textContent = error instanceof Error ? error.message : String(error);
+      } finally {
+        generate.disabled = false;
+      }
+    }
+
+    generate.addEventListener('click', () => void generatePlanet());
+    view.addEventListener('change', () => { if (current) render(current); });
+    window.addEventListener('beforeunload', () => client.dispose());
+    void generatePlanet();
+  </script>
+</body>
+</html>
