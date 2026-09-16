@@ -259,46 +259,51 @@ pub fn project_historical_modern_tectonics<T: PlanetTopology>(
     }
 
     let ancestral_count = historical.ancestral_tectonics.plates.len();
-    let mut origin_to_current = vec![u16::MAX; ancestral_count];
-    for sample in 0..count {
-        let origin = historical.origin_plate_ids[sample] as usize;
-        let current = historical.current_plate_ids[sample];
-        if origin >= ancestral_count || usize::from(current) >= modern_count {
+    let mut velocity_sum = vec![[0.0_f64; 3]; modern_count];
+    let mut ancestry_area = vec![0.0_f64; modern_count];
+    let mut contribution_area = vec![vec![0.0_f64; ancestral_count]; modern_count];
+    for sample in 0..topology.sample_count() {
+        let index = sample as usize;
+        let origin = historical.origin_plate_ids[index] as usize;
+        let current = historical.current_plate_ids[index] as usize;
+        if origin >= ancestral_count || current >= modern_count {
             return Err(WorldgenError::InvalidTectonics(
                 "historical ownership contains an invalid plate id",
             ));
         }
-        if origin_to_current[origin] == u16::MAX {
-            origin_to_current[origin] = current;
-        } else if origin_to_current[origin] != current {
-            return Err(WorldgenError::InvalidTectonics(
-                "one ancestral plate maps to multiple modern owners without a recorded material split",
-            ));
-        }
-    }
-    if origin_to_current.iter().any(|plate| *plate == u16::MAX) {
-        return Err(WorldgenError::InvalidTectonics(
-            "historical modern projection lost an ancestral plate",
-        ));
-    }
-
-    let mut velocity_sum = vec![[0.0_f64; 3]; modern_count];
-    let mut ancestry_area = vec![0.0_f64; modern_count];
-    let mut representative_area = vec![f64::NEG_INFINITY; modern_count];
-    let mut representative_seed = vec![u32::MAX; modern_count];
-    let mut representative_pole = vec![[0.0_f64, 0.0, 1.0]; modern_count];
-    for ancestral in &historical.ancestral_tectonics.plates {
-        let current = origin_to_current[ancestral.id as usize] as usize;
-        let weight = ancestral.area_steradians.max(1.0e-12);
+        let area = topology.area_steradians(sample);
+        let ancestral = &historical.ancestral_tectonics.plates[origin];
         for component in 0..3 {
             velocity_sum[current][component] +=
-                ancestral.angular_velocity_rad_per_myr[component] * weight;
+                ancestral.angular_velocity_rad_per_myr[component] * area;
         }
-        ancestry_area[current] += weight;
-        if ancestral.area_steradians > representative_area[current] {
-            representative_area[current] = ancestral.area_steradians;
-            representative_seed[current] = ancestral.seed_sample;
-            representative_pole[current] = ancestral.euler_pole;
+        ancestry_area[current] += area;
+        contribution_area[current][origin] += area;
+    }
+
+    let mut representative_seed = vec![u32::MAX; modern_count];
+    let mut representative_support = vec![f64::NEG_INFINITY; modern_count];
+    let mut representative_pole = vec![[0.0_f64, 0.0, 1.0]; modern_count];
+    for sample in 0..topology.sample_count() {
+        let index = sample as usize;
+        let current = historical.current_plate_ids[index] as usize;
+        let origin = historical.origin_plate_ids[index] as usize;
+        let same_neighbors = topology
+            .neighbors(sample)
+            .iter()
+            .filter(|neighbor| {
+                historical.current_plate_ids[**neighbor as usize] as usize == current
+            })
+            .count() as f64;
+        let ancestry_support =
+            contribution_area[current][origin] / ancestry_area[current].max(1.0e-12);
+        let support = same_neighbors + ancestry_support * 0.45;
+        if support > representative_support[current]
+            || (support == representative_support[current] && sample < representative_seed[current])
+        {
+            representative_support[current] = support;
+            representative_seed[current] = sample;
+            representative_pole[current] = historical.ancestral_tectonics.plates[origin].euler_pole;
         }
     }
 

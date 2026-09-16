@@ -278,7 +278,11 @@ fn build_fragments<T: PlanetTopology>(
     (fragment_ids, fragments)
 }
 
-fn build_continental_assemblies(ancestral: &TectonicModel, seed: u64) -> (Vec<bool>, Vec<u16>) {
+fn build_continental_assemblies<T: PlanetTopology>(
+    topology: &T,
+    ancestral: &TectonicModel,
+    seed: u64,
+) -> (Vec<bool>, Vec<u16>) {
     let count = ancestral.plates.len();
     let total_area = ancestral
         .plates
@@ -288,30 +292,10 @@ fn build_continental_assemblies(ancestral: &TectonicModel, seed: u64) -> (Vec<bo
         .max(1.0e-12);
     let target_fraction = 0.50 + (unit_random(seed ^ 0x3c79_ac49_2ba7_b653) - 0.5) * 0.08;
     let target_area = total_area * target_fraction.clamp(0.46, 0.54);
-    let mut ranked = (0..count)
-        .map(|plate| {
-            (
-                unit_random(seed ^ (plate as u64).wrapping_mul(0xa076_1d64_78bd_642f)),
-                plate,
-            )
-        })
-        .collect::<Vec<_>>();
-    ranked.sort_by(|(score_a, plate_a), (score_b, plate_b)| {
-        score_b
-            .total_cmp(score_a)
-            .then_with(|| plate_a.cmp(plate_b))
-    });
-    let mut carriers = vec![false; count];
-    let mut carrier_area = 0.0_f64;
-    for (_, plate) in ranked {
-        carriers[plate] = true;
-        carrier_area += ancestral.plates[plate].area_steradians;
-        if carrier_area >= target_area {
-            break;
-        }
-    }
 
     let mut pair_kinds = BTreeMap::<(u16, u16), [u32; 3]>::new();
+    let mut plate_perimeter = vec![0_u32; count];
+    let mut adjacency = vec![BTreeSet::<usize>::new(); count];
     for boundary in &ancestral.boundaries {
         let pair = if boundary.plate_a < boundary.plate_b {
             (boundary.plate_a, boundary.plate_b)
@@ -324,47 +308,150 @@ fn build_continental_assemblies(ancestral: &TectonicModel, seed: u64) -> (Vec<bo
             PlateBoundaryKind::Divergent => counts[1] += 1,
             PlateBoundaryKind::Transform => counts[2] += 1,
         }
+        plate_perimeter[boundary.plate_a as usize] += 1;
+        plate_perimeter[boundary.plate_b as usize] += 1;
+        adjacency[boundary.plate_a as usize].insert(boundary.plate_b as usize);
+        adjacency[boundary.plate_b as usize].insert(boundary.plate_a as usize);
     }
 
-    let mut assemblies = (0..count as u16).collect::<Vec<_>>();
-    for ((plate_a, plate_b), counts) in pair_kinds {
-        if !carriers[plate_a as usize] || !carriers[plate_b as usize] {
-            continue;
-        }
-        let total = f64::from(counts.iter().sum::<u32>().max(1));
-        let convergence_fraction = f64::from(counts[0]) / total;
-        let divergence_fraction = f64::from(counts[1]) / total;
-        let transform_fraction = f64::from(counts[2]) / total;
-        let stream = seed
-            ^ u64::from(plate_a).wrapping_mul(0x9e37_79b9_7f4a_7c15)
-            ^ u64::from(plate_b).wrapping_mul(0xbf58_476d_1ce4_e5b9);
-        let weld = divergence_fraction < 0.34
-            && (convergence_fraction >= 0.34
-                || (transform_fraction >= 0.55 && unit_random(stream) > 0.32));
-        if !weld {
-            continue;
-        }
-        let keep = assemblies[plate_a as usize].min(assemblies[plate_b as usize]);
-        let remove = assemblies[plate_a as usize].max(assemblies[plate_b as usize]);
-        if keep == remove {
-            continue;
-        }
-        for assembly in &mut assemblies {
-            if *assembly == remove {
-                *assembly = keep;
+    // Continental material starts from a small number of coherent proto-continental nuclei.
+    // Growth is contiguous across the ancestral plate graph; isolated random carrier plates are
+    // not permitted. Later rifting may split these masses, but archipelagos are no longer an
+    // initial-condition artifact.
+    let nucleus_target = (3 + (unit_random(seed ^ 0xa076_1d64_78bd_642f) * 4.0).floor() as usize)
+        .clamp(2, 6)
+        .min(count.max(1));
+    let mut nuclei = Vec::<usize>::new();
+    if count > 0 {
+        let first = (0..count)
+            .max_by(|left, right| {
+                let left_score = (ancestral.plates[*left].area_steradians / total_area).sqrt()
+                    * 0.72
+                    + unit_random(seed ^ (*left as u64).wrapping_mul(0xe703_7ed1_a0b4_28db)) * 0.28;
+                let right_score = (ancestral.plates[*right].area_steradians / total_area).sqrt()
+                    * 0.72
+                    + unit_random(seed ^ (*right as u64).wrapping_mul(0xe703_7ed1_a0b4_28db))
+                        * 0.28;
+                left_score
+                    .total_cmp(&right_score)
+                    .then_with(|| right.cmp(left))
+            })
+            .unwrap_or(0);
+        nuclei.push(first);
+    }
+    while nuclei.len() < nucleus_target {
+        let mut best = None;
+        let mut best_score = f64::NEG_INFINITY;
+        for plate in 0..count {
+            if nuclei.contains(&plate) {
+                continue;
+            }
+            let position = topology.unit_position(ancestral.plates[plate].seed_sample);
+            let separation = nuclei
+                .iter()
+                .map(|nucleus| {
+                    arc_radians(
+                        position,
+                        topology.unit_position(ancestral.plates[*nucleus].seed_sample),
+                    )
+                })
+                .fold(std::f64::consts::PI, f64::min);
+            let area_bonus = (ancestral.plates[plate].area_steradians / total_area).sqrt() * 0.22;
+            let jitter =
+                unit_random(seed ^ (plate as u64).wrapping_mul(0x8ebc_6af0_9c88_c6e3)) * 0.04;
+            let score = separation + area_bonus + jitter;
+            if score > best_score || (score == best_score && Some(plate) < best) {
+                best_score = score;
+                best = Some(plate);
             }
         }
+        let Some(plate) = best else { break };
+        nuclei.push(plate);
     }
 
-    let mut compact = BTreeMap::<u16, u16>::new();
-    for assembly in &assemblies {
-        if !compact.contains_key(assembly) {
-            let next = compact.len() as u16;
-            compact.insert(*assembly, next);
+    let mut carriers = vec![false; count];
+    let mut assemblies = vec![u16::MAX; count];
+    let mut carrier_area = 0.0_f64;
+    let mut assembly_area = vec![0.0_f64; nuclei.len()];
+    for (assembly, plate) in nuclei.iter().copied().enumerate() {
+        if !carriers[plate] {
+            carriers[plate] = true;
+            assemblies[plate] = assembly as u16;
+            carrier_area += ancestral.plates[plate].area_steradians;
+            assembly_area[assembly] += ancestral.plates[plate].area_steradians;
         }
     }
-    for assembly in &mut assemblies {
-        *assembly = compact[assembly];
+
+    while carrier_area < target_area {
+        let mut best: Option<(f64, usize, u16)> = None;
+        for plate in 0..count {
+            if carriers[plate] {
+                continue;
+            }
+            let mut by_assembly = BTreeMap::<u16, [u32; 4]>::new();
+            for neighbor in &adjacency[plate] {
+                if !carriers[*neighbor] {
+                    continue;
+                }
+                let assembly = assemblies[*neighbor];
+                let pair = if plate < *neighbor {
+                    (plate as u16, *neighbor as u16)
+                } else {
+                    (*neighbor as u16, plate as u16)
+                };
+                let kinds = pair_kinds.get(&pair).copied().unwrap_or([0; 3]);
+                let totals = by_assembly.entry(assembly).or_insert([0; 4]);
+                totals[0] += kinds[0];
+                totals[1] += kinds[1];
+                totals[2] += kinds[2];
+                totals[3] += kinds.iter().sum::<u32>();
+            }
+            for (assembly, totals) in by_assembly {
+                let shared = f64::from(totals[3].max(1));
+                let convergence = f64::from(totals[0]) / shared;
+                let divergence = f64::from(totals[1]) / shared;
+                let transform = f64::from(totals[2]) / shared;
+                let contact = shared / f64::from(plate_perimeter[plate].max(1));
+                let assembly_fraction = assembly_area[assembly as usize] / target_area.max(1.0e-12);
+                let dominance_penalty = ((assembly_fraction - 0.52).max(0.0) / 0.48).powi(2);
+                let jitter = unit_random(
+                    seed ^ (plate as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15)
+                        ^ u64::from(assembly).wrapping_mul(0xbf58_476d_1ce4_e5b9),
+                ) * 0.025;
+                let score = contact * 1.65 + convergence * 0.34 + transform * 0.10
+                    - divergence * 0.58
+                    - dominance_penalty * 0.25
+                    + jitter;
+                let candidate = (score, plate, assembly);
+                if best
+                    .map(|current| {
+                        candidate.0 > current.0
+                            || (candidate.0 == current.0
+                                && (candidate.1, candidate.2) < (current.1, current.2))
+                    })
+                    .unwrap_or(true)
+                {
+                    best = Some(candidate);
+                }
+            }
+        }
+        let Some((_, plate, assembly)) = best else {
+            break;
+        };
+        carriers[plate] = true;
+        assemblies[plate] = assembly;
+        carrier_area += ancestral.plates[plate].area_steradians;
+        assembly_area[assembly as usize] += ancestral.plates[plate].area_steradians;
+    }
+
+    // Non-carriers never participate in continental depth propagation, but give every ancestral
+    // plate a dense assembly id for deterministic diagnostics and downstream indexing.
+    let mut next_assembly = nuclei.len() as u16;
+    for plate in 0..count {
+        if assemblies[plate] == u16::MAX {
+            assemblies[plate] = next_assembly;
+            next_assembly = next_assembly.saturating_add(1);
+        }
     }
     (carriers, assemblies)
 }
@@ -377,7 +464,8 @@ fn build_plate_owned_crust<T: PlanetTopology>(
     planet: PlanetPhysicalParameters,
     ancestral: &TectonicModel,
 ) -> (Vec<u8>, Vec<f32>) {
-    let (plate_carriers, plate_assemblies) = build_continental_assemblies(ancestral, seed);
+    let (plate_carriers, plate_assemblies) =
+        build_continental_assemblies(topology, ancestral, seed);
     let count = topology.sample_count() as usize;
     let sample_origin = fragment_ids
         .iter()
