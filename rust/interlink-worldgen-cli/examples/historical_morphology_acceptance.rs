@@ -65,14 +65,26 @@ fn verify_seed(seed: &str) -> Result<(), String> {
         return Err(format!("{seed}: active convergence is absent from active-orogen morphology"));
     }
 
+    // Exclude the immediate neighbor ring as well as literal current boundary samples. A fossil
+    // belt that survives here is genuinely internal to the modern plate mosaic rather than a
+    // one-cell echo of the active boundary graph.
+    let mut current_boundary_neighborhood = current_boundary_mask.clone();
+    for sample in 0..topology.sample_count() {
+        if !current_boundary_mask[sample as usize] {
+            continue;
+        }
+        for neighbor in topology.neighbors(sample) {
+            current_boundary_neighborhood[*neighbor as usize] = true;
+        }
+    }
     let internal_fossil_samples = morphology
         .fossil_orogen_intensity
         .iter()
         .enumerate()
-        .filter(|(sample, value)| **value >= 0.20 && !current_boundary_mask[*sample])
+        .filter(|(sample, value)| **value >= 0.20 && !current_boundary_neighborhood[*sample])
         .count();
     if internal_fossil_samples == 0 {
-        return Err(format!("{seed}: fossil orogens did not survive inside present plates"));
+        return Err(format!("{seed}: fossil orogens did not survive beyond the active-boundary neighbor ring"));
     }
 
     let collision_events = frontend
@@ -137,7 +149,7 @@ fn verify_seed(seed: &str) -> Result<(), String> {
     let mut active_relief = 0_usize;
     for sample in 0..count {
         if morphology.fossil_orogen_intensity[sample] >= 0.20
-            && !current_boundary_mask[sample]
+            && !current_boundary_neighborhood[sample]
             && lithosphere.orogen_provinces.orogenic_intensity[sample] >= 0.12
         {
             internal_fossil_relief += 1;
@@ -149,14 +161,33 @@ fn verify_seed(seed: &str) -> Result<(), String> {
         }
     }
     if internal_fossil_relief == 0 {
-        return Err(format!("{seed}: WG-3.6 produced no event-driven fossil relief inside modern plates"));
+        return Err(format!("{seed}: WG-3.6 produced no fossil relief beyond the modern boundary neighbor ring"));
     }
     if active_relief == 0 {
         return Err(format!("{seed}: WG-3.6 lost active convergent relief"));
     }
 
+    let subduction_edges = frontend.geology.metrics.oceanic_subduction_edges
+        + frontend.geology.metrics.ocean_continent_subduction_edges;
+    let active_arc_samples = lithosphere
+        .orogen_provinces
+        .volcanic_arc_index
+        .iter()
+        .filter(|value| **value >= 0.15)
+        .count();
+    let proximal_arc_samples = lithosphere
+        .orogen_provinces
+        .volcanic_arc_index
+        .iter()
+        .zip(lithosphere.orogen_provinces.boundary_distance_km.iter())
+        .filter(|(arc, distance)| **arc >= 0.15 && **distance <= 1_200.0)
+        .count();
+    if subduction_edges > 0 && (active_arc_samples == 0 || proximal_arc_samples == 0) {
+        return Err(format!("{seed}: active subduction lost boundary-proximal volcanic-arc morphology"));
+    }
+
     println!(
-        "historical-morphology seed={seed} events={} rift={} shear={} sutures={} passive={} active={} fossil={} internal-fossil={} collision-suture={}/{} passive-contact={}/{} fossil-relief={} active-relief={} morphology={} pre={} orogen={}",
+        "historical-morphology seed={seed} events={} rift={} shear={} sutures={} passive={} active={} fossil={} internal-fossil={} collision-suture={}/{} passive-contact={}/{} fossil-relief={} active-relief={} arcs={}/{} subduction-edges={} morphology={} pre={} orogen={}",
         morphology.metrics.event_count,
         morphology.metrics.rift_sample_count,
         morphology.metrics.shear_sample_count,
@@ -171,6 +202,9 @@ fn verify_seed(seed: &str) -> Result<(), String> {
         rifted_continent_ocean_contacts,
         internal_fossil_relief,
         active_relief,
+        proximal_arc_samples,
+        active_arc_samples,
+        subduction_edges,
         morphology.metrics.morphology_hash_hex(),
         lithosphere.pre_orogenic.metrics.pre_orogenic_hash_hex(),
         lithosphere.orogen_provinces.metrics.province_hash_hex(),
