@@ -12,6 +12,7 @@ mod evolution;
 mod fields;
 mod geology;
 mod historical_api;
+mod historical_epochs;
 mod historical_frontend;
 mod historical_lithosphere;
 mod hydroclimate;
@@ -88,17 +89,18 @@ pub use geology::{
     GEOLOGY_STAGE_VERSION,
 };
 pub use historical_api::{
-    generate_crust_and_history, generate_legacy_crust_and_history, generate_tectonics,
+    generate_crust_and_history, generate_historical_lithosphere,
+    generate_legacy_crust_and_history, generate_tectonics,
 };
+pub use historical_epochs::HISTORICAL_EPOCH_COUNT;
 pub use historical_frontend::{
     generate_historical_frontend, inherit_historical_identity, project_historical_crust,
     project_historical_modern_tectonics, HistoricalFrontend, InheritedHistoricalIdentity,
     HISTORICAL_INHERITANCE_STAGE_ID, HISTORICAL_INHERITANCE_STAGE_VERSION,
 };
 pub use historical_lithosphere::{
-    generate_historical_lithosphere, CrustFragment, HistoricalEventKind,
-    HistoricalLithosphereMetrics, HistoricalLithosphereModel, HistoricalLithosphereRequest,
-    HistoricalTectonicEvent, HISTORICAL_LITHOSPHERE_STAGE_ID,
+    CrustFragment, HistoricalEventKind, HistoricalLithosphereMetrics, HistoricalLithosphereModel,
+    HistoricalLithosphereRequest, HistoricalTectonicEvent, HISTORICAL_LITHOSPHERE_STAGE_ID,
     HISTORICAL_LITHOSPHERE_STAGE_VERSION,
 };
 pub use hydroclimate::{
