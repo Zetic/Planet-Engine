@@ -47,8 +47,8 @@ pub use boundary_refinement::{
     inherit_boundary_interfaces, InheritedBoundaryEdge, InheritedBoundarySet,
 };
 pub use causal_pipeline::{
-    generate_initial_topography, generate_lithosphere, inherit_physical_state,
-    InheritedPhysicalState, LithosphericModel, TECTONIC_TOPOGRAPHY_STAGE_ID as TOPOGRAPHY_STAGE_ID,
+    generate_initial_topography, inherit_physical_state, InheritedPhysicalState, LithosphericModel,
+    TECTONIC_TOPOGRAPHY_STAGE_ID as TOPOGRAPHY_STAGE_ID,
     TECTONIC_TOPOGRAPHY_STAGE_VERSION as TOPOGRAPHY_STAGE_VERSION,
 };
 pub use climate::{
@@ -93,8 +93,8 @@ pub use geology::{
     GEOLOGY_STAGE_VERSION,
 };
 pub use historical_api::{
-    generate_crust_and_history, generate_historical_lithosphere,
-    generate_legacy_crust_and_history, generate_tectonics,
+    generate_crust_and_history, generate_historical_lithosphere, generate_legacy_crust_and_history,
+    generate_lithosphere, generate_tectonics,
 };
 pub use historical_causal::generate_lithosphere_from_history;
 pub use historical_epochs::HISTORICAL_EPOCH_COUNT;
@@ -279,7 +279,6 @@ fn triangular_wave(index: u32, period: u32) -> u32 {
     }
 }
 
-/// WG-0 proof field. This is intentionally not terrain. It remains available as a transport/determinism regression while later stages introduce physical planetary state.
 pub fn generate_synthetic(
     request: &SyntheticRequest,
 ) -> Result<SyntheticDiagnostic, WorldgenError> {
