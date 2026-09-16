@@ -1,6 +1,6 @@
 # Spherical Plate Tectonics
 
-Planet Engine now separates **ancestral plate geometry** from **present-day plate ownership**. The canonical historical frontend still uses the deterministic spherical WG-2 partition as a deep-time initializer, but modern plates are no longer restricted to unions of those original graph-Voronoi cells. A bounded dynamic ownership pass allows present boundaries to migrate through ancestral material while persistent material ancestry survives underneath.
+Planet Engine separates **ancestral material geometry** from **present-day plate ownership**. The canonical historical frontend still uses the deterministic spherical WG-2 partition as a deep-time initializer, but modern plate faces are synthesized from a separate continuous spherical boundary field. Present boundaries can therefore migrate through ancestral material while persistent material ancestry survives underneath.
 
 This is a deterministic tectonic synthesis model, not a mantle-convection solver or a literal geological reconstruction.
 
@@ -17,7 +17,9 @@ plate-owned crust + coherent proto-continental nuclei
         ↓
 persistent fragments / rift lineage
         ↓
-dynamic modern ownership evolution
+provisional modern material grouping
+        ↓
+boundary-first spherical plate-field synthesis
         ↓
 fragment capture / transfer provenance
         ↓
@@ -42,35 +44,38 @@ A modern plate boundary may therefore cut through one ancestral plate. When mode
 
 `tectonics.rs::generate_tectonics` remains the deterministic spherical plate initializer. It chooses plate seed samples with a seeded minimum-separation process and assigns ownership using multi-source shortest-path distance over the canonical topology graph. Each ancestral plate receives a rigid Euler pole and angular velocity.
 
-This graph-Voronoi construction is useful for coherent deep-time domains, but it is no longer treated as final present-day geometry in the canonical historical pipeline.
+This graph-Voronoi construction is useful for coherent deep-time domains, but it is not treated as final present-day geometry in the canonical historical pipeline.
 
 Acceptance of the ancestral initializer still requires valid, connected, non-empty plates, exact area closure, deterministic seed spacing, and a non-degenerate distribution of plate areas.
 
 ## Coherent proto-continental material
 
-Continental material is no longer initialized by independently selecting scattered ancestral carrier plates and attempting to weld them afterward. The historical lithosphere chooses a small set of separated proto-continental nuclei and grows each assembly contiguously across the ancestral adjacency graph until the global material target is reached.
+Continental material is not initialized by independently selecting scattered ancestral carrier plates and attempting to weld them afterward. The historical lithosphere chooses a small set of separated proto-continental nuclei and grows each assembly contiguously across the ancestral adjacency graph until the global material target is reached.
 
 Growth favors substantial shared contact and convergent relationships, tolerates some transform attachment, penalizes divergent attachment, and limits one assembly from consuming the whole target. Transitional margins are then derived from the edge of the resulting assembled continental material.
 
 This makes isolated continental islands a later historical outcome—rift fragments, captured terranes, or microcontinents—rather than a default artifact of random carrier selection.
 
-## Dynamic modern plate evolution
+## Boundary-first modern plate synthesis
 
-The modern ownership stage operates at the coarse sample level for a bounded number of deterministic synthetic epochs. It starts from the ancestry-based provisional modern grouping, then allows boundary samples to change present owner according to a combination of:
+The present-day plate stage no longer grows ownership one sample at a time from local territorial rules. Instead it constructs a small set of continuous spherical plate fields and rasterizes their faces onto the canonical coarse topology.
 
-- local and second-ring plate cohesion;
-- inherited rigid Euler-motion direction;
-- deterministic low-frequency spherical shape forcing;
-- bounded ownership inertia and ancestral affinity;
-- plate-size constraints and connectivity repair.
+The synthesis proceeds deterministically:
 
-Each plate retains an interior anchor so evolution cannot erase it. Ownership transfers are bounded per epoch, disconnected remnants are reassigned, and an explicit dominance-balancing pass prevents a single modern plate from swallowing an implausibly large fraction of the sphere.
+- choose globally separated modern plate cores on the sphere;
+- inherit an area-weighted angular velocity for each field from the provisional material grouping under its core;
+- evolve those cores through a bounded sequence of rigid Euler rotations while preventing core collapse;
+- apply a coherent low-frequency spherical warp shared by all fields;
+- assign each sample to the strongest spherical field, with bounded area bias and a far-span penalty;
+- keep one final core per field and repair any disconnected raster remnants without changing material ancestry.
 
-The key architectural change is that `current_plate_id` is now free to evolve independently of `origin_plate_id`. Modern boundaries are therefore not required to coincide with ancestral cell edges.
+Because the field competition is evaluated independently of `origin_plate_id`, the resulting `current_plate_id` network can cross old plate interiors instead of tracing the ancestral graph-Voronoi tessellation. The provisional grouping still matters physically: it supplies inherited motion to the new plate fields and provides the material that is subsequently captured or split beneath the new boundaries.
+
+This is a geometry-first cut. It deliberately avoids allowing a local growth heuristic, continental carrier layout, or ancestral cell adjacency to dictate the final outline of a modern plate.
 
 ## Modern rigid kinematics
 
-After dynamic ownership stabilizes, modern angular velocity is reconstructed from the ancestral material currently carried by each modern plate, weighted by the physical area of that contribution. A representative interior seed is chosen from the evolved modern domain.
+After boundary-first ownership is established, modern angular velocity is reconstructed from the ancestral material currently carried by each modern plate, weighted by the physical area of that contribution. A representative interior seed is chosen from the final modern domain.
 
 At unit surface direction `r`, rigid plate velocity remains:
 
@@ -94,7 +99,7 @@ Geological interpretation—ridge, rift, subduction polarity, continental collis
 
 ## Historical event relationship
 
-The bounded historical lineage pass and the dynamic modern-geometry pass are intentionally sparse. They do not retain a complete dense raster for every geological epoch. Persistent outputs are material identities, fragment lineage, ownership transfers, ages, and event records; downstream morphology rasterizes those causes into sutures, rifts, passive margins, active orogens, and fossil structures.
+The bounded historical lineage pass and boundary-first modern geometry are intentionally sparse. They do not retain a complete dense raster for every geological epoch. Persistent outputs are material identities, fragment lineage, ownership transfers, ages, and event records; downstream morphology rasterizes those causes into sutures, rifts, passive margins, active orogens, and fossil structures.
 
 The model therefore aims for the causal qualities observed in the project’s Gleba reference sequence—old plates, denser material fragments, fewer broad present plates, then crust verification—without claiming source-code equivalence or a full physical mantle simulation.
 
@@ -106,22 +111,29 @@ Important namespaces include:
 worldgen:tectonics:plates:v1
 worldgen:geology:historical-lithosphere:ancestral:v1
 worldgen:geology:historical-lithosphere:epochs:v1
-worldgen:geology:dynamic-modern-plates:v1
+worldgen:geology:dynamic-modern-plates:v2
+worldgen:geology:boundary-first-plates:v1
 worldgen:geology:historical-lithosphere:modern-tectonics:v1
 ```
 
-The historical identity hash covers evolved current ownership and persistent fragment lineage. The modern tectonic hash covers modern plate motion, evolved ownership, extracted boundary kinematics, and the upstream history hash.
+The historical identity hash covers boundary-first current ownership and persistent fragment lineage. The modern tectonic hash covers modern plate motion, current ownership, extracted boundary kinematics, and the upstream history hash.
 
 ## Blocking geometry acceptance
 
-Permanent validation now checks properties that the older merge-only system could pass while still producing visibly polygonal plates or continental archipelagos:
+Permanent validation checks structural properties that ancestry-locked or local-growth systems could pass while still producing implausible present-day geometry:
 
-- present boundaries must cut through ancestral material rather than remaining locked to ancestral cell edges;
+- a large fraction of present boundary edges must migrate away from ancestral plate boundaries;
 - multiple ancestral plates must be split across modern owners with explicit material lineage;
 - every modern plate must remain connected and non-empty;
-- no modern plate may dominate an excessive fraction of the planet;
+- plate areas must stay bounded away from both collapse and planetary dominance;
+- spherical plate span must stay bounded so no face wraps around the globe;
+- perimeter/area compactness must remain bounded for substantial plate faces;
+- no plate may place an excessive share of its boundary against a single neighbor;
+- narrow-neck incidence must remain limited rather than producing long enclosure-prone tendrils;
 - continental material must not regress to a large population of tiny satellite components;
 - historical lithosphere, morphology, WG-4 topography, browser diagnostics, and packaged WASM remain compatible.
+
+The WG-4 compatibility gate also requires active continental collision and accretion belts to retain sufficient crustal support after the boundary-network redistribution. That support is expressed in the tectonic relief model rather than by weakening the flooding acceptance threshold.
 
 These gates supplement lineage and area closure. They do not substitute for same-seed visual review.
 
