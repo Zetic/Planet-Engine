@@ -199,6 +199,9 @@ impl WasmWorldgenInheritance {
         self.inner.map.inherited_sample_mask.clone()
     }
 
+    // Historical material identity is exposed explicitly rather than overloading the stable WG-3.75
+    // compatibility channels below. Diagnostic consumers can inspect ancestry without changing the
+    // meaning of crust provinces, crust ages, or WG-3.5 mechanical fragments.
     pub fn origin_plate_ids(&self) -> Vec<u16> {
         self.historical_identity.origin_plate_ids.clone()
     }
@@ -213,19 +216,16 @@ impl WasmWorldgenInheritance {
     }
 
     pub fn plate_ids(&self) -> Vec<u16> {
-        self.historical_identity.current_plate_ids.clone()
+        self.inner.plate_ids.clone()
     }
     pub fn crust_kind(&self) -> Vec<u8> {
-        self.historical_identity.crust_kind.clone()
+        self.inner.crust_kind.clone()
     }
-    /// Browser WG-3.75 diagnostics now treat the province channel as ancestral material provenance.
-    /// The internal physical state still retains fragment-owned compatibility provinces for solvers.
     pub fn crust_province_id(&self) -> Vec<u16> {
-        self.historical_identity.origin_plate_ids.clone()
+        self.inner.crust_province_id.clone()
     }
-    /// Expose causal formation/birth age through the accepted diagnostic age channel.
     pub fn crust_age_myr(&self) -> Vec<f32> {
-        self.historical_identity.crust_birth_age_myr.clone()
+        self.inner.crust_age_myr.clone()
     }
     pub fn crust_thickness_km(&self) -> Vec<f32> {
         self.inner.crust_thickness_km.clone()
@@ -297,10 +297,8 @@ impl WasmWorldgenInheritance {
     pub fn fragmentation_propensity(&self) -> Vec<f32> {
         self.inner.fragmentation_propensity.clone()
     }
-    /// Fragment IDs are now the persistent historical material fragments introduced before modern
-    /// plate synthesis, rather than the legacy post-crust mechanical refinement fragments.
     pub fn fragment_ids(&self) -> Vec<u16> {
-        self.historical_identity.fragment_ids.clone()
+        self.inner.fragment_ids.clone()
     }
     pub fn kinematic_domain_ids(&self) -> Vec<u16> {
         self.inner.kinematic_domain_ids.clone()
