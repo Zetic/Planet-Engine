@@ -35,6 +35,7 @@
           <option value="origin">Ancestral origin plates</option>
           <option value="fragment">Persistent crust fragments</option>
           <option value="current">Current plate ownership</option>
+          <option value="provenance">WG-3 crust provenance</option>
           <option value="crust-kind">Crust material class</option>
           <option value="crust-age">Crust formation / birth age</option>
           <option value="coarse-source">Fine-sample coarse provenance</option>
@@ -51,7 +52,7 @@
       <aside class="worldgen-lab-diagnostics">
         <h2>Lineage diagnostics</h2>
         <div id="ancestry-metrics" class="worldgen-lab-metrics"></div>
-        <p class="ancestry-note"><code>origin_plate_ids</code> identifies the ancestral carrier plate. <code>historical_fragment_ids</code> identifies persistent crust fragments. <code>current_plate_ids</code> identifies modern kinematic ownership. These ancestry channels are separate from WG-3 crust provinces and WG-3.5 mechanical fragment IDs.</p>
+        <p class="ancestry-note"><code>origin_plate_ids</code> identifies the ancestral carrier plate. <code>historical_fragment_ids</code> identifies persistent crust fragments. <code>current_plate_ids</code> identifies modern kinematic ownership. <code>crust_province_id</code> remains the WG-3 compatibility provenance channel and should agree with persistent fragment ownership modulo its oceanic marker bit. These ancestry channels remain separate from WG-3.5 mechanical fragment IDs.</p>
       </aside>
     </section>
   </main>
@@ -62,6 +63,7 @@
     const WORLDGEN_CRUST_OCEANIC = 1;
     const WORLDGEN_CRUST_TRANSITIONAL = 2;
     const WORLDGEN_CRUST_CONTINENTAL = 3;
+    const OCEANIC_PROVINCE_BIT = 0x8000;
 
     const seed = document.getElementById('ancestry-seed');
     const coarseLevel = document.getElementById('ancestry-coarse-level');
@@ -115,6 +117,7 @@
       let internalFragmentEdges = 0;
       let oceanAgeMin = Number.POSITIVE_INFINITY;
       let oceanAgeMax = Number.NEGATIVE_INFINITY;
+      let provenanceMismatchCount = 0;
 
       for (let sample = 0; sample < result.fineSampleCount; sample += 1) {
         const currentPlate = result.currentPlateIds[sample];
@@ -126,6 +129,10 @@
         let fragments = fragmentsByCurrent.get(currentPlate);
         if (!fragments) fragmentsByCurrent.set(currentPlate, fragments = new Set());
         fragments.add(fragment);
+
+        if ((result.crustProvinceIds[sample] & ~OCEANIC_PROVINCE_BIT) !== (fragment & ~OCEANIC_PROVINCE_BIT)) {
+          provenanceMismatchCount += 1;
+        }
 
         if (result.crustKind[sample] === WORLDGEN_CRUST_OCEANIC) {
           const age = result.crustBirthAgeMyr[sample];
@@ -152,6 +159,7 @@
         internalFragmentEdges,
         oceanAgeMin,
         oceanAgeMax,
+        provenanceMismatchCount,
       };
     }
 
@@ -174,6 +182,7 @@
         if (mode === 'origin') color = identityColor(result.originPlateIds[sample], 42);
         else if (mode === 'fragment') color = identityColor(result.historicalFragmentIds[sample], 96);
         else if (mode === 'current') color = identityColor(result.currentPlateIds[sample], 18);
+        else if (mode === 'provenance') color = identityColor(result.crustProvinceIds[sample] & ~OCEANIC_PROVINCE_BIT, 154);
         else if (mode === 'crust-kind') color = crustColor(result.crustKind[sample]);
         else if (mode === 'crust-age') color = ageColor(result.crustBirthAgeMyr[sample]);
         else color = identityColor(result.nearestCoarseSource[sample], 210);
@@ -207,6 +216,7 @@
       metric('Resolution', `L${result.coarseLevel} → L${result.fineLevel}`);
       metric('Samples', `${result.coarseSampleCount.toLocaleString()} → ${result.fineSampleCount.toLocaleString()}`);
       metric('Identity levels', `${distinctCount(result.originPlateIds)} origin plates · ${distinctCount(result.historicalFragmentIds)} fragments · ${distinctCount(result.currentPlateIds)} current plates`);
+      metric('Crust provenance', `${distinctCount(result.crustProvinceIds)} encoded provinces · ${lineage.provenanceMismatchCount.toLocaleString()} fragment mismatches`);
       metric('Mixed current plates', `${lineage.multiOriginCurrent} multi-origin · ${lineage.multiFragmentCurrent} multi-fragment`);
       metric('Fossil discontinuities', `${lineage.internalOriginEdges.toLocaleString()} internal origin edges · ${lineage.internalFragmentEdges.toLocaleString()} internal fragment edges`);
       metric('Oceanic birth-age span', Number.isFinite(lineage.oceanAgeMin) ? `${lineage.oceanAgeMin.toFixed(1)}–${lineage.oceanAgeMax.toFixed(1)} Myr` : 'No oceanic samples');
@@ -247,6 +257,7 @@
             originPlateIds: output.origin_plate_ids(),
             historicalFragmentIds: output.historical_fragment_ids(),
             currentPlateIds: output.current_plate_ids(),
+            crustProvinceIds: output.crust_province_id(),
             crustKind: output.crust_kind(),
             crustBirthAgeMyr: output.crust_birth_age_myr(),
           };
