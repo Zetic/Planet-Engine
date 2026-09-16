@@ -59,7 +59,13 @@ fn plate_area_fractions<T: PlanetTopology>(
     fractions
 }
 
-fn stable_material_interior(model: &HistoricalLithosphereModel, signals: &MaterialSignals, index: usize, owner: u16, initial: &[u16]) -> bool {
+fn stable_material_interior(
+    model: &HistoricalLithosphereModel,
+    signals: &MaterialSignals,
+    index: usize,
+    owner: u16,
+    initial: &[u16],
+) -> bool {
     model.crust_kind[index] != CrustKind::Oceanic as u8
         && initial[index] == owner
         && signals.owner_depth[index] >= 4
@@ -165,7 +171,7 @@ fn regularize_plate_domains<T: PlanetTopology>(
                     0.0
                 };
                 let shape_pressure =
-                    (candidate_contact as f64 - same_contact as f64) * 0.18;
+                    (candidate_contact as f64 - same_contact as f64) * 0.24;
                 let stable_penalty = if stable_material_interior(model, signals, index, current, initial) {
                     0.22
                 } else {
@@ -242,7 +248,10 @@ fn smooth_plate_boundaries<T: PlanetTopology>(
         protected[*core as usize] = true;
     }
 
-    for _ in 0..10 {
+    // Discrete mean-curvature flow: a transfer is considered only when it strictly
+    // reduces the local count of unlike-owner edges. Material-field score remains a
+    // guard, so smoothing cannot freely erase stable continental identity.
+    for _ in 0..20 {
         let mut fractions = plate_area_fractions(topology, owners, fields.len());
         let mut changed = 0usize;
         for sample in 0..topology.sample_count() {
@@ -265,15 +274,12 @@ fn smooth_plate_boundaries<T: PlanetTopology>(
             let same_contact = contacts.get(&current).copied().unwrap_or(0);
             let Some((candidate, candidate_contact)) = contacts
                 .iter()
-                .filter(|(owner, _)| **owner != current)
+                .filter(|(owner, count)| **owner != current && **count > same_contact)
                 .map(|(owner, count)| (*owner, *count))
                 .max_by(|left, right| left.1.cmp(&right.1).then_with(|| right.0.cmp(&left.0)))
             else {
                 continue;
             };
-            if candidate_contact < 4 || same_contact > 2 {
-                continue;
-            }
             if fractions[candidate as usize] + sample_fraction > MAX_FRACTION {
                 continue;
             }
@@ -300,12 +306,12 @@ fn smooth_plate_boundaries<T: PlanetTopology>(
                 signals,
             );
             let stable_penalty = if stable_material_interior(model, signals, index, current, initial) {
-                0.16
+                0.12
             } else {
                 0.0
             };
-            let shape_gain = (candidate_contact as f64 - same_contact as f64) * 0.16;
-            if candidate_score - current_score + shape_gain - stable_penalty >= -0.02 {
+            let perimeter_gain = (candidate_contact as f64 - same_contact as f64) * 0.26;
+            if candidate_score - current_score + perimeter_gain - stable_penalty >= -0.08 {
                 owners[index] = candidate;
                 fractions[current as usize] -= sample_fraction;
                 fractions[candidate as usize] += sample_fraction;
