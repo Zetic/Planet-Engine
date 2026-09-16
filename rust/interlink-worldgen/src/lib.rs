@@ -15,6 +15,7 @@ mod historical_api;
 mod historical_epochs;
 mod historical_frontend;
 mod historical_lithosphere;
+mod historical_morphology;
 mod hydroclimate;
 mod infill;
 mod lakes;
@@ -102,6 +103,11 @@ pub use historical_lithosphere::{
     CrustFragment, HistoricalEventKind, HistoricalLithosphereMetrics, HistoricalLithosphereModel,
     HistoricalLithosphereRequest, HistoricalTectonicEvent, HISTORICAL_LITHOSPHERE_STAGE_ID,
     HISTORICAL_LITHOSPHERE_STAGE_VERSION,
+};
+pub use historical_morphology::{
+    build_historical_tectonic_morphology, HistoricalMorphologyMetrics,
+    HistoricalMorphologyModel, HISTORICAL_MORPHOLOGY_STAGE_ID,
+    HISTORICAL_MORPHOLOGY_STAGE_VERSION,
 };
 pub use hydroclimate::{
     build_hydroclimate_closure_report, HydroclimateClosureReport, HydroclimateLatitudeBand,
