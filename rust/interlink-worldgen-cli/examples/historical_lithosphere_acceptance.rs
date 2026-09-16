@@ -65,6 +65,13 @@ fn verify_seed(seed: &str) -> Result<(), String> {
         {
             return Err(format!("{seed}: invalid ancestry id at sample {sample}"));
         }
+        let fragment_record = &history.fragments[fragment as usize];
+        if fragment_record.id != fragment
+            || fragment_record.origin_plate_id != origin
+            || fragment_record.current_plate_id != current
+        {
+            return Err(format!("{seed}: fragment metadata disagrees with material identity at sample {sample}"));
+        }
         modern_origins.entry(current).or_default().insert(origin);
         modern_fragments.entry(current).or_default().insert(fragment);
 
