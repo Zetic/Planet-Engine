@@ -3,27 +3,50 @@ from pathlib import Path
 p = Path('rust/interlink-worldgen/src/boundary_plate_geometry.rs')
 s = p.read_text()
 
-# Reduce purely decorative anisotropy. Large-scale irregularity should come from
-# inherited material and tectonic corridors, not arbitrary field distortion.
+# Geometry should inherit asymmetry from material and tectonic corridors, but random
+# low-order shape terms must not overwhelm connected plate viability.
 s = s.replace(
     '(area_ratio.ln() * 0.105).clamp(-0.18, 0.22)',
-    '(area_ratio.ln() * 0.050).clamp(-0.10, 0.14)',
+    '(area_ratio.ln() * 0.040).clamp(-0.08, 0.11)',
 )
 s = s.replace(
     '* 0.24,\n                bend:',
-    '* 0.10,\n                bend:',
+    '* 0.075,\n                bend:',
 )
 s = s.replace(
     '* 0.18,\n            }',
-    '* 0.07,\n            }',
+    '* 0.050,\n            }',
 )
 s = s.replace(
     '        0.34\n    } else if crust_kind == CrustKind::Transitional as u8 {\n        0.23\n    } else {\n        0.075',
-    '        0.30\n    } else if crust_kind == CrustKind::Transitional as u8 {\n        0.20\n    } else {\n        0.065',
+    '        0.27\n    } else if crust_kind == CrustKind::Transitional as u8 {\n        0.18\n    } else {\n        0.060',
 )
 
-# Keep the connectivity seed inside the inherited material domain. A plate field can
-# migrate, but it cannot invent its only surviving anchor inside a neighbor's material.
+# Select each material-domain core deep inside its own domain while discouraging cores
+# from clustering against an already-selected neighbor. This is not global equal spacing:
+# the candidate remains strictly inside its inherited material owner.
+old_score = '''            let score = depth_bonus + crust_bonus - corridor_penalty + jitter;
+            let candidate = (score, sample);'''
+new_score = '''            let position = topology.unit_position(sample);
+            let minimum_core_separation = cores
+                .iter()
+                .map(|core| {
+                    dot(position, topology.unit_position(*core))
+                        .clamp(-1.0, 1.0)
+                        .acos()
+                })
+                .fold(std::f64::consts::PI, f64::min);
+            let separation_bonus = (minimum_core_separation / 0.60).clamp(0.0, 1.0) * 0.20;
+            let crowd_penalty = ((0.30 - minimum_core_separation).max(0.0) / 0.30) * 1.20;
+            let score = depth_bonus + crust_bonus - corridor_penalty + separation_bonus
+                - crowd_penalty + jitter;
+            let candidate = (score, sample);'''
+if old_score in s:
+    s = s.replace(old_score, new_score, 1)
+elif 'minimum_core_separation' not in s:
+    raise SystemExit('choose_plate_cores score not found')
+
+# Connectivity seed remains inside inherited material.
 old_core_guard = '''            if used[index] {
                 continue;
             }
@@ -37,9 +60,7 @@ if old_core_guard in s:
 elif new_core_guard not in s:
     raise SystemExit('choose_field_cores guard not found')
 
-# Finite Euler motion should reorganize a plate without letting the field center outrun
-# the material domain it represents. Cap the 30 Myr field drift relative to its initial
-# material core, while still allowing roughly 24 degrees of migration.
+# Bound finite field drift to ~18 degrees around the inherited material anchor.
 old_evolve = '''fn evolve_fields(fields: &mut [PlateField]) {
     const MIN_CORE_SEPARATION_RAD: f64 = 0.20;
     for _ in 0..KINEMATIC_EPOCHS {
@@ -92,7 +113,7 @@ new_evolve = '''fn limit_angular_drift(anchor: [f64; 3], proposed: [f64; 3], max
 
 fn evolve_fields(fields: &mut [PlateField]) {
     const MIN_CORE_SEPARATION_RAD: f64 = 0.20;
-    const MAX_MATERIAL_DRIFT_RAD: f64 = 0.42;
+    const MAX_MATERIAL_DRIFT_RAD: f64 = 0.31;
     let anchors = fields.iter().map(|field| field.center).collect::<Vec<_>>();
     for _ in 0..KINEMATIC_EPOCHS {
         let proposals = fields
@@ -145,7 +166,7 @@ fn target_plate_fractions(signals: &MaterialSignals, plate_count: usize) -> Vec<
     let mut targets = signals
         .plate_area_fraction
         .iter()
-        .map(|fraction| (fraction * 0.75 + mean * 0.25).max(0.018))
+        .map(|fraction| (fraction * 0.64 + mean * 0.36).max(0.020))
         .collect::<Vec<_>>();
     let total = targets.iter().sum::<f64>().max(1.0e-12);
     for target in &mut targets {
@@ -218,14 +239,14 @@ fn calibrate_area_biases<T: PlanetTopology>(
             let error = targets[plate] - current[plate];
             maximum_error = maximum_error.max(error.abs());
             minimum_fraction = minimum_fraction.min(current[plate]);
-            let mut correction = (error * 1.5).clamp(-0.014, 0.014);
-            if current[plate] < 0.008 {
-                correction = correction.max(0.012);
+            let mut correction = (error * 1.35).clamp(-0.012, 0.012);
+            if current[plate] < 0.010 {
+                correction = correction.max(0.010);
             }
             fields[plate].area_bias =
-                (fields[plate].area_bias + correction).clamp(-0.70, 0.70);
+                (fields[plate].area_bias + correction).clamp(-0.58, 0.58);
         }
-        if minimum_fraction >= 0.012 && maximum_error < 0.007 {
+        if minimum_fraction >= 0.014 && maximum_error < 0.006 {
             break;
         }
     }
