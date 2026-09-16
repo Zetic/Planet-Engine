@@ -22,13 +22,31 @@ core_end = field.index('fn tangent_frame(', core_start)
 core_fn = '''fn choose_plate_cores<T: PlanetTopology>(\n    topology: &T,\n    _owners: &[u16],\n    plate_count: usize,\n    seed: u64,\n) -> Result<Vec<u32>, WorldgenError> {\n    let sample_count = topology.sample_count() as usize;\n    if sample_count < plate_count || plate_count == 0 {\n        return Err(WorldgenError::InvalidTectonics(\n            "boundary-first synthesis cannot place the requested plate cores",\n        ));\n    }\n\n    let first = (0..topology.sample_count())\n        .max_by(|left, right| {\n            let left_score = unit_random(\n                seed ^ u64::from(*left).wrapping_mul(0x9e37_79b9_7f4a_7c15),\n            );\n            let right_score = unit_random(\n                seed ^ u64::from(*right).wrapping_mul(0x9e37_79b9_7f4a_7c15),\n            );\n            left_score\n                .total_cmp(&right_score)\n                .then_with(|| right.cmp(left))\n        })\n        .unwrap_or(0);\n    let mut cores = vec![first];\n\n    while cores.len() < plate_count {\n        let mut best_sample = None;\n        let mut best_score = f64::NEG_INFINITY;\n        for sample in 0..topology.sample_count() {\n            if cores.contains(&sample) {\n                continue;\n            }\n            let position = topology.unit_position(sample);\n            let separation = cores\n                .iter()\n                .map(|core| {\n                    dot(position, topology.unit_position(*core))\n                        .clamp(-1.0, 1.0)\n                        .acos()\n                })\n                .fold(std::f64::consts::PI, f64::min);\n            // A small deterministic perturbation keeps the lattice from producing overly regular\n            // equal-area cells while leaving spherical separation overwhelmingly dominant.\n            let jitter = unit_random(\n                seed ^ u64::from(sample).wrapping_mul(0xbf58_476d_1ce4_e5b9)\n                    ^ (cores.len() as u64).wrapping_mul(0x94d0_49bb_1331_11eb),\n            ) * 0.055;\n            let score = separation + jitter;\n            if score > best_score || (score == best_score && Some(sample) < best_sample) {\n                best_score = score;\n                best_sample = Some(sample);\n            }\n        }\n        let Some(sample) = best_sample else {\n            return Err(WorldgenError::InvalidTectonics(\n                "boundary-first synthesis exhausted spherical core candidates",\n            ));\n        };\n        cores.push(sample);\n    }\n    Ok(cores)\n}\n\n'''
 field = field[:core_start] + core_fn + field[core_end:]
 
-# Material ancestry is deliberately not a plate-shape force.  It is preserved after final
-# rasterization through fragment splitting/capture.  Feeding the PR-74 ownership mask back into
-# this score recreated the very horseshoe geometry this stage is intended to replace.
+# Material ancestry is provenance, not a final plate-shape force. Feeding the prior ownership mask
+# back into the smooth field score recreated the same historical horseshoes under a different rule.
 field = field.replace('    ancestry_match: bool,\n', '    _ancestry_match: bool,\n')
 field = field.replace(
     '    let ancestry = if ancestry_match { 0.035 } else { 0.0 };\n',
     '    let ancestry = 0.0;\n',
+)
+
+# Keep non-Voronoi curvature, but bound the high-order field terms so a single plate cannot acquire
+# a long scalloped perimeter.  The geodesic term remains the dominant boundary authority.
+field = field.replace(
+    'area_bias: (unit_random(seed ^ stream ^ 0xe703_7ed1_a0b4_28db) - 0.5) * 0.18,',
+    'area_bias: (unit_random(seed ^ stream ^ 0xe703_7ed1_a0b4_28db) - 0.5) * 0.12,',
+)
+field = field.replace(
+    'ellipticity: (unit_random(seed ^ stream ^ 0x8ebc_6af0_9c88_c6e3) - 0.5) * 0.34,',
+    'ellipticity: (unit_random(seed ^ stream ^ 0x8ebc_6af0_9c88_c6e3) - 0.5) * 0.18,',
+)
+field = field.replace(
+    'triangularity: (unit_random(seed ^ stream ^ 0x5899_65cc_7537_4cc3) - 0.5) * 0.16,',
+    'triangularity: (unit_random(seed ^ stream ^ 0x5899_65cc_7537_4cc3) - 0.5) * 0.06,',
+)
+field = field.replace(
+    'stress_coupling: (unit_random(seed ^ stream ^ 0x1d8e_4e27_c47d_124f) - 0.5) * 0.16,',
+    'stress_coupling: (unit_random(seed ^ stream ^ 0x1d8e_4e27_c47d_124f) - 0.5) * 0.07,',
 )
 
 final_core_fn = '''fn choose_field_cores<T: PlanetTopology>(\n    topology: &T,\n    fields: &[PlateField],\n) -> Vec<u32> {\n    let mut used = vec![false; topology.sample_count() as usize];\n    let mut cores = Vec::with_capacity(fields.len());\n    for field in fields {\n        let mut best_sample = 0_u32;\n        let mut best_alignment = f64::NEG_INFINITY;\n        for sample in 0..topology.sample_count() {\n            if used[sample as usize] {\n                continue;\n            }\n            let alignment = dot(topology.unit_position(sample), field.center);\n            if alignment > best_alignment {\n                best_alignment = alignment;\n                best_sample = sample;\n            }\n        }\n        used[best_sample as usize] = true;\n        cores.push(best_sample);\n    }\n    cores\n}\n\n'''
@@ -63,6 +81,13 @@ if old_gate in accept:
     accept = accept.replace(old_gate, new_gate, 1)
 elif new_gate not in accept:
     raise SystemExit('compactness acceptance gate missing')
+
+old_main = '''fn main() -> Result<(), String> {\n    for seed in [\n        "interlink-wg7c",\n        "1",\n        "2",\n        "boundary-network-holdout",\n    ] {\n        verify_seed(seed)?;\n    }\n    Ok(())\n}\n'''
+new_main = '''fn main() -> Result<(), String> {\n    let mut failures = Vec::<String>::new();\n    for seed in [\n        "interlink-wg7c",\n        "1",\n        "2",\n        "boundary-network-holdout",\n    ] {\n        if let Err(error) = verify_seed(seed) {\n            failures.push(error);\n        }\n    }\n    if failures.is_empty() {\n        Ok(())\n    } else {\n        Err(failures.join("\\n"))\n    }\n}\n'''
+if old_main in accept:
+    accept = accept.replace(old_main, new_main, 1)
+elif new_main not in accept:
+    raise SystemExit('acceptance main block missing')
 accept_path.write_text(accept)
 
 ci_path = Path('.github/workflows/ci.yml')
