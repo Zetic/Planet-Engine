@@ -26,19 +26,21 @@ jobs:
           from pathlib import Path
           path = Path('rust/interlink-worldgen/src/historical_topography.rs')
           text = path.read_text()
-          old = '''    if inherited.structural_zone_kind[sample] != InheritedStructureKind::ContinentalMargin as u8
-        || inherited.crust_kind[sample] == CrustKind::Oceanic as u8
-    {
-        return 0.0;
-    }
-'''
-          new = '''    if inherited.structural_zone_kind[sample] != InheritedStructureKind::ContinentalMargin as u8
-        || inherited.crust_kind[sample] == CrustKind::Oceanic as u8
-        || inherited.province_kind[sample] != 0
-    {
-        return 0.0;
-    }
-'''
+          old = (
+              "    if inherited.structural_zone_kind[sample] != InheritedStructureKind::ContinentalMargin as u8\n"
+              "        || inherited.crust_kind[sample] == CrustKind::Oceanic as u8\n"
+              "    {\n"
+              "        return 0.0;\n"
+              "    }\n"
+          )
+          new = (
+              "    if inherited.structural_zone_kind[sample] != InheritedStructureKind::ContinentalMargin as u8\n"
+              "        || inherited.crust_kind[sample] == CrustKind::Oceanic as u8\n"
+              "        || inherited.province_kind[sample] != 0\n"
+              "    {\n"
+              "        return 0.0;\n"
+              "    }\n"
+          )
           assert text.count(old) == 1, 'expected passive-margin guard exactly once'
           path.write_text(text.replace(old, new, 1))
           PY
