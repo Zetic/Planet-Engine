@@ -38,6 +38,7 @@ for path in Path('tests').glob('*.test.ts'):
     text = path.read_text()
     text = text.replace('WORLDGEN_PROTOCOL_VERSION, 20', 'WORLDGEN_PROTOCOL_VERSION, 21')
     text = text.replace('command.protocolVersion, 20', 'command.protocolVersion, 21')
+    text = text.replace('protocolVersion: 20', 'protocolVersion: 21')
     text = text.replace('/WORLDGEN_PROTOCOL_VERSION = 20/', '/WORLDGEN_PROTOCOL_VERSION = 21/')
     # Keep test names synchronized with the contract they assert.
     text = text.replace('protocol v17', 'protocol v21')
