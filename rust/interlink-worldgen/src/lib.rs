@@ -12,6 +12,7 @@ mod evolution;
 mod fields;
 mod geology;
 mod historical_api;
+mod historical_causal;
 mod historical_epochs;
 mod historical_frontend;
 mod historical_lithosphere;
@@ -94,6 +95,7 @@ pub use historical_api::{
     generate_crust_and_history, generate_historical_lithosphere,
     generate_legacy_crust_and_history, generate_tectonics,
 };
+pub use historical_causal::generate_lithosphere_from_history;
 pub use historical_epochs::HISTORICAL_EPOCH_COUNT;
 pub use historical_frontend::{
     generate_historical_frontend, inherit_historical_identity, project_historical_crust,
