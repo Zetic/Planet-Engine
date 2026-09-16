@@ -1,8 +1,9 @@
 use interlink_worldgen::{
-    build_icosphere, generate_crust_and_history, generate_lithosphere, generate_tectonics,
-    inherit_boundary_interfaces, inherit_physical_state, GeodesicTopology, GeologyRequest,
-    InheritedBoundarySet, InheritedPhysicalState, LithosphereRequest, PlanetPhysicalParameters,
-    TectonicsRequest, MULTIRES_STAGE_ID, MULTIRES_STAGE_VERSION, WORLDGEN_ENGINE_VERSION,
+    build_icosphere, generate_historical_frontend, generate_lithosphere,
+    inherit_boundary_interfaces, inherit_historical_identity, inherit_physical_state,
+    GeodesicTopology, HistoricalLithosphereRequest, InheritedBoundarySet,
+    InheritedHistoricalIdentity, InheritedPhysicalState, LithosphereRequest,
+    PlanetPhysicalParameters, MULTIRES_STAGE_ID, MULTIRES_STAGE_VERSION, WORLDGEN_ENGINE_VERSION,
 };
 use wasm_bindgen::prelude::*;
 
@@ -10,6 +11,7 @@ use wasm_bindgen::prelude::*;
 pub struct WasmWorldgenInheritance {
     fine_topology: GeodesicTopology,
     inner: InheritedPhysicalState,
+    historical_identity: InheritedHistoricalIdentity,
     boundaries: InheritedBoundarySet,
     parameters: PlanetPhysicalParameters,
     coarse_topology_hash: String,
@@ -38,17 +40,18 @@ impl WasmWorldgenInheritance {
             build_icosphere(coarse_level).map_err(|error| JsValue::from_str(&error.to_string()))?;
         let fine_topology =
             build_icosphere(fine_level).map_err(|error| JsValue::from_str(&error.to_string()))?;
-        let tectonics = generate_tectonics(
+        let frontend = generate_historical_frontend(
             &coarse_topology,
-            &TectonicsRequest::new(seed.as_str(), plate_count),
+            &HistoricalLithosphereRequest::new(seed.as_str(), plate_count),
             parameters,
         )
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
-        let geology = generate_crust_and_history(
-            &coarse_topology,
-            &tectonics,
-            &GeologyRequest::new(seed.as_str()),
-            parameters,
+        let tectonics = frontend.tectonics;
+        let geology = frontend.geology;
+        let historical_identity = inherit_historical_identity(
+            &fine_topology,
+            coarse_level,
+            &frontend.historical,
         )
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
         let lithosphere = generate_lithosphere(
@@ -84,6 +87,7 @@ impl WasmWorldgenInheritance {
             lithosphere_hash: lithosphere.metrics.lithosphere_hash_hex(),
             plate_count,
             inner,
+            historical_identity,
             boundaries,
             parameters,
         })
@@ -128,6 +132,9 @@ impl WasmWorldgenInheritance {
     }
     pub fn inheritance_hash_hex(&self) -> String {
         self.inner.inheritance_hash_hex()
+    }
+    pub fn historical_identity_hash_hex(&self) -> String {
+        self.historical_identity.identity_hash_hex()
     }
     pub fn boundary_hash_hex(&self) -> String {
         self.boundaries.boundary_hash_hex()
@@ -190,6 +197,19 @@ impl WasmWorldgenInheritance {
     }
     pub fn inherited_sample_mask(&self) -> Vec<u8> {
         self.inner.map.inherited_sample_mask.clone()
+    }
+
+    pub fn origin_plate_ids(&self) -> Vec<u16> {
+        self.historical_identity.origin_plate_ids.clone()
+    }
+    pub fn historical_fragment_ids(&self) -> Vec<u16> {
+        self.historical_identity.fragment_ids.clone()
+    }
+    pub fn current_plate_ids(&self) -> Vec<u16> {
+        self.historical_identity.current_plate_ids.clone()
+    }
+    pub fn crust_birth_age_myr(&self) -> Vec<f32> {
+        self.historical_identity.crust_birth_age_myr.clone()
     }
 
     pub fn plate_ids(&self) -> Vec<u16> {
