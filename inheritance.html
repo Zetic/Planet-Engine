@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Planet Engine · Historical Material Ancestry</title>
+  <title>Planet Engine · Historical Material & Tectonic Morphology</title>
   <link rel="stylesheet" href="styles/base.css">
   <link rel="stylesheet" href="styles/worldgenLab.css">
   <style>
@@ -18,8 +18,8 @@
     <header class="worldgen-lab-header">
       <div>
         <p class="worldgen-lab-kicker">PLANET ENGINE · HISTORICAL LITHOSPHERE</p>
-        <h1>MATERIAL ANCESTRY LAB</h1>
-        <p class="ancestry-note">Inspect the persistent material identity chain produced before modern plate ownership: ancestral origin plate → crust fragment → current kinematic plate. This diagnostic reads the explicit historical-identity channels from the WG-3.75 WASM bridge, leaving the stable physical compatibility fields unchanged.</p>
+        <h1>MATERIAL & TECTONIC HISTORY LAB</h1>
+        <p class="ancestry-note">Inspect the causal chain produced before topography: ancestral origin plate → persistent crust fragment → current kinematic plate, plus event-derived rifts, sutures, passive margins, and active versus fossil orogenic structure. Historical structure is inherited from the coarse event/material model rather than reconstructed from the present boundary graph.</p>
         <p class="ancestry-nav"><a href="index.html">Return to the cumulative physical-world lab</a></p>
       </div>
     </header>
@@ -29,30 +29,42 @@
       <label>Coarse physical level <input id="ancestry-coarse-level" type="number" min="0" max="6" value="4"></label>
       <label>Fine diagnostic level <input id="ancestry-fine-level" type="number" min="0" max="8" value="6"></label>
       <label>Modern plate count <input id="ancestry-plates" type="number" min="4" max="48" value="16"></label>
-      <button id="ancestry-generate" type="button">Generate Ancestry</button>
+      <button id="ancestry-generate" type="button">Generate History</button>
       <label>Diagnostic
         <select id="ancestry-view">
-          <option value="origin">Ancestral origin plates</option>
-          <option value="fragment">Persistent crust fragments</option>
-          <option value="current">Current plate ownership</option>
-          <option value="provenance">WG-3 crust provenance</option>
-          <option value="crust-kind">Crust material class</option>
-          <option value="crust-age">Crust formation / birth age</option>
+          <optgroup label="Material identity">
+            <option value="origin">Ancestral origin plates</option>
+            <option value="fragment">Persistent crust fragments</option>
+            <option value="current">Current plate ownership</option>
+            <option value="provenance">WG-3 crust provenance</option>
+            <option value="crust-kind">Crust material class</option>
+            <option value="crust-age">Crust formation / birth age</option>
+          </optgroup>
+          <optgroup label="Historical tectonic morphology">
+            <option value="event">Latest historical event type</option>
+            <option value="rift">Historical rift intensity</option>
+            <option value="rift-age">Historical rift age</option>
+            <option value="suture">Historical suture intensity</option>
+            <option value="suture-age">Historical suture age</option>
+            <option value="passive-margin">Passive margin potential</option>
+            <option value="active-orogen">Active orogen intensity</option>
+            <option value="fossil-orogen">Fossil orogen intensity</option>
+          </optgroup>
           <option value="coarse-source">Fine-sample coarse provenance</option>
         </select>
       </label>
     </section>
 
-    <p id="ancestry-status" class="worldgen-lab-status">Initializing historical-identity WASM diagnostics…</p>
+    <p id="ancestry-status" class="worldgen-lab-status">Initializing historical-material WASM diagnostics…</p>
 
     <section class="worldgen-lab-grid">
       <div class="worldgen-lab-viewport">
-        <canvas id="ancestry-field" aria-label="Historical material ancestry map"></canvas>
+        <canvas id="ancestry-field" aria-label="Historical material and tectonic morphology map"></canvas>
       </div>
       <aside class="worldgen-lab-diagnostics">
-        <h2>Lineage diagnostics</h2>
+        <h2>Historical diagnostics</h2>
         <div id="ancestry-metrics" class="worldgen-lab-metrics"></div>
-        <p class="ancestry-note"><code>origin_plate_ids</code> identifies the ancestral carrier plate. <code>historical_fragment_ids</code> identifies persistent crust fragments. <code>current_plate_ids</code> identifies modern kinematic ownership. <code>crust_province_id</code> remains the WG-3 compatibility provenance channel and should agree with persistent fragment ownership modulo its oceanic marker bit. These ancestry channels remain separate from WG-3.5 mechanical fragment IDs.</p>
+        <p class="ancestry-note"><code>origin_plate_ids</code>, <code>historical_fragment_ids</code>, and <code>current_plate_ids</code> are persistent material identities. Historical rift/suture/passive-margin fields come from the sparse PR-A event ledger. Active orogen intensity follows present convergence; fossil orogen intensity follows retained collision/subduction/accretion history and may occur wholly inside a modern plate.</p>
       </aside>
     </section>
   </main>
@@ -98,16 +110,40 @@
       return '#d7e2ef';
     }
 
-    function ageColor(age) {
-      const t = Math.max(0, Math.min(1, age / 3500));
+    function ageColor(age, maximum = 3500) {
+      if (!Number.isFinite(age) || age < 0) return '#18222d';
+      const t = Math.max(0, Math.min(1, age / maximum));
       const hue = 205 + (24 - 205) * t;
       return `hsl(${hue} 68% ${38 + t * 22}%)`;
+    }
+
+    function intensityColor(value, hue = 28) {
+      const t = Math.max(0, Math.min(1, value));
+      if (t < 0.015) return '#101923';
+      return `hsl(${hue} ${42 + t * 45}% ${20 + t * 48}%)`;
+    }
+
+    function eventColor(kind) {
+      if (kind === 1) return '#f59e42';
+      if (kind === 2) return '#50b9e8';
+      if (kind === 3) return '#7656d6';
+      if (kind === 4) return '#e94f4f';
+      if (kind === 5) return '#e8d35a';
+      if (kind === 6) return '#5dd18b';
+      if (kind === 7) return '#c178df';
+      return '#101923';
     }
 
     function distinctCount(values) {
       const ids = new Set();
       for (const value of values) ids.add(value);
       return ids.size;
+    }
+
+    function countAbove(values, threshold = 0.20) {
+      let count = 0;
+      for (const value of values) if (value >= threshold) count += 1;
+      return count;
     }
 
     function lineageDiagnostics(result) {
@@ -118,6 +154,18 @@
       let oceanAgeMin = Number.POSITIVE_INFINITY;
       let oceanAgeMax = Number.NEGATIVE_INFINITY;
       let provenanceMismatchCount = 0;
+      let internalFossilSamples = 0;
+
+      const currentBoundarySamples = new Uint8Array(result.fineSampleCount);
+      for (let sample = 0; sample < result.fineSampleCount; sample += 1) {
+        for (let cursor = result.neighborOffsets[sample]; cursor < result.neighborOffsets[sample + 1]; cursor += 1) {
+          const neighbor = result.neighbors[cursor];
+          if (result.currentPlateIds[neighbor] !== result.currentPlateIds[sample]) {
+            currentBoundarySamples[sample] = 1;
+            break;
+          }
+        }
+      }
 
       for (let sample = 0; sample < result.fineSampleCount; sample += 1) {
         const currentPlate = result.currentPlateIds[sample];
@@ -130,15 +178,13 @@
         if (!fragments) fragmentsByCurrent.set(currentPlate, fragments = new Set());
         fragments.add(fragment);
 
-        if ((result.crustProvinceIds[sample] & ~OCEANIC_PROVINCE_BIT) !== (fragment & ~OCEANIC_PROVINCE_BIT)) {
-          provenanceMismatchCount += 1;
-        }
-
+        if ((result.crustProvinceIds[sample] & ~OCEANIC_PROVINCE_BIT) !== (fragment & ~OCEANIC_PROVINCE_BIT)) provenanceMismatchCount += 1;
         if (result.crustKind[sample] === WORLDGEN_CRUST_OCEANIC) {
           const age = result.crustBirthAgeMyr[sample];
           oceanAgeMin = Math.min(oceanAgeMin, age);
           oceanAgeMax = Math.max(oceanAgeMax, age);
         }
+        if (result.fossilOrogenIntensity[sample] >= 0.20 && currentBoundarySamples[sample] === 0) internalFossilSamples += 1;
 
         for (let cursor = result.neighborOffsets[sample]; cursor < result.neighborOffsets[sample + 1]; cursor += 1) {
           const neighbor = result.neighbors[cursor];
@@ -152,15 +198,7 @@
       let multiFragmentCurrent = 0;
       for (const origins of originsByCurrent.values()) if (origins.size > 1) multiOriginCurrent += 1;
       for (const fragments of fragmentsByCurrent.values()) if (fragments.size > 1) multiFragmentCurrent += 1;
-      return {
-        multiOriginCurrent,
-        multiFragmentCurrent,
-        internalOriginEdges,
-        internalFragmentEdges,
-        oceanAgeMin,
-        oceanAgeMax,
-        provenanceMismatchCount,
-      };
+      return { multiOriginCurrent, multiFragmentCurrent, internalOriginEdges, internalFragmentEdges, oceanAgeMin, oceanAgeMax, provenanceMismatchCount, internalFossilSamples };
     }
 
     function render(result) {
@@ -185,6 +223,14 @@
         else if (mode === 'provenance') color = identityColor(result.crustProvinceIds[sample] & ~OCEANIC_PROVINCE_BIT, 154);
         else if (mode === 'crust-kind') color = crustColor(result.crustKind[sample]);
         else if (mode === 'crust-age') color = ageColor(result.crustBirthAgeMyr[sample]);
+        else if (mode === 'event') color = eventColor(result.latestEventKind[sample]);
+        else if (mode === 'rift') color = intensityColor(result.riftIntensity[sample], 31);
+        else if (mode === 'rift-age') color = ageColor(result.riftAgeMyr[sample], 350);
+        else if (mode === 'suture') color = intensityColor(result.sutureIntensity[sample], 355);
+        else if (mode === 'suture-age') color = ageColor(result.sutureAgeMyr[sample], 350);
+        else if (mode === 'passive-margin') color = intensityColor(result.passiveMarginIndex[sample], 172);
+        else if (mode === 'active-orogen') color = intensityColor(result.activeOrogenIntensity[sample], 8);
+        else if (mode === 'fossil-orogen') color = intensityColor(result.fossilOrogenIntensity[sample], 286);
         else color = identityColor(result.nearestCoarseSource[sample], 210);
         let samples = buckets.get(color);
         if (!samples) buckets.set(color, samples = []);
@@ -219,23 +265,21 @@
       metric('Crust provenance', `${distinctCount(result.crustProvinceIds)} encoded provinces · ${lineage.provenanceMismatchCount.toLocaleString()} fragment mismatches`);
       metric('Mixed current plates', `${lineage.multiOriginCurrent} multi-origin · ${lineage.multiFragmentCurrent} multi-fragment`);
       metric('Fossil discontinuities', `${lineage.internalOriginEdges.toLocaleString()} internal origin edges · ${lineage.internalFragmentEdges.toLocaleString()} internal fragment edges`);
+      metric('Historical structures', `${countAbove(result.riftIntensity).toLocaleString()} rift · ${countAbove(result.sutureIntensity).toLocaleString()} suture · ${countAbove(result.passiveMarginIndex).toLocaleString()} passive-margin samples`);
+      metric('Orogen sources', `${countAbove(result.activeOrogenIntensity).toLocaleString()} active · ${countAbove(result.fossilOrogenIntensity).toLocaleString()} fossil · ${lineage.internalFossilSamples.toLocaleString()} fossil interior samples`);
       metric('Oceanic birth-age span', Number.isFinite(lineage.oceanAgeMin) ? `${lineage.oceanAgeMin.toFixed(1)}–${lineage.oceanAgeMax.toFixed(1)} Myr` : 'No oceanic samples');
       metric('Historical identity hash', result.historicalIdentityHash);
+      metric('Historical morphology hash', result.historicalMorphologyHash);
       metric('Inheritance hash', result.inheritanceHash);
       metric('Upstream hashes', `T ${result.tectonicHash} · G ${result.geologyHash} · L ${result.lithosphereHash}`);
     }
 
     async function generatePlanet() {
       generate.disabled = true;
-      status.textContent = 'Generating historical material ancestry and inheriting it to the diagnostic topology…';
+      status.textContent = 'Generating historical material ancestry, tectonic events, and inherited morphology…';
       try {
         await wasmReady;
-        const output = new WasmWorldgenInheritance(
-          seed.value,
-          Number(coarseLevel.value),
-          Number(fineLevel.value),
-          Number(plates.value),
-        );
+        const output = new WasmWorldgenInheritance(seed.value, Number(coarseLevel.value), Number(fineLevel.value), Number(plates.value));
         try {
           const result = {
             engineVersion: output.generator_version(),
@@ -246,6 +290,7 @@
             coarseSampleCount: output.coarse_sample_count(),
             fineSampleCount: output.fine_sample_count(),
             historicalIdentityHash: output.historical_identity_hash_hex(),
+            historicalMorphologyHash: output.historical_morphology_hash_hex(),
             inheritanceHash: output.inheritance_hash_hex(),
             tectonicHash: output.tectonic_hash_hex(),
             geologyHash: output.geology_hash_hex(),
@@ -260,11 +305,21 @@
             crustProvinceIds: output.crust_province_id(),
             crustKind: output.crust_kind(),
             crustBirthAgeMyr: output.crust_birth_age_myr(),
+            latestEventKind: output.latest_historical_event_kind(),
+            latestEventAgeMyr: output.latest_historical_event_age_myr(),
+            riftIntensity: output.historical_rift_intensity(),
+            riftAgeMyr: output.historical_rift_age_myr(),
+            shearIntensity: output.historical_shear_intensity(),
+            sutureIntensity: output.historical_suture_intensity(),
+            sutureAgeMyr: output.historical_suture_age_myr(),
+            passiveMarginIndex: output.passive_margin_index(),
+            activeOrogenIntensity: output.active_orogen_intensity(),
+            fossilOrogenIntensity: output.fossil_orogen_intensity(),
           };
           current = result;
           showMetrics(result);
           render(result);
-          status.textContent = `Ready: ${distinctCount(result.originPlateIds)} ancestral origins → ${distinctCount(result.historicalFragmentIds)} persistent fragments → ${distinctCount(result.currentPlateIds)} current plates.`;
+          status.textContent = `Ready: ${distinctCount(result.originPlateIds)} ancestral origins → ${distinctCount(result.historicalFragmentIds)} fragments → ${distinctCount(result.currentPlateIds)} modern plates, with active and fossil tectonic morphology separated.`;
         } finally {
           output.free();
         }
