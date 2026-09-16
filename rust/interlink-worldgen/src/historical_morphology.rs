@@ -258,14 +258,7 @@ pub fn build_historical_tectonic_morphology<T: PlanetTopology>(
 
         match event.kind {
             HistoricalEventKind::Rift | HistoricalEventKind::Spreading => {
-                seed_pair_with_age(
-                    &mut rift_seed,
-                    &mut rift_age_seed,
-                    a,
-                    b,
-                    event_signal,
-                    age,
-                );
+                seed_pair_with_age(&mut rift_seed, &mut rift_age_seed, a, b, event_signal, age);
                 let extension = event.displacement_km.max(0.0);
                 for sample in [a, b] {
                     extension_seed[sample as usize] += extension * 0.5;
@@ -294,24 +287,14 @@ pub fn build_historical_tectonic_morphology<T: PlanetTopology>(
                     event_signal.max(0.30),
                     age,
                 );
-                seed_pair(
-                    &mut fossil_orogen_seed,
-                    a,
-                    b,
-                    event_signal.max(0.24),
-                );
+                seed_pair(&mut fossil_orogen_seed, a, b, event_signal.max(0.24));
                 let shortening = event.displacement_km.max(0.0);
                 for sample in [a, b] {
                     shortening_seed[sample as usize] += shortening * 0.5;
                 }
             }
             HistoricalEventKind::Subduction => {
-                seed_pair(
-                    &mut fossil_orogen_seed,
-                    a,
-                    b,
-                    event_signal * 0.78,
-                );
+                seed_pair(&mut fossil_orogen_seed, a, b, event_signal * 0.78);
                 let shortening = event.displacement_km.max(0.0);
                 for sample in [a, b] {
                     shortening_seed[sample as usize] += shortening * 0.38;
@@ -319,12 +302,7 @@ pub fn build_historical_tectonic_morphology<T: PlanetTopology>(
             }
             HistoricalEventKind::Accretion => {
                 seed_pair(&mut accretion_seed, a, b, event_signal.max(0.28));
-                seed_pair(
-                    &mut fossil_orogen_seed,
-                    a,
-                    b,
-                    event_signal * 0.70,
-                );
+                seed_pair(&mut fossil_orogen_seed, a, b, event_signal * 0.70);
             }
             HistoricalEventKind::Capture => {
                 seed_pair(&mut accretion_seed, a, b, event_signal * 0.48);
@@ -411,9 +389,8 @@ pub fn build_historical_tectonic_morphology<T: PlanetTopology>(
         for neighbor in topology.neighbors(sample) {
             let ni = *neighbor as usize;
             if historical.crust_kind[ni] == CrustKind::Oceanic as u8 {
-                ocean_contact = ocean_contact.max(
-                    f64::from(rift_intensity[index]).max(f64::from(rift_intensity[ni])),
-                );
+                ocean_contact = ocean_contact
+                    .max(f64::from(rift_intensity[index]).max(f64::from(rift_intensity[ni])));
             }
         }
         passive_margin_seed[index] = clamp01(ocean_contact) as f32;
@@ -501,10 +478,19 @@ pub fn build_historical_tectonic_morphology<T: PlanetTopology>(
         .count() as u32;
 
     let mut morphology_hash = FNV_OFFSET_BASIS;
-    morphology_hash = fnv_update(morphology_hash, b"geology:historical-tectonic-morphology:v1\0");
+    morphology_hash = fnv_update(
+        morphology_hash,
+        b"geology:historical-tectonic-morphology:v1\0",
+    );
     morphology_hash = fnv_update(morphology_hash, &stage_seed.to_le_bytes());
-    morphology_hash = fnv_update(morphology_hash, &historical.metrics.history_hash.to_le_bytes());
-    morphology_hash = fnv_update(morphology_hash, &tectonics.metrics.tectonic_hash.to_le_bytes());
+    morphology_hash = fnv_update(
+        morphology_hash,
+        &historical.metrics.history_hash.to_le_bytes(),
+    );
+    morphology_hash = fnv_update(
+        morphology_hash,
+        &tectonics.metrics.tectonic_hash.to_le_bytes(),
+    );
     morphology_hash = hash_u8(morphology_hash, &latest_event_kind);
     for values in [
         &latest_event_age_myr,
@@ -564,7 +550,10 @@ pub fn build_historical_tectonic_morphology<T: PlanetTopology>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{build_icosphere, generate_historical_frontend, HistoricalLithosphereRequest, PlanetPhysicalParameters};
+    use crate::{
+        build_icosphere, generate_historical_frontend, HistoricalLithosphereRequest,
+        PlanetPhysicalParameters,
+    };
 
     #[test]
     fn morphology_is_deterministic_and_contains_internal_fossil_structure() {

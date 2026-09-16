@@ -106,9 +106,8 @@ pub use historical_lithosphere::{
     HISTORICAL_LITHOSPHERE_STAGE_VERSION,
 };
 pub use historical_morphology::{
-    build_historical_tectonic_morphology, HistoricalMorphologyMetrics,
-    HistoricalMorphologyModel, HISTORICAL_MORPHOLOGY_STAGE_ID,
-    HISTORICAL_MORPHOLOGY_STAGE_VERSION,
+    build_historical_tectonic_morphology, HistoricalMorphologyMetrics, HistoricalMorphologyModel,
+    HISTORICAL_MORPHOLOGY_STAGE_ID, HISTORICAL_MORPHOLOGY_STAGE_VERSION,
 };
 pub use historical_orogen::generate_event_driven_orogen_provinces;
 pub use historical_pre_orogenic::generate_pre_orogenic_lithosphere_from_history;
@@ -203,7 +202,7 @@ pub use world_calibration::{
     WORLD_CALIBRATION_RANKED_LIMIT, WORLD_CALIBRATION_SCHEMA_ID, WORLD_CALIBRATION_SCHEMA_VERSION,
 };
 
-pub const WORLDGEN_ENGINE_VERSION: u32 = 16;
+pub const WORLDGEN_ENGINE_VERSION: u32 = 17;
 pub const SYNTHETIC_STAGE_ID: &str = "foundation:synthetic";
 pub const SYNTHETIC_STAGE_VERSION: u32 = 1;
 const SYNTHETIC_NAMESPACE: &str = "worldgen:foundation:synthetic:v1";

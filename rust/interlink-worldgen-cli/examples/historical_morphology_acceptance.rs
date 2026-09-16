@@ -1,7 +1,8 @@
 use interlink_worldgen::{
     build_historical_tectonic_morphology, build_icosphere, generate_historical_frontend,
-    generate_lithosphere_from_history, CrustKind, HistoricalEventKind, HistoricalLithosphereRequest,
-    LithosphereRequest, PlanetPhysicalParameters, PlanetTopology, PlateBoundaryKind,
+    generate_lithosphere_from_history, CrustKind, HistoricalEventKind,
+    HistoricalLithosphereRequest, LithosphereRequest, PlanetPhysicalParameters, PlanetTopology,
+    PlateBoundaryKind,
 };
 
 fn verify_seed(seed: &str) -> Result<(), String> {
@@ -28,7 +29,9 @@ fn verify_seed(seed: &str) -> Result<(), String> {
     )
     .map_err(|error| error.to_string())?;
     if morphology.metrics.morphology_hash != repeat.metrics.morphology_hash {
-        return Err(format!("{seed}: historical morphology is not deterministic"));
+        return Err(format!(
+            "{seed}: historical morphology is not deterministic"
+        ));
     }
 
     let count = topology.sample_count() as usize;
@@ -42,7 +45,9 @@ fn verify_seed(seed: &str) -> Result<(), String> {
         ("fossil-orogen", morphology.fossil_orogen_intensity.len()),
     ] {
         if length != count {
-            return Err(format!("{seed}: {name} morphology does not cover the coarse sphere"));
+            return Err(format!(
+                "{seed}: {name} morphology does not cover the coarse sphere"
+            ));
         }
     }
 
@@ -62,7 +67,9 @@ fn verify_seed(seed: &str) -> Result<(), String> {
         }
     }
     if active_convergent_samples == 0 || active_convergent_supported == 0 {
-        return Err(format!("{seed}: active convergence is absent from active-orogen morphology"));
+        return Err(format!(
+            "{seed}: active convergence is absent from active-orogen morphology"
+        ));
     }
 
     // Exclude the immediate neighbor ring as well as literal current boundary samples. A fossil
@@ -84,7 +91,9 @@ fn verify_seed(seed: &str) -> Result<(), String> {
         .filter(|(sample, value)| **value >= 0.20 && !current_boundary_neighborhood[*sample])
         .count();
     if internal_fossil_samples == 0 {
-        return Err(format!("{seed}: fossil orogens did not survive beyond the active-boundary neighbor ring"));
+        return Err(format!(
+            "{seed}: fossil orogens did not survive beyond the active-boundary neighbor ring"
+        ));
     }
 
     let collision_events = frontend
@@ -94,7 +103,9 @@ fn verify_seed(seed: &str) -> Result<(), String> {
         .filter(|event| event.kind == HistoricalEventKind::Collision)
         .collect::<Vec<_>>();
     if collision_events.is_empty() {
-        return Err(format!("{seed}: historical ledger contains no collision event"));
+        return Err(format!(
+            "{seed}: historical ledger contains no collision event"
+        ));
     }
     let collision_suture_support = collision_events
         .iter()
@@ -104,7 +115,9 @@ fn verify_seed(seed: &str) -> Result<(), String> {
         })
         .count();
     if collision_suture_support == 0 {
-        return Err(format!("{seed}: collision events did not seed persistent sutures"));
+        return Err(format!(
+            "{seed}: collision events did not seed persistent sutures"
+        ));
     }
 
     let mut rifted_continent_ocean_contacts = 0_usize;
@@ -128,7 +141,9 @@ fn verify_seed(seed: &str) -> Result<(), String> {
         }
     }
     if rifted_continent_ocean_contacts == 0 || passive_margin_contacts == 0 {
-        return Err(format!("{seed}: rifted continental edges did not produce passive-margin state"));
+        return Err(format!(
+            "{seed}: rifted continental edges did not produce passive-margin state"
+        ));
     }
 
     let lithosphere = generate_lithosphere_from_history(
@@ -142,7 +157,9 @@ fn verify_seed(seed: &str) -> Result<(), String> {
     if lithosphere.pre_orogenic.metrics.paleo_suture_sample_count == 0
         || lithosphere.pre_orogenic.metrics.inherited_rift_sample_count == 0
     {
-        return Err(format!("{seed}: WG-3.5 did not consume historical structures"));
+        return Err(format!(
+            "{seed}: WG-3.5 did not consume historical structures"
+        ));
     }
 
     let mut internal_fossil_relief = 0_usize;
@@ -161,7 +178,9 @@ fn verify_seed(seed: &str) -> Result<(), String> {
         }
     }
     if internal_fossil_relief == 0 {
-        return Err(format!("{seed}: WG-3.6 produced no fossil relief beyond the modern boundary neighbor ring"));
+        return Err(format!(
+            "{seed}: WG-3.6 produced no fossil relief beyond the modern boundary neighbor ring"
+        ));
     }
     if active_relief == 0 {
         return Err(format!("{seed}: WG-3.6 lost active convergent relief"));
@@ -183,7 +202,9 @@ fn verify_seed(seed: &str) -> Result<(), String> {
         .filter(|(arc, distance)| **arc >= 0.15 && **distance <= 1_200.0)
         .count();
     if subduction_edges > 0 && (active_arc_samples == 0 || proximal_arc_samples == 0) {
-        return Err(format!("{seed}: active subduction lost boundary-proximal volcanic-arc morphology"));
+        return Err(format!(
+            "{seed}: active subduction lost boundary-proximal volcanic-arc morphology"
+        ));
     }
 
     println!(

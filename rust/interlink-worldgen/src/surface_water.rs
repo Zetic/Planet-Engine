@@ -254,7 +254,8 @@ fn solve_connected_sea_level(
         let Some(level) = level else {
             return (None, 0.0, 0.0, vec![0; count]);
         };
-        let connected = connected_ocean_mask_at_level(topology, elevation_m, ocean_seed_mask, level);
+        let connected =
+            connected_ocean_mask_at_level(topology, elevation_m, ocean_seed_mask, level);
         let mut grew = false;
         for sample in 0..count {
             if connected[sample] != 0 && active[sample] == 0 {
@@ -493,7 +494,12 @@ pub(crate) fn solve_hydrostatic_surface_water_connected_f64(
     planet: PlanetPhysicalParameters,
     ocean_seed_mask: &[u8],
 ) -> Result<HydrostaticSurfaceWaterState, WorldgenError> {
-    solve_hydrostatic_surface_water_connected_impl(topology, solid_elevation_m, planet, ocean_seed_mask)
+    solve_hydrostatic_surface_water_connected_impl(
+        topology,
+        solid_elevation_m,
+        planet,
+        ocean_seed_mask,
+    )
 }
 
 /// Internal f64 entry point used by WG-4 while its solid surface is still in
@@ -639,5 +645,4 @@ mod tests {
         assert!(state.elevation_above_sea_level_m[closed] < 0.0);
         assert!(state.metrics.water_volume_relative_error < 1.0e-10);
     }
-
 }

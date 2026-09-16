@@ -280,17 +280,34 @@ fn build_fragments<T: PlanetTopology>(
 
 fn build_continental_assemblies(ancestral: &TectonicModel, seed: u64) -> (Vec<bool>, Vec<u16>) {
     let count = ancestral.plates.len();
-    let mut carriers = (0..count)
-        .map(|plate| unit_random(seed ^ (plate as u64).wrapping_mul(0xa076_1d64_78bd_642f)) > 0.55)
+    let total_area = ancestral
+        .plates
+        .iter()
+        .map(|plate| plate.area_steradians)
+        .sum::<f64>()
+        .max(1.0e-12);
+    let target_fraction = 0.50 + (unit_random(seed ^ 0x3c79_ac49_2ba7_b653) - 0.5) * 0.08;
+    let target_area = total_area * target_fraction.clamp(0.46, 0.54);
+    let mut ranked = (0..count)
+        .map(|plate| {
+            (
+                unit_random(seed ^ (plate as u64).wrapping_mul(0xa076_1d64_78bd_642f)),
+                plate,
+            )
+        })
         .collect::<Vec<_>>();
-    if !carriers.iter().any(|carrier| *carrier) {
-        if let Some((largest, _)) = ancestral
-            .plates
-            .iter()
-            .enumerate()
-            .max_by(|(_, left), (_, right)| left.area_steradians.total_cmp(&right.area_steradians))
-        {
-            carriers[largest] = true;
+    ranked.sort_by(|(score_a, plate_a), (score_b, plate_b)| {
+        score_b
+            .total_cmp(score_a)
+            .then_with(|| plate_a.cmp(plate_b))
+    });
+    let mut carriers = vec![false; count];
+    let mut carrier_area = 0.0_f64;
+    for (_, plate) in ranked {
+        carriers[plate] = true;
+        carrier_area += ancestral.plates[plate].area_steradians;
+        if carrier_area >= target_area {
+            break;
         }
     }
 
@@ -409,19 +426,29 @@ fn build_plate_owned_crust<T: PlanetTopology>(
         }
     }
 
-    let assembly_count = plate_assemblies
-        .iter()
-        .copied()
-        .max()
-        .map(|value| value as usize + 1)
-        .unwrap_or(0);
-    let mut max_depth = vec![0_u16; assembly_count];
-    for sample in 0..count {
-        if sample_carrier[sample] && depth[sample] != u16::MAX {
-            let assembly = sample_assembly[sample] as usize;
-            max_depth[assembly] = max_depth[assembly].max(depth[sample]);
+    // Convert the coarse mesh scale into a bounded physical continental-margin width. The
+    // outer carrier ring is transitional crust; oceanic crust begins in the neighboring
+    // non-carrier material domain rather than being painted as an automatic moat inside every
+    // continental assembly.
+    let mut edge_length_sum_km = 0.0_f64;
+    let mut edge_length_count = 0_u64;
+    for sample in 0..topology.sample_count() {
+        let position = topology.unit_position(sample);
+        for neighbor in topology.neighbors(sample) {
+            if *neighbor <= sample {
+                continue;
+            }
+            edge_length_sum_km +=
+                arc_radians(position, topology.unit_position(*neighbor)) * planet.radius_m / 1000.0;
+            edge_length_count += 1;
         }
     }
+    let mean_edge_km = if edge_length_count > 0 {
+        edge_length_sum_km / edge_length_count as f64
+    } else {
+        350.0
+    };
+    let transition_steps = (360.0 / mean_edge_km.max(1.0)).ceil().clamp(1.0, 3.0) as u16;
 
     let divergent_samples = ancestral
         .boundaries
@@ -443,21 +470,14 @@ fn build_plate_owned_crust<T: PlanetTopology>(
             seed ^ u64::from(sample).wrapping_mul(0xe703_7ed1_a0b4_28db) ^ (fragment as u64),
         );
         let kind = if sample_carrier[sample_index] {
-            let assembly = sample_assembly[sample_index] as usize;
-            let maximum = max_depth[assembly].max(1);
-            let inward = if depth[sample_index] == u16::MAX {
-                1.0
-            } else {
-                f64::from(depth[sample_index]) / f64::from(maximum)
-            };
-            let continental_cut = (0.18 + (edge_warp - 0.5) * 0.08).clamp(0.12, 0.24);
-            let transitional_cut = (0.045 + (edge_warp - 0.5) * 0.035).clamp(0.02, 0.08);
-            if inward >= continental_cut {
-                CrustKind::Continental
-            } else if inward >= transitional_cut {
+            let local_depth = depth[sample_index];
+            if local_depth != u16::MAX
+                && (local_depth.saturating_add(1) < transition_steps
+                    || (local_depth < transition_steps && edge_warp >= 0.35))
+            {
                 CrustKind::Transitional
             } else {
-                CrustKind::Oceanic
+                CrustKind::Continental
             }
         } else {
             CrustKind::Oceanic
@@ -1104,6 +1124,21 @@ mod tests {
             assert!(
                 largest_fraction >= 0.06,
                 "seed {seed} lacked a substantial assembled continent"
+            );
+            assert!(
+                (0.20..=0.50).contains(&model.metrics.continental_area_fraction),
+                "seed {seed} continental coverage escaped the synthesis envelope: {}",
+                model.metrics.continental_area_fraction
+            );
+            assert!(
+                (0.02..=0.18).contains(&model.metrics.transitional_area_fraction),
+                "seed {seed} transitional margins collapsed or dominated: {}",
+                model.metrics.transitional_area_fraction
+            );
+            assert!(
+                (0.38..=0.75).contains(&model.metrics.oceanic_area_fraction),
+                "seed {seed} ocean coverage escaped the synthesis envelope: {}",
+                model.metrics.oceanic_area_fraction
             );
         }
     }

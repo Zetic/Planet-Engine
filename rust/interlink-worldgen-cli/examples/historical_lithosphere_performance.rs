@@ -1,6 +1,7 @@
 use interlink_worldgen::{
     build_icosphere, generate_historical_lithosphere, inherit_historical_identity, CrustFragment,
-    HistoricalLithosphereRequest, HistoricalTectonicEvent, PlanetPhysicalParameters, PlanetTopology,
+    HistoricalLithosphereRequest, HistoricalTectonicEvent, PlanetPhysicalParameters,
+    PlanetTopology,
 };
 use std::time::Instant;
 

@@ -1,8 +1,8 @@
 use interlink_worldgen::{
     build_icosphere, generate_crust_and_history, generate_initial_topography, generate_lithosphere,
-    generate_tectonics, inherit_boundary_interfaces, inherit_physical_state, GeologyRequest,
-    CrustKind, LithosphereRequest, OrogenProvinceKind, PlanetPhysicalParameters, TectonicsRequest, TopographyRequest,
-    TOPOGRAPHY_STAGE_VERSION,
+    generate_tectonics, inherit_boundary_interfaces, inherit_physical_state, CrustKind,
+    GeologyRequest, LithosphereRequest, OrogenProvinceKind, PlanetPhysicalParameters,
+    TectonicsRequest, TopographyRequest, TOPOGRAPHY_STAGE_VERSION,
 };
 
 fn main() -> Result<(), String> {
@@ -133,7 +133,9 @@ fn main() -> Result<(), String> {
         || runaway_mountain_core_samples != 0
         || positive_orogen == 0
     {
-        return Err("tectonic province topography did not exercise structural-strand relief".to_string());
+        return Err(
+            "tectonic province topography did not exercise structural-strand relief".to_string(),
+        );
     }
     if continental_foreland > 0 && flooded_continental_foreland * 20 > continental_foreland {
         return Err(format!(

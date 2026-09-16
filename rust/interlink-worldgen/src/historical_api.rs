@@ -6,8 +6,7 @@ use crate::{
 };
 use std::cell::Cell;
 
-const ANCESTRAL_TECTONICS_NAMESPACE: &str =
-    "worldgen:geology:historical-lithosphere:ancestral:v1";
+const ANCESTRAL_TECTONICS_NAMESPACE: &str = "worldgen:geology:historical-lithosphere:ancestral:v1";
 
 thread_local! {
     static RAW_TECTONICS_DEPTH: Cell<u32> = const { Cell::new(0) };
@@ -207,9 +206,13 @@ mod tests {
     fn ancestral_request_encoding_resolves_to_raw_partition() {
         let seed = "ancestral-detection";
         let derived = derive_stage_seed(seed, ANCESTRAL_TECTONICS_NAMESPACE);
-        assert!(is_ancestral_partition_request(&format!("{seed}:{derived:016x}")));
+        assert!(is_ancestral_partition_request(&format!(
+            "{seed}:{derived:016x}"
+        )));
         assert!(!is_ancestral_partition_request(seed));
-        assert!(!is_ancestral_partition_request(&format!("{seed}:0000000000000000")));
+        assert!(!is_ancestral_partition_request(&format!(
+            "{seed}:0000000000000000"
+        )));
     }
 
     #[test]
@@ -225,9 +228,10 @@ mod tests {
             .fragments
             .iter()
             .any(|fragment| fragment.parent_fragment_id.is_some()));
-        assert!(model.events.iter().all(|event| {
-            event.epoch < historical_epochs::HISTORICAL_EPOCH_COUNT
-        }));
+        assert!(model
+            .events
+            .iter()
+            .all(|event| { event.epoch < historical_epochs::HISTORICAL_EPOCH_COUNT }));
     }
 
     #[test]
@@ -235,28 +239,26 @@ mod tests {
         let topology = build_icosphere(3).unwrap();
         let planet = PlanetPhysicalParameters::earthlike_reference();
         let seed = "historical-public-cutover";
-        let tectonics = generate_tectonics(
-            &topology,
-            &TectonicsRequest::new(seed, 10),
-            planet,
-        )
-        .unwrap();
-        let geology = generate_crust_and_history(
-            &topology,
-            &tectonics,
-            &GeologyRequest::new(seed),
-            planet,
-        )
-        .unwrap();
+        let tectonics =
+            generate_tectonics(&topology, &TectonicsRequest::new(seed, 10), planet).unwrap();
+        let geology =
+            generate_crust_and_history(&topology, &tectonics, &GeologyRequest::new(seed), planet)
+                .unwrap();
         let frontend = historical_frontend::generate_historical_frontend(
             &topology,
             &HistoricalLithosphereRequest::new(seed, 10),
             planet,
         )
         .unwrap();
-        assert_eq!(tectonics.metrics.tectonic_hash, frontend.tectonics.metrics.tectonic_hash);
+        assert_eq!(
+            tectonics.metrics.tectonic_hash,
+            frontend.tectonics.metrics.tectonic_hash
+        );
         assert_eq!(tectonics.plate_ids, frontend.historical.current_plate_ids);
-        assert_eq!(geology.metrics.geology_hash, frontend.geology.metrics.geology_hash);
+        assert_eq!(
+            geology.metrics.geology_hash,
+            frontend.geology.metrics.geology_hash
+        );
         assert_eq!(geology.crust_kind, frontend.historical.crust_kind);
     }
 
@@ -265,19 +267,11 @@ mod tests {
         let topology = build_icosphere(3).unwrap();
         let planet = PlanetPhysicalParameters::earthlike_reference();
         let seed = "historical-public-morphology";
-        let tectonics = generate_tectonics(
-            &topology,
-            &TectonicsRequest::new(seed, 10),
-            planet,
-        )
-        .unwrap();
-        let geology = generate_crust_and_history(
-            &topology,
-            &tectonics,
-            &GeologyRequest::new(seed),
-            planet,
-        )
-        .unwrap();
+        let tectonics =
+            generate_tectonics(&topology, &TectonicsRequest::new(seed, 10), planet).unwrap();
+        let geology =
+            generate_crust_and_history(&topology, &tectonics, &GeologyRequest::new(seed), planet)
+                .unwrap();
         let lithosphere = generate_lithosphere(
             &topology,
             &tectonics,

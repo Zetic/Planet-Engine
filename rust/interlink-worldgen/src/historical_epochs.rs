@@ -69,8 +69,8 @@ fn candidate_split_plans(model: &HistoricalLithosphereModel, stage_seed: u64) ->
             ^ u64::from(fragment.id).wrapping_mul(0x9e37_79b9_7f4a_7c15)
             ^ u64::from(fragment.origin_plate_id).wrapping_mul(0xbf58_476d_1ce4_e5b9);
         let inherited_weakness = f64::from(fragment.inherited_fabric).clamp(0.0, 1.0);
-        let split_score = unit_random(stream ^ 0xa076_1d64_78bd_642f) * 0.68
-            + inherited_weakness * 0.32;
+        let split_score =
+            unit_random(stream ^ 0xa076_1d64_78bd_642f) * 0.68 + inherited_weakness * 0.32;
         if split_score < 0.54 {
             continue;
         }
@@ -194,7 +194,11 @@ fn split_fragment<T: PlanetTopology>(
         area_b += topology.area_steradians(*sample);
     }
 
-    let child = |id: u16, seed_sample: u32, sample_count: usize, area_steradians: f64, fabric_shift: f32| {
+    let child = |id: u16,
+                 seed_sample: u32,
+                 sample_count: usize,
+                 area_steradians: f64,
+                 fabric_shift: f32| {
         CrustFragment {
             id,
             parent_fragment_id: Some(parent.id),
@@ -212,20 +216,12 @@ fn split_fragment<T: PlanetTopology>(
             inherited_fabric: (parent.inherited_fabric + fabric_shift).clamp(0.0, 1.0),
         }
     };
-    model.fragments.push(child(
-        child_a_id,
-        seed_a,
-        side_a.len(),
-        area_a,
-        0.06,
-    ));
-    model.fragments.push(child(
-        child_b_id,
-        seed_b,
-        side_b.len(),
-        area_b,
-        -0.04,
-    ));
+    model
+        .fragments
+        .push(child(child_a_id, seed_a, side_a.len(), area_a, 0.06));
+    model
+        .fragments
+        .push(child(child_b_id, seed_b, side_b.len(), area_b, -0.04));
 
     model.events.push(HistoricalTectonicEvent {
         id: model.events.len() as u32,
@@ -266,7 +262,10 @@ fn lineage_hash(model: &HistoricalLithosphereModel, stage_seed: u64) -> u64 {
         hash = fnv_update(hash, &fragment.id.to_le_bytes());
         hash = fnv_update(
             hash,
-            &fragment.parent_fragment_id.unwrap_or(u16::MAX).to_le_bytes(),
+            &fragment
+                .parent_fragment_id
+                .unwrap_or(u16::MAX)
+                .to_le_bytes(),
         );
         hash = fnv_update(hash, &fragment.origin_plate_id.to_le_bytes());
         hash = fnv_update(hash, &fragment.current_plate_id.to_le_bytes());
@@ -318,7 +317,11 @@ fn validate_lineage(model: &HistoricalLithosphereModel) -> Result<(), WorldgenEr
             "historical epoch split produced an invalid sample fragment id",
         ));
     }
-    if model.events.iter().any(|event| event.epoch >= HISTORICAL_EPOCH_COUNT) {
+    if model
+        .events
+        .iter()
+        .any(|event| event.epoch >= HISTORICAL_EPOCH_COUNT)
+    {
         return Err(WorldgenError::InvalidLithosphere(
             "historical event lies outside the bounded epoch schedule",
         ));
@@ -372,16 +375,12 @@ mod tests {
         let topology = build_icosphere(3).unwrap();
         let request = HistoricalLithosphereRequest::new("historical-epochs", 10);
         let planet = PlanetPhysicalParameters::earthlike_reference();
-        let base = historical_lithosphere::generate_historical_lithosphere(
-            &topology,
-            &request,
-            planet,
-        )
-        .unwrap();
+        let base =
+            historical_lithosphere::generate_historical_lithosphere(&topology, &request, planet)
+                .unwrap();
         let repeat_base = base.clone();
         let first = evolve_historical_lithosphere(&topology, base, &request.seed).unwrap();
-        let second =
-            evolve_historical_lithosphere(&topology, repeat_base, &request.seed).unwrap();
+        let second = evolve_historical_lithosphere(&topology, repeat_base, &request.seed).unwrap();
         assert_eq!(first.metrics.history_hash, second.metrics.history_hash);
         assert_eq!(first.fragment_ids, second.fragment_ids);
         assert!(first

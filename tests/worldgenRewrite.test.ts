@@ -53,9 +53,9 @@ import {
   worldgenTopologyCommand,
 } from '../dist/worldgen/protocol.js';
 
-const PROTOCOL = 20;
+const PROTOCOL = 21;
 
-test('Planet Engine browser protocol v18 preserves WG-0 through WG-3.75 contracts', () => {
+test('Planet Engine browser protocol v21 preserves WG-0 through WG-3.75 contracts', () => {
   assert.equal(WORLDGEN_PROTOCOL_VERSION, PROTOCOL);
   assert.equal(WORLDGEN_SYNTHETIC_MAX_SAMPLES, 4_194_304);
   assert.equal(WORLDGEN_TOPOLOGY_MAX_LEVEL, 8);
@@ -113,7 +113,6 @@ test('Planet Engine source stays independent from legacy gameplay world objects 
     'src/worldgen/worldgenClient.ts',
     'src/worldgen/worldgenWorker.ts',
     'src/worldgen/diagnostics/worldgenLabStandalone.ts',
-    'src/worldgen/diagnostics/worldgenInheritanceLabStandalone.ts',
     'src/worldgen/diagnostics/worldgenTopographyLabStandalone.ts',
     'src/worldgen/diagnostics/worldgenClimateLabStandalone.ts',
   ];
@@ -146,11 +145,13 @@ test('Planet Engine source stays independent from legacy gameplay world objects 
   ]) assert.ok(fs.existsSync(path), `${path} must exist`);
 });
 
-test('WG-3.75 inheritance diagnostic remains available as an upstream debugging surface', () => {
-  const source = fs.readFileSync('src/worldgen/diagnostics/worldgenInheritanceLabStandalone.ts', 'utf8');
-  assert.match(source, /generateInheritance/);
-  assert.match(source, /boundary-provenance/);
-  assert.match(source, /inherited-mask/);
-  assert.match(source, /nearestCoarseSource/);
-  assert.doesNotMatch(source, /solidElevationM|waterDepthM/);
+test('historical ancestry diagnostics are consolidated into the cumulative lab', () => {
+  const html = fs.readFileSync('index.html', 'utf8');
+  const source = fs.readFileSync('src/worldgen/diagnostics/worldgenClimateLabStandalone.ts', 'utf8');
+  assert.match(html, /historical-origin/);
+  assert.match(html, /historical-suture/);
+  assert.match(source, /originPlateIds/);
+  assert.match(source, /historicalFragmentIds/);
+  assert.match(source, /fossilOrogenIntensity/);
+  assert.equal(fs.existsSync('inheritance.html'), false);
 });

@@ -44,7 +44,9 @@ fn verify_seed(seed: &str) -> Result<(), String> {
         || history.crust_kind.len() != count
         || history.crust_birth_age_myr.len() != count
     {
-        return Err(format!("{seed}: historical material fields do not cover the sphere"));
+        return Err(format!(
+            "{seed}: historical material fields do not cover the sphere"
+        ));
     }
     if history.metrics.ancestral_plate_count < history.metrics.modern_plate_count
         || history.metrics.fragment_count < history.metrics.ancestral_plate_count
@@ -52,10 +54,14 @@ fn verify_seed(seed: &str) -> Result<(), String> {
         return Err(format!("{seed}: ancestry hierarchy did not preserve old-plate -> fragment -> modern-plate structure"));
     }
     if tectonics.plate_ids != history.current_plate_ids {
-        return Err(format!("{seed}: modern tectonic ownership diverged from historical current ownership"));
+        return Err(format!(
+            "{seed}: modern tectonic ownership diverged from historical current ownership"
+        ));
     }
     if geology.crust_kind != history.crust_kind {
-        return Err(format!("{seed}: geology regenerated crust kind instead of consuming historical material"));
+        return Err(format!(
+            "{seed}: geology regenerated crust kind instead of consuming historical material"
+        ));
     }
 
     let crust_fraction_sum = history.metrics.continental_area_fraction
@@ -70,38 +76,56 @@ fn verify_seed(seed: &str) -> Result<(), String> {
     let mut parented_fragment_ids = BTreeSet::<u16>::new();
     for (index, fragment) in history.fragments.iter().enumerate() {
         if usize::from(fragment.id) != index {
-            return Err(format!("{seed}: fragment ids are not dense lineage indices"));
+            return Err(format!(
+                "{seed}: fragment ids are not dense lineage indices"
+            ));
         }
         if let Some(parent_id) = fragment.parent_fragment_id {
             parented_fragment_ids.insert(fragment.id);
             if parent_id >= fragment.id || usize::from(parent_id) >= history.fragments.len() {
-                return Err(format!("{seed}: fragment {} has an invalid/cyclic parent {parent_id}", fragment.id));
+                return Err(format!(
+                    "{seed}: fragment {} has an invalid/cyclic parent {parent_id}",
+                    fragment.id
+                ));
             }
             let parent = &history.fragments[parent_id as usize];
             if parent.origin_plate_id != fragment.origin_plate_id
                 || parent.current_plate_id != fragment.current_plate_id
             {
-                return Err(format!("{seed}: fragment {} changed material ownership across its parent edge", fragment.id));
+                return Err(format!(
+                    "{seed}: fragment {} changed material ownership across its parent edge",
+                    fragment.id
+                ));
             }
         }
     }
     if parented_fragment_ids.is_empty() {
-        return Err(format!("{seed}: bounded historical epochs produced no parent/child fragment lineage"));
+        return Err(format!(
+            "{seed}: bounded historical epochs produced no parent/child fragment lineage"
+        ));
     }
 
     let mut split_events = 0_usize;
     let mut split_event_children = BTreeSet::<u16>::new();
     for (event_index, event) in history.events.iter().enumerate() {
         if event.id as usize != event_index {
-            return Err(format!("{seed}: event ids are not dense deterministic indices"));
+            return Err(format!(
+                "{seed}: event ids are not dense deterministic indices"
+            ));
         }
         if event.epoch >= HISTORICAL_EPOCH_COUNT {
-            return Err(format!("{seed}: event {} lies outside the bounded epoch schedule", event.id));
+            return Err(format!(
+                "{seed}: event {} lies outside the bounded epoch schedule",
+                event.id
+            ));
         }
         if usize::from(event.fragment_a) >= history.fragments.len()
             || usize::from(event.fragment_b) >= history.fragments.len()
         {
-            return Err(format!("{seed}: event {} references an invalid fragment", event.id));
+            return Err(format!(
+                "{seed}: event {} references an invalid fragment",
+                event.id
+            ));
         }
         if event.kind == HistoricalEventKind::Rift && event.fragment_a != event.fragment_b {
             split_events += 1;
@@ -110,13 +134,17 @@ fn verify_seed(seed: &str) -> Result<(), String> {
         }
     }
     if split_events == 0 {
-        return Err(format!("{seed}: bounded historical epochs produced no explicit split/rift event"));
+        return Err(format!(
+            "{seed}: bounded historical epochs produced no explicit split/rift event"
+        ));
     }
     if parented_fragment_ids
         .iter()
         .any(|fragment| !split_event_children.contains(fragment))
     {
-        return Err(format!("{seed}: parented fragment lineage is missing explicit split-event provenance"));
+        return Err(format!(
+            "{seed}: parented fragment lineage is missing explicit split-event provenance"
+        ));
     }
 
     let divergent_samples = history
@@ -127,7 +155,9 @@ fn verify_seed(seed: &str) -> Result<(), String> {
         .flat_map(|boundary| [boundary.sample_a, boundary.sample_b])
         .collect::<Vec<_>>();
     if divergent_samples.is_empty() {
-        return Err(format!("{seed}: ancestral tectonics produced no spreading-system geometry"));
+        return Err(format!(
+            "{seed}: ancestral tectonics produced no spreading-system geometry"
+        ));
     }
 
     let mut modern_origins = BTreeMap::<u16, BTreeSet<u16>>::new();
@@ -159,7 +189,9 @@ fn verify_seed(seed: &str) -> Result<(), String> {
             || fragment_record.origin_plate_id != origin
             || fragment_record.current_plate_id != current
         {
-            return Err(format!("{seed}: fragment metadata disagrees with material identity at sample {sample}"));
+            return Err(format!(
+                "{seed}: fragment metadata disagrees with material identity at sample {sample}"
+            ));
         }
         let mapped_current = &mut origin_to_current[origin as usize];
         if *mapped_current == u16::MAX {
@@ -168,7 +200,10 @@ fn verify_seed(seed: &str) -> Result<(), String> {
             return Err(format!("{seed}: one ancestral plate maps to multiple modern owners without split provenance"));
         }
         modern_origins.entry(current).or_default().insert(origin);
-        modern_fragments.entry(current).or_default().insert(fragment);
+        modern_fragments
+            .entry(current)
+            .or_default()
+            .insert(fragment);
 
         let area = topology.area_steradians(sample);
         total_area += area;
@@ -177,13 +212,17 @@ fn verify_seed(seed: &str) -> Result<(), String> {
 
         let province = geology.crust_province_id[index] & 0x7fff;
         if province != (fragment & 0x7fff) {
-            return Err(format!("{seed}: crust provenance is not fragment-owned at sample {sample}"));
+            return Err(format!(
+                "{seed}: crust provenance is not fragment-owned at sample {sample}"
+            ));
         }
 
         if history.crust_kind[index] == CrustKind::Oceanic as u8 {
             let age = history.crust_birth_age_myr[index];
             if !age.is_finite() || !(0.0..=220.0).contains(&age) {
-                return Err(format!("{seed}: invalid oceanic birth age at sample {sample}: {age}"));
+                return Err(format!(
+                    "{seed}: invalid oceanic birth age at sample {sample}: {age}"
+                ));
             }
             oceanic_samples += 1;
             oceanic_age_min = oceanic_age_min.min(age);
@@ -239,13 +278,19 @@ fn verify_seed(seed: &str) -> Result<(), String> {
         .filter(|fragments| fragments.len() > 1)
         .count();
     if multi_origin_modern_plates == 0 || multi_fragment_modern_plates == 0 {
-        return Err(format!("{seed}: modern plates did not consolidate persistent ancestry"));
+        return Err(format!(
+            "{seed}: modern plates did not consolidate persistent ancestry"
+        ));
     }
     if internal_fragment_edges == 0 || origin_discontinuity_edges == 0 {
-        return Err(format!("{seed}: no fossil material discontinuities survived inside modern plates"));
+        return Err(format!(
+            "{seed}: no fossil material discontinuities survived inside modern plates"
+        ));
     }
     if oceanic_samples == 0 || oceanic_age_max - oceanic_age_min < 20.0 {
-        return Err(format!("{seed}: oceanic chronology lacks a meaningful birth-age gradient"));
+        return Err(format!(
+            "{seed}: oceanic chronology lacks a meaningful birth-age gradient"
+        ));
     }
 
     oceanic_distance_age.sort_by(|left, right| left.0.total_cmp(&right.0));
@@ -275,7 +320,10 @@ fn verify_seed(seed: &str) -> Result<(), String> {
         if usize::from(event.plate_a) >= origin_to_current.len()
             || usize::from(event.plate_b) >= origin_to_current.len()
         {
-            return Err(format!("{seed}: capture event {} references invalid ancestral plates", event.id));
+            return Err(format!(
+                "{seed}: capture event {} references invalid ancestral plates",
+                event.id
+            ));
         }
         let current_a = origin_to_current[event.plate_a as usize];
         let current_b = origin_to_current[event.plate_b as usize];
@@ -297,13 +345,16 @@ fn verify_seed(seed: &str) -> Result<(), String> {
     }
 
     for boundary in &tectonics.boundaries {
-        if history.current_plate_ids[boundary.sample_a as usize] == history.current_plate_ids[boundary.sample_b as usize]
+        if history.current_plate_ids[boundary.sample_a as usize]
+            == history.current_plate_ids[boundary.sample_b as usize]
             || history.current_plate_ids[boundary.sample_a as usize] != boundary.plate_a
             || history.current_plate_ids[boundary.sample_b as usize] != boundary.plate_b
             || !boundary.normal_rate_m_per_year.is_finite()
             || !boundary.shear_rate_m_per_year.is_finite()
         {
-            return Err(format!("{seed}: modern boundary does not match finite ownership/kinematic state"));
+            return Err(format!(
+                "{seed}: modern boundary does not match finite ownership/kinematic state"
+            ));
         }
     }
 
@@ -321,7 +372,9 @@ fn verify_seed(seed: &str) -> Result<(), String> {
             || inherited.fragment_ids[sample] != history.fragment_ids[sample]
             || inherited.current_plate_ids[sample] != history.current_plate_ids[sample]
         {
-            return Err(format!("{seed}: fine inheritance rewrote coarse material identity"));
+            return Err(format!(
+                "{seed}: fine inheritance rewrote coarse material identity"
+            ));
         }
     }
 

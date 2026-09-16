@@ -1,10 +1,11 @@
 use crate::{
-    build_refinement_map, derive_stage_seed, generate_historical_lithosphere, refine_categorical_u16,
-    refine_categorical_u8, refine_scalar_f32_with_domains, CrustKind, CrustalModel, GeodesicTopology,
-    GeologyMetrics, GeologicalBoundary, GeologicalBoundaryRegime, HistoricalEventKind,
-    HistoricalLithosphereModel, HistoricalLithosphereRequest, PlanetPhysicalParameters, PlanetTopology,
-    PlateBoundaryEdge, PlateBoundaryKind, PlateScaleClass, PlateSummary, RefinementMap, StageIdentity,
-    SubductionPolarity, TectonicMetrics, TectonicModel, TectonicPlate, WorldgenError, GEOLOGY_STAGE_ID,
+    build_refinement_map, derive_stage_seed, generate_historical_lithosphere,
+    refine_categorical_u16, refine_categorical_u8, refine_scalar_f32_with_domains, CrustKind,
+    CrustalModel, GeodesicTopology, GeologicalBoundary, GeologicalBoundaryRegime, GeologyMetrics,
+    HistoricalEventKind, HistoricalLithosphereModel, HistoricalLithosphereRequest,
+    PlanetPhysicalParameters, PlanetTopology, PlateBoundaryEdge, PlateBoundaryKind,
+    PlateScaleClass, PlateSummary, RefinementMap, StageIdentity, SubductionPolarity,
+    TectonicMetrics, TectonicModel, TectonicPlate, WorldgenError, GEOLOGY_STAGE_ID,
     GEOLOGY_STAGE_VERSION, TECTONICS_STAGE_ID, TECTONICS_STAGE_VERSION,
 };
 use std::f64::consts::PI;
@@ -207,8 +208,14 @@ fn modern_tectonic_hash(
         hash = fnv_update(hash, &boundary.sample_a.to_le_bytes());
         hash = fnv_update(hash, &boundary.sample_b.to_le_bytes());
         hash = fnv_update(hash, &[boundary.kind as u8]);
-        hash = fnv_update(hash, &boundary.normal_rate_m_per_year.to_bits().to_le_bytes());
-        hash = fnv_update(hash, &boundary.shear_rate_m_per_year.to_bits().to_le_bytes());
+        hash = fnv_update(
+            hash,
+            &boundary.normal_rate_m_per_year.to_bits().to_le_bytes(),
+        );
+        hash = fnv_update(
+            hash,
+            &boundary.shear_rate_m_per_year.to_bits().to_le_bytes(),
+        );
     }
     hash
 }
@@ -284,7 +291,8 @@ pub fn project_historical_modern_tectonics<T: PlanetTopology>(
         let current = origin_to_current[ancestral.id as usize] as usize;
         let weight = ancestral.area_steradians.max(1.0e-12);
         for component in 0..3 {
-            velocity_sum[current][component] += ancestral.angular_velocity_rad_per_myr[component] * weight;
+            velocity_sum[current][component] +=
+                ancestral.angular_velocity_rad_per_myr[component] * weight;
         }
         ancestry_area[current] += weight;
         if ancestral.area_steradians > representative_area[current] {
@@ -353,10 +361,7 @@ pub fn project_historical_modern_tectonics<T: PlanetTopology>(
         .iter()
         .map(|area| *area / total_area)
         .collect::<Vec<_>>();
-    let minimum_plate_area_fraction = area_fractions
-        .iter()
-        .copied()
-        .fold(f64::INFINITY, f64::min);
+    let minimum_plate_area_fraction = area_fractions.iter().copied().fold(f64::INFINITY, f64::min);
     let maximum_plate_area_fraction = area_fractions
         .iter()
         .copied()
@@ -524,25 +529,18 @@ fn classify_geological_boundary(
                 SubductionPolarity::PlateB,
             ),
             (CrustKind::Oceanic, CrustKind::Oceanic) => {
-                let polarity = if buoyancy[edge.sample_a as usize]
-                    <= buoyancy[edge.sample_b as usize]
-                {
-                    SubductionPolarity::PlateA
-                } else {
-                    SubductionPolarity::PlateB
-                };
+                let polarity =
+                    if buoyancy[edge.sample_a as usize] <= buoyancy[edge.sample_b as usize] {
+                        SubductionPolarity::PlateA
+                    } else {
+                        SubductionPolarity::PlateB
+                    };
                 (GeologicalBoundaryRegime::OceanicSubduction, polarity)
             }
-            _ => {
-                let polarity = if buoyancy[edge.sample_a as usize]
-                    <= buoyancy[edge.sample_b as usize]
-                {
-                    SubductionPolarity::PlateA
-                } else {
-                    SubductionPolarity::PlateB
-                };
-                (GeologicalBoundaryRegime::OceanContinentSubduction, polarity)
-            }
+            _ => (
+                GeologicalBoundaryRegime::ContinentalCollision,
+                SubductionPolarity::None,
+            ),
         },
     }
 }
@@ -645,9 +643,7 @@ fn build_history_fields<T: PlanetTopology>(
                     register(&mut orogen_seed, sample, strength * 0.72);
                     register(&mut arc_seed, sample, strength * 0.48);
                 }
-                HistoricalEventKind::Capture => {
-                    register(&mut orogen_seed, sample, strength * 0.18)
-                }
+                HistoricalEventKind::Capture => register(&mut orogen_seed, sample, strength * 0.18),
             }
         }
     }
@@ -713,16 +709,7 @@ fn build_history_fields<T: PlanetTopology>(
     }
 
     (
-        orogen,
-        rift,
-        ridge,
-        subduction,
-        trench,
-        arc,
-        transform,
-        subsidence,
-        basin,
-        strain,
+        orogen, rift, ridge, subduction, trench, arc, transform, subsidence, basin, strain,
     )
 }
 
@@ -1050,7 +1037,10 @@ pub fn project_historical_crust<T: PlanetTopology>(
     );
 
     if model.crust_age_myr.iter().any(|value| !value.is_finite())
-        || model.crust_thickness_km.iter().any(|value| !value.is_finite())
+        || model
+            .crust_thickness_km
+            .iter()
+            .any(|value| !value.is_finite())
         || model
             .crust_density_kg_per_m3
             .iter()
@@ -1151,10 +1141,22 @@ mod tests {
             first.historical.metrics.history_hash,
             second.historical.metrics.history_hash
         );
-        assert_eq!(first.tectonics.metrics.tectonic_hash, second.tectonics.metrics.tectonic_hash);
-        assert_eq!(first.geology.metrics.geology_hash, second.geology.metrics.geology_hash);
-        assert_eq!(first.tectonics.plate_ids, first.historical.current_plate_ids);
-        assert_eq!(first.tectonics.plates.len(), request.modern_plate_count as usize);
+        assert_eq!(
+            first.tectonics.metrics.tectonic_hash,
+            second.tectonics.metrics.tectonic_hash
+        );
+        assert_eq!(
+            first.geology.metrics.geology_hash,
+            second.geology.metrics.geology_hash
+        );
+        assert_eq!(
+            first.tectonics.plate_ids,
+            first.historical.current_plate_ids
+        );
+        assert_eq!(
+            first.tectonics.plates.len(),
+            request.modern_plate_count as usize
+        );
         assert_eq!(first.geology.crust_kind, first.historical.crust_kind);
     }
 
@@ -1225,7 +1227,10 @@ mod tests {
             inherited.origin_plate_ids.len(),
             fine.metrics().sample_count as usize
         );
-        assert_eq!(inherited.fragment_ids.len(), fine.metrics().sample_count as usize);
+        assert_eq!(
+            inherited.fragment_ids.len(),
+            fine.metrics().sample_count as usize
+        );
         assert_eq!(
             inherited.current_plate_ids.len(),
             fine.metrics().sample_count as usize

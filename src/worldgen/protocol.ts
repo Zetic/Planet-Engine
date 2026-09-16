@@ -1,4 +1,4 @@
-export const WORLDGEN_PROTOCOL_VERSION = 20;
+export const WORLDGEN_PROTOCOL_VERSION = 21;
 export const WORLDGEN_SYNTHETIC_MAX_SAMPLES = 4_194_304;
 export const WORLDGEN_TOPOLOGY_MAX_LEVEL = 8;
 export const WORLDGEN_TECTONICS_MAX_LEVEL = 6;
@@ -548,6 +548,21 @@ export interface WorldgenClimateResult {
   positions: Float64Array;
   neighborOffsets: Uint32Array;
   neighbors: Uint32Array;
+  originPlateIds: Uint16Array;
+  historicalFragmentIds: Uint16Array;
+  currentPlateIds: Uint16Array;
+  crustProvinceId: Uint16Array;
+  crustBirthAgeMyr: Float32Array;
+  latestHistoricalEventKind: Uint8Array;
+  latestHistoricalEventAgeMyr: Float32Array;
+  historicalRiftIntensity: Float32Array;
+  historicalRiftAgeMyr: Float32Array;
+  historicalShearIntensity: Float32Array;
+  historicalSutureIntensity: Float32Array;
+  historicalSutureAgeMyr: Float32Array;
+  passiveMarginIndex: Float32Array;
+  activeOrogenIntensity: Float32Array;
+  fossilOrogenIntensity: Float32Array;
   plateIds: Uint16Array;
   crustKind: Uint8Array;
   nearestCoarseSource: Uint32Array;

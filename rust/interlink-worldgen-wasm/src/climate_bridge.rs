@@ -1,17 +1,19 @@
 use interlink_worldgen::{
-    build_icosphere, generate_bounded_terrain_evolution, generate_coupled_climate_with_diagnostics,
-    generate_crust_and_history, generate_drainage_topology, generate_fluvial_erosion_sediment,
+    build_historical_tectonic_morphology, build_icosphere, generate_bounded_terrain_evolution,
+    generate_coupled_climate_with_diagnostics, generate_crust_and_history,
+    generate_drainage_topology, generate_fluvial_erosion_sediment, generate_historical_frontend,
     generate_initial_topography, generate_lake_sediment_infill, generate_lakes_closed_basins,
-    generate_lithosphere, generate_post_erosion_hydrology, generate_runoff_discharge,
-    generate_seasonal_hydrology, generate_tectonics, inherit_boundary_interfaces,
-    inherit_physical_state, ClimatePhysicalParameters, ClimateRequest, ClimateState,
-    DrainageRequest, FluvialErosionRequest, FluvialErosionState, GeodesicTopology, GeologyRequest,
-    InheritedBoundarySet, InheritedPhysicalState, LakeRequest, LakeSedimentInfillRequest,
-    LakeSedimentInfillState, LithosphereRequest, PlanetPhysicalParameters,
-    PostErosionHydrologyMetrics, PostErosionHydrologyRequest, PostErosionHydrologyState,
-    RunoffRequest, SeasonalHydrologyRequest, StageIdentity, TectonicsRequest,
-    TerrainEvolutionRequest, TerrainEvolutionState, TopographyRequest, TopographyState,
-    WORLDGEN_ENGINE_VERSION,
+    generate_lithosphere, generate_lithosphere_from_history, generate_post_erosion_hydrology,
+    generate_runoff_discharge, generate_seasonal_hydrology, generate_tectonics,
+    inherit_boundary_interfaces, inherit_historical_identity, inherit_physical_state,
+    ClimatePhysicalParameters, ClimateRequest, ClimateState, DrainageRequest,
+    FluvialErosionRequest, FluvialErosionState, GeodesicTopology, GeologyRequest,
+    HistoricalLithosphereRequest, InheritedBoundarySet, InheritedHistoricalIdentity,
+    InheritedPhysicalState, LakeRequest, LakeSedimentInfillRequest, LakeSedimentInfillState,
+    LithosphereRequest, PlanetPhysicalParameters, PostErosionHydrologyMetrics,
+    PostErosionHydrologyRequest, PostErosionHydrologyState, RunoffRequest,
+    SeasonalHydrologyRequest, StageIdentity, TectonicsRequest, TerrainEvolutionRequest,
+    TerrainEvolutionState, TopographyRequest, TopographyState, WORLDGEN_ENGINE_VERSION,
 };
 use wasm_bindgen::prelude::*;
 
@@ -52,6 +54,18 @@ struct ReconciliationDiagnostics {
 pub struct WasmWorldgenClimate {
     fine_topology: GeodesicTopology,
     inherited: InheritedPhysicalState,
+    historical_identity: InheritedHistoricalIdentity,
+    historical_morphology_hash: String,
+    latest_event_kind: Vec<u8>,
+    latest_event_age_myr: Vec<f32>,
+    historical_rift_intensity: Vec<f32>,
+    historical_rift_age_myr: Vec<f32>,
+    historical_shear_intensity: Vec<f32>,
+    historical_suture_intensity: Vec<f32>,
+    historical_suture_age_myr: Vec<f32>,
+    passive_margin_index: Vec<f32>,
+    active_orogen_intensity: Vec<f32>,
+    fossil_orogen_intensity: Vec<f32>,
     boundaries: InheritedBoundarySet,
     terrain: TopographyState,
     climate: ClimateState,
@@ -95,30 +109,36 @@ impl WasmWorldgenClimate {
             build_icosphere(fine_level).map_err(|error| JsValue::from_str(&error.to_string()))?;
         report_generation_progress(progress, "fine-topology", 1, 1, 1);
         report_generation_progress(progress, "tectonics", 2, 0, 1);
-        let tectonics = generate_tectonics(
+        let frontend = generate_historical_frontend(
             &coarse_topology,
-            &TectonicsRequest::new(seed.as_str(), plate_count),
+            &HistoricalLithosphereRequest::new(seed.as_str(), plate_count),
             planet,
         )
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
         report_generation_progress(progress, "tectonics", 2, 1, 1);
         report_generation_progress(progress, "geology", 3, 0, 1);
-        let geology = generate_crust_and_history(
+        let historical_identity =
+            inherit_historical_identity(&fine_topology, coarse_level, &frontend.historical)
+                .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        let morphology = build_historical_tectonic_morphology(
             &coarse_topology,
-            &tectonics,
-            &GeologyRequest::new(seed.as_str()),
-            planet,
+            &frontend.historical,
+            &frontend.tectonics,
+            seed.as_str(),
         )
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
         report_generation_progress(progress, "geology", 3, 1, 1);
         report_generation_progress(progress, "lithosphere", 4, 0, 1);
-        let lithosphere = generate_lithosphere(
+        let lithosphere = generate_lithosphere_from_history(
             &coarse_topology,
-            &tectonics,
-            &geology,
+            &frontend.historical,
+            &frontend.tectonics,
+            &frontend.geology,
             &LithosphereRequest::new(seed.as_str()),
         )
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        let tectonics = frontend.tectonics;
+        let geology = frontend.geology;
         report_generation_progress(progress, "lithosphere", 4, 1, 1);
         report_generation_progress(progress, "inheritance", 5, 0, 1);
         let mut inherited = inherit_physical_state(
@@ -131,6 +151,30 @@ impl WasmWorldgenClimate {
         )
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
         report_generation_progress(progress, "inheritance", 5, 1, 1);
+        let nearest = &inherited.map.nearest_coarse_source;
+        let inherit_f32 = |values: &[f32]| {
+            nearest
+                .iter()
+                .map(|source| values[*source as usize])
+                .collect::<Vec<_>>()
+        };
+        let inherit_u8 = |values: &[u8]| {
+            nearest
+                .iter()
+                .map(|source| values[*source as usize])
+                .collect::<Vec<_>>()
+        };
+        let latest_event_kind = inherit_u8(&morphology.latest_event_kind);
+        let latest_event_age_myr = inherit_f32(&morphology.latest_event_age_myr);
+        let historical_rift_intensity = inherit_f32(&morphology.rift_intensity);
+        let historical_rift_age_myr = inherit_f32(&morphology.rift_age_myr);
+        let historical_shear_intensity = inherit_f32(&morphology.shear_intensity);
+        let historical_suture_intensity = inherit_f32(&morphology.suture_intensity);
+        let historical_suture_age_myr = inherit_f32(&morphology.suture_age_myr);
+        let passive_margin_index = inherit_f32(&morphology.passive_margin_index);
+        let active_orogen_intensity = inherit_f32(&morphology.active_orogen_intensity);
+        let fossil_orogen_intensity = inherit_f32(&morphology.fossil_orogen_intensity);
+        let historical_morphology_hash = morphology.metrics.morphology_hash_hex();
         report_generation_progress(progress, "boundary-refinement", 6, 0, 1);
         let boundaries = inherit_boundary_interfaces(
             &coarse_topology,
@@ -340,6 +384,18 @@ impl WasmWorldgenClimate {
         Ok(Self {
             fine_topology,
             inherited,
+            historical_identity,
+            historical_morphology_hash,
+            latest_event_kind,
+            latest_event_age_myr,
+            historical_rift_intensity,
+            historical_rift_age_myr,
+            historical_shear_intensity,
+            historical_suture_intensity,
+            historical_suture_age_myr,
+            passive_margin_index,
+            active_orogen_intensity,
+            fossil_orogen_intensity,
             boundaries,
             terrain,
             climate,
@@ -585,6 +641,58 @@ impl WasmWorldgenClimate {
     }
     pub fn neighbors(&self) -> Vec<u32> {
         self.fine_topology.neighbor_indices().to_vec()
+    }
+
+    pub fn historical_identity_hash_hex(&self) -> String {
+        self.historical_identity.identity_hash_hex()
+    }
+    pub fn historical_morphology_hash_hex(&self) -> String {
+        self.historical_morphology_hash.clone()
+    }
+    pub fn origin_plate_ids(&self) -> Vec<u16> {
+        self.historical_identity.origin_plate_ids.clone()
+    }
+    pub fn historical_fragment_ids(&self) -> Vec<u16> {
+        self.historical_identity.fragment_ids.clone()
+    }
+    pub fn current_plate_ids(&self) -> Vec<u16> {
+        self.historical_identity.current_plate_ids.clone()
+    }
+    pub fn crust_province_id(&self) -> Vec<u16> {
+        self.inherited.crust_province_id.clone()
+    }
+    pub fn crust_birth_age_myr(&self) -> Vec<f32> {
+        self.historical_identity.crust_birth_age_myr.clone()
+    }
+    pub fn latest_historical_event_kind(&self) -> Vec<u8> {
+        self.latest_event_kind.clone()
+    }
+    pub fn latest_historical_event_age_myr(&self) -> Vec<f32> {
+        self.latest_event_age_myr.clone()
+    }
+    pub fn historical_rift_intensity(&self) -> Vec<f32> {
+        self.historical_rift_intensity.clone()
+    }
+    pub fn historical_rift_age_myr(&self) -> Vec<f32> {
+        self.historical_rift_age_myr.clone()
+    }
+    pub fn historical_shear_intensity(&self) -> Vec<f32> {
+        self.historical_shear_intensity.clone()
+    }
+    pub fn historical_suture_intensity(&self) -> Vec<f32> {
+        self.historical_suture_intensity.clone()
+    }
+    pub fn historical_suture_age_myr(&self) -> Vec<f32> {
+        self.historical_suture_age_myr.clone()
+    }
+    pub fn passive_margin_index(&self) -> Vec<f32> {
+        self.passive_margin_index.clone()
+    }
+    pub fn active_orogen_intensity(&self) -> Vec<f32> {
+        self.active_orogen_intensity.clone()
+    }
+    pub fn fossil_orogen_intensity(&self) -> Vec<f32> {
+        self.fossil_orogen_intensity.clone()
     }
 
     pub fn plate_ids(&self) -> Vec<u16> {
