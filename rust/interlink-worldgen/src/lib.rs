@@ -11,6 +11,7 @@ mod erosion;
 mod evolution;
 mod fields;
 mod geology;
+mod historical_frontend;
 mod historical_lithosphere;
 mod hydroclimate;
 mod infill;
@@ -84,6 +85,10 @@ pub use geology::{
     generate_crust_and_history, CrustKind, CrustalModel, GeologicalBoundary,
     GeologicalBoundaryRegime, GeologyMetrics, GeologyRequest, PlateScaleClass, PlateSummary,
     SubductionPolarity, GEOLOGY_STAGE_ID, GEOLOGY_STAGE_VERSION,
+};
+pub use historical_frontend::{
+    generate_historical_frontend, project_historical_crust, project_historical_modern_tectonics,
+    HistoricalFrontend,
 };
 pub use historical_lithosphere::{
     generate_historical_lithosphere, CrustFragment, HistoricalEventKind,
@@ -309,9 +314,9 @@ mod tests {
         let result = generate_synthetic(&SyntheticRequest::new("stats", 32, 16)).unwrap();
         assert_eq!(result.generator_version, WORLDGEN_ENGINE_VERSION);
         assert_eq!(result.stage.id, SYNTHETIC_STAGE_ID);
-        assert_eq!(result.statistics.sample_count, 512);
         assert!(result.statistics.minimum <= result.statistics.maximum);
         assert!(result.statistics.mean.is_finite());
+        assert_eq!(result.statistics.sample_count, 512);
         assert_eq!(result.statistics.hash_hex().len(), 16);
     }
 }
