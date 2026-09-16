@@ -17,6 +17,7 @@ mod historical_epochs;
 mod historical_frontend;
 mod historical_lithosphere;
 mod historical_morphology;
+mod historical_orogen;
 mod historical_pre_orogenic;
 mod hydroclimate;
 mod infill;
@@ -112,6 +113,7 @@ pub use historical_morphology::{
     HistoricalMorphologyModel, HISTORICAL_MORPHOLOGY_STAGE_ID,
     HISTORICAL_MORPHOLOGY_STAGE_VERSION,
 };
+pub use historical_orogen::generate_event_driven_orogen_provinces;
 pub use historical_pre_orogenic::generate_pre_orogenic_lithosphere_from_history;
 pub use hydroclimate::{
     build_hydroclimate_closure_report, HydroclimateClosureReport, HydroclimateLatitudeBand,
