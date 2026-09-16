@@ -22,10 +22,8 @@ s = s.replace(
     '        0.30\n    } else if crust_kind == CrustKind::Transitional as u8 {\n        0.20\n    } else {\n        0.065',
 )
 
-# A modern kinematic field may move relative to its inherited material, but its
-# authoritative connectivity seed must remain inside the provisional material domain.
-# Otherwise repair_connectivity can erase the inherited domain and leave only the
-# forced single-sample core, which is the collapse seen in the geometry gate.
+# Keep the connectivity seed inside the inherited material domain. A plate field can
+# migrate, but it cannot invent its only surviving anchor inside a neighbor's material.
 old_core_guard = '''            if used[index] {
                 continue;
             }
@@ -38,6 +36,106 @@ if old_core_guard in s:
     s = s.replace(old_core_guard, new_core_guard, 1)
 elif new_core_guard not in s:
     raise SystemExit('choose_field_cores guard not found')
+
+# Finite Euler motion should reorganize a plate without letting the field center outrun
+# the material domain it represents. Cap the 30 Myr field drift relative to its initial
+# material core, while still allowing roughly 24 degrees of migration.
+old_evolve = '''fn evolve_fields(fields: &mut [PlateField]) {
+    const MIN_CORE_SEPARATION_RAD: f64 = 0.20;
+    for _ in 0..KINEMATIC_EPOCHS {
+        let proposals = fields
+            .iter()
+            .map(|field| {
+                let dt = EPOCH_DURATION_MYR * field.mobility;
+                (
+                    rotate_vector(field.center, field.angular_velocity, dt),
+                    rotate_vector(field.tangent_u, field.angular_velocity, dt),
+                )
+            })
+            .collect::<Vec<_>>();
+        let mut blocked = vec![false; fields.len()];
+        for left in 0..fields.len() {
+            for right in (left + 1)..fields.len() {
+                let separation = dot(proposals[left].0, proposals[right].0)
+                    .clamp(-1.0, 1.0)
+                    .acos();
+                if separation < MIN_CORE_SEPARATION_RAD {
+                    blocked[left] = true;
+                    blocked[right] = true;
+                }
+            }
+        }
+        for (index, field) in fields.iter_mut().enumerate() {
+            if blocked[index] {
+                continue;
+            }
+            field.center = proposals[index].0;
+            field.tangent_u = proposals[index].1;
+            field.tangent_v = normalize_or(cross(field.center, field.tangent_u), field.tangent_v);
+        }
+    }
+}'''
+new_evolve = '''fn limit_angular_drift(anchor: [f64; 3], proposed: [f64; 3], max_angle: f64) -> [f64; 3] {
+    let angle = dot(anchor, proposed).clamp(-1.0, 1.0).acos();
+    if angle <= max_angle || angle <= 1.0e-12 {
+        return proposed;
+    }
+    let t = max_angle / angle;
+    let sin_angle = angle.sin();
+    if sin_angle.abs() <= 1.0e-12 {
+        return normalize_or(add(scale(anchor, 1.0 - t), scale(proposed, t)), anchor);
+    }
+    let left = ((1.0 - t) * angle).sin() / sin_angle;
+    let right = (t * angle).sin() / sin_angle;
+    normalize_or(add(scale(anchor, left), scale(proposed, right)), anchor)
+}
+
+fn evolve_fields(fields: &mut [PlateField]) {
+    const MIN_CORE_SEPARATION_RAD: f64 = 0.20;
+    const MAX_MATERIAL_DRIFT_RAD: f64 = 0.42;
+    let anchors = fields.iter().map(|field| field.center).collect::<Vec<_>>();
+    for _ in 0..KINEMATIC_EPOCHS {
+        let proposals = fields
+            .iter()
+            .enumerate()
+            .map(|(index, field)| {
+                let dt = EPOCH_DURATION_MYR * field.mobility;
+                let moved_center = rotate_vector(field.center, field.angular_velocity, dt);
+                let center = limit_angular_drift(anchors[index], moved_center, MAX_MATERIAL_DRIFT_RAD);
+                let moved_tangent = rotate_vector(field.tangent_u, field.angular_velocity, dt);
+                let tangent = normalize_or(
+                    sub(moved_tangent, scale(center, dot(moved_tangent, center))),
+                    field.tangent_u,
+                );
+                (center, tangent)
+            })
+            .collect::<Vec<_>>();
+        let mut blocked = vec![false; fields.len()];
+        for left in 0..fields.len() {
+            for right in (left + 1)..fields.len() {
+                let separation = dot(proposals[left].0, proposals[right].0)
+                    .clamp(-1.0, 1.0)
+                    .acos();
+                if separation < MIN_CORE_SEPARATION_RAD {
+                    blocked[left] = true;
+                    blocked[right] = true;
+                }
+            }
+        }
+        for (index, field) in fields.iter_mut().enumerate() {
+            if blocked[index] {
+                continue;
+            }
+            field.center = proposals[index].0;
+            field.tangent_u = proposals[index].1;
+            field.tangent_v = normalize_or(cross(field.center, field.tangent_u), field.tangent_v);
+        }
+    }
+}'''
+if old_evolve in s:
+    s = s.replace(old_evolve, new_evolve, 1)
+elif 'MAX_MATERIAL_DRIFT_RAD' not in s:
+    raise SystemExit('evolve_fields block not found')
 
 marker = '\nfn repair_connectivity<T: PlanetTopology>(\n'
 if 'fn calibrate_area_biases<T: PlanetTopology>' not in s:
@@ -103,7 +201,7 @@ fn calibrate_area_biases<T: PlanetTopology>(
     signals: &MaterialSignals,
 ) {
     let targets = target_plate_fractions(signals, fields.len());
-    for _ in 0..120 {
+    for _ in 0..96 {
         let owners = assign_from_fields(
             topology,
             model,
@@ -120,12 +218,12 @@ fn calibrate_area_biases<T: PlanetTopology>(
             let error = targets[plate] - current[plate];
             maximum_error = maximum_error.max(error.abs());
             minimum_fraction = minimum_fraction.min(current[plate]);
-            let mut correction = (error * 1.8).clamp(-0.018, 0.018);
+            let mut correction = (error * 1.5).clamp(-0.014, 0.014);
             if current[plate] < 0.008 {
-                correction = correction.max(0.014);
+                correction = correction.max(0.012);
             }
             fields[plate].area_bias =
-                (fields[plate].area_bias + correction).clamp(-0.90, 0.90);
+                (fields[plate].area_bias + correction).clamp(-0.70, 0.70);
         }
         if minimum_fraction >= 0.012 && maximum_error < 0.007 {
             break;
