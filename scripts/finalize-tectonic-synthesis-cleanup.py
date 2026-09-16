@@ -18,6 +18,16 @@ text = replace_once(
     '    if mean_obliquity >= 62.0 && first.class == BoundaryClass::Collision {\n        return OrogenProvinceKind::TranspressionalOrogen;\n    }',
     'preserve subduction arc class under high obliquity',
 )
+# WG-3.6 is rasterized on the coarse tectonic sphere. A physically narrow volcanic-arc
+# center can otherwise fall between coarse samples and disappear entirely before fine
+# refinement. Keep the center offset, but antialias the diagnostic/magmatic envelope
+# broadly enough that every real subduction source survives the coarse representation.
+text = replace_once(
+    text,
+    'gaussian(physical_distance_km, arc_center_km, arc_sigma_km * 0.78)',
+    'gaussian(physical_distance_km, arc_center_km, arc_sigma_km * 1.35)',
+    'coarse-grid volcanic arc antialiasing',
+)
 orogen.write_text(text)
 
 # Physical output and the cumulative browser packet both change in this PR.
