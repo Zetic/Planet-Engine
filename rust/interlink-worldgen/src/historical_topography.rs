@@ -67,6 +67,7 @@ fn area_weighted_quantiles(values: &[f32], areas: &[f64]) -> (f64, f64, f64) {
 fn passive_margin_deflection_m(inherited: &InheritedPhysicalState, sample: usize) -> f64 {
     if inherited.structural_zone_kind[sample] != InheritedStructureKind::ContinentalMargin as u8
         || inherited.crust_kind[sample] == CrustKind::Oceanic as u8
+        || inherited.province_kind[sample] != 0
     {
         return 0.0;
     }
@@ -164,8 +165,7 @@ fn refresh_water_and_metrics(
             maximum_water_depth_m = maximum_water_depth_m.max(depth);
         } else {
             land_area += area;
-            land_elevation_area_sum +=
-                f64::from(water.elevation_above_sea_level_m[sample]) * area;
+            land_elevation_area_sum += f64::from(water.elevation_above_sea_level_m[sample]) * area;
         }
     }
     let total_area = (land_area + ocean_area).max(1.0e-12);
@@ -391,9 +391,15 @@ mod tests {
         let historical_mean = historical_margin_rift / margin_samples as f64;
         assert!(historical_mean < legacy_mean - 25.0);
         assert!(historical_mean > -2_500.0);
-        assert_eq!(historical.metrics.clamped_sample_count, legacy.metrics.clamped_sample_count);
+        assert_eq!(
+            historical.metrics.clamped_sample_count,
+            legacy.metrics.clamped_sample_count
+        );
         assert_eq!(historical.stage.id, HISTORICAL_TOPOGRAPHY_STAGE_ID);
-        assert_eq!(historical.stage.version, HISTORICAL_TOPOGRAPHY_STAGE_VERSION);
+        assert_eq!(
+            historical.stage.version,
+            HISTORICAL_TOPOGRAPHY_STAGE_VERSION
+        );
         assert_ne!(
             historical.metrics.topography_hash,
             legacy.metrics.topography_hash

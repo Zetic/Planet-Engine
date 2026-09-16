@@ -1,7 +1,7 @@
 use crate::{
     generate_pre_orogenic_lithosphere, HistoricalMorphologyModel, InheritedStructureKind,
-    PlanetTopology, PreOrogenicLithosphereModel, PreOrogenicLithosphereRequest, TectonicHistoryModel,
-    TectonicModel, WorldgenError,
+    PlanetTopology, PreOrogenicLithosphereModel, PreOrogenicLithosphereRequest,
+    TectonicHistoryModel, TectonicModel, WorldgenError,
 };
 
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
@@ -71,13 +71,8 @@ pub fn generate_pre_orogenic_lithosphere_from_history<T: PlanetTopology>(
     morphology: &HistoricalMorphologyModel,
     request: &PreOrogenicLithosphereRequest,
 ) -> Result<PreOrogenicLithosphereModel, WorldgenError> {
-    let mut model = generate_pre_orogenic_lithosphere(
-        topology,
-        tectonics,
-        active_history,
-        geology,
-        request,
-    )?;
+    let mut model =
+        generate_pre_orogenic_lithosphere(topology, tectonics, active_history, geology, request)?;
     let count = topology.sample_count() as usize;
     let fields = [
         morphology.rift_intensity.len(),
@@ -154,7 +149,8 @@ pub fn generate_pre_orogenic_lithosphere_from_history<T: PlanetTopology>(
         let old_strength = f64::from(model.intrinsic_strength_index[sample]);
         let old_weakness = f64::from(model.intrinsic_weakness_index[sample]);
         let strength = clamp01(old_strength * 0.82 + (1.0 - damage) * 0.18 - damage * 0.12);
-        let weakness = clamp01(old_weakness * 0.68 + (1.0 - strength) * 0.18 + historical_fabric * 0.25);
+        let weakness =
+            clamp01(old_weakness * 0.68 + (1.0 - strength) * 0.18 + historical_fabric * 0.25);
         model.intrinsic_strength_index[sample] = strength as f32;
         model.intrinsic_weakness_index[sample] = weakness as f32;
 
@@ -169,10 +165,14 @@ pub fn generate_pre_orogenic_lithosphere_from_history<T: PlanetTopology>(
         ) as f32;
     }
 
-    model.metrics.mean_intrinsic_strength_index = weighted_mean(topology, &model.intrinsic_strength_index);
-    model.metrics.mean_intrinsic_weakness_index = weighted_mean(topology, &model.intrinsic_weakness_index);
-    model.metrics.mean_effective_elastic_thickness_km = weighted_mean(topology, &model.effective_elastic_thickness_km);
-    model.metrics.mean_inherited_fabric_strength = weighted_mean(topology, &model.inherited_fabric_strength);
+    model.metrics.mean_intrinsic_strength_index =
+        weighted_mean(topology, &model.intrinsic_strength_index);
+    model.metrics.mean_intrinsic_weakness_index =
+        weighted_mean(topology, &model.intrinsic_weakness_index);
+    model.metrics.mean_effective_elastic_thickness_km =
+        weighted_mean(topology, &model.effective_elastic_thickness_km);
+    model.metrics.mean_inherited_fabric_strength =
+        weighted_mean(topology, &model.inherited_fabric_strength);
     model.metrics.paleo_suture_sample_count = model
         .inherited_structure_kind
         .iter()
@@ -198,11 +198,8 @@ pub fn generate_pre_orogenic_lithosphere_from_history<T: PlanetTopology>(
         .iter()
         .filter(|kind| **kind == InheritedStructureKind::CratonBoundary as u8)
         .count() as u32;
-    model.metrics.pre_orogenic_hash = historical_pre_hash(
-        base_hash,
-        morphology.metrics.morphology_hash,
-        &model,
-    );
+    model.metrics.pre_orogenic_hash =
+        historical_pre_hash(base_hash, morphology.metrics.morphology_hash, &model);
 
     Ok(model)
 }

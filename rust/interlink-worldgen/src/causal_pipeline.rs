@@ -473,7 +473,7 @@ fn province_relief(inherited: &InheritedPhysicalState, index: usize) -> (f64, f6
             + 1_350.0 * plateau * broad_transmission
             + 1_150.0 * fold
             + 2_000.0 * transpression
-            + 180.0 * intensity
+            + 360.0 * intensity
             - foreland_deflection
             - 70.0 * suture);
     (collision_relief, 0.0)
@@ -553,11 +553,8 @@ pub fn generate_initial_topography(
     // Use the old threshold solve only to discover broad submerged oceanic reservoirs.  It does
     // not define final water state.  This prevents every tiny oceanic crust remnant from becoming
     // an independent marine-water source inside a collision zone.
-    let provisional = crate::surface_water::solve_hydrostatic_surface_water_f64(
-        topology,
-        &solid,
-        planet,
-    )?;
+    let provisional =
+        crate::surface_water::solve_hydrostatic_surface_water_f64(topology, &solid, planet)?;
     let ocean_seed_mask = major_ocean_reservoir_seed_mask(
         topology,
         &inherited.crust_kind,

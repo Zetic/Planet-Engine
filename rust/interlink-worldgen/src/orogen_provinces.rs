@@ -1,7 +1,8 @@
 use crate::{
-    random, CrustKind, CrustalModel, InheritedStructureKind, PlanetPhysicalParameters,
-    PlanetTopology, PlateBoundaryEdge, PlateBoundaryKind, PreOrogenicLithosphereModel,
-    StageIdentity, TectonicHistoryModel, TectonicModel, WorldgenError,
+    random, CrustKind, CrustalModel, GeologicalBoundaryRegime, InheritedStructureKind,
+    PlanetPhysicalParameters, PlanetTopology, PlateBoundaryEdge, PlateBoundaryKind,
+    PreOrogenicLithosphereModel, StageIdentity, SubductionPolarity, TectonicHistoryModel,
+    TectonicModel, WorldgenError,
 };
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
@@ -278,60 +279,53 @@ fn average_pair(values: &[f32], a: u32, b: u32) -> f64 {
 fn edge_class(
     geology: &CrustalModel,
     pre: &PreOrogenicLithosphereModel,
+    boundary_index: usize,
     boundary: &PlateBoundaryEdge,
 ) -> (BoundaryClass, u16, u16, u16) {
-    let kind_a = geology.crust_kind[boundary.sample_a as usize];
-    let kind_b = geology.crust_kind[boundary.sample_b as usize];
-    let oceanic_a = kind_a == CrustKind::Oceanic as u8;
-    let oceanic_b = kind_b == CrustKind::Oceanic as u8;
-
-    if oceanic_a && oceanic_b {
-        let age_a = geology.crust_age_myr[boundary.sample_a as usize];
-        let age_b = geology.crust_age_myr[boundary.sample_b as usize];
-        let subducting = if age_a > age_b {
-            boundary.plate_a
-        } else if age_b > age_a {
-            boundary.plate_b
-        } else {
-            boundary.plate_a.min(boundary.plate_b)
-        };
-        let overriding = if subducting == boundary.plate_a {
-            boundary.plate_b
-        } else {
-            boundary.plate_a
-        };
-        return (BoundaryClass::IslandArc, overriding, NO_PLATE, subducting);
-    }
-
-    if oceanic_a != oceanic_b {
-        let subducting = if oceanic_a {
-            boundary.plate_a
-        } else {
-            boundary.plate_b
-        };
-        let overriding = if oceanic_a {
-            boundary.plate_b
-        } else {
-            boundary.plate_a
-        };
-        return (BoundaryClass::Cordilleran, overriding, NO_PLATE, subducting);
-    }
-
-    let strength_a = f64::from(pre.intrinsic_strength_index[boundary.sample_a as usize]);
-    let strength_b = f64::from(pre.intrinsic_strength_index[boundary.sample_b as usize]);
-    let hinterland = if strength_a > strength_b {
-        boundary.plate_a
-    } else if strength_b > strength_a {
-        boundary.plate_b
-    } else {
-        boundary.plate_a.min(boundary.plate_b)
+    let geological = &geology.boundaries[boundary_index];
+    let subducting_from_polarity = || match geological.subduction_polarity {
+        SubductionPolarity::PlateA => boundary.plate_a,
+        SubductionPolarity::PlateB => boundary.plate_b,
+        SubductionPolarity::None => boundary.plate_a.min(boundary.plate_b),
     };
-    let foreland = if hinterland == boundary.plate_a {
-        boundary.plate_b
-    } else {
-        boundary.plate_a
-    };
-    (BoundaryClass::Collision, NO_PLATE, hinterland, foreland)
+
+    match geological.regime {
+        GeologicalBoundaryRegime::OceanicSubduction => {
+            let subducting = subducting_from_polarity();
+            let overriding = if subducting == boundary.plate_a {
+                boundary.plate_b
+            } else {
+                boundary.plate_a
+            };
+            (BoundaryClass::IslandArc, overriding, NO_PLATE, subducting)
+        }
+        GeologicalBoundaryRegime::OceanContinentSubduction => {
+            let subducting = subducting_from_polarity();
+            let overriding = if subducting == boundary.plate_a {
+                boundary.plate_b
+            } else {
+                boundary.plate_a
+            };
+            (BoundaryClass::Cordilleran, overriding, NO_PLATE, subducting)
+        }
+        _ => {
+            let strength_a = f64::from(pre.intrinsic_strength_index[boundary.sample_a as usize]);
+            let strength_b = f64::from(pre.intrinsic_strength_index[boundary.sample_b as usize]);
+            let hinterland = if strength_a > strength_b {
+                boundary.plate_a
+            } else if strength_b > strength_a {
+                boundary.plate_b
+            } else {
+                boundary.plate_a.min(boundary.plate_b)
+            };
+            let foreland = if hinterland == boundary.plate_a {
+                boundary.plate_b
+            } else {
+                boundary.plate_a
+            };
+            (BoundaryClass::Collision, NO_PLATE, hinterland, foreland)
+        }
+    }
 }
 
 fn fragment_contact_strength(pre: &PreOrogenicLithosphereModel, a: u32, b: u32) -> f64 {
@@ -357,7 +351,7 @@ fn build_edge_traits(
         }
         let state = &history.boundary_state[index];
         let (class, overriding, hinterland, foreland_or_subducting) =
-            edge_class(geology, pre, boundary);
+            edge_class(geology, pre, index, boundary);
         let a = boundary.sample_a;
         let b = boundary.sample_b;
         traits[index] = Some(EdgeTraits {
@@ -481,7 +475,7 @@ fn province_kind(segment: &[usize], edge_traits: &[Option<EdgeTraits>]) -> Oroge
     let maturity = 0.42 * clamp01(mean_age / 95.0) + 0.58 * clamp01(mean_convergence / 3200.0);
     let shortening = clamp01(mean_convergence / 3000.0);
 
-    if mean_obliquity >= 62.0 {
+    if mean_obliquity >= 62.0 && first.class == BoundaryClass::Collision {
         return OrogenProvinceKind::TranspressionalOrogen;
     }
     match first.class {
@@ -1060,7 +1054,7 @@ fn source_profile(
             );
             profile.arc = clamp01(
                 (0.52 + 0.48 * source.maturity)
-                    * (gaussian(physical_distance_km, arc_center_km, arc_sigma_km * 0.78)
+                    * (gaussian(physical_distance_km, arc_center_km, arc_sigma_km * 1.35)
                         + secondary_arc * 0.22),
             );
             profile.backarc = clamp01(

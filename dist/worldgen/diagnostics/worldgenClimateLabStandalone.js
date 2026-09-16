@@ -22,6 +22,24 @@ function metric(container, label, value) {
     container.appendChild(item);
 }
 function plateColor(id) { return `hsl(${(id * 137.507764 + 18) % 360} 60% 55%)`; }
+function historicalIdentityColor(id, offset = 42) { return `hsl(${(id * 137.507764 + offset) % 360} 62% 55%)`; }
+function historicalEventColor(kind) {
+    if (kind === 1)
+        return '#f59e42';
+    if (kind === 2)
+        return '#50b9e8';
+    if (kind === 3)
+        return '#7656d6';
+    if (kind === 4)
+        return '#e94f4f';
+    if (kind === 5)
+        return '#e8d35a';
+    if (kind === 6)
+        return '#5dd18b';
+    if (kind === 7)
+        return '#c178df';
+    return '#101923';
+}
 function provenanceColor(source) { return `hsl(${(source * 137.507764 + 42) % 360} 58% 54%)`; }
 function crustColor(kind) {
     if (kind === WORLDGEN_CRUST_CONTINENTAL)
@@ -534,6 +552,16 @@ function scalarField(result, mode, phase) {
         case 'trench-relief': return { values: result.trenchElevationM, minimum: -7_000, maximum: 0, lowHue: 285, highHue: 210 };
         case 'arc-relief': return { values: result.arcElevationM, minimum: 0, maximum: 3_000, lowHue: 50, highHue: 5 };
         case 'mantle-relief': return { values: result.mantleDynamicElevationM, minimum: -1_200, maximum: 1_200, lowHue: 245, highHue: 25 };
+        case 'historical-crust-birth-age': return { values: result.crustBirthAgeMyr, minimum: 0, maximum: 3_500, lowHue: 205, highHue: 24 };
+        case 'historical-event-age': return { values: result.latestHistoricalEventAgeMyr, minimum: 0, maximum: 350, lowHue: 205, highHue: 24 };
+        case 'historical-rift': return { values: result.historicalRiftIntensity, minimum: 0, maximum: 1, lowHue: 210, highHue: 25 };
+        case 'historical-rift-age': return { values: result.historicalRiftAgeMyr, minimum: 0, maximum: 350, lowHue: 205, highHue: 24 };
+        case 'historical-shear': return { values: result.historicalShearIntensity, minimum: 0, maximum: 1, lowHue: 210, highHue: 55 };
+        case 'historical-suture': return { values: result.historicalSutureIntensity, minimum: 0, maximum: 1, lowHue: 210, highHue: 350 };
+        case 'historical-suture-age': return { values: result.historicalSutureAgeMyr, minimum: 0, maximum: 350, lowHue: 205, highHue: 24 };
+        case 'historical-passive-margin': return { values: result.passiveMarginIndex, minimum: 0, maximum: 1, lowHue: 215, highHue: 155 };
+        case 'historical-active-orogen': return { values: result.activeOrogenIntensity, minimum: 0, maximum: 1, lowHue: 215, highHue: 15 };
+        case 'historical-fossil-orogen': return { values: result.fossilOrogenIntensity, minimum: 0, maximum: 1, lowHue: 215, highHue: 285 };
         case 'crust-age': return { values: result.crustAgeMyr, minimum: 0, maximum: 3_500, lowHue: 205, highHue: 24 };
         case 'crust-thickness': return { values: result.crustThicknessKm, minimum: 5, maximum: 56, lowHue: 205, highHue: 350 };
         case 'orogeny-history': return { values: result.orogenicHistory, minimum: 0, maximum: 1, lowHue: 50, highHue: 350 };
@@ -678,6 +706,16 @@ function sampleColor(result, mode, sample, field, bucketed = false) {
         return hypsometricColor(result, sample, bucketed);
     if (mode === 'land-water')
         return result.submergedMask[sample] ? '#214d7a' : '#a99b72';
+    if (mode === 'historical-origin')
+        return historicalIdentityColor(result.originPlateIds[sample], 42);
+    if (mode === 'historical-fragments')
+        return historicalIdentityColor(result.historicalFragmentIds[sample], 104);
+    if (mode === 'historical-current')
+        return historicalIdentityColor(result.currentPlateIds[sample], 18);
+    if (mode === 'historical-provenance')
+        return historicalIdentityColor(result.crustProvinceId[sample] & 0x7fff, 154);
+    if (mode === 'historical-event')
+        return historicalEventColor(result.latestHistoricalEventKind[sample]);
     if (mode === 'plates' || mode === 'tectonic-boundaries' || mode === 'geological-boundaries' || mode === 'boundary-provenance')
         return plateColor(result.plateIds[sample]);
     if (mode === 'kinematic-domains')

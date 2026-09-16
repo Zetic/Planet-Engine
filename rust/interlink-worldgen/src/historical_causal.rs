@@ -41,10 +41,7 @@ fn area_weighted_mean<T: PlanetTopology>(topology: &T, values: &[f32]) -> f64 {
     weighted / area.max(1.0e-12)
 }
 
-fn project_historical_substrate<T: PlanetTopology>(
-    topology: &T,
-    model: &mut LithosphericModel,
-) {
+fn project_historical_substrate<T: PlanetTopology>(topology: &T, model: &mut LithosphericModel) {
     let base_hash = model.metrics.lithosphere_hash;
     let pre_hash = model.pre_orogenic.metrics.pre_orogenic_hash;
     let strength = model.pre_orogenic.intrinsic_strength_index.clone();
@@ -137,12 +134,8 @@ pub fn generate_lithosphere_from_history<T: PlanetTopology>(
         ));
     }
 
-    let mut model = crate::causal_pipeline::generate_lithosphere(
-        topology,
-        tectonics,
-        geology,
-        request,
-    )?;
+    let mut model =
+        crate::causal_pipeline::generate_lithosphere(topology, tectonics, geology, request)?;
     let morphology = build_historical_tectonic_morphology(
         topology,
         historical,
@@ -210,16 +203,37 @@ mod tests {
             legacy_causal.orogen_provinces.metrics.province_hash,
             historical_causal.orogen_provinces.metrics.province_hash
         );
-        assert_ne!(legacy_causal.metrics.lithosphere_hash, historical_causal.metrics.lithosphere_hash);
+        assert_ne!(
+            legacy_causal.metrics.lithosphere_hash,
+            historical_causal.metrics.lithosphere_hash
+        );
         assert_eq!(
             historical_causal.metrics.suture_sample_count,
-            historical_causal.pre_orogenic.metrics.paleo_suture_sample_count
+            historical_causal
+                .pre_orogenic
+                .metrics
+                .paleo_suture_sample_count
         );
         assert_eq!(
             historical_causal.metrics.rift_zone_sample_count,
-            historical_causal.pre_orogenic.metrics.inherited_rift_sample_count
+            historical_causal
+                .pre_orogenic
+                .metrics
+                .inherited_rift_sample_count
         );
-        assert!(historical_causal.pre_orogenic.metrics.paleo_suture_sample_count > 0);
-        assert!(historical_causal.pre_orogenic.metrics.inherited_rift_sample_count > 0);
+        assert!(
+            historical_causal
+                .pre_orogenic
+                .metrics
+                .paleo_suture_sample_count
+                > 0
+        );
+        assert!(
+            historical_causal
+                .pre_orogenic
+                .metrics
+                .inherited_rift_sample_count
+                > 0
+        );
     }
 }

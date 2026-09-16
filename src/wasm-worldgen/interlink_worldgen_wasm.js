@@ -21,6 +21,15 @@ export class WasmWorldgenClimate {
     /**
      * @returns {Float32Array}
      */
+    active_orogen_intensity() {
+        const ret = wasm.wasmworldgenclimate_active_orogen_intensity(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
     actual_evapotranspiration_mm() {
         const ret = wasm.wasmworldgenclimate_actual_evapotranspiration_mm(this.__wbg_ptr);
         var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
@@ -361,12 +370,30 @@ export class WasmWorldgenClimate {
         return v1;
     }
     /**
+     * @returns {Float32Array}
+     */
+    crust_birth_age_myr() {
+        const ret = wasm.wasmworldgenclimate_crust_birth_age_myr(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
      * @returns {Uint8Array}
      */
     crust_kind() {
         const ret = wasm.wasmworldgenclimate_crust_kind(this.__wbg_ptr);
         var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        return v1;
+    }
+    /**
+     * @returns {Uint16Array}
+     */
+    crust_province_id() {
+        const ret = wasm.wasmworldgenclimate_crust_province_id(this.__wbg_ptr);
+        var v1 = getArrayU16FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 2, 2);
         return v1;
     }
     /**
@@ -430,6 +457,15 @@ export class WasmWorldgenClimate {
         const ret = wasm.wasmworldgenclimate_current_north_mean_m_s(this.__wbg_ptr);
         var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Uint16Array}
+     */
+    current_plate_ids() {
+        const ret = wasm.wasmworldgenclimate_current_plate_ids(this.__wbg_ptr);
+        var v1 = getArrayU16FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 2, 2);
         return v1;
     }
     /**
@@ -1039,6 +1075,15 @@ export class WasmWorldgenClimate {
     /**
      * @returns {Float32Array}
      */
+    fossil_orogen_intensity() {
+        const ret = wasm.wasmworldgenclimate_fossil_orogen_intensity(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
     fragmentation_propensity() {
         const ret = wasm.wasmworldgenclimate_fragmentation_propensity(this.__wbg_ptr);
         var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
@@ -1117,6 +1162,90 @@ export class WasmWorldgenClimate {
     has_sea_level() {
         const ret = wasm.wasmworldgenclimate_has_sea_level(this.__wbg_ptr);
         return ret !== 0;
+    }
+    /**
+     * @returns {Uint16Array}
+     */
+    historical_fragment_ids() {
+        const ret = wasm.wasmworldgenclimate_historical_fragment_ids(this.__wbg_ptr);
+        var v1 = getArrayU16FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 2, 2);
+        return v1;
+    }
+    /**
+     * @returns {string}
+     */
+    historical_identity_hash_hex() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmworldgenclimate_historical_identity_hash_hex(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {string}
+     */
+    historical_morphology_hash_hex() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmworldgenclimate_historical_morphology_hash_hex(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    historical_rift_age_myr() {
+        const ret = wasm.wasmworldgenclimate_historical_rift_age_myr(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    historical_rift_intensity() {
+        const ret = wasm.wasmworldgenclimate_historical_rift_intensity(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    historical_shear_intensity() {
+        const ret = wasm.wasmworldgenclimate_historical_shear_intensity(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    historical_suture_age_myr() {
+        const ret = wasm.wasmworldgenclimate_historical_suture_age_myr(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    historical_suture_intensity() {
+        const ret = wasm.wasmworldgenclimate_historical_suture_intensity(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
     }
     /**
      * @returns {Float32Array}
@@ -1894,6 +2023,24 @@ export class WasmWorldgenClimate {
         return ret;
     }
     /**
+     * @returns {Float32Array}
+     */
+    latest_historical_event_age_myr() {
+        const ret = wasm.wasmworldgenclimate_latest_historical_event_age_myr(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Uint8Array}
+     */
+    latest_historical_event_kind() {
+        const ret = wasm.wasmworldgenclimate_latest_historical_event_kind(this.__wbg_ptr);
+        var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        return v1;
+    }
+    /**
      * @returns {string}
      */
     lithosphere_hash_hex() {
@@ -2360,6 +2507,15 @@ export class WasmWorldgenClimate {
         return ret;
     }
     /**
+     * @returns {Uint16Array}
+     */
+    origin_plate_ids() {
+        const ret = wasm.wasmworldgenclimate_origin_plate_ids(this.__wbg_ptr);
+        var v1 = getArrayU16FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 2, 2);
+        return v1;
+    }
+    /**
      * @returns {Float32Array}
      */
     orogenic_elevation_m() {
@@ -2390,6 +2546,15 @@ export class WasmWorldgenClimate {
     p95_annual_precipitation_mm() {
         const ret = wasm.wasmworldgenclimate_p95_annual_precipitation_mm(this.__wbg_ptr);
         return ret;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    passive_margin_index() {
+        const ret = wasm.wasmworldgenclimate_passive_margin_index(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
     }
     /**
      * @returns {number}
