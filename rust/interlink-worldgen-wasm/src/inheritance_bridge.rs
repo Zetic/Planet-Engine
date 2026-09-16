@@ -213,16 +213,19 @@ impl WasmWorldgenInheritance {
     }
 
     pub fn plate_ids(&self) -> Vec<u16> {
-        self.inner.plate_ids.clone()
+        self.historical_identity.current_plate_ids.clone()
     }
     pub fn crust_kind(&self) -> Vec<u8> {
-        self.inner.crust_kind.clone()
+        self.historical_identity.crust_kind.clone()
     }
+    /// Browser WG-3.75 diagnostics now treat the province channel as ancestral material provenance.
+    /// The internal physical state still retains fragment-owned compatibility provinces for solvers.
     pub fn crust_province_id(&self) -> Vec<u16> {
-        self.inner.crust_province_id.clone()
+        self.historical_identity.origin_plate_ids.clone()
     }
+    /// Expose causal formation/birth age through the accepted diagnostic age channel.
     pub fn crust_age_myr(&self) -> Vec<f32> {
-        self.inner.crust_age_myr.clone()
+        self.historical_identity.crust_birth_age_myr.clone()
     }
     pub fn crust_thickness_km(&self) -> Vec<f32> {
         self.inner.crust_thickness_km.clone()
@@ -294,8 +297,10 @@ impl WasmWorldgenInheritance {
     pub fn fragmentation_propensity(&self) -> Vec<f32> {
         self.inner.fragmentation_propensity.clone()
     }
+    /// Fragment IDs are now the persistent historical material fragments introduced before modern
+    /// plate synthesis, rather than the legacy post-crust mechanical refinement fragments.
     pub fn fragment_ids(&self) -> Vec<u16> {
-        self.inner.fragment_ids.clone()
+        self.historical_identity.fragment_ids.clone()
     }
     pub fn kinematic_domain_ids(&self) -> Vec<u16> {
         self.inner.kinematic_domain_ids.clone()
