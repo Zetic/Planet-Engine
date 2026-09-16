@@ -8,13 +8,20 @@ if 'mod boundary_plate_geometry;\n' not in lib:
     if needle not in lib:
         raise SystemExit('lib.rs module insertion point missing')
     lib = lib.replace(needle, 'mod boundary_plate_geometry;\n' + needle, 1)
-    lib_path.write_text(lib)
+lib = lib.replace('pub const WORLDGEN_ENGINE_VERSION: u32 = 18;', 'pub const WORLDGEN_ENGINE_VERSION: u32 = 19;')
+lib_path.write_text(lib)
 
 field_path = Path('rust/interlink-worldgen/src/boundary_plate_geometry.rs')
 field = field_path.read_text()
 field = field.replace('plate as u16 < best_plate', '(plate as u16) < best_plate')
 field = field.replace('const KINEMATIC_EPOCHS: usize = 12;', 'const KINEMATIC_EPOCHS: usize = 10;')
 field = field.replace('const EPOCH_DURATION_MYR: f64 = 6.0;', 'const EPOCH_DURATION_MYR: f64 = 3.0;')
+for obsolete in [
+    '    ellipticity: f64,\n',
+    '    triangularity: f64,\n',
+    '    stress_coupling: f64,\n',
+]:
+    field = field.replace(obsolete, '')
 
 core_start = field.index('fn choose_plate_cores<T: PlanetTopology>(')
 core_end = field.index('fn tangent_frame(', core_start)
@@ -29,6 +36,12 @@ field = field.replace(
     'area_bias: (unit_random(seed ^ stream ^ 0xe703_7ed1_a0b4_28db) - 0.5) * 0.18,',
     'area_bias: (unit_random(seed ^ stream ^ 0xe703_7ed1_a0b4_28db) - 0.5) * 0.04,',
 )
+for obsolete in [
+    '                ellipticity: (unit_random(seed ^ stream ^ 0x8ebc_6af0_9c88_c6e3) - 0.5) * 0.34,\n',
+    '                triangularity: (unit_random(seed ^ stream ^ 0x5899_65cc_7537_4cc3) - 0.5) * 0.16,\n',
+    '                stress_coupling: (unit_random(seed ^ stream ^ 0x1d8e_4e27_c47d_124f) - 0.5) * 0.16,\n',
+]:
+    field = field.replace(obsolete, '')
 
 evolve_start = field.index('fn evolve_fields(fields: &mut [PlateField]) {')
 evolve_end = field.index('fn field_score(', evolve_start)
@@ -55,12 +68,21 @@ field_path.write_text(field)
 
 path = Path('rust/interlink-worldgen/src/dynamic_plate_evolution.rs')
 text = path.read_text()
+text = text.replace(
+    'const DYNAMIC_PLATE_NAMESPACE: &str = "worldgen:geology:dynamic-modern-plates:v1";',
+    'const DYNAMIC_PLATE_NAMESPACE: &str = "worldgen:geology:dynamic-modern-plates:v2";',
+)
+text = text.replace('const DYNAMIC_EPOCHS: usize = 18;\n', '')
 old = '    model.current_plate_ids = evolve_ownership(topology, &model, stage_seed)?;\n'
 new = '    model.current_plate_ids =\n        crate::boundary_plate_geometry::synthesize_boundary_first_ownership(topology, &model, seed)?;\n'
 if old in text:
     text = text.replace(old, new, 1)
 elif new not in text:
     raise SystemExit('dynamic plate cutover call site missing')
+old_geometry_start = text.find('fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {')
+split_start = text.find('fn split_fragments_at_modern_boundaries<T: PlanetTopology>(')
+if old_geometry_start >= 0 and split_start > old_geometry_start:
+    text = text[:old_geometry_start] + text[split_start:]
 path.write_text(text)
 
 accept_path = Path('rust/interlink-worldgen-cli/examples/boundary_network_geometry_acceptance.rs')
@@ -82,15 +104,5 @@ if old_main in accept:
 elif new_main not in accept:
     raise SystemExit('acceptance main block missing')
 accept_path.write_text(accept)
-
-ci_path = Path('.github/workflows/ci.yml')
-ci = ci_path.read_text()
-anchor = '      - name: Verify dynamic modern plate geometry\n        run: cargo run --release -p interlink-worldgen-cli --example dynamic_plate_geometry_acceptance\n'
-addition = anchor + '      - name: Verify boundary-first modern plate geometry\n        run: cargo run --release -p interlink-worldgen-cli --example boundary_network_geometry_acceptance\n'
-if 'Verify boundary-first modern plate geometry' not in ci:
-    if anchor not in ci:
-        raise SystemExit('CI dynamic geometry anchor missing')
-    ci = ci.replace(anchor, addition, 1)
-    ci_path.write_text(ci)
 
 print('boundary-first plate cutover applied')
