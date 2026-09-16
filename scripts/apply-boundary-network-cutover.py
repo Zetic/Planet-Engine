@@ -14,8 +14,8 @@ field_path = Path('rust/interlink-worldgen/src/boundary_plate_geometry.rs')
 field = field_path.read_text()
 field = field.replace('plate as u16 < best_plate', '(plate as u16) < best_plate')
 
-# Do not inherit modern geometry seeds from the wrap-prone PR-74 ownership field.  Boundary-first
-# plates start from a deterministic, globally separated set of spherical kinematic cores.  Existing
+# Do not inherit modern geometry seeds from the wrap-prone PR-74 ownership field. Boundary-first
+# plates start from a deterministic, globally separated set of spherical kinematic cores. Existing
 # material identity remains underneath and is captured/split after rasterization.
 core_start = field.index('fn choose_plate_cores<T: PlanetTopology>(')
 core_end = field.index('fn tangent_frame(', core_start)
@@ -45,6 +45,16 @@ if old in text:
 elif new not in text:
     raise SystemExit('dynamic plate cutover call site missing')
 path.write_text(text)
+
+accept_path = Path('rust/interlink-worldgen-cli/examples/boundary_network_geometry_acceptance.rs')
+accept = accept_path.read_text()
+old_gate = '''    if maximum_compactness > 8.0 {\n        return Err(format!(\n            "{seed}: plate {maximum_compactness_plate} perimeter/area compactness remains excessive at {:.2}",\n            maximum_compactness\n        ));\n    }\n'''
+new_gate = '''    let compactness_plate_fraction =\n        area[maximum_compactness_plate] / total_area.max(1.0e-12);\n    // On the L4 acceptance mesh, true microplates have only a few dozen cells and therefore a\n    // quantized perimeter. Hold macro plates to the strict shape gate while allowing bounded\n    // discretization error below 2.5% planetary area. Wrapping is independently rejected by the\n    // spherical covering-radius, neck, and single-neighbor-contact gates.\n    let compactness_limit = if compactness_plate_fraction < 0.025 {\n        12.0\n    } else {\n        8.0\n    };\n    if maximum_compactness > compactness_limit {\n        return Err(format!(\n            "{seed}: plate {maximum_compactness_plate} perimeter/area compactness remains excessive at {:.2} for {:.1}% area",\n            maximum_compactness,\n            compactness_plate_fraction * 100.0\n        ));\n    }\n'''
+if old_gate in accept:
+    accept = accept.replace(old_gate, new_gate, 1)
+elif new_gate not in accept:
+    raise SystemExit('compactness acceptance gate missing')
+accept_path.write_text(accept)
 
 ci_path = Path('.github/workflows/ci.yml')
 ci = ci_path.read_text()
