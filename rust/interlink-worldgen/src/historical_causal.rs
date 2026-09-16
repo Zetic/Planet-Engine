@@ -1,17 +1,11 @@
 use crate::{
     build_historical_tectonic_morphology, generate_event_driven_orogen_provinces,
-    generate_lithosphere, generate_pre_orogenic_lithosphere_from_history,
-    HistoricalLithosphereModel, LithosphereRequest, LithosphericModel, OrogenProvinceRequest,
-    PlanetPhysicalParameters, PlanetTopology, PreOrogenicLithosphereRequest, TectonicModel,
-    WorldgenError,
+    generate_pre_orogenic_lithosphere_from_history, HistoricalLithosphereModel,
+    LithosphereRequest, LithosphericModel, OrogenProvinceRequest, PlanetPhysicalParameters,
+    PlanetTopology, PreOrogenicLithosphereRequest, TectonicModel, WorldgenError,
 };
 
-/// PR-B production cutover entrypoint.
-///
-/// Modern tectonics remain the active kinematic view, while persistent event/material history is
-/// rasterized first and becomes the inherited substrate consumed by WG-3.5/WG-3.6. The existing
-/// `generate_lithosphere` remains a compatibility path for callers that do not retain the explicit
-/// PR-A historical model.
+/// History-aware WG-3.5/WG-3.6 authority when the caller already retains the PR-A material model.
 pub fn generate_lithosphere_from_history<T: PlanetTopology>(
     topology: &T,
     historical: &HistoricalLithosphereModel,
@@ -30,7 +24,15 @@ pub fn generate_lithosphere_from_history<T: PlanetTopology>(
         ));
     }
 
-    let mut model = generate_lithosphere(topology, tectonics, geology, request)?;
+    // The old constructor remains the accepted mechanical/active-boundary compatibility kernel.
+    // Call it directly through its module so the public `generate_lithosphere` adapter can become
+    // history-aware without recursing back into this function.
+    let mut model = crate::causal_pipeline::generate_lithosphere(
+        topology,
+        tectonics,
+        geology,
+        request,
+    )?;
     let morphology = build_historical_tectonic_morphology(
         topology,
         historical,
@@ -74,7 +76,7 @@ mod tests {
             planet,
         )
         .unwrap();
-        let legacy_causal = generate_lithosphere(
+        let legacy_causal = crate::causal_pipeline::generate_lithosphere(
             &topology,
             &frontend.tectonics,
             &frontend.geology,
