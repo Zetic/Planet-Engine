@@ -68,7 +68,17 @@ jobs:
       - name: Build browser modules
         run: npm run build
       - name: Run browser regressions
-        run: npm run test:ts
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:ts 2>&1 | tee browser-test.log
+      - name: Upload browser regression log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-regression-log
+          path: browser-test.log
+          if-no-files-found: ignore
       - name: Commit synthesis implementation
         run: |
           if ! git diff --quiet; then
