@@ -550,12 +550,21 @@ export class WasmWorldgenInheritance {
     coarse_sample_count(): number;
     coarse_topology_hash_hex(): string;
     compensated_buoyancy_index(): Float32Array;
+    /**
+     * Expose causal formation/birth age through the accepted diagnostic age channel.
+     */
     crust_age_myr(): Float32Array;
+    crust_birth_age_myr(): Float32Array;
     crust_density_kg_per_m3(): Float32Array;
     crust_kind(): Uint8Array;
+    /**
+     * Browser WG-3.75 diagnostics now treat the province channel as ancestral material provenance.
+     * The internal physical state still retains fragment-owned compatibility provinces for solvers.
+     */
     crust_province_id(): Uint16Array;
     crust_thickness_km(): Float32Array;
     crustal_strain(): Float32Array;
+    current_plate_ids(): Uint16Array;
     effective_elastic_thickness_km(): Float32Array;
     equivalent_global_water_depth_m(): number;
     faces(): Uint32Array;
@@ -563,11 +572,17 @@ export class WasmWorldgenInheritance {
     fine_level(): number;
     fine_sample_count(): number;
     fine_topology_hash_hex(): string;
+    /**
+     * Fragment IDs are now the persistent historical material fragments introduced before modern
+     * plate synthesis, rather than the legacy post-crust mechanical refinement fragments.
+     */
     fragment_ids(): Uint16Array;
     fragmentation_propensity(): Float32Array;
     generator_version(): number;
     geological_boundary_regimes(): Uint8Array;
     geology_hash_hex(): string;
+    historical_fragment_ids(): Uint16Array;
+    historical_identity_hash_hex(): string;
     inheritance_hash_hex(): string;
     inherited_sample_mask(): Uint8Array;
     internal_heat_flux_w_per_m2(): number;
@@ -582,6 +597,7 @@ export class WasmWorldgenInheritance {
     neighbors(): Uint32Array;
     constructor(seed: string, coarse_level: number, fine_level: number, plate_count: number);
     ocean_water_density_kg_per_m3(): number;
+    origin_plate_ids(): Uint16Array;
     orogenic_history(): Float32Array;
     parameter_hash_hex(): string;
     plate_count(): number;
@@ -1366,7 +1382,6 @@ export interface InitOutput {
     readonly wasmworldgengeology_transitional_divergence_edges: (a: number) => number;
     readonly wasmworldgengeology_trench_history: (a: number) => [number, number];
     readonly wasmworldgengeology_volcanic_arc_history: (a: number) => [number, number];
-    readonly wasmworldgeninheritance_added_sample_count: (a: number) => number;
     readonly wasmworldgeninheritance_basin_potential: (a: number) => [number, number];
     readonly wasmworldgeninheritance_boundary_coarse_source_indices: (a: number) => [number, number];
     readonly wasmworldgeninheritance_boundary_hash_hex: (a: number) => [number, number];
@@ -1376,7 +1391,6 @@ export interface InitOutput {
     readonly wasmworldgeninheritance_boundary_shear_rates_m_per_year: (a: number) => [number, number];
     readonly wasmworldgeninheritance_buoyancy_index: (a: number) => [number, number];
     readonly wasmworldgeninheritance_coarse_level: (a: number) => number;
-    readonly wasmworldgeninheritance_coarse_sample_count: (a: number) => number;
     readonly wasmworldgeninheritance_coarse_topology_hash_hex: (a: number) => [number, number];
     readonly wasmworldgeninheritance_compensated_buoyancy_index: (a: number) => [number, number];
     readonly wasmworldgeninheritance_crust_age_myr: (a: number) => [number, number];
@@ -1385,17 +1399,18 @@ export interface InitOutput {
     readonly wasmworldgeninheritance_crust_province_id: (a: number) => [number, number];
     readonly wasmworldgeninheritance_crust_thickness_km: (a: number) => [number, number];
     readonly wasmworldgeninheritance_crustal_strain: (a: number) => [number, number];
+    readonly wasmworldgeninheritance_current_plate_ids: (a: number) => [number, number];
     readonly wasmworldgeninheritance_effective_elastic_thickness_km: (a: number) => [number, number];
     readonly wasmworldgeninheritance_equivalent_global_water_depth_m: (a: number) => number;
     readonly wasmworldgeninheritance_faces: (a: number) => [number, number];
     readonly wasmworldgeninheritance_fine_boundary_edge_count: (a: number) => number;
     readonly wasmworldgeninheritance_fine_level: (a: number) => number;
-    readonly wasmworldgeninheritance_fine_sample_count: (a: number) => number;
     readonly wasmworldgeninheritance_fine_topology_hash_hex: (a: number) => [number, number];
     readonly wasmworldgeninheritance_fragment_ids: (a: number) => [number, number];
     readonly wasmworldgeninheritance_fragmentation_propensity: (a: number) => [number, number];
     readonly wasmworldgeninheritance_geological_boundary_regimes: (a: number) => [number, number];
     readonly wasmworldgeninheritance_geology_hash_hex: (a: number) => [number, number];
+    readonly wasmworldgeninheritance_historical_identity_hash_hex: (a: number) => [number, number];
     readonly wasmworldgeninheritance_inheritance_hash_hex: (a: number) => [number, number];
     readonly wasmworldgeninheritance_inherited_sample_mask: (a: number) => [number, number];
     readonly wasmworldgeninheritance_internal_heat_flux_w_per_m2: (a: number) => number;
@@ -1413,9 +1428,9 @@ export interface InitOutput {
     readonly wasmworldgeninheritance_orogenic_history: (a: number) => [number, number];
     readonly wasmworldgeninheritance_parameter_hash_hex: (a: number) => [number, number];
     readonly wasmworldgeninheritance_plate_count: (a: number) => number;
-    readonly wasmworldgeninheritance_plate_ids: (a: number) => [number, number];
     readonly wasmworldgeninheritance_positions: (a: number) => [number, number];
     readonly wasmworldgeninheritance_provenance_hash_hex: (a: number) => [number, number];
+    readonly wasmworldgeninheritance_radius_m: (a: number) => number;
     readonly wasmworldgeninheritance_ridge_history: (a: number) => [number, number];
     readonly wasmworldgeninheritance_rift_history: (a: number) => [number, number];
     readonly wasmworldgeninheritance_stage_id: (a: number) => [number, number];
@@ -1426,6 +1441,7 @@ export interface InitOutput {
     readonly wasmworldgeninheritance_subduction_history: (a: number) => [number, number];
     readonly wasmworldgeninheritance_subduction_polarities: (a: number) => [number, number];
     readonly wasmworldgeninheritance_subsidence_history: (a: number) => [number, number];
+    readonly wasmworldgeninheritance_surface_gravity_m_s2: (a: number) => number;
     readonly wasmworldgeninheritance_surface_water_mass_kg: (a: number) => number;
     readonly wasmworldgeninheritance_tectonic_hash_hex: (a: number) => [number, number];
     readonly wasmworldgeninheritance_thermal_anomaly_index: (a: number) => [number, number];
@@ -1521,6 +1537,7 @@ export interface InitOutput {
     readonly wasmworldgentectonics_stage_version: (a: number) => number;
     readonly wasmworldgentectonics_tectonic_hash_hex: (a: number) => [number, number];
     readonly wasmworldgentectonics_topology_hash_hex: (a: number) => [number, number];
+    readonly wasmworldgentectonics_transform_edge_count: (a: number) => number;
     readonly wasmworldgentopography_arc_elevation_m: (a: number) => [number, number];
     readonly wasmworldgentopography_boundary_coarse_source_indices: (a: number) => [number, number];
     readonly wasmworldgentopography_boundary_hash_hex: (a: number) => [number, number];
@@ -1613,11 +1630,11 @@ export interface InitOutput {
     readonly worldgen_protocol_version: () => number;
     readonly wasmworldgentopography_fine_boundary_edge_count: (a: number) => number;
     readonly wasmworldgentopography_sea_level_m: (a: number) => number;
-    readonly wasmworldgeninheritance_radius_m: (a: number) => number;
-    readonly wasmworldgeninheritance_surface_gravity_m_s2: (a: number) => number;
+    readonly wasmworldgeninheritance_added_sample_count: (a: number) => number;
+    readonly wasmworldgeninheritance_coarse_sample_count: (a: number) => number;
+    readonly wasmworldgeninheritance_fine_sample_count: (a: number) => number;
     readonly wasmworldgenlithosphere_boundary_edge_count: (a: number) => number;
     readonly wasmworldgentectonics_boundary_edge_count: (a: number) => number;
-    readonly wasmworldgentectonics_transform_edge_count: (a: number) => number;
     readonly wasmworldgentopography_land_area_fraction: (a: number) => number;
     readonly wasmworldgentopography_maximum_solid_elevation_m: (a: number) => number;
     readonly wasmworldgentopography_minimum_solid_elevation_m: (a: number) => number;
@@ -1644,6 +1661,10 @@ export interface InitOutput {
     readonly wasmworldgentopography_generator_version: (a: number) => number;
     readonly wasmworldgentopology_generator_version: (a: number) => number;
     readonly wasmworldgentopography_has_sea_level: (a: number) => number;
+    readonly wasmworldgeninheritance_crust_birth_age_myr: (a: number) => [number, number];
+    readonly wasmworldgeninheritance_historical_fragment_ids: (a: number) => [number, number];
+    readonly wasmworldgeninheritance_origin_plate_ids: (a: number) => [number, number];
+    readonly wasmworldgeninheritance_plate_ids: (a: number) => [number, number];
     readonly wasmworldgenlithosphere_level: (a: number) => number;
     readonly wasmworldgenlithosphere_plate_count: (a: number) => number;
     readonly wasmworldgentectonics_level: (a: number) => number;
