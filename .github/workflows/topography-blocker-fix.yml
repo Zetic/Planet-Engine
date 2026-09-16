@@ -1,0 +1,59 @@
+name: Topography Blocker Fix
+
+on:
+  push:
+    branches: [feat/tectonic-synthesis-cleanup]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/tectonic-synthesis-cleanup
+          fetch-depth: 0
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - name: Prevent passive-margin subsidence inside active orogens
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('rust/interlink-worldgen/src/historical_topography.rs')
+          text = path.read_text()
+          old = '''    if inherited.structural_zone_kind[sample] != InheritedStructureKind::ContinentalMargin as u8
+        || inherited.crust_kind[sample] == CrustKind::Oceanic as u8
+    {
+        return 0.0;
+    }
+'''
+          new = '''    if inherited.structural_zone_kind[sample] != InheritedStructureKind::ContinentalMargin as u8
+        || inherited.crust_kind[sample] == CrustKind::Oceanic as u8
+        || inherited.province_kind[sample] != 0
+    {
+        return 0.0;
+    }
+'''
+          assert text.count(old) == 1, 'expected passive-margin guard exactly once'
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Format
+        run: cargo fmt --all
+      - name: Test passive-margin adapter
+        run: cargo test -p interlink-worldgen historical_passive_margins_create_bounded_shelf_subsidence
+      - name: Test tectonic topography cutover
+        run: cargo run -p interlink-worldgen-cli --example tectonic_topography_cutover_smoke
+      - name: Test historical morphology
+        run: cargo run --release -p interlink-worldgen-cli --example historical_morphology_acceptance
+      - name: Commit fix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add rust/interlink-worldgen/src/historical_topography.rs
+          git commit -m 'fix(worldgen): keep active orogens out of passive-margin subsidence'
+          git push origin HEAD:feat/tectonic-synthesis-cleanup
