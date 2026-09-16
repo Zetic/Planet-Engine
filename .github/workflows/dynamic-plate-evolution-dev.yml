@@ -66,7 +66,6 @@ jobs:
             rust/interlink-worldgen/src/historical_lithosphere.rs \
             rust/interlink-worldgen/src/historical_frontend.rs \
             rust/interlink-worldgen-cli/examples/historical_lithosphere_acceptance.rs \
-            .github/workflows/ci.yml \
             src/wasm-worldgen
           if git diff --cached --quiet; then
             echo 'No generated cutover changes to commit.'
