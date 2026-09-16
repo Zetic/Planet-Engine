@@ -57,8 +57,7 @@ jobs:
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add .github/workflows/ci.yml \
-            rust/interlink-worldgen/src/lib.rs \
+          git add rust/interlink-worldgen/src/lib.rs \
             rust/interlink-worldgen/src/boundary_plate_geometry.rs \
             rust/interlink-worldgen/src/dynamic_plate_evolution.rs \
             rust/interlink-worldgen/src/causal_pipeline.rs \
