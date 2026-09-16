@@ -1,73 +1,88 @@
 # Spherical Plate Tectonics
 
-WG-2 introduces the first causal physical partition on the canonical WG-1 sphere. It generates a deterministic present-day plate mosaic and rigid plate kinematics. WG-2.5 now derives connected boundary systems and analytical tectonic chronology from that accepted plate truth. Neither stage generates terrain.
+Planet Engine now separates **ancestral plate geometry** from **present-day plate ownership**. The canonical historical frontend still uses the deterministic spherical WG-2 partition as a deep-time initializer, but modern plates are no longer restricted to unions of those original graph-Voronoi cells. A bounded dynamic ownership pass allows present boundaries to migrate through ancestral material while persistent material ancestry survives underneath.
 
-## Stage boundary
+This is a deterministic tectonic synthesis model, not a mantle-convection solver or a literal geological reconstruction.
+
+## Canonical causal chain
 
 ```text
 canonical PlanetTopology
         +
-planet physical radius
-        +
-seed + requested macro plate count
+planet radius + seed + requested modern plate count
         ↓
-deterministic plate seeds
+ancestral spherical plate partition
         ↓
-connected spherical plate partition
+plate-owned crust + coherent proto-continental nuclei
         ↓
-rigid Euler-pole motion per plate
+persistent fragments / rift lineage
         ↓
-relative boundary kinematics
+dynamic modern ownership evolution
         ↓
-WG-2.5 connected boundary systems
+fragment capture / transfer provenance
         ↓
-analytical event age + accumulated displacement
+modern rigid Euler-pole kinematics
+        ↓
+modern boundary extraction + relative motion
+        ↓
+historical morphology / lithosphere / topography
 ```
 
-The output is a kinematic and chronological tectonic substrate for later crust, lithosphere, orogen-province, and topography stages. It is deliberately not a time-stepped mantle or plate simulation.
+Three identities remain distinct on every coarse physical sample:
 
-## Plate partition
+```text
+origin_plate_id   ancestral material provenance
+fragment_id       persistent crust / terrane continuity
+current_plate_id  present kinematic owner
+```
 
-WG-2 chooses deterministic seed samples on the canonical topology with a seeded stochastic minimum-separation process. The first seed is stage-random. Later seeds are drawn from deterministic pseudo-random candidates and accepted once they satisfy a deliberately modest exclusion radius; a deterministic best-separated fallback exists for densely requested configurations.
+A modern plate boundary may therefore cut through one ancestral plate. When modern ownership separates material that previously shared a fragment, the material is partitioned into child fragments and capture/transfer provenance is recorded rather than rewriting ancestral identity.
 
-The exclusion radius prevents pathological seed clusters without forcing a blue-noise or near-equal-area tessellation. Major and minor macro plates must be able to coexist. A fixed five-seed L5/18-plate regression therefore checks that the partition retains meaningful area variance rather than converging toward equal Voronoi territories.
+## Ancestral plate initializer
 
-Plate ownership is then solved as a multi-source shortest-path Voronoi partition over the `PlanetTopology` neighbor graph using canonical geodesic center distances. This gives every sample exactly one plate owner while preserving graph connectivity back to its seed.
+`tectonics.rs::generate_tectonics` remains the deterministic spherical plate initializer. It chooses plate seed samples with a seeded minimum-separation process and assigns ownership using multi-source shortest-path distance over the canonical topology graph. Each ancestral plate receives a rigid Euler pole and angular velocity.
 
-Acceptance requires:
+This graph-Voronoi construction is useful for coherent deep-time domains, but it is no longer treated as final present-day geometry in the canonical historical pipeline.
 
-- every sample has a valid plate ID;
-- every requested plate is non-empty;
-- every plate owns its seed sample;
-- every plate is one connected component on the topology graph;
-- all plate control-area weights close to `4π` steradians;
-- seed spacing remains macro scale rather than degenerating into pathological clusters;
-- multi-seed plate-area statistics preserve both larger and smaller macro plates rather than a near-equal tessellation.
+Acceptance of the ancestral initializer still requires valid, connected, non-empty plates, exact area closure, deterministic seed spacing, and a non-degenerate distribution of plate areas.
 
-WG-2 supports 4–48 plates. Higher-resolution geological stages consume coarse physical truth through explicit refinement/interpolation rather than rerunning unrelated plate truth.
+## Coherent proto-continental material
 
-## Rigid plate motion
+Continental material is no longer initialized by independently selecting scattered ancestral carrier plates and attempting to weld them afterward. The historical lithosphere chooses a small set of separated proto-continental nuclei and grows each assembly contiguously across the ancestral adjacency graph until the global material target is reached.
 
-Each plate receives a deterministic Euler pole and angular speed. Angular velocity is stored as a 3-vector in radians per million years.
+Growth favors substantial shared contact and convergent relationships, tolerates some transform attachment, penalizes divergent attachment, and limits one assembly from consuming the whole target. Transitional margins are then derived from the edge of the resulting assembled continental material.
 
-At unit surface direction `r`, rigid plate velocity is:
+This makes isolated continental islands a later historical outcome—rift fragments, captured terranes, or microcontinents—rather than a default artifact of random carrier selection.
+
+## Dynamic modern plate evolution
+
+The modern ownership stage operates at the coarse sample level for a bounded number of deterministic synthetic epochs. It starts from the ancestry-based provisional modern grouping, then allows boundary samples to change present owner according to a combination of:
+
+- local and second-ring plate cohesion;
+- inherited rigid Euler-motion direction;
+- deterministic low-frequency spherical shape forcing;
+- bounded ownership inertia and ancestral affinity;
+- plate-size constraints and connectivity repair.
+
+Each plate retains an interior anchor so evolution cannot erase it. Ownership transfers are bounded per epoch, disconnected remnants are reassigned, and an explicit dominance-balancing pass prevents a single modern plate from swallowing an implausibly large fraction of the sphere.
+
+The key architectural change is that `current_plate_id` is now free to evolve independently of `origin_plate_id`. Modern boundaries are therefore not required to coincide with ancestral cell edges.
+
+## Modern rigid kinematics
+
+After dynamic ownership stabilizes, modern angular velocity is reconstructed from the ancestral material currently carried by each modern plate, weighted by the physical area of that contribution. A representative interior seed is chosen from the evolved modern domain.
+
+At unit surface direction `r`, rigid plate velocity remains:
 
 ```text
 v = ω × r × R
 ```
 
-where `R` is physical planet radius. The velocity is therefore tangent to the spherical surface by construction.
-
-WG-2 deliberately models plate-scale rigid kinematics rather than deforming plate interiors. Intracrustal strain, diffuse deformation, terranes, orogens, and geological inheritance belong to later stages.
+where `R` is planet radius. Interior deformation is represented by persistent fragments, inherited structures, and later lithospheric fields rather than by violating the rigid modern-plate velocity contract.
 
 ## Boundary kinematics
 
-A tectonic boundary edge is any canonical neighbor edge whose samples have different plate owners. For each such edge, WG-2 evaluates the two rigid plate velocities near the edge midpoint and decomposes their relative velocity into:
-
-- boundary-normal rate;
-- along-boundary shear rate.
-
-The present diagnostic classification is:
+A modern boundary edge is any canonical neighbor edge whose samples have different `current_plate_id` values. Relative rigid motion is decomposed into normal and shear components. The diagnostic classification remains:
 
 ```text
 normal contribution < 35% of relative speed  → transform / shear-dominated
@@ -75,72 +90,49 @@ otherwise normal rate < 0                    → convergent
 otherwise                                    → divergent
 ```
 
-This classification is a kinematic descriptor, not a geological landform.
+Geological interpretation—ridge, rift, subduction polarity, continental collision, arc, passive margin, fossil suture—is assigned by the historical geology and morphology stages using material type and event provenance.
 
-## WG-2.5 connected boundary systems
+## Historical event relationship
 
-WG-2.5 replaces the assumption that every boundary edge is an independent causal source. Boundary edges are assembled into deterministic connected systems when they share the same plate pair, kinematic class, and local boundary neighborhood. Each system owns a stable list of source boundary edges.
+The bounded historical lineage pass and the dynamic modern-geometry pass are intentionally sparse. They do not retain a complete dense raster for every geological epoch. Persistent outputs are material identities, fragment lineage, ownership transfers, ages, and event records; downstream morphology rasterizes those causes into sutures, rifts, passive margins, active orogens, and fossil structures.
 
-For each boundary system WG-2.5 derives:
-
-- connected system identity and plate pair;
-- finite endpoints and branch/junction counts;
-- an along-strike graph coordinate and physical distance;
-- local boundary curvature;
-- convergence obliquity from normal versus shear motion;
-- deterministic tectonic event age;
-- cumulative convergence, extension, and shear displacement.
-
-The chronology is analytical rather than time-stepped. Event age is a deterministic causal state associated with the connected system; accumulated displacement is obtained from that age and accepted rigid-plate boundary velocity. This gives later stages a distinction between a young fast collision and a mature long-lived collision without advancing the entire planet through dozens of historical plate solutions.
-
-This stage is intentionally allowed to invalidate old downstream calibration envelopes. It exists to provide stronger upstream causes for the forthcoming pre-orogenic lithosphere and Tectonic Orogen Province stages, not to preserve previous `orogenic_history` morphology.
+The model therefore aims for the causal qualities observed in the project’s Gleba reference sequence—old plates, denser material fragments, fewer broad present plates, then crust verification—without claiming source-code equivalence or a full physical mantle simulation.
 
 ## Determinism
 
-WG-2 owns the isolated random namespace:
+Important namespaces include:
 
 ```text
 worldgen:tectonics:plates:v1
+worldgen:geology:historical-lithosphere:ancestral:v1
+worldgen:geology:historical-lithosphere:epochs:v1
+worldgen:geology:dynamic-modern-plates:v1
+worldgen:geology:historical-lithosphere:modern-tectonics:v1
 ```
 
-WG-2.5 owns a separate chronology namespace:
+The historical identity hash covers evolved current ownership and persistent fragment lineage. The modern tectonic hash covers modern plate motion, evolved ownership, extracted boundary kinematics, and the upstream history hash.
 
-```text
-worldgen:tectonics:history-systems:v1
-```
+## Blocking geometry acceptance
 
-The WG-2 tectonic identity hash remains based on stage seed, plate seed samples, rigid angular-velocity vectors, ordered sample ownership, and ordered boundary kinematics. WG-2.5 has its own history hash, so adding chronology does not silently replace accepted macro plate identity.
+Permanent validation now checks properties that the older merge-only system could pass while still producing visibly polygonal plates or continental archipelagos:
 
-## Diagnostics
+- present boundaries must cut through ancestral material rather than remaining locked to ancestral cell edges;
+- multiple ancestral plates must be split across modern owners with explicit material lineage;
+- every modern plate must remain connected and non-empty;
+- no modern plate may dominate an excessive fraction of the planet;
+- continental material must not regress to a large population of tiny satellite components;
+- historical lithosphere, morphology, WG-4 topography, browser diagnostics, and packaged WASM remain compatible.
 
-WG-2 exposes:
-
-- plate count and per-sample ownership;
-- plate seed positions;
-- Euler poles and angular velocities;
-- plate area fractions;
-- boundary edge count;
-- convergent/divergent/transform counts;
-- boundary normal and shear rates;
-- minimum seed separation;
-- mean reference plate speed;
-- deterministic topology and tectonic hashes.
-
-WG-2.5 additionally exposes model-level data for boundary-system identity, along-strike position, event age, cumulative convergence/extension/shear, obliquity, curvature, endpoint count, and junction count. Browser visualization is intentionally deferred until the later integration PR; the physical stage itself is available to Rust consumers immediately.
+These gates supplement lineage and area closure. They do not substitute for same-seed visual review.
 
 ## Explicit non-goals
 
-WG-2/WG-2.5 do **not** generate:
+The tectonic synthesis still does **not** attempt to solve:
 
-- continental versus oceanic crust;
-- crust age or thickness;
-- subduction polarity or slab physics;
-- literal time-stepped plate reconstruction;
-- uplift or subsidence;
-- elevation, bathymetry, or relief;
-- lithology;
-- climate or hydrology;
-- resources;
-- gameplay Regions, Features, NAV, or selection state.
+- mantle convection from first principles;
+- continuous finite-element lithospheric deformation;
+- exact Earth plate reconstruction;
+- high-resolution tectonic history directly on L8;
+- terrain, climate, hydrology, resources, or gameplay regions inside the plate stage.
 
-Those remain downstream. The next architectural stage should consume the accepted plate mosaic plus WG-2.5 chronology and connected systems to construct pre-orogenic lithospheric state without forcing new tectonic physics to match obsolete terrain measurements.
+Historical tectonics remains coarse and deterministic. Persistent identities and sparse event state are inherited to finer resolutions, where the existing lithosphere, topography, climate, and surface-process systems consume them.
