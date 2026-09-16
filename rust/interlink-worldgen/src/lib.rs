@@ -11,6 +11,7 @@ mod erosion;
 mod evolution;
 mod fields;
 mod geology;
+mod historical_lithosphere;
 mod hydroclimate;
 mod infill;
 mod lakes;
@@ -83,6 +84,12 @@ pub use geology::{
     generate_crust_and_history, CrustKind, CrustalModel, GeologicalBoundary,
     GeologicalBoundaryRegime, GeologyMetrics, GeologyRequest, PlateScaleClass, PlateSummary,
     SubductionPolarity, GEOLOGY_STAGE_ID, GEOLOGY_STAGE_VERSION,
+};
+pub use historical_lithosphere::{
+    generate_historical_lithosphere, CrustFragment, HistoricalEventKind,
+    HistoricalLithosphereMetrics, HistoricalLithosphereModel, HistoricalLithosphereRequest,
+    HistoricalTectonicEvent, HISTORICAL_LITHOSPHERE_STAGE_ID,
+    HISTORICAL_LITHOSPHERE_STAGE_VERSION,
 };
 pub use hydroclimate::{
     build_hydroclimate_closure_report, HydroclimateClosureReport, HydroclimateLatitudeBand,
