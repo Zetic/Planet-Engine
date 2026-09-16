@@ -2,7 +2,7 @@ use interlink_worldgen::{
     build_icosphere, build_world_calibration_report, generate_bounded_terrain_evolution,
     generate_coupled_climate_with_diagnostics, generate_drainage_topology,
     generate_fluvial_erosion_sediment, generate_historical_frontend, generate_initial_topography,
-    generate_lake_sediment_infill, generate_lakes_closed_basins, generate_lithosphere,
+    generate_lake_sediment_infill, generate_lakes_closed_basins, generate_lithosphere_from_history,
     generate_post_erosion_hydrology, generate_runoff_discharge, generate_seasonal_hydrology,
     inherit_boundary_interfaces, inherit_physical_state, ClimateRequest, DrainageRequest,
     FluvialErosionRequest, HistoricalLithosphereRequest, LakeRequest, LakeSedimentInfillRequest,
@@ -95,8 +95,9 @@ fn run(options: &Options) -> Result<String, String> {
     .map_err(|error| error.to_string())?;
     let tectonics = &frontend.tectonics;
     let geology = &frontend.geology;
-    let lithosphere = generate_lithosphere(
+    let lithosphere = generate_lithosphere_from_history(
         &coarse,
+        &frontend.historical,
         tectonics,
         geology,
         &LithosphereRequest::new(options.seed.as_str()),

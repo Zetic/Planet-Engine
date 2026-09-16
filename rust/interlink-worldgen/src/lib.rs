@@ -12,9 +12,14 @@ mod evolution;
 mod fields;
 mod geology;
 mod historical_api;
+mod historical_causal;
 mod historical_epochs;
 mod historical_frontend;
 mod historical_lithosphere;
+mod historical_morphology;
+mod historical_orogen;
+mod historical_pre_orogenic;
+mod historical_topography;
 mod hydroclimate;
 mod infill;
 mod lakes;
@@ -42,11 +47,7 @@ use std::fmt;
 pub use boundary_refinement::{
     inherit_boundary_interfaces, InheritedBoundaryEdge, InheritedBoundarySet,
 };
-pub use causal_pipeline::{
-    generate_initial_topography, generate_lithosphere, inherit_physical_state,
-    InheritedPhysicalState, LithosphericModel, TECTONIC_TOPOGRAPHY_STAGE_ID as TOPOGRAPHY_STAGE_ID,
-    TECTONIC_TOPOGRAPHY_STAGE_VERSION as TOPOGRAPHY_STAGE_VERSION,
-};
+pub use causal_pipeline::{inherit_physical_state, InheritedPhysicalState, LithosphericModel};
 pub use climate::{
     generate_coupled_climate, generate_coupled_climate_reference_with_diagnostics,
     generate_coupled_climate_with_diagnostics, ClimateGenerationDiagnostics, ClimateMetrics,
@@ -89,9 +90,10 @@ pub use geology::{
     GEOLOGY_STAGE_VERSION,
 };
 pub use historical_api::{
-    generate_crust_and_history, generate_historical_lithosphere,
-    generate_legacy_crust_and_history, generate_tectonics,
+    generate_crust_and_history, generate_historical_lithosphere, generate_legacy_crust_and_history,
+    generate_lithosphere, generate_tectonics,
 };
+pub use historical_causal::generate_lithosphere_from_history;
 pub use historical_epochs::HISTORICAL_EPOCH_COUNT;
 pub use historical_frontend::{
     generate_historical_frontend, inherit_historical_identity, project_historical_crust,
@@ -102,6 +104,17 @@ pub use historical_lithosphere::{
     CrustFragment, HistoricalEventKind, HistoricalLithosphereMetrics, HistoricalLithosphereModel,
     HistoricalLithosphereRequest, HistoricalTectonicEvent, HISTORICAL_LITHOSPHERE_STAGE_ID,
     HISTORICAL_LITHOSPHERE_STAGE_VERSION,
+};
+pub use historical_morphology::{
+    build_historical_tectonic_morphology, HistoricalMorphologyMetrics,
+    HistoricalMorphologyModel, HISTORICAL_MORPHOLOGY_STAGE_ID,
+    HISTORICAL_MORPHOLOGY_STAGE_VERSION,
+};
+pub use historical_orogen::generate_event_driven_orogen_provinces;
+pub use historical_pre_orogenic::generate_pre_orogenic_lithosphere_from_history;
+pub use historical_topography::{
+    generate_initial_topography, HISTORICAL_TOPOGRAPHY_STAGE_ID as TOPOGRAPHY_STAGE_ID,
+    HISTORICAL_TOPOGRAPHY_STAGE_VERSION as TOPOGRAPHY_STAGE_VERSION,
 };
 pub use hydroclimate::{
     build_hydroclimate_closure_report, HydroclimateClosureReport, HydroclimateLatitudeBand,
@@ -190,7 +203,7 @@ pub use world_calibration::{
     WORLD_CALIBRATION_RANKED_LIMIT, WORLD_CALIBRATION_SCHEMA_ID, WORLD_CALIBRATION_SCHEMA_VERSION,
 };
 
-pub const WORLDGEN_ENGINE_VERSION: u32 = 15;
+pub const WORLDGEN_ENGINE_VERSION: u32 = 16;
 pub const SYNTHETIC_STAGE_ID: &str = "foundation:synthetic";
 pub const SYNTHETIC_STAGE_VERSION: u32 = 1;
 const SYNTHETIC_NAMESPACE: &str = "worldgen:foundation:synthetic:v1";
@@ -267,7 +280,6 @@ fn triangular_wave(index: u32, period: u32) -> u32 {
     }
 }
 
-/// WG-0 proof field. This is intentionally not terrain. It remains available as a transport/determinism regression while later stages introduce physical planetary state.
 pub fn generate_synthetic(
     request: &SyntheticRequest,
 ) -> Result<SyntheticDiagnostic, WorldgenError> {

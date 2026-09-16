@@ -537,6 +537,7 @@ export class WasmWorldgenGeology {
 export class WasmWorldgenInheritance {
     free(): void;
     [Symbol.dispose](): void;
+    active_orogen_intensity(): Float32Array;
     added_sample_count(): number;
     basin_potential(): Float32Array;
     boundary_coarse_source_indices(): Uint32Array;
@@ -565,6 +566,7 @@ export class WasmWorldgenInheritance {
     fine_level(): number;
     fine_sample_count(): number;
     fine_topology_hash_hex(): string;
+    fossil_orogen_intensity(): Float32Array;
     fragment_ids(): Uint16Array;
     fragmentation_propensity(): Float32Array;
     generator_version(): number;
@@ -572,11 +574,19 @@ export class WasmWorldgenInheritance {
     geology_hash_hex(): string;
     historical_fragment_ids(): Uint16Array;
     historical_identity_hash_hex(): string;
+    historical_morphology_hash_hex(): string;
+    historical_rift_age_myr(): Float32Array;
+    historical_rift_intensity(): Float32Array;
+    historical_shear_intensity(): Float32Array;
+    historical_suture_age_myr(): Float32Array;
+    historical_suture_intensity(): Float32Array;
     inheritance_hash_hex(): string;
     inherited_sample_mask(): Uint8Array;
     internal_heat_flux_w_per_m2(): number;
     isostatic_mantle_density_kg_per_m3(): number;
     kinematic_domain_ids(): Uint16Array;
+    latest_historical_event_age_myr(): Float32Array;
+    latest_historical_event_kind(): Uint8Array;
     lithosphere_hash_hex(): string;
     mantle_dynamic_support_index(): Float32Array;
     mantle_thermal_expansivity_per_k(): number;
@@ -589,6 +599,7 @@ export class WasmWorldgenInheritance {
     origin_plate_ids(): Uint16Array;
     orogenic_history(): Float32Array;
     parameter_hash_hex(): string;
+    passive_margin_index(): Float32Array;
     plate_count(): number;
     plate_ids(): Uint16Array;
     positions(): Float64Array;
@@ -1371,6 +1382,7 @@ export interface InitOutput {
     readonly wasmworldgengeology_transitional_divergence_edges: (a: number) => number;
     readonly wasmworldgengeology_trench_history: (a: number) => [number, number];
     readonly wasmworldgengeology_volcanic_arc_history: (a: number) => [number, number];
+    readonly wasmworldgeninheritance_active_orogen_intensity: (a: number) => [number, number];
     readonly wasmworldgeninheritance_basin_potential: (a: number) => [number, number];
     readonly wasmworldgeninheritance_boundary_coarse_source_indices: (a: number) => [number, number];
     readonly wasmworldgeninheritance_boundary_hash_hex: (a: number) => [number, number];
@@ -1396,17 +1408,26 @@ export interface InitOutput {
     readonly wasmworldgeninheritance_fine_boundary_edge_count: (a: number) => number;
     readonly wasmworldgeninheritance_fine_level: (a: number) => number;
     readonly wasmworldgeninheritance_fine_topology_hash_hex: (a: number) => [number, number];
+    readonly wasmworldgeninheritance_fossil_orogen_intensity: (a: number) => [number, number];
     readonly wasmworldgeninheritance_fragment_ids: (a: number) => [number, number];
     readonly wasmworldgeninheritance_fragmentation_propensity: (a: number) => [number, number];
     readonly wasmworldgeninheritance_geological_boundary_regimes: (a: number) => [number, number];
     readonly wasmworldgeninheritance_geology_hash_hex: (a: number) => [number, number];
     readonly wasmworldgeninheritance_historical_fragment_ids: (a: number) => [number, number];
     readonly wasmworldgeninheritance_historical_identity_hash_hex: (a: number) => [number, number];
+    readonly wasmworldgeninheritance_historical_morphology_hash_hex: (a: number) => [number, number];
+    readonly wasmworldgeninheritance_historical_rift_age_myr: (a: number) => [number, number];
+    readonly wasmworldgeninheritance_historical_rift_intensity: (a: number) => [number, number];
+    readonly wasmworldgeninheritance_historical_shear_intensity: (a: number) => [number, number];
+    readonly wasmworldgeninheritance_historical_suture_age_myr: (a: number) => [number, number];
+    readonly wasmworldgeninheritance_historical_suture_intensity: (a: number) => [number, number];
     readonly wasmworldgeninheritance_inheritance_hash_hex: (a: number) => [number, number];
     readonly wasmworldgeninheritance_inherited_sample_mask: (a: number) => [number, number];
     readonly wasmworldgeninheritance_internal_heat_flux_w_per_m2: (a: number) => number;
     readonly wasmworldgeninheritance_isostatic_mantle_density_kg_per_m3: (a: number) => number;
     readonly wasmworldgeninheritance_kinematic_domain_ids: (a: number) => [number, number];
+    readonly wasmworldgeninheritance_latest_historical_event_age_myr: (a: number) => [number, number];
+    readonly wasmworldgeninheritance_latest_historical_event_kind: (a: number) => [number, number];
     readonly wasmworldgeninheritance_lithosphere_hash_hex: (a: number) => [number, number];
     readonly wasmworldgeninheritance_mantle_dynamic_support_index: (a: number) => [number, number];
     readonly wasmworldgeninheritance_mantle_thermal_expansivity_per_k: (a: number) => number;
@@ -1419,6 +1440,7 @@ export interface InitOutput {
     readonly wasmworldgeninheritance_origin_plate_ids: (a: number) => [number, number];
     readonly wasmworldgeninheritance_orogenic_history: (a: number) => [number, number];
     readonly wasmworldgeninheritance_parameter_hash_hex: (a: number) => [number, number];
+    readonly wasmworldgeninheritance_passive_margin_index: (a: number) => [number, number];
     readonly wasmworldgeninheritance_plate_count: (a: number) => number;
     readonly wasmworldgeninheritance_plate_ids: (a: number) => [number, number];
     readonly wasmworldgeninheritance_positions: (a: number) => [number, number];

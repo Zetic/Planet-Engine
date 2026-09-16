@@ -124,8 +124,8 @@ fn main() -> Result<(), String> {
         terrain.metrics.topography_hash_hex(),
     );
 
-    if terrain.stage.version != TOPOGRAPHY_STAGE_VERSION || terrain.stage.version != 14 {
-        return Err("WG-4 did not route through tectonic-province topography".to_string());
+    if terrain.stage.version != TOPOGRAPHY_STAGE_VERSION || terrain.stage.version != 15 {
+        return Err("WG-4 did not route through historical-material topography".to_string());
     }
     if active_samples == 0
         || mountain_core_samples == 0
