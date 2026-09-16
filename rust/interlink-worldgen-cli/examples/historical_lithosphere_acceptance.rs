@@ -4,6 +4,8 @@ use interlink_worldgen::{
 };
 use std::collections::{BTreeMap, BTreeSet};
 
+// Permanent PR-A acceptance: material identity must survive the complete historical front end,
+// modern-plate projection, compatibility geology projection, and coarse-to-fine inheritance.
 fn verify_seed(seed: &str) -> Result<(), String> {
     let coarse_level = 4;
     let topology = build_icosphere(coarse_level).map_err(|error| error.to_string())?;
