@@ -88,8 +88,11 @@ fn verify_seed(seed: &str) -> Result<(), String> {
     }
 
     let mut maximum_plate_fraction = 0.0_f64;
+    let mut minimum_plate_fraction = 1.0_f64;
     let mut maximum_compactness = 0.0_f64;
+    let mut maximum_compactness_plate = 0usize;
     let mut maximum_covering_radius = 0.0_f64;
+    let mut maximum_covering_plate = 0usize;
     let mut maximum_contact_dominance = 0.0_f64;
     let mut maximum_neck_fraction = 0.0_f64;
 
@@ -121,10 +124,14 @@ fn verify_seed(seed: &str) -> Result<(), String> {
 
         let fraction = area[plate] / total_area.max(1.0e-12);
         maximum_plate_fraction = maximum_plate_fraction.max(fraction);
+        minimum_plate_fraction = minimum_plate_fraction.min(fraction);
         let spherical_denom = (area[plate] * (4.0 * std::f64::consts::PI - area[plate]))
             .max(1.0e-12);
         let compactness = perimeter[plate] * perimeter[plate] / spherical_denom;
-        maximum_compactness = maximum_compactness.max(compactness);
+        if compactness > maximum_compactness {
+            maximum_compactness = compactness;
+            maximum_compactness_plate = plate;
+        }
 
         // Approximate the minimum spherical cap containing the plate by searching actual plate
         // samples as candidate centers. This detects horseshoes/wraps that have modest area but
@@ -139,7 +146,10 @@ fn verify_seed(seed: &str) -> Result<(), String> {
                 .fold(0.0_f64, f64::max);
             covering_radius = covering_radius.min(radius);
         }
-        maximum_covering_radius = maximum_covering_radius.max(covering_radius);
+        if covering_radius > maximum_covering_radius {
+            maximum_covering_radius = covering_radius;
+            maximum_covering_plate = plate;
+        }
 
         let contact_total = boundary_contacts[plate].values().sum::<f64>().max(1.0e-12);
         let contact_dominance = boundary_contacts[plate]
@@ -152,6 +162,19 @@ fn verify_seed(seed: &str) -> Result<(), String> {
         let neck_fraction = neck_samples[plate] as f64 / plate_samples[plate].len() as f64;
         maximum_neck_fraction = maximum_neck_fraction.max(neck_fraction);
     }
+
+    println!(
+        "boundary-network seed={seed} migrated={:.1}% plate={:.1}..{:.1}% cap={:.1}deg(p{}) compactness={:.2}(p{}) contact={:.1}% neck={:.1}%",
+        migrated_fraction * 100.0,
+        minimum_plate_fraction * 100.0,
+        maximum_plate_fraction * 100.0,
+        maximum_covering_radius.to_degrees(),
+        maximum_covering_plate,
+        maximum_compactness,
+        maximum_compactness_plate,
+        maximum_contact_dominance * 100.0,
+        maximum_neck_fraction * 100.0,
+    );
 
     if maximum_plate_fraction > 0.26 {
         return Err(format!(
@@ -167,7 +190,7 @@ fn verify_seed(seed: &str) -> Result<(), String> {
     }
     if maximum_compactness > 8.0 {
         return Err(format!(
-            "{seed}: plate perimeter/area compactness remains excessive at {:.2}",
+            "{seed}: plate {maximum_compactness_plate} perimeter/area compactness remains excessive at {:.2}",
             maximum_compactness
         ));
     }
@@ -184,15 +207,6 @@ fn verify_seed(seed: &str) -> Result<(), String> {
         ));
     }
 
-    println!(
-        "boundary-network seed={seed} migrated={:.1}% max-plate={:.1}% cap={:.1}deg compactness={:.2} contact={:.1}% neck={:.1}%",
-        migrated_fraction * 100.0,
-        maximum_plate_fraction * 100.0,
-        maximum_covering_radius.to_degrees(),
-        maximum_compactness,
-        maximum_contact_dominance * 100.0,
-        maximum_neck_fraction * 100.0,
-    );
     Ok(())
 }
 
