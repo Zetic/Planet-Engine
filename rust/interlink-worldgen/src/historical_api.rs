@@ -1,7 +1,8 @@
 use crate::{
-    derive_stage_seed, geology, historical_frontend, historical_lithosphere, tectonics, CrustalModel,
-    GeologyRequest, HistoricalLithosphereRequest, PlanetPhysicalParameters, PlanetTopology,
-    TectonicModel, TectonicsRequest, WorldgenError,
+    derive_stage_seed, geology, historical_epochs, historical_frontend, historical_lithosphere,
+    tectonics, CrustalModel, GeologyRequest, HistoricalLithosphereModel,
+    HistoricalLithosphereRequest, PlanetPhysicalParameters, PlanetTopology, TectonicModel,
+    TectonicsRequest, WorldgenError,
 };
 use std::cell::Cell;
 
@@ -50,11 +51,27 @@ fn is_ancestral_partition_request(seed: &str) -> bool {
     encoded_seed == derive_stage_seed(base_seed, ANCESTRAL_TECTONICS_NAMESPACE)
 }
 
+/// Public historical-material authority.
+///
+/// The base material partition is assembled while WG-2 is forced into its raw ancestral mode,
+/// then a bounded deterministic epoch pass creates persistent parent/child fragment lineage before
+/// modern tectonic and crust compatibility projections consume the state.
+pub fn generate_historical_lithosphere<T: PlanetTopology>(
+    topology: &T,
+    request: &HistoricalLithosphereRequest,
+    parameters: PlanetPhysicalParameters,
+) -> Result<HistoricalLithosphereModel, WorldgenError> {
+    let base = with_raw_tectonics_scope(|| {
+        historical_lithosphere::generate_historical_lithosphere(topology, request, parameters)
+    })?;
+    historical_epochs::evolve_historical_lithosphere(topology, base, request.seed.as_str())
+}
+
 /// Public WG-2 authority after the historical-lithosphere cutover.
 ///
 /// The existing spherical partition/motion solver remains the ancestral-domain primitive. Public
-/// callers now receive the modern kinematic projection produced after persistent material ancestry
-/// and deterministic consolidation have been established.
+/// callers now receive the modern kinematic projection produced after persistent material ancestry,
+/// bounded fragment epochs, and deterministic consolidation have been established.
 pub fn generate_tectonics<T: PlanetTopology>(
     topology: &T,
     request: &TectonicsRequest,
@@ -64,13 +81,11 @@ pub fn generate_tectonics<T: PlanetTopology>(
         return tectonics::generate_tectonics(topology, request, parameters);
     }
 
-    let historical = with_raw_tectonics_scope(|| {
-        historical_lithosphere::generate_historical_lithosphere(
-            topology,
-            &HistoricalLithosphereRequest::new(request.seed.as_str(), request.plate_count),
-            parameters,
-        )
-    })?;
+    let historical = generate_historical_lithosphere(
+        topology,
+        &HistoricalLithosphereRequest::new(request.seed.as_str(), request.plate_count),
+        parameters,
+    )?;
     historical_frontend::project_historical_modern_tectonics(
         topology,
         &historical,
@@ -101,16 +116,14 @@ pub fn generate_crust_and_history<T: PlanetTopology>(
         .validate()
         .map_err(WorldgenError::InvalidParameters)?;
 
-    let historical = with_raw_tectonics_scope(|| {
-        historical_lithosphere::generate_historical_lithosphere(
-            topology,
-            &HistoricalLithosphereRequest::new(
-                request.seed.as_str(),
-                tectonics_model.metrics.plate_count,
-            ),
-            parameters,
-        )
-    })?;
+    let historical = generate_historical_lithosphere(
+        topology,
+        &HistoricalLithosphereRequest::new(
+            request.seed.as_str(),
+            tectonics_model.metrics.plate_count,
+        ),
+        parameters,
+    )?;
     let projected_tectonics = historical_frontend::project_historical_modern_tectonics(
         topology,
         &historical,
@@ -157,6 +170,24 @@ mod tests {
         assert!(is_ancestral_partition_request(&format!("{seed}:{derived:016x}")));
         assert!(!is_ancestral_partition_request(seed));
         assert!(!is_ancestral_partition_request(&format!("{seed}:0000000000000000")));
+    }
+
+    #[test]
+    fn public_historical_authority_contains_parented_fragment_lineage() {
+        let topology = build_icosphere(3).unwrap();
+        let model = generate_historical_lithosphere(
+            &topology,
+            &HistoricalLithosphereRequest::new("historical-public-lineage", 10),
+            PlanetPhysicalParameters::earthlike_reference(),
+        )
+        .unwrap();
+        assert!(model
+            .fragments
+            .iter()
+            .any(|fragment| fragment.parent_fragment_id.is_some()));
+        assert!(model.events.iter().all(|event| {
+            event.epoch < historical_epochs::HISTORICAL_EPOCH_COUNT
+        }));
     }
 
     #[test]
