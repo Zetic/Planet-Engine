@@ -11,6 +11,7 @@ mod erosion;
 mod evolution;
 mod fields;
 mod geology;
+mod historical_api;
 mod historical_frontend;
 mod historical_lithosphere;
 mod hydroclimate;
@@ -82,9 +83,12 @@ pub use evolution::{
 };
 pub use fields::{DenseU16Field, MAX_SYNTHETIC_SAMPLES};
 pub use geology::{
-    generate_crust_and_history, CrustKind, CrustalModel, GeologicalBoundary,
-    GeologicalBoundaryRegime, GeologyMetrics, GeologyRequest, PlateScaleClass, PlateSummary,
-    SubductionPolarity, GEOLOGY_STAGE_ID, GEOLOGY_STAGE_VERSION,
+    CrustKind, CrustalModel, GeologicalBoundary, GeologicalBoundaryRegime, GeologyMetrics,
+    GeologyRequest, PlateScaleClass, PlateSummary, SubductionPolarity, GEOLOGY_STAGE_ID,
+    GEOLOGY_STAGE_VERSION,
+};
+pub use historical_api::{
+    generate_crust_and_history, generate_legacy_crust_and_history, generate_tectonics,
 };
 pub use historical_frontend::{
     generate_historical_frontend, inherit_historical_identity, project_historical_crust,
@@ -160,8 +164,8 @@ pub use tectonic_history::{
     TECTONIC_HISTORY_STAGE_ID, TECTONIC_HISTORY_STAGE_VERSION,
 };
 pub use tectonics::{
-    generate_tectonics, PlateBoundaryEdge, PlateBoundaryKind, TectonicMetrics, TectonicModel,
-    TectonicPlate, TectonicsRequest, MAX_TECTONIC_PLATES, MIN_TECTONIC_PLATES, TECTONICS_STAGE_ID,
+    PlateBoundaryEdge, PlateBoundaryKind, TectonicMetrics, TectonicModel, TectonicPlate,
+    TectonicsRequest, MAX_TECTONIC_PLATES, MIN_TECTONIC_PLATES, TECTONICS_STAGE_ID,
     TECTONICS_STAGE_VERSION,
 };
 pub use topography::{TopographyMetrics, TopographyParameters, TopographyRequest, TopographyState};
