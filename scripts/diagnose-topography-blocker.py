@@ -21,6 +21,13 @@ new = (
 assert text.count(old) == 1, 'expected passive-margin guard exactly once'
 topo.write_text(text.replace(old, new, 1))
 
+causal = Path('rust/interlink-worldgen/src/causal_pipeline.rs')
+text = causal.read_text()
+old = '            + 180.0 * intensity\n'
+new = '            + 360.0 * intensity\n'
+assert text.count(old) == 1, 'expected active-collision support term exactly once'
+causal.write_text(text.replace(old, new, 1))
+
 smoke = Path('rust/interlink-worldgen-cli/examples/tectonic_topography_cutover_smoke.rs')
 text = smoke.read_text()
 marker = '    if terrain.stage.version != TOPOGRAPHY_STAGE_VERSION || terrain.stage.version != 15 {\n'
