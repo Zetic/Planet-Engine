@@ -153,6 +153,15 @@ text = replace_once(
     '    if mean_obliquity >= 62.0 && first.class == BoundaryClass::Collision {\n        return OrogenProvinceKind::TranspressionalOrogen;\n    }',
     'preserve subduction arc class under high obliquity',
 )
+# Arc centers are physically offset from trenches by less than the spacing of some coarse
+# WG-3.6 samples. Antialias the diagnostic/magmatic envelope so a real subduction system
+# cannot disappear merely because no coarse sample lands on the narrow analytic peak.
+text = replace_once(
+    text,
+    'gaussian(physical_distance_km, arc_center_km, arc_sigma_km * 0.78)',
+    'gaussian(physical_distance_km, arc_center_km, arc_sigma_km * 1.35)',
+    'coarse-grid volcanic arc antialiasing',
+)
 orogen.write_text(text)
 
 # Physical output and the cumulative browser packet both change in this PR.
