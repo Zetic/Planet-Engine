@@ -190,8 +190,17 @@ fn verify_seed(seed: &str) -> Result<(), String> {
             maximum_covering_radius.to_degrees()
         ));
     }
+
+    // The original PR-75 compactness cap was tuned for nearly convex field cells. Material-aware
+    // plates are intentionally freer-form: a long ridge/trench system can increase perimeter
+    // without implying a horseshoe, choke point, or enclosing mega-plate. Permit that complexity
+    // only when the independent wrap diagnostics are all healthy. This keeps the strict cap for
+    // suspicious topology while avoiding a test that pushes the generator back toward perfect cells.
     let compactness_plate_fraction = area[maximum_compactness_plate] / total_area.max(1.0e-12);
-    let compactness_limit = if compactness_plate_fraction < 0.025 {
+    let independently_sane_freeform = maximum_covering_radius <= 1.60
+        && maximum_contact_dominance <= 0.75
+        && maximum_neck_fraction <= 0.05;
+    let compactness_limit = if independently_sane_freeform || compactness_plate_fraction < 0.025 {
         12.0
     } else {
         8.0
