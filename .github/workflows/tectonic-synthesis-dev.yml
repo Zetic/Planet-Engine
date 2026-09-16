@@ -43,18 +43,18 @@ jobs:
           history = Path('rust/interlink-worldgen/src/historical_lithosphere.rs')
           text = history.read_text()
           old = (
-              '        let edge_warp = unit_random(\n'
-              '            seed ^ u64::from(sample).wrapping_mul(0xe703_7ed1_a0b4_28db) ^ (fragment as u64),\n'
-              '        );\n'
-              '        let kind = if sample_carrier[sample_index] {\n'
               '            let local_transition_steps = transition_steps\n'
               '                + if edge_warp > 0.72 && transition_steps < 3 { 1 } else { 0 };\n'
+              '            if depth[sample_index] == u16::MAX || depth[sample_index] < local_transition_steps {\n'
           )
           new = (
-              '        let kind = if sample_carrier[sample_index] {\n'
-              '            let local_transition_steps = transition_steps;\n'
+              '            let local_depth = depth[sample_index];\n'
+              '            if local_depth != u16::MAX\n'
+              '                && (local_depth.saturating_add(1) < transition_steps\n'
+              '                    || (local_depth < transition_steps && edge_warp >= 0.35))\n'
+              '            {\n'
           )
-          assert text.count(old) == 1, 'expected expanded transitional margin block exactly once'
+          assert text.count(old) == 1, 'expected expanded transitional margin logic exactly once'
           history.write_text(text.replace(old, new, 1))
           PY
       - name: Format Rust
