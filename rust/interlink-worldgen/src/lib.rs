@@ -19,6 +19,7 @@ mod historical_lithosphere;
 mod historical_morphology;
 mod historical_orogen;
 mod historical_pre_orogenic;
+mod historical_topography;
 mod hydroclimate;
 mod infill;
 mod lakes;
@@ -47,7 +48,7 @@ pub use boundary_refinement::{
     inherit_boundary_interfaces, InheritedBoundaryEdge, InheritedBoundarySet,
 };
 pub use causal_pipeline::{
-    generate_initial_topography, inherit_physical_state, InheritedPhysicalState, LithosphericModel,
+    inherit_physical_state, InheritedPhysicalState, LithosphericModel,
     TECTONIC_TOPOGRAPHY_STAGE_ID as TOPOGRAPHY_STAGE_ID,
     TECTONIC_TOPOGRAPHY_STAGE_VERSION as TOPOGRAPHY_STAGE_VERSION,
 };
@@ -115,6 +116,7 @@ pub use historical_morphology::{
 };
 pub use historical_orogen::generate_event_driven_orogen_provinces;
 pub use historical_pre_orogenic::generate_pre_orogenic_lithosphere_from_history;
+pub use historical_topography::generate_initial_topography;
 pub use hydroclimate::{
     build_hydroclimate_closure_report, HydroclimateClosureReport, HydroclimateLatitudeBand,
 };
