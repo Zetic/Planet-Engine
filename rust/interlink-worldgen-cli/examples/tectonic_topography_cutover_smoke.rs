@@ -109,13 +109,14 @@ fn main() -> Result<(), String> {
                 kind_intensity_sum[kind_index] += f64::from(inherited.orogenic_history[sample]);
                 kind_core_sum[kind_index] += f64::from(inherited.mountain_core_index[sample]);
                 kind_root_sum[kind_index] += f64::from(inherited.crustal_root_index[sample]);
-                kind_solid_sum[kind_index] += terrain.solid_elevation_m[sample];
+                kind_solid_sum[kind_index] += f64::from(terrain.solid_elevation_m[sample]);
             }
             if terrain.submerged_mask[sample] != 0 {
                 flooded_continental_orogen += 1;
                 if kind_index < kind_flooded.len() {
                     kind_flooded[kind_index] += 1;
-                    kind_flooded_solid_sum[kind_index] += terrain.solid_elevation_m[sample];
+                    kind_flooded_solid_sum[kind_index] +=
+                        f64::from(terrain.solid_elevation_m[sample]);
                 }
             }
         }
