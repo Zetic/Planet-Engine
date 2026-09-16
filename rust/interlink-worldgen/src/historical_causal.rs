@@ -1,6 +1,6 @@
 use crate::{
-    build_historical_tectonic_morphology, generate_lithosphere,
-    generate_pre_orogenic_lithosphere_from_history, generate_tectonic_orogen_provinces,
+    build_historical_tectonic_morphology, generate_event_driven_orogen_provinces,
+    generate_lithosphere, generate_pre_orogenic_lithosphere_from_history,
     HistoricalLithosphereModel, LithosphereRequest, LithosphericModel, OrogenProvinceRequest,
     PlanetPhysicalParameters, PlanetTopology, PreOrogenicLithosphereRequest, TectonicModel,
     WorldgenError,
@@ -30,8 +30,6 @@ pub fn generate_lithosphere_from_history<T: PlanetTopology>(
         ));
     }
 
-    // Preserve the accepted legacy mechanics and active-boundary compatibility views, then replace
-    // inherited structural authority with material-history-derived state before WG-3.6 is built.
     let mut model = generate_lithosphere(topology, tectonics, geology, request)?;
     let morphology = build_historical_tectonic_morphology(
         topology,
@@ -47,17 +45,13 @@ pub fn generate_lithosphere_from_history<T: PlanetTopology>(
         &morphology,
         &PreOrogenicLithosphereRequest::new(request.seed.as_str()),
     )?;
-
-    // This is the first physical cut: existing v5 province geometry now sees event-derived
-    // inherited sutures/rifts/shears instead of present-boundary-synthesized structural memory.
-    // A later tranche in this PR replaces its primary collision sources with explicit active and
-    // fossil event systems rather than retaining current convergence as the only source graph.
-    model.orogen_provinces = generate_tectonic_orogen_provinces(
+    model.orogen_provinces = generate_event_driven_orogen_provinces(
         topology,
         tectonics,
         &model.tectonic_history,
         geology,
         &model.pre_orogenic,
+        &morphology,
         &OrogenProvinceRequest::new(request.seed.as_str()),
         PlanetPhysicalParameters::earthlike_reference(),
     )?;
@@ -98,6 +92,10 @@ mod tests {
         assert_ne!(
             legacy_causal.pre_orogenic.metrics.pre_orogenic_hash,
             historical_causal.pre_orogenic.metrics.pre_orogenic_hash
+        );
+        assert_ne!(
+            legacy_causal.orogen_provinces.metrics.province_hash,
+            historical_causal.orogen_provinces.metrics.province_hash
         );
         assert!(historical_causal.pre_orogenic.metrics.paleo_suture_sample_count > 0);
         assert!(historical_causal.pre_orogenic.metrics.inherited_rift_sample_count > 0);
