@@ -12,6 +12,7 @@ const MAX_OWNER_DEPTH: u16 = 10;
 #[derive(Clone, Copy, Debug)]
 struct PlateField {
     center: [f64; 3],
+    material_supports: [[f64; 3]; 3],
     tangent_u: [f64; 3],
     tangent_v: [f64; 3],
     angular_velocity: [f64; 3],
@@ -26,6 +27,7 @@ struct MaterialSignals {
     owner_depth: Vec<u16>,
     rift_release: Vec<f64>,
     structure_release: Vec<f64>,
+    nearby_plate_mask: Vec<u64>,
     plate_adjacency: Vec<Vec<bool>>,
     plate_area_fraction: Vec<f64>,
     plate_continental_fraction: Vec<f64>,
@@ -277,6 +279,31 @@ fn build_material_signals<T: PlanetTopology>(
 
     let rift_release = diffuse_seed_strength(topology, &rift_seeds, 4);
     let structure_release = diffuse_seed_strength(topology, &structure_seeds, 3);
+    let mut nearby_plate_mask = vec![0_u64; count];
+    for sample in 0..topology.sample_count() {
+        let index = sample as usize;
+        let owner = initial[index];
+        if owner < 64 {
+            nearby_plate_mask[index] |= 1_u64 << owner;
+        }
+        for neighbor in topology.neighbors(sample) {
+            let neighbor_owner = initial[*neighbor as usize];
+            if neighbor_owner < 64 {
+                nearby_plate_mask[index] |= 1_u64 << neighbor_owner;
+            }
+        }
+    }
+    for _ in 0..2 {
+        let previous = nearby_plate_mask.clone();
+        for sample in 0..topology.sample_count() {
+            let index = sample as usize;
+            let mut mask = previous[index];
+            for neighbor in topology.neighbors(sample) {
+                mask |= previous[*neighbor as usize];
+            }
+            nearby_plate_mask[index] = mask;
+        }
+    }
     let total_area = total_area.max(1.0e-12);
     let plate_area_fraction = plate_area
         .iter()
@@ -298,6 +325,7 @@ fn build_material_signals<T: PlanetTopology>(
         owner_depth,
         rift_release,
         structure_release,
+        nearby_plate_mask,
         plate_adjacency,
         plate_area_fraction,
         plate_continental_fraction,
@@ -318,6 +346,31 @@ fn choose_plate_cores<T: PlanetTopology>(
         ));
     }
 
+    // Use the inherited material-domain centroid as the primary kinematic anchor.
+    // This keeps mixed continental/oceanic plate extent represented in the field center
+    // instead of pinning the plate to whichever continental interior happens to be deepest.
+    let mut centroid_sums = vec![[0.0_f64; 3]; plate_count];
+    let mut centroid_area = vec![0.0_f64; plate_count];
+    for sample in 0..topology.sample_count() {
+        let index = sample as usize;
+        let plate = owners[index] as usize;
+        let area = topology.area_steradians(sample);
+        let position = topology.unit_position(sample);
+        centroid_sums[plate] = add(centroid_sums[plate], scale(position, area));
+        centroid_area[plate] += area;
+    }
+    let centroids = centroid_sums
+        .iter()
+        .enumerate()
+        .map(|(plate, sum)| {
+            if centroid_area[plate] > 0.0 {
+                normalize_or(*sum, [1.0, 0.0, 0.0])
+            } else {
+                [1.0, 0.0, 0.0]
+            }
+        })
+        .collect::<Vec<_>>();
+
     let mut cores = Vec::with_capacity(plate_count);
     for plate in 0..plate_count {
         let mut best = None::<(f64, u32)>;
@@ -332,18 +385,33 @@ fn choose_plate_cores<T: PlanetTopology>(
                 _ => 0.0,
             };
             let depth_bonus = f64::from(signals.owner_depth[index].min(MAX_OWNER_DEPTH)) * 0.16;
-            let corridor_penalty = signals.rift_release[index] * 0.70
-                + signals.structure_release[index] * 0.20;
+            let corridor_penalty =
+                signals.rift_release[index] * 0.70 + signals.structure_release[index] * 0.20;
             let jitter = unit_random(
                 seed ^ u64::from(sample).wrapping_mul(0x9e37_79b9_7f4a_7c15)
                     ^ (plate as u64).wrapping_mul(0xbf58_476d_1ce4_e5b9),
             ) * 0.025;
-            let score = depth_bonus + crust_bonus - corridor_penalty + jitter;
+            let position = topology.unit_position(sample);
+            let minimum_core_separation = cores
+                .iter()
+                .map(|core| {
+                    dot(position, topology.unit_position(*core))
+                        .clamp(-1.0, 1.0)
+                        .acos()
+                })
+                .fold(std::f64::consts::PI, f64::min);
+            let separation_bonus = (minimum_core_separation / 0.60).clamp(0.0, 1.0) * 0.20;
+            let crowd_penalty = ((0.30 - minimum_core_separation).max(0.0) / 0.30) * 1.20;
+            let centroid_alignment = dot(position, centroids[plate]);
+            let score = centroid_alignment * 0.85 + depth_bonus * 0.55 + crust_bonus * 0.35
+                - corridor_penalty * 0.75
+                + separation_bonus
+                - crowd_penalty
+                + jitter;
             let candidate = (score, sample);
             if best
                 .map(|current| {
-                    candidate.0 > current.0
-                        || (candidate.0 == current.0 && candidate.1 < current.1)
+                    candidate.0 > current.0 || (candidate.0 == current.0 && candidate.1 < current.1)
                 })
                 .unwrap_or(true)
             {
@@ -372,6 +440,54 @@ fn tangent_frame(center: [f64; 3], random_axis: [f64; 3]) -> ([f64; 3], [f64; 3]
     (tangent_u, tangent_v)
 }
 
+fn choose_material_supports<T: PlanetTopology>(
+    topology: &T,
+    initial: &[u16],
+    plate: u16,
+    core: u32,
+) -> [[f64; 3]; 3] {
+    let core_position = topology.unit_position(core);
+    let mut supports = [core_position; 3];
+
+    // Two secondary supports summarize the broad inherited material footprint. They are
+    // deliberately sparse and capped in angular reach, so they preserve plate identity
+    // without tracing the old graph/Voronoi boundary sample-for-sample.
+    for slot in 1..3 {
+        let mut best = None::<(f64, u32)>;
+        for sample in 0..topology.sample_count() {
+            let index = sample as usize;
+            if initial[index] != plate {
+                continue;
+            }
+            let position = topology.unit_position(sample);
+            let from_core = dot(position, core_position).clamp(-1.0, 1.0).acos();
+            if from_core < 0.18 || from_core > 0.82 {
+                continue;
+            }
+            let minimum_separation = supports[..slot]
+                .iter()
+                .map(|support| dot(position, *support).clamp(-1.0, 1.0).acos())
+                .fold(std::f64::consts::PI, f64::min);
+            let score = minimum_separation - (from_core - 0.50).abs() * 0.18;
+            let candidate = (score, sample);
+            if best
+                .map(|current| {
+                    candidate.0 > current.0 || (candidate.0 == current.0 && candidate.1 < current.1)
+                })
+                .unwrap_or(true)
+            {
+                best = Some(candidate);
+            }
+        }
+        if let Some((_, sample)) = best {
+            supports[slot] = topology.unit_position(sample);
+        } else {
+            supports[slot] = supports[slot - 1];
+        }
+    }
+    supports
+}
+
 fn build_fields<T: PlanetTopology>(
     topology: &T,
     model: &HistoricalLithosphereModel,
@@ -388,41 +504,67 @@ fn build_fields<T: PlanetTopology>(
         .map(|(plate, core)| {
             let stream = (plate as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15);
             let center = topology.unit_position(*core);
+            let material_supports =
+                choose_material_supports(topology, initial, plate as u16, *core);
             let (tangent_u, tangent_v) = tangent_frame(
                 center,
                 random_unit_vector(seed, stream ^ 0xa076_1d64_78bd_642f),
             );
-            let area_ratio = (signals.plate_area_fraction[plate] / mean_area.max(1.0e-12))
-                .max(1.0e-6);
-            let inherited_area_bias = (area_ratio.ln() * 0.105).clamp(-0.18, 0.22);
+            let area_ratio =
+                (signals.plate_area_fraction[plate] / mean_area.max(1.0e-12)).max(1.0e-6);
+            let inherited_area_bias = (area_ratio.ln() * 0.032).clamp(-0.065, 0.09);
             let random_area_bias =
                 (unit_random(seed ^ stream ^ 0xe703_7ed1_a0b4_28db) - 0.5) * 0.025;
             let continental_fraction = signals.plate_continental_fraction[plate];
             PlateField {
                 center,
+                material_supports,
                 tangent_u,
                 tangent_v,
                 angular_velocity: angular_velocity[plate],
                 area_bias: inherited_area_bias + random_area_bias,
                 mobility: (0.94 - continental_fraction * 0.24).clamp(0.62, 0.94),
-                stretch: (unit_random(seed ^ stream ^ 0x8ebc_6af0_9c88_c6e3) - 0.5) * 0.24,
-                bend: (unit_random(seed ^ stream ^ 0xd6e8_feb8_6659_fd93) - 0.5) * 0.18,
+                stretch: (unit_random(seed ^ stream ^ 0x8ebc_6af0_9c88_c6e3) - 0.5) * 0.060,
+                bend: (unit_random(seed ^ stream ^ 0xd6e8_feb8_6659_fd93) - 0.5) * 0.040,
             }
         })
         .collect()
 }
 
+fn limit_angular_drift(anchor: [f64; 3], proposed: [f64; 3], max_angle: f64) -> [f64; 3] {
+    let angle = dot(anchor, proposed).clamp(-1.0, 1.0).acos();
+    if angle <= max_angle || angle <= 1.0e-12 {
+        return proposed;
+    }
+    let t = max_angle / angle;
+    let sin_angle = angle.sin();
+    if sin_angle.abs() <= 1.0e-12 {
+        return normalize_or(add(scale(anchor, 1.0 - t), scale(proposed, t)), anchor);
+    }
+    let left = ((1.0 - t) * angle).sin() / sin_angle;
+    let right = (t * angle).sin() / sin_angle;
+    normalize_or(add(scale(anchor, left), scale(proposed, right)), anchor)
+}
+
 fn evolve_fields(fields: &mut [PlateField]) {
-    const MIN_CORE_SEPARATION_RAD: f64 = 0.20;
+    const MIN_CORE_SEPARATION_RAD: f64 = 0.22;
+    const MAX_MATERIAL_DRIFT_RAD: f64 = 0.24;
+    let anchors = fields.iter().map(|field| field.center).collect::<Vec<_>>();
     for _ in 0..KINEMATIC_EPOCHS {
         let proposals = fields
             .iter()
-            .map(|field| {
+            .enumerate()
+            .map(|(index, field)| {
                 let dt = EPOCH_DURATION_MYR * field.mobility;
-                (
-                    rotate_vector(field.center, field.angular_velocity, dt),
-                    rotate_vector(field.tangent_u, field.angular_velocity, dt),
-                )
+                let moved_center = rotate_vector(field.center, field.angular_velocity, dt);
+                let center =
+                    limit_angular_drift(anchors[index], moved_center, MAX_MATERIAL_DRIFT_RAD);
+                let moved_tangent = rotate_vector(field.tangent_u, field.angular_velocity, dt);
+                let tangent = normalize_or(
+                    sub(moved_tangent, scale(center, dot(moved_tangent, center))),
+                    field.tangent_u,
+                );
+                (center, tangent)
             })
             .collect::<Vec<_>>();
         let mut blocked = vec![false; fields.len()];
@@ -461,11 +603,11 @@ fn warp_position(position: [f64; 3], stress_axes: [[f64; 3]; 2]) -> [f64; 3] {
 
 fn material_retention_strength(crust_kind: u8, owner_depth: u16) -> f64 {
     let base = if crust_kind == CrustKind::Continental as u8 {
-        0.34
+        0.20
     } else if crust_kind == CrustKind::Transitional as u8 {
-        0.23
+        0.135
     } else {
-        0.075
+        0.050
     };
     let depth = f64::from(owner_depth.min(MAX_OWNER_DEPTH)) / f64::from(MAX_OWNER_DEPTH);
     base * (0.18 + 0.82 * depth.sqrt())
@@ -488,11 +630,18 @@ fn field_score(
     } else {
         0.0
     };
+    let core_support = ((0.28 - distance).max(0.0) / 0.28).powi(2) * 0.16;
 
     // Low-order anisotropy keeps boundaries freeform without reverting to local cellular growth.
     let u = dot(warped, field.tangent_u);
     let v = dot(warped, field.tangent_v);
     let shape = field.stretch * (u * u - v * v) + field.bend * (2.0 * u * v);
+    let support_distance = field
+        .material_supports
+        .iter()
+        .map(|support| dot(warped, *support).clamp(-1.0, 1.0).acos())
+        .fold(std::f64::consts::PI, f64::min);
+    let support_affinity = (-(support_distance / 0.42).powi(2)).exp() * 0.115;
 
     let corridor_release = (1.0
         - signals.rift_release[sample_index] * 0.82
@@ -506,16 +655,27 @@ fn field_score(
         let initial = initial_owner as usize;
         let candidate = candidate_plate as usize;
         if signals.plate_adjacency[initial][candidate] {
-            // Neighboring provisional domains may advance preferentially through explicit rift,
-            // suture, capture and collision corridors, but receive no such help in stable interiors.
-            signals.rift_release[sample_index] * 0.085
-                + signals.structure_release[sample_index] * 0.035
+            // Preserve the *location* of inherited contacts with a compact neighborhood mask.
+            // Event corridors can still move the boundary, while unrelated adjacent plates do
+            // not gain a global license to cut through the whole material domain.
+            let local_contact = if candidate_plate < 64
+                && (signals.nearby_plate_mask[sample_index] & (1_u64 << candidate_plate)) != 0
+            {
+                let depth = f64::from(signals.owner_depth[sample_index].min(MAX_OWNER_DEPTH))
+                    / f64::from(MAX_OWNER_DEPTH);
+                (1.0 - depth).powi(2) * 0.11
+            } else {
+                0.0
+            };
+            local_contact
+                + signals.rift_release[sample_index] * 0.075
+                + signals.structure_release[sample_index] * 0.030
         } else {
             0.0
         }
     };
 
-    -distance + field.area_bias + shape + ancestry - far_cap
+    -distance + field.area_bias + shape + ancestry + support_affinity + core_support - far_cap
 }
 
 fn choose_field_cores<T: PlanetTopology>(
@@ -532,19 +692,21 @@ fn choose_field_cores<T: PlanetTopology>(
         let mut best_score = f64::NEG_INFINITY;
         for sample in 0..topology.sample_count() {
             let index = sample as usize;
-            if used[index] {
+            if used[index] || initial[index] as usize != plate {
                 continue;
             }
             let alignment = dot(topology.unit_position(sample), field.center);
             let material_bonus = if initial[index] as usize == plate {
-                material_retention_strength(model.crust_kind[index], signals.owner_depth[index]) * 0.55
+                material_retention_strength(model.crust_kind[index], signals.owner_depth[index])
+                    * 0.55
             } else {
                 0.0
             };
             let corridor_penalty = signals.rift_release[index] * 0.12;
             let score = alignment + material_bonus - corridor_penalty;
             if score > best_score
-                || (score == best_score && best_sample.map(|current| sample < current).unwrap_or(true))
+                || (score == best_score
+                    && best_sample.map(|current| sample < current).unwrap_or(true))
             {
                 best_score = score;
                 best_sample = Some(sample);
@@ -595,6 +757,96 @@ fn assign_from_fields<T: PlanetTopology>(
         owners[core as usize] = plate as u16;
     }
     owners
+}
+
+fn target_plate_fractions(signals: &MaterialSignals, plate_count: usize) -> Vec<f64> {
+    let mean = 1.0 / plate_count.max(1) as f64;
+    let mut targets = signals
+        .plate_area_fraction
+        .iter()
+        .map(|fraction| (fraction * 0.62 + mean * 0.38).max(0.020))
+        .collect::<Vec<_>>();
+    let total = targets.iter().sum::<f64>().max(1.0e-12);
+    for target in &mut targets {
+        *target /= total;
+    }
+    targets
+}
+
+fn connected_plate_fractions<T: PlanetTopology>(
+    topology: &T,
+    owners: &[u16],
+    cores: &[u32],
+) -> Vec<f64> {
+    let mut total_area = 0.0_f64;
+    for sample in 0..topology.sample_count() {
+        total_area += topology.area_steradians(sample);
+    }
+    let total_area = total_area.max(1.0e-12);
+    let mut fractions = vec![0.0_f64; cores.len()];
+    let mut seen = vec![false; owners.len()];
+
+    for (plate, core) in cores.iter().copied().enumerate() {
+        let plate_id = plate as u16;
+        if owners[core as usize] != plate_id {
+            continue;
+        }
+        seen.fill(false);
+        seen[core as usize] = true;
+        let mut queue = VecDeque::from([core]);
+        let mut area = 0.0_f64;
+        while let Some(sample) = queue.pop_front() {
+            area += topology.area_steradians(sample);
+            for neighbor in topology.neighbors(sample) {
+                let ni = *neighbor as usize;
+                if !seen[ni] && owners[ni] == plate_id {
+                    seen[ni] = true;
+                    queue.push_back(*neighbor);
+                }
+            }
+        }
+        fractions[plate] = area / total_area;
+    }
+    fractions
+}
+
+fn calibrate_area_biases<T: PlanetTopology>(
+    topology: &T,
+    model: &HistoricalLithosphereModel,
+    fields: &mut [PlateField],
+    initial: &[u16],
+    cores: &[u32],
+    stress_axes: [[f64; 3]; 2],
+    signals: &MaterialSignals,
+) {
+    let targets = target_plate_fractions(signals, fields.len());
+    for _ in 0..80 {
+        let owners = assign_from_fields(
+            topology,
+            model,
+            fields,
+            initial,
+            cores,
+            stress_axes,
+            signals,
+        );
+        let current = connected_plate_fractions(topology, &owners, cores);
+        let mut maximum_error = 0.0_f64;
+        let mut minimum_fraction = 1.0_f64;
+        for plate in 0..fields.len() {
+            let error = targets[plate] - current[plate];
+            maximum_error = maximum_error.max(error.abs());
+            minimum_fraction = minimum_fraction.min(current[plate]);
+            let mut correction = (error * 1.20).clamp(-0.010, 0.010);
+            if current[plate] < 0.010 {
+                correction = correction.max(0.008);
+            }
+            fields[plate].area_bias = (fields[plate].area_bias + correction).clamp(-0.48, 0.48);
+        }
+        if minimum_fraction >= 0.014 && maximum_error < 0.006 {
+            break;
+        }
+    }
 }
 
 fn repair_connectivity<T: PlanetTopology>(
@@ -679,6 +931,335 @@ fn repair_connectivity<T: PlanetTopology>(
     }
 }
 
+fn removal_preserves_local_connectivity<T: PlanetTopology>(
+    topology: &T,
+    owners: &[u16],
+    sample: u32,
+    owner: u16,
+) -> bool {
+    let same = topology
+        .neighbors(sample)
+        .iter()
+        .copied()
+        .filter(|neighbor| owners[*neighbor as usize] == owner)
+        .collect::<Vec<_>>();
+    if same.len() <= 1 {
+        return true;
+    }
+
+    let mut reached = vec![false; same.len()];
+    reached[0] = true;
+    let mut queue = VecDeque::from([0usize]);
+    while let Some(local_index) = queue.pop_front() {
+        let node = same[local_index];
+        for neighbor in topology.neighbors(node) {
+            if *neighbor == sample {
+                continue;
+            }
+            if let Some(next_index) = same.iter().position(|candidate| candidate == neighbor) {
+                if !reached[next_index] {
+                    reached[next_index] = true;
+                    queue.push_back(next_index);
+                }
+            }
+        }
+    }
+    reached.into_iter().all(|value| value)
+}
+
+fn plate_area_fractions<T: PlanetTopology>(
+    topology: &T,
+    owners: &[u16],
+    plate_count: usize,
+) -> Vec<f64> {
+    let total_area = (0..topology.sample_count())
+        .map(|sample| topology.area_steradians(sample))
+        .sum::<f64>()
+        .max(1.0e-12);
+    let mut fractions = vec![0.0_f64; plate_count];
+    for sample in 0..topology.sample_count() {
+        fractions[owners[sample as usize] as usize] +=
+            topology.area_steradians(sample) / total_area;
+    }
+    fractions
+}
+
+fn stable_material_interior(
+    model: &HistoricalLithosphereModel,
+    signals: &MaterialSignals,
+    index: usize,
+    owner: u16,
+    initial: &[u16],
+) -> bool {
+    model.crust_kind[index] != CrustKind::Oceanic as u8
+        && initial[index] == owner
+        && signals.owner_depth[index] >= 4
+        && signals.rift_release[index] < 0.22
+        && signals.structure_release[index] < 0.22
+}
+
+fn regularize_plate_domains<T: PlanetTopology>(
+    topology: &T,
+    model: &HistoricalLithosphereModel,
+    owners: &mut [u16],
+    fields: &[PlateField],
+    initial: &[u16],
+    cores: &[u32],
+    stress_axes: [[f64; 3]; 2],
+    signals: &MaterialSignals,
+) {
+    const MIN_FRACTION: f64 = 0.012;
+    const SOFT_MIN_FRACTION: f64 = 0.016;
+    const MAX_FRACTION: f64 = 0.252;
+    let targets = target_plate_fractions(signals, fields.len());
+    let total_area = (0..topology.sample_count())
+        .map(|sample| topology.area_steradians(sample))
+        .sum::<f64>()
+        .max(1.0e-12);
+    let mut protected = vec![false; owners.len()];
+    for core in cores {
+        protected[*core as usize] = true;
+    }
+
+    for _ in 0..12 {
+        let mut fractions = plate_area_fractions(topology, owners, fields.len());
+        let mut changed = 0usize;
+
+        for sample in 0..topology.sample_count() {
+            let index = sample as usize;
+            if protected[index] {
+                continue;
+            }
+            let current = owners[index];
+            let current_index = current as usize;
+            let sample_fraction = topology.area_steradians(sample) / total_area;
+            if fractions[current_index] - sample_fraction < MIN_FRACTION {
+                continue;
+            }
+            if !removal_preserves_local_connectivity(topology, owners, sample, current) {
+                continue;
+            }
+
+            let mut contacts = BTreeMap::<u16, usize>::new();
+            for neighbor in topology.neighbors(sample) {
+                *contacts.entry(owners[*neighbor as usize]).or_insert(0) += 1;
+            }
+            let same_contact = contacts.get(&current).copied().unwrap_or(0);
+            if contacts.len() <= 1 {
+                continue;
+            }
+
+            let position = topology.unit_position(sample);
+            let current_score = field_score(
+                index,
+                position,
+                current,
+                initial[index],
+                model.crust_kind[index],
+                fields[current_index],
+                stress_axes,
+                signals,
+            );
+            let mut best = None::<(f64, usize, u16)>;
+            for (candidate, candidate_contact) in contacts {
+                if candidate == current {
+                    continue;
+                }
+                let candidate_index = candidate as usize;
+                if fractions[candidate_index] + sample_fraction > MAX_FRACTION {
+                    continue;
+                }
+                let candidate_score = field_score(
+                    index,
+                    position,
+                    candidate,
+                    initial[index],
+                    model.crust_kind[index],
+                    fields[candidate_index],
+                    stress_axes,
+                    signals,
+                );
+
+                let candidate_deficit = targets[candidate_index] - fractions[candidate_index];
+                let current_deficit = targets[current_index] - fractions[current_index];
+                let balance_pressure = (candidate_deficit - current_deficit) * 3.0;
+                let viability_bonus = if fractions[candidate_index] < 0.008 {
+                    1.45
+                } else if fractions[candidate_index] < SOFT_MIN_FRACTION {
+                    0.55
+                } else {
+                    0.0
+                };
+                let oversize_bonus = if fractions[current_index] > 0.245 {
+                    0.50
+                } else {
+                    0.0
+                };
+                let shape_pressure = (candidate_contact as f64 - same_contact as f64) * 0.24;
+                let stable_penalty =
+                    if stable_material_interior(model, signals, index, current, initial) {
+                        0.22
+                    } else {
+                        0.0
+                    };
+                let transfer_score = candidate_score - current_score
+                    + balance_pressure
+                    + viability_bonus
+                    + oversize_bonus
+                    + shape_pressure
+                    - stable_penalty;
+                let proposal = (transfer_score, candidate_contact, candidate);
+                if best
+                    .map(|current_best| {
+                        proposal.0 > current_best.0
+                            || (proposal.0 == current_best.0 && proposal.1 > current_best.1)
+                            || (proposal.0 == current_best.0
+                                && proposal.1 == current_best.1
+                                && proposal.2 < current_best.2)
+                    })
+                    .unwrap_or(true)
+                {
+                    best = Some(proposal);
+                }
+            }
+
+            if let Some((score, _, replacement)) = best {
+                let urgent = fractions[replacement as usize] < MIN_FRACTION
+                    || fractions[current_index] > MAX_FRACTION;
+                let threshold = if urgent { -0.08 } else { 0.10 };
+                if score >= threshold {
+                    owners[index] = replacement;
+                    fractions[current_index] -= sample_fraction;
+                    fractions[replacement as usize] += sample_fraction;
+                    changed += 1;
+                }
+            }
+        }
+
+        repair_connectivity(
+            topology,
+            model,
+            owners,
+            fields,
+            initial,
+            cores,
+            stress_axes,
+            signals,
+        );
+        if changed == 0 {
+            break;
+        }
+    }
+}
+
+fn smooth_plate_boundaries<T: PlanetTopology>(
+    topology: &T,
+    model: &HistoricalLithosphereModel,
+    owners: &mut [u16],
+    fields: &[PlateField],
+    initial: &[u16],
+    cores: &[u32],
+    stress_axes: [[f64; 3]; 2],
+    signals: &MaterialSignals,
+) {
+    const MIN_FRACTION: f64 = 0.012;
+    const MAX_FRACTION: f64 = 0.252;
+    let total_area = (0..topology.sample_count())
+        .map(|sample| topology.area_steradians(sample))
+        .sum::<f64>()
+        .max(1.0e-12);
+    let mut protected = vec![false; owners.len()];
+    for core in cores {
+        protected[*core as usize] = true;
+    }
+
+    // Discrete mean-curvature flow: a transfer is considered only when it strictly
+    // reduces the local count of unlike-owner edges. Material-field score remains a
+    // guard, so smoothing cannot freely erase stable continental identity.
+    for _ in 0..20 {
+        let mut fractions = plate_area_fractions(topology, owners, fields.len());
+        let mut changed = 0usize;
+        for sample in 0..topology.sample_count() {
+            let index = sample as usize;
+            if protected[index] {
+                continue;
+            }
+            let current = owners[index];
+            let sample_fraction = topology.area_steradians(sample) / total_area;
+            if fractions[current as usize] - sample_fraction < MIN_FRACTION
+                || !removal_preserves_local_connectivity(topology, owners, sample, current)
+            {
+                continue;
+            }
+
+            let mut contacts = BTreeMap::<u16, usize>::new();
+            for neighbor in topology.neighbors(sample) {
+                *contacts.entry(owners[*neighbor as usize]).or_insert(0) += 1;
+            }
+            let same_contact = contacts.get(&current).copied().unwrap_or(0);
+            let Some((candidate, candidate_contact)) = contacts
+                .iter()
+                .filter(|(owner, count)| **owner != current && **count > same_contact)
+                .map(|(owner, count)| (*owner, *count))
+                .max_by(|left, right| left.1.cmp(&right.1).then_with(|| right.0.cmp(&left.0)))
+            else {
+                continue;
+            };
+            if fractions[candidate as usize] + sample_fraction > MAX_FRACTION {
+                continue;
+            }
+
+            let position = topology.unit_position(sample);
+            let current_score = field_score(
+                index,
+                position,
+                current,
+                initial[index],
+                model.crust_kind[index],
+                fields[current as usize],
+                stress_axes,
+                signals,
+            );
+            let candidate_score = field_score(
+                index,
+                position,
+                candidate,
+                initial[index],
+                model.crust_kind[index],
+                fields[candidate as usize],
+                stress_axes,
+                signals,
+            );
+            let stable_penalty =
+                if stable_material_interior(model, signals, index, current, initial) {
+                    0.12
+                } else {
+                    0.0
+                };
+            let perimeter_gain = (candidate_contact as f64 - same_contact as f64) * 0.26;
+            if candidate_score - current_score + perimeter_gain - stable_penalty >= -0.08 {
+                owners[index] = candidate;
+                fractions[current as usize] -= sample_fraction;
+                fractions[candidate as usize] += sample_fraction;
+                changed += 1;
+            }
+        }
+        repair_connectivity(
+            topology,
+            model,
+            owners,
+            fields,
+            initial,
+            cores,
+            stress_axes,
+            signals,
+        );
+        if changed == 0 {
+            break;
+        }
+    }
+}
+
 fn validate_nonempty(owners: &[u16], plate_count: usize) -> Result<(), WorldgenError> {
     let mut counts = vec![0usize; plate_count];
     for owner in owners {
@@ -714,21 +1295,31 @@ pub(crate) fn synthesize_boundary_first_ownership<T: PlanetTopology>(
     let initial = &model.current_plate_ids;
     let stage_seed = derive_stage_seed(seed, BOUNDARY_FIELD_NAMESPACE);
     let signals = build_material_signals(topology, model, initial);
-    let initial_cores = choose_plate_cores(
+    let initial_cores =
+        choose_plate_cores(topology, model, initial, &signals, plate_count, stage_seed)?;
+    let mut fields = build_fields(
         topology,
         model,
         initial,
+        &initial_cores,
         &signals,
-        plate_count,
         stage_seed,
-    )?;
-    let mut fields = build_fields(topology, model, initial, &initial_cores, &signals, stage_seed);
+    );
     evolve_fields(&mut fields);
     let cores = choose_field_cores(topology, &fields, initial, model, &signals);
     let stress_axes = [
         random_unit_vector(stage_seed, 0xd6e8_feb8_6659_fd93),
         random_unit_vector(stage_seed, 0xa5a3_56d5_2f62_56d5),
     ];
+    calibrate_area_biases(
+        topology,
+        model,
+        &mut fields,
+        initial,
+        &cores,
+        stress_axes,
+        &signals,
+    );
     let mut owners = assign_from_fields(
         topology,
         model,
@@ -739,6 +1330,26 @@ pub(crate) fn synthesize_boundary_first_ownership<T: PlanetTopology>(
         &signals,
     );
     repair_connectivity(
+        topology,
+        model,
+        &mut owners,
+        &fields,
+        initial,
+        &cores,
+        stress_axes,
+        &signals,
+    );
+    regularize_plate_domains(
+        topology,
+        model,
+        &mut owners,
+        &fields,
+        initial,
+        &cores,
+        stress_axes,
+        &signals,
+    );
+    smooth_plate_boundaries(
         topology,
         model,
         &mut owners,
