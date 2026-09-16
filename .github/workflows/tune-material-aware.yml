@@ -17,9 +17,10 @@ jobs:
         with:
           ref: feat/material-aware-boundary-tectonics
           fetch-depth: 0
-      - name: Apply continuous area calibration
+      - name: Apply material-aware field calibration
         run: |
           python3 scripts/tune-material-aware.py
+          python3 scripts/tune-material-domain-balance.py
           cargo fmt --all
       - name: Validate tuned field
         run: |
