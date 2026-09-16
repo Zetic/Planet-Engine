@@ -1,7 +1,7 @@
 use interlink_worldgen::{
-    build_icosphere, generate_historical_frontend, generate_lithosphere,
-    inherit_boundary_interfaces, inherit_historical_identity, inherit_physical_state,
-    GeodesicTopology, HistoricalLithosphereRequest, InheritedBoundarySet,
+    build_historical_tectonic_morphology, build_icosphere, generate_historical_frontend,
+    generate_lithosphere_from_history, inherit_boundary_interfaces, inherit_historical_identity,
+    inherit_physical_state, GeodesicTopology, HistoricalLithosphereRequest, InheritedBoundarySet,
     InheritedHistoricalIdentity, InheritedPhysicalState, LithosphereRequest,
     PlanetPhysicalParameters, MULTIRES_STAGE_ID, MULTIRES_STAGE_VERSION, WORLDGEN_ENGINE_VERSION,
 };
@@ -18,6 +18,17 @@ pub struct WasmWorldgenInheritance {
     tectonic_hash: String,
     geology_hash: String,
     lithosphere_hash: String,
+    historical_morphology_hash: String,
+    latest_event_kind: Vec<u8>,
+    latest_event_age_myr: Vec<f32>,
+    historical_rift_intensity: Vec<f32>,
+    historical_rift_age_myr: Vec<f32>,
+    historical_shear_intensity: Vec<f32>,
+    historical_suture_intensity: Vec<f32>,
+    historical_suture_age_myr: Vec<f32>,
+    passive_margin_index: Vec<f32>,
+    active_orogen_intensity: Vec<f32>,
+    fossil_orogen_intensity: Vec<f32>,
     plate_count: u16,
 }
 
@@ -46,21 +57,29 @@ impl WasmWorldgenInheritance {
             parameters,
         )
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
-        let tectonics = frontend.tectonics;
-        let geology = frontend.geology;
         let historical_identity = inherit_historical_identity(
             &fine_topology,
             coarse_level,
             &frontend.historical,
         )
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
-        let lithosphere = generate_lithosphere(
+        let morphology = build_historical_tectonic_morphology(
             &coarse_topology,
-            &tectonics,
-            &geology,
-            &LithosphereRequest::new(seed),
+            &frontend.historical,
+            &frontend.tectonics,
+            seed.as_str(),
         )
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        let lithosphere = generate_lithosphere_from_history(
+            &coarse_topology,
+            &frontend.historical,
+            &frontend.tectonics,
+            &frontend.geology,
+            &LithosphereRequest::new(seed.as_str()),
+        )
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        let tectonics = frontend.tectonics;
+        let geology = frontend.geology;
         let inner = inherit_physical_state(
             &fine_topology,
             coarse_level,
@@ -79,250 +98,146 @@ impl WasmWorldgenInheritance {
         )
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
 
+        let nearest = &inner.map.nearest_coarse_source;
+        let inherit_f32 = |values: &[f32]| {
+            nearest
+                .iter()
+                .map(|source| values[*source as usize])
+                .collect::<Vec<_>>()
+        };
+        let inherit_u8 = |values: &[u8]| {
+            nearest
+                .iter()
+                .map(|source| values[*source as usize])
+                .collect::<Vec<_>>()
+        };
+        let latest_event_kind = inherit_u8(&morphology.latest_event_kind);
+        let latest_event_age_myr = inherit_f32(&morphology.latest_event_age_myr);
+        let historical_rift_intensity = inherit_f32(&morphology.rift_intensity);
+        let historical_rift_age_myr = inherit_f32(&morphology.rift_age_myr);
+        let historical_shear_intensity = inherit_f32(&morphology.shear_intensity);
+        let historical_suture_intensity = inherit_f32(&morphology.suture_intensity);
+        let historical_suture_age_myr = inherit_f32(&morphology.suture_age_myr);
+        let passive_margin_index = inherit_f32(&morphology.passive_margin_index);
+        let active_orogen_intensity = inherit_f32(&morphology.active_orogen_intensity);
+        let fossil_orogen_intensity = inherit_f32(&morphology.fossil_orogen_intensity);
+
         Ok(Self {
             fine_topology,
             coarse_topology_hash: coarse_topology.metrics().topology_hash_hex(),
             tectonic_hash: tectonics.metrics.tectonic_hash_hex(),
             geology_hash: geology.metrics.geology_hash_hex(),
             lithosphere_hash: lithosphere.metrics.lithosphere_hash_hex(),
+            historical_morphology_hash: morphology.metrics.morphology_hash_hex(),
             plate_count,
             inner,
             historical_identity,
             boundaries,
             parameters,
+            latest_event_kind,
+            latest_event_age_myr,
+            historical_rift_intensity,
+            historical_rift_age_myr,
+            historical_shear_intensity,
+            historical_suture_intensity,
+            historical_suture_age_myr,
+            passive_margin_index,
+            active_orogen_intensity,
+            fossil_orogen_intensity,
         })
     }
 
-    pub fn generator_version(&self) -> u32 {
-        WORLDGEN_ENGINE_VERSION
-    }
-    pub fn stage_id(&self) -> String {
-        MULTIRES_STAGE_ID.to_owned()
-    }
-    pub fn stage_version(&self) -> u32 {
-        MULTIRES_STAGE_VERSION
-    }
-    pub fn coarse_level(&self) -> u8 {
-        self.inner.map.metrics.coarse_level
-    }
-    pub fn fine_level(&self) -> u8 {
-        self.inner.map.metrics.fine_level
-    }
-    pub fn coarse_sample_count(&self) -> u32 {
-        self.inner.map.metrics.coarse_sample_count
-    }
-    pub fn fine_sample_count(&self) -> u32 {
-        self.inner.map.metrics.fine_sample_count
-    }
-    pub fn added_sample_count(&self) -> u32 {
-        self.inner.map.metrics.added_sample_count
-    }
-    pub fn plate_count(&self) -> u16 {
-        self.plate_count
-    }
-    pub fn fine_boundary_edge_count(&self) -> u32 {
-        self.boundaries.boundaries.len() as u32
-    }
+    pub fn generator_version(&self) -> u32 { WORLDGEN_ENGINE_VERSION }
+    pub fn stage_id(&self) -> String { MULTIRES_STAGE_ID.to_owned() }
+    pub fn stage_version(&self) -> u32 { MULTIRES_STAGE_VERSION }
+    pub fn coarse_level(&self) -> u8 { self.inner.map.metrics.coarse_level }
+    pub fn fine_level(&self) -> u8 { self.inner.map.metrics.fine_level }
+    pub fn coarse_sample_count(&self) -> u32 { self.inner.map.metrics.coarse_sample_count }
+    pub fn fine_sample_count(&self) -> u32 { self.inner.map.metrics.fine_sample_count }
+    pub fn added_sample_count(&self) -> u32 { self.inner.map.metrics.added_sample_count }
+    pub fn plate_count(&self) -> u16 { self.plate_count }
+    pub fn fine_boundary_edge_count(&self) -> u32 { self.boundaries.boundaries.len() as u32 }
 
-    pub fn provenance_hash_hex(&self) -> String {
-        self.inner.map.metrics.provenance_hash_hex()
-    }
-    pub fn parameter_hash_hex(&self) -> String {
-        self.inner.parameter_hash_hex()
-    }
-    pub fn inheritance_hash_hex(&self) -> String {
-        self.inner.inheritance_hash_hex()
-    }
-    pub fn historical_identity_hash_hex(&self) -> String {
-        self.historical_identity.identity_hash_hex()
-    }
-    pub fn boundary_hash_hex(&self) -> String {
-        self.boundaries.boundary_hash_hex()
-    }
-    pub fn coarse_topology_hash_hex(&self) -> String {
-        self.coarse_topology_hash.clone()
-    }
-    pub fn fine_topology_hash_hex(&self) -> String {
-        self.fine_topology.metrics().topology_hash_hex()
-    }
-    pub fn tectonic_hash_hex(&self) -> String {
-        self.tectonic_hash.clone()
-    }
-    pub fn geology_hash_hex(&self) -> String {
-        self.geology_hash.clone()
-    }
-    pub fn lithosphere_hash_hex(&self) -> String {
-        self.lithosphere_hash.clone()
-    }
+    pub fn provenance_hash_hex(&self) -> String { self.inner.map.metrics.provenance_hash_hex() }
+    pub fn parameter_hash_hex(&self) -> String { self.inner.parameter_hash_hex() }
+    pub fn inheritance_hash_hex(&self) -> String { self.inner.inheritance_hash_hex() }
+    pub fn historical_identity_hash_hex(&self) -> String { self.historical_identity.identity_hash_hex() }
+    pub fn historical_morphology_hash_hex(&self) -> String { self.historical_morphology_hash.clone() }
+    pub fn boundary_hash_hex(&self) -> String { self.boundaries.boundary_hash_hex() }
+    pub fn coarse_topology_hash_hex(&self) -> String { self.coarse_topology_hash.clone() }
+    pub fn fine_topology_hash_hex(&self) -> String { self.fine_topology.metrics().topology_hash_hex() }
+    pub fn tectonic_hash_hex(&self) -> String { self.tectonic_hash.clone() }
+    pub fn geology_hash_hex(&self) -> String { self.geology_hash.clone() }
+    pub fn lithosphere_hash_hex(&self) -> String { self.lithosphere_hash.clone() }
 
-    pub fn radius_m(&self) -> f64 {
-        self.parameters.radius_m
-    }
-    pub fn surface_gravity_m_s2(&self) -> f64 {
-        self.parameters.surface_gravity_m_s2
-    }
-    pub fn surface_water_mass_kg(&self) -> f64 {
-        self.parameters.surface_water_mass_kg
-    }
-    pub fn equivalent_global_water_depth_m(&self) -> f64 {
-        self.parameters.equivalent_global_water_depth_m()
-    }
-    pub fn ocean_water_density_kg_per_m3(&self) -> f64 {
-        self.parameters.ocean_water_density_kg_per_m3
-    }
-    pub fn isostatic_mantle_density_kg_per_m3(&self) -> f64 {
-        self.parameters.isostatic_mantle_density_kg_per_m3
-    }
-    pub fn internal_heat_flux_w_per_m2(&self) -> f64 {
-        self.parameters.internal_heat_flux_w_per_m2
-    }
-    pub fn mantle_thermal_expansivity_per_k(&self) -> f64 {
-        self.parameters.mantle_thermal_expansivity_per_k
-    }
+    pub fn radius_m(&self) -> f64 { self.parameters.radius_m }
+    pub fn surface_gravity_m_s2(&self) -> f64 { self.parameters.surface_gravity_m_s2 }
+    pub fn surface_water_mass_kg(&self) -> f64 { self.parameters.surface_water_mass_kg }
+    pub fn equivalent_global_water_depth_m(&self) -> f64 { self.parameters.equivalent_global_water_depth_m() }
+    pub fn ocean_water_density_kg_per_m3(&self) -> f64 { self.parameters.ocean_water_density_kg_per_m3 }
+    pub fn isostatic_mantle_density_kg_per_m3(&self) -> f64 { self.parameters.isostatic_mantle_density_kg_per_m3 }
+    pub fn internal_heat_flux_w_per_m2(&self) -> f64 { self.parameters.internal_heat_flux_w_per_m2 }
+    pub fn mantle_thermal_expansivity_per_k(&self) -> f64 { self.parameters.mantle_thermal_expansivity_per_k }
 
-    pub fn positions(&self) -> Vec<f64> {
-        self.fine_topology.flattened_positions()
-    }
-    pub fn faces(&self) -> Vec<u32> {
-        self.fine_topology.flattened_faces()
-    }
-    pub fn neighbor_offsets(&self) -> Vec<u32> {
-        self.fine_topology.neighbor_offsets().to_vec()
-    }
-    pub fn neighbors(&self) -> Vec<u32> {
-        self.fine_topology.neighbor_indices().to_vec()
-    }
-    pub fn nearest_coarse_source(&self) -> Vec<u32> {
-        self.inner.map.nearest_coarse_source.clone()
-    }
-    pub fn inherited_sample_mask(&self) -> Vec<u8> {
-        self.inner.map.inherited_sample_mask.clone()
-    }
+    pub fn positions(&self) -> Vec<f64> { self.fine_topology.flattened_positions() }
+    pub fn faces(&self) -> Vec<u32> { self.fine_topology.flattened_faces() }
+    pub fn neighbor_offsets(&self) -> Vec<u32> { self.fine_topology.neighbor_offsets().to_vec() }
+    pub fn neighbors(&self) -> Vec<u32> { self.fine_topology.neighbor_indices().to_vec() }
+    pub fn nearest_coarse_source(&self) -> Vec<u32> { self.inner.map.nearest_coarse_source.clone() }
+    pub fn inherited_sample_mask(&self) -> Vec<u8> { self.inner.map.inherited_sample_mask.clone() }
 
-    // Historical material identity is exposed explicitly rather than overloading the stable WG-3.75
-    // compatibility channels below. Diagnostic consumers can inspect ancestry without changing the
-    // meaning of crust provinces, crust ages, or WG-3.5 mechanical fragments.
-    pub fn origin_plate_ids(&self) -> Vec<u16> {
-        self.historical_identity.origin_plate_ids.clone()
-    }
-    pub fn historical_fragment_ids(&self) -> Vec<u16> {
-        self.historical_identity.fragment_ids.clone()
-    }
-    pub fn current_plate_ids(&self) -> Vec<u16> {
-        self.historical_identity.current_plate_ids.clone()
-    }
-    pub fn crust_birth_age_myr(&self) -> Vec<f32> {
-        self.historical_identity.crust_birth_age_myr.clone()
-    }
+    pub fn origin_plate_ids(&self) -> Vec<u16> { self.historical_identity.origin_plate_ids.clone() }
+    pub fn historical_fragment_ids(&self) -> Vec<u16> { self.historical_identity.fragment_ids.clone() }
+    pub fn current_plate_ids(&self) -> Vec<u16> { self.historical_identity.current_plate_ids.clone() }
+    pub fn crust_birth_age_myr(&self) -> Vec<f32> { self.historical_identity.crust_birth_age_myr.clone() }
 
-    pub fn plate_ids(&self) -> Vec<u16> {
-        self.inner.plate_ids.clone()
-    }
-    pub fn crust_kind(&self) -> Vec<u8> {
-        self.inner.crust_kind.clone()
-    }
-    pub fn crust_province_id(&self) -> Vec<u16> {
-        self.inner.crust_province_id.clone()
-    }
-    pub fn crust_age_myr(&self) -> Vec<f32> {
-        self.inner.crust_age_myr.clone()
-    }
-    pub fn crust_thickness_km(&self) -> Vec<f32> {
-        self.inner.crust_thickness_km.clone()
-    }
-    pub fn crust_density_kg_per_m3(&self) -> Vec<f32> {
-        self.inner.crust_density_kg_per_m3.clone()
-    }
-    pub fn buoyancy_index(&self) -> Vec<f32> {
-        self.inner.buoyancy_index.clone()
-    }
-    pub fn orogenic_history(&self) -> Vec<f32> {
-        self.inner.orogenic_history.clone()
-    }
-    pub fn rift_history(&self) -> Vec<f32> {
-        self.inner.rift_history.clone()
-    }
-    pub fn ridge_history(&self) -> Vec<f32> {
-        self.inner.ridge_history.clone()
-    }
-    pub fn subduction_history(&self) -> Vec<f32> {
-        self.inner.subduction_history.clone()
-    }
-    pub fn trench_history(&self) -> Vec<f32> {
-        self.inner.trench_history.clone()
-    }
-    pub fn volcanic_arc_history(&self) -> Vec<f32> {
-        self.inner.volcanic_arc_history.clone()
-    }
-    pub fn transform_history(&self) -> Vec<f32> {
-        self.inner.transform_history.clone()
-    }
-    pub fn subsidence_history(&self) -> Vec<f32> {
-        self.inner.subsidence_history.clone()
-    }
-    pub fn basin_potential(&self) -> Vec<f32> {
-        self.inner.basin_potential.clone()
-    }
-    pub fn crustal_strain(&self) -> Vec<f32> {
-        self.inner.crustal_strain.clone()
-    }
+    pub fn latest_historical_event_kind(&self) -> Vec<u8> { self.latest_event_kind.clone() }
+    pub fn latest_historical_event_age_myr(&self) -> Vec<f32> { self.latest_event_age_myr.clone() }
+    pub fn historical_rift_intensity(&self) -> Vec<f32> { self.historical_rift_intensity.clone() }
+    pub fn historical_rift_age_myr(&self) -> Vec<f32> { self.historical_rift_age_myr.clone() }
+    pub fn historical_shear_intensity(&self) -> Vec<f32> { self.historical_shear_intensity.clone() }
+    pub fn historical_suture_intensity(&self) -> Vec<f32> { self.historical_suture_intensity.clone() }
+    pub fn historical_suture_age_myr(&self) -> Vec<f32> { self.historical_suture_age_myr.clone() }
+    pub fn passive_margin_index(&self) -> Vec<f32> { self.passive_margin_index.clone() }
+    pub fn active_orogen_intensity(&self) -> Vec<f32> { self.active_orogen_intensity.clone() }
+    pub fn fossil_orogen_intensity(&self) -> Vec<f32> { self.fossil_orogen_intensity.clone() }
 
-    pub fn strength_index(&self) -> Vec<f32> {
-        self.inner.strength_index.clone()
-    }
-    pub fn weakness_index(&self) -> Vec<f32> {
-        self.inner.weakness_index.clone()
-    }
-    pub fn effective_elastic_thickness_km(&self) -> Vec<f32> {
-        self.inner.effective_elastic_thickness_km.clone()
-    }
-    pub fn thermal_anomaly_index(&self) -> Vec<f32> {
-        self.inner.thermal_anomaly_index.clone()
-    }
-    pub fn mantle_upwelling_index(&self) -> Vec<f32> {
-        self.inner.mantle_upwelling_index.clone()
-    }
-    pub fn mantle_dynamic_support_index(&self) -> Vec<f32> {
-        self.inner.mantle_dynamic_support_index.clone()
-    }
-    pub fn compensated_buoyancy_index(&self) -> Vec<f32> {
-        self.inner.compensated_buoyancy_index.clone()
-    }
-    pub fn structural_fabric_strength(&self) -> Vec<f32> {
-        self.inner.structural_fabric_strength.clone()
-    }
-    pub fn structural_zone_kind(&self) -> Vec<u8> {
-        self.inner.structural_zone_kind.clone()
-    }
-    pub fn fragmentation_propensity(&self) -> Vec<f32> {
-        self.inner.fragmentation_propensity.clone()
-    }
-    pub fn fragment_ids(&self) -> Vec<u16> {
-        self.inner.fragment_ids.clone()
-    }
-    pub fn kinematic_domain_ids(&self) -> Vec<u16> {
-        self.inner.kinematic_domain_ids.clone()
-    }
+    pub fn plate_ids(&self) -> Vec<u16> { self.inner.plate_ids.clone() }
+    pub fn crust_kind(&self) -> Vec<u8> { self.inner.crust_kind.clone() }
+    pub fn crust_province_id(&self) -> Vec<u16> { self.inner.crust_province_id.clone() }
+    pub fn crust_age_myr(&self) -> Vec<f32> { self.inner.crust_age_myr.clone() }
+    pub fn crust_thickness_km(&self) -> Vec<f32> { self.inner.crust_thickness_km.clone() }
+    pub fn crust_density_kg_per_m3(&self) -> Vec<f32> { self.inner.crust_density_kg_per_m3.clone() }
+    pub fn buoyancy_index(&self) -> Vec<f32> { self.inner.buoyancy_index.clone() }
+    pub fn orogenic_history(&self) -> Vec<f32> { self.inner.orogenic_history.clone() }
+    pub fn rift_history(&self) -> Vec<f32> { self.inner.rift_history.clone() }
+    pub fn ridge_history(&self) -> Vec<f32> { self.inner.ridge_history.clone() }
+    pub fn subduction_history(&self) -> Vec<f32> { self.inner.subduction_history.clone() }
+    pub fn trench_history(&self) -> Vec<f32> { self.inner.trench_history.clone() }
+    pub fn volcanic_arc_history(&self) -> Vec<f32> { self.inner.volcanic_arc_history.clone() }
+    pub fn transform_history(&self) -> Vec<f32> { self.inner.transform_history.clone() }
+    pub fn subsidence_history(&self) -> Vec<f32> { self.inner.subsidence_history.clone() }
+    pub fn basin_potential(&self) -> Vec<f32> { self.inner.basin_potential.clone() }
+    pub fn crustal_strain(&self) -> Vec<f32> { self.inner.crustal_strain.clone() }
 
-    pub fn boundary_samples(&self) -> Vec<u32> {
-        self.boundaries.flattened_samples()
-    }
-    pub fn boundary_kinds(&self) -> Vec<u8> {
-        self.boundaries.tectonic_kinds()
-    }
-    pub fn geological_boundary_regimes(&self) -> Vec<u8> {
-        self.boundaries.geological_regimes()
-    }
-    pub fn subduction_polarities(&self) -> Vec<u8> {
-        self.boundaries.subduction_polarities()
-    }
-    pub fn boundary_normal_rates_m_per_year(&self) -> Vec<f64> {
-        self.boundaries.normal_rates_m_per_year()
-    }
-    pub fn boundary_shear_rates_m_per_year(&self) -> Vec<f64> {
-        self.boundaries.shear_rates_m_per_year()
-    }
-    pub fn boundary_coarse_source_indices(&self) -> Vec<u32> {
-        self.boundaries.coarse_boundary_indices()
-    }
+    pub fn strength_index(&self) -> Vec<f32> { self.inner.strength_index.clone() }
+    pub fn weakness_index(&self) -> Vec<f32> { self.inner.weakness_index.clone() }
+    pub fn effective_elastic_thickness_km(&self) -> Vec<f32> { self.inner.effective_elastic_thickness_km.clone() }
+    pub fn thermal_anomaly_index(&self) -> Vec<f32> { self.inner.thermal_anomaly_index.clone() }
+    pub fn mantle_upwelling_index(&self) -> Vec<f32> { self.inner.mantle_upwelling_index.clone() }
+    pub fn mantle_dynamic_support_index(&self) -> Vec<f32> { self.inner.mantle_dynamic_support_index.clone() }
+    pub fn compensated_buoyancy_index(&self) -> Vec<f32> { self.inner.compensated_buoyancy_index.clone() }
+    pub fn structural_fabric_strength(&self) -> Vec<f32> { self.inner.structural_fabric_strength.clone() }
+    pub fn structural_zone_kind(&self) -> Vec<u8> { self.inner.structural_zone_kind.clone() }
+    pub fn fragmentation_propensity(&self) -> Vec<f32> { self.inner.fragmentation_propensity.clone() }
+    pub fn fragment_ids(&self) -> Vec<u16> { self.inner.fragment_ids.clone() }
+    pub fn kinematic_domain_ids(&self) -> Vec<u16> { self.inner.kinematic_domain_ids.clone() }
+
+    pub fn boundary_samples(&self) -> Vec<u32> { self.boundaries.flattened_samples() }
+    pub fn boundary_kinds(&self) -> Vec<u8> { self.boundaries.tectonic_kinds() }
+    pub fn geological_boundary_regimes(&self) -> Vec<u8> { self.boundaries.geological_regimes() }
+    pub fn subduction_polarities(&self) -> Vec<u8> { self.boundaries.subduction_polarities() }
+    pub fn boundary_normal_rates_m_per_year(&self) -> Vec<f64> { self.boundaries.normal_rates_m_per_year() }
+    pub fn boundary_shear_rates_m_per_year(&self) -> Vec<f64> { self.boundaries.shear_rates_m_per_year() }
+    pub fn boundary_coarse_source_indices(&self) -> Vec<u32> { self.boundaries.coarse_boundary_indices() }
 }
