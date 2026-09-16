@@ -4,17 +4,193 @@ use crate::{
     WorldgenError,
 };
 
+const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
+const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
+
 fn clamp01(value: f64) -> f64 {
     value.clamp(0.0, 1.0)
 }
 
+fn fnv_update(mut hash: u64, bytes: &[u8]) -> u64 {
+    for byte in bytes {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(FNV_PRIME);
+    }
+    hash
+}
+
+fn area_weighted_mean(values: &[f32], areas: &[f64]) -> f64 {
+    let total_area = areas.iter().sum::<f64>().max(1.0e-12);
+    values
+        .iter()
+        .zip(areas.iter())
+        .map(|(value, area)| f64::from(*value) * *area)
+        .sum::<f64>()
+        / total_area
+}
+
+fn area_weighted_quantile(values: &[f32], areas: &[f64], q: f64) -> f64 {
+    let mut pairs = values
+        .iter()
+        .copied()
+        .zip(areas.iter().copied())
+        .collect::<Vec<_>>();
+    pairs.sort_by(|left, right| left.0.total_cmp(&right.0));
+    let target = areas.iter().sum::<f64>() * q.clamp(0.0, 1.0);
+    let mut cumulative = 0.0_f64;
+    for (value, area) in pairs {
+        cumulative += area;
+        if cumulative >= target {
+            return f64::from(value);
+        }
+    }
+    values.last().copied().map(f64::from).unwrap_or(0.0)
+}
+
+fn passive_margin_deflection_m(inherited: &InheritedPhysicalState, sample: usize) -> f64 {
+    if inherited.structural_zone_kind[sample] != InheritedStructureKind::ContinentalMargin as u8
+        || inherited.crust_kind[sample] == CrustKind::Oceanic as u8
+    {
+        return 0.0;
+    }
+
+    let fabric = f64::from(inherited.structural_fabric_strength[sample]).clamp(0.0, 1.0);
+    let weakness = f64::from(inherited.weakness_index[sample]).clamp(0.0, 1.0);
+    let margin_memory = clamp01(fabric * (0.68 + 0.32 * weakness));
+    let scale_m = if inherited.crust_kind[sample] == CrustKind::Transitional as u8 {
+        900.0
+    } else {
+        420.0
+    };
+    -scale_m * margin_memory
+}
+
+fn refresh_water_and_metrics(
+    topology: &GeodesicTopology,
+    inherited: &InheritedPhysicalState,
+    state: &mut TopographyState,
+    planet: PlanetPhysicalParameters,
+    prior_hash: u64,
+    prior_clamped_sample_count: u32,
+) -> Result<(), WorldgenError> {
+    let count = topology.metrics().sample_count as usize;
+    let areas = topology.dual_area_steradians();
+
+    // The causal WG-4 solve already identified the connected global ocean. Reuse only submerged
+    // oceanic-crust cells as seeds after the passive-margin deflection, so newly lowered shelves can
+    // be flooded through a real marine path without reviving isolated inland/oceanic sliver seeds.
+    let ocean_seed_mask = (0..count)
+        .map(|sample| {
+            u8::from(
+                state.submerged_mask[sample] != 0
+                    && inherited.crust_kind[sample] == CrustKind::Oceanic as u8,
+            )
+        })
+        .collect::<Vec<_>>();
+
+    // Release the old water rasters before allocating the replacement connected-ocean solve. This
+    // keeps the adapter within the PR62 lifetime discipline instead of retaining duplicate L8 water
+    // state during WG-4.
+    state.elevation_above_sea_level_m = Vec::new();
+    state.water_depth_m = Vec::new();
+    state.submerged_mask = Vec::new();
+
+    let water = crate::surface_water::solve_hydrostatic_surface_water_connected(
+        topology,
+        &state.solid_elevation_m,
+        planet,
+        &ocean_seed_mask,
+    )?;
+
+    let minimum_solid_elevation_m = state
+        .solid_elevation_m
+        .iter()
+        .copied()
+        .map(f64::from)
+        .fold(f64::INFINITY, f64::min);
+    let maximum_solid_elevation_m = state
+        .solid_elevation_m
+        .iter()
+        .copied()
+        .map(f64::from)
+        .fold(f64::NEG_INFINITY, f64::max);
+
+    let mut land_area = 0.0_f64;
+    let mut ocean_area = 0.0_f64;
+    let mut land_elevation_area_sum = 0.0_f64;
+    let mut water_depth_area_sum = 0.0_f64;
+    let mut maximum_water_depth_m = 0.0_f64;
+    for sample in 0..count {
+        let area = areas[sample];
+        if water.submerged_mask[sample] != 0 {
+            ocean_area += area;
+            let depth = f64::from(water.water_depth_m[sample]);
+            water_depth_area_sum += depth * area;
+            maximum_water_depth_m = maximum_water_depth_m.max(depth);
+        } else {
+            land_area += area;
+            land_elevation_area_sum +=
+                f64::from(water.elevation_above_sea_level_m[sample]) * area;
+        }
+    }
+    let total_area = (land_area + ocean_area).max(1.0e-12);
+
+    let mut topography_hash = FNV_OFFSET_BASIS;
+    topography_hash = fnv_update(
+        topography_hash,
+        b"terrain:historical-passive-margin-topography:v1\0",
+    );
+    topography_hash = fnv_update(topography_hash, &prior_hash.to_le_bytes());
+    for value in &state.solid_elevation_m {
+        topography_hash = fnv_update(topography_hash, &value.to_bits().to_le_bytes());
+    }
+    for value in &state.rift_basin_elevation_m {
+        topography_hash = fnv_update(topography_hash, &value.to_bits().to_le_bytes());
+    }
+    for value in &water.water_depth_m {
+        topography_hash = fnv_update(topography_hash, &value.to_bits().to_le_bytes());
+    }
+    topography_hash = fnv_update(topography_hash, &water.submerged_mask);
+
+    state.metrics.minimum_solid_elevation_m = minimum_solid_elevation_m;
+    state.metrics.maximum_solid_elevation_m = maximum_solid_elevation_m;
+    state.metrics.mean_solid_elevation_m = area_weighted_mean(&state.solid_elevation_m, areas);
+    state.metrics.p05_solid_elevation_m =
+        area_weighted_quantile(&state.solid_elevation_m, areas, 0.05);
+    state.metrics.median_solid_elevation_m =
+        area_weighted_quantile(&state.solid_elevation_m, areas, 0.50);
+    state.metrics.p95_solid_elevation_m =
+        area_weighted_quantile(&state.solid_elevation_m, areas, 0.95);
+    state.metrics.sea_level_m = water.metrics.sea_level_m;
+    state.metrics.land_area_fraction = land_area / total_area;
+    state.metrics.ocean_area_fraction = ocean_area / total_area;
+    state.metrics.mean_land_elevation_m = if land_area > 0.0 {
+        land_elevation_area_sum / land_area
+    } else {
+        0.0
+    };
+    state.metrics.mean_water_depth_m = if ocean_area > 0.0 {
+        water_depth_area_sum / ocean_area
+    } else {
+        0.0
+    };
+    state.metrics.maximum_water_depth_m = maximum_water_depth_m;
+    state.metrics.target_water_volume_m3 = water.metrics.target_water_volume_m3;
+    state.metrics.solved_water_volume_m3 = water.metrics.solved_water_volume_m3;
+    state.metrics.water_volume_relative_error = water.metrics.water_volume_relative_error;
+    state.metrics.clamped_sample_count = prior_clamped_sample_count;
+    state.metrics.topography_hash = topography_hash;
+    state.elevation_above_sea_level_m = water.elevation_above_sea_level_m;
+    state.water_depth_m = water.water_depth_m;
+    state.submerged_mask = water.submerged_mask;
+    Ok(())
+}
+
 /// WG-4 material-history adapter.
 ///
-/// PR-B establishes passive margins from persistent rift/spreading history in WG-3.5. The
-/// accepted WG-4 solver already knows how to turn inherited basin/subsidence/rift memory into
-/// shelf/basin relief, so translate the historical `ContinentalMargin` fabric into those bounded
-/// physical channels immediately before topography. This keeps passive shelves causally tied to
-/// rifted material ancestry without adding another dense long-lived raster to WG-3.75.
+/// Persistent rifting already produces `ContinentalMargin` structure in WG-3.5. Materialize that
+/// inherited state as a bounded shelf/basin deflection after the accepted tectonic-province WG-4
+/// solve. The operation is in-place: no second `InheritedPhysicalState` is retained at L8.
 pub fn generate_initial_topography(
     topology: &GeodesicTopology,
     inherited: &InheritedPhysicalState,
@@ -27,59 +203,66 @@ pub fn generate_initial_topography(
         || inherited.structural_fabric_strength.len() != count
         || inherited.weakness_index.len() != count
         || inherited.crust_kind.len() != count
-        || inherited.rift_history.len() != count
-        || inherited.subsidence_history.len() != count
-        || inherited.basin_potential.len() != count
     {
         return Err(WorldgenError::InvalidTopography(
             "historical passive-margin inputs are not aligned to WG-4 topology",
         ));
     }
 
-    let margin_kind = InheritedStructureKind::ContinentalMargin as u8;
-    if !inherited
+    let has_margin = inherited
         .structural_zone_kind
         .iter()
-        .any(|kind| *kind == margin_kind)
-    {
-        return causal_pipeline::generate_initial_topography(
-            topology, inherited, boundaries, planet, request,
-        );
+        .enumerate()
+        .any(|(sample, kind)| {
+            *kind == InheritedStructureKind::ContinentalMargin as u8
+                && inherited.crust_kind[sample] != CrustKind::Oceanic as u8
+        });
+    let mut state = causal_pipeline::generate_initial_topography(
+        topology, inherited, boundaries, planet, request,
+    )?;
+    if !has_margin {
+        return Ok(state);
     }
 
-    let mut adjusted = inherited.clone();
+    let areas = topology.dual_area_steradians();
+    let total_area = areas.iter().sum::<f64>().max(1.0e-12);
+    let mut area_weighted_deflection = 0.0_f64;
     for sample in 0..count {
-        if adjusted.structural_zone_kind[sample] != margin_kind
-            || adjusted.crust_kind[sample] == CrustKind::Oceanic as u8
-        {
+        let deflection = passive_margin_deflection_m(inherited, sample);
+        if deflection == 0.0 {
             continue;
         }
-
-        let fabric = f64::from(adjusted.structural_fabric_strength[sample]).clamp(0.0, 1.0);
-        let weakness = f64::from(adjusted.weakness_index[sample]).clamp(0.0, 1.0);
-        // A weak, inherited rift fabric is the physical memory of stretched continental crust.
-        // Transitional crust receives the stronger shelf/basin expression; intact continental
-        // material gets a shallower shoulder so passive margins do not become active-rift troughs.
-        let margin_memory = clamp01(fabric * (0.68 + 0.32 * weakness));
-        let transitional = adjusted.crust_kind[sample] == CrustKind::Transitional as u8;
-        let rift_gain = if transitional { 0.72 } else { 0.32 };
-        let subsidence_gain = if transitional { 0.82 } else { 0.50 };
-        let basin_gain = if transitional { 0.80 } else { 0.46 };
-
-        adjusted.rift_history[sample] = f64::from(adjusted.rift_history[sample])
-            .max(margin_memory * rift_gain)
-            .clamp(0.0, 1.0) as f32;
-        adjusted.subsidence_history[sample] = f64::from(adjusted.subsidence_history[sample])
-            .max(margin_memory * subsidence_gain)
-            .clamp(0.0, 1.0) as f32;
-        adjusted.basin_potential[sample] = f64::from(adjusted.basin_potential[sample])
-            .max(margin_memory * basin_gain)
-            .clamp(0.0, 1.0) as f32;
+        state.rift_basin_elevation_m[sample] += deflection as f32;
+        state.solid_elevation_m[sample] += deflection as f32;
+        area_weighted_deflection += deflection * areas[sample];
     }
 
-    causal_pipeline::generate_initial_topography(
-        topology, &adjusted, boundaries, planet, request,
-    )
+    // Preserve the WG-4 global solid datum after adding the local shelf/basin term.
+    let datum_shift = area_weighted_deflection / total_area;
+    let mut newly_clamped = 0_u32;
+    for value in &mut state.solid_elevation_m {
+        let shifted = f64::from(*value) - datum_shift;
+        let clamped = shifted.clamp(-20_000.0, 15_000.0);
+        if clamped.to_bits() != shifted.to_bits() {
+            newly_clamped += 1;
+        }
+        *value = clamped as f32;
+    }
+
+    let prior_hash = state.metrics.topography_hash;
+    let prior_clamped = state
+        .metrics
+        .clamped_sample_count
+        .saturating_add(newly_clamped);
+    refresh_water_and_metrics(
+        topology,
+        inherited,
+        &mut state,
+        planet,
+        prior_hash,
+        prior_clamped,
+    )?;
+    Ok(state)
 }
 
 #[cfg(test)]
@@ -160,7 +343,8 @@ mod tests {
         let mut legacy_margin_rift = 0.0_f64;
         let mut historical_margin_rift = 0.0_f64;
         for sample in 0..fine.metrics().sample_count as usize {
-            if inherited.structural_zone_kind[sample] == InheritedStructureKind::ContinentalMargin as u8
+            if inherited.structural_zone_kind[sample]
+                == InheritedStructureKind::ContinentalMargin as u8
                 && inherited.crust_kind[sample] != CrustKind::Oceanic as u8
             {
                 margin_samples += 1;
@@ -173,6 +357,10 @@ mod tests {
         let historical_mean = historical_margin_rift / margin_samples as f64;
         assert!(historical_mean < legacy_mean - 25.0);
         assert!(historical_mean > -2_500.0);
-        assert!(historical.metrics.clamped_sample_count == 0);
+        assert_eq!(historical.metrics.clamped_sample_count, legacy.metrics.clamped_sample_count);
+        assert_ne!(
+            historical.metrics.topography_hash,
+            legacy.metrics.topography_hash
+        );
     }
 }
