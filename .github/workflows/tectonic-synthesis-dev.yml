@@ -102,8 +102,8 @@ jobs:
           if ! git diff --quiet; then
             git config user.name 'github-actions[bot]'
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git add rust src index.html README.md tests .github/workflows/ci.yml
-            git add -u inheritance.html src/worldgen/diagnostics/worldgenInheritanceLabStandalone.ts || true
+            git add rust src dist/worldgen index.html README.md tests
+            git add -u inheritance.html || true
             git commit -m 'feat(worldgen): unify historical diagnostics in the main lab'
             git push origin HEAD:feat/tectonic-synthesis-cleanup
           fi
