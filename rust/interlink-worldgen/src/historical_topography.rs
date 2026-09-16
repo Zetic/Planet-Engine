@@ -4,6 +4,9 @@ use crate::{
     WorldgenError,
 };
 
+pub const HISTORICAL_TOPOGRAPHY_STAGE_ID: &str = "terrain:initial-topography";
+pub const HISTORICAL_TOPOGRAPHY_STAGE_VERSION: u32 = 15;
+const HISTORICAL_TOPOGRAPHY_NAMESPACE: &str = "terrain:historical-material-morphology:v1";
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 
@@ -29,22 +32,36 @@ fn area_weighted_mean(values: &[f32], areas: &[f64]) -> f64 {
         / total_area
 }
 
-fn area_weighted_quantile(values: &[f32], areas: &[f64], q: f64) -> f64 {
+fn area_weighted_quantiles(values: &[f32], areas: &[f64]) -> (f64, f64, f64) {
     let mut pairs = values
         .iter()
         .copied()
         .zip(areas.iter().copied())
         .collect::<Vec<_>>();
     pairs.sort_by(|left, right| left.0.total_cmp(&right.0));
-    let target = areas.iter().sum::<f64>() * q.clamp(0.0, 1.0);
+    let total = areas.iter().sum::<f64>().max(1.0e-12);
+    let targets = [total * 0.05, total * 0.50, total * 0.95];
+    let mut result = [0.0_f64; 3];
+    let mut reached = 0usize;
     let mut cumulative = 0.0_f64;
     for (value, area) in pairs {
         cumulative += area;
-        if cumulative >= target {
-            return f64::from(value);
+        while reached < targets.len() && cumulative >= targets[reached] {
+            result[reached] = f64::from(value);
+            reached += 1;
+        }
+        if reached == targets.len() {
+            break;
         }
     }
-    values.last().copied().map(f64::from).unwrap_or(0.0)
+    if reached < targets.len() {
+        let fallback = values.last().copied().map(f64::from).unwrap_or(0.0);
+        while reached < targets.len() {
+            result[reached] = fallback;
+            reached += 1;
+        }
+    }
+    (result[0], result[1], result[2])
 }
 
 fn passive_margin_deflection_m(inherited: &InheritedPhysicalState, sample: usize) -> f64 {
@@ -63,6 +80,23 @@ fn passive_margin_deflection_m(inherited: &InheritedPhysicalState, sample: usize
         420.0
     };
     -scale_m * margin_memory
+}
+
+fn finalize_historical_stage(state: &mut TopographyState, request: &TopographyRequest) {
+    let stage_seed = crate::derive_stage_seed(&request.seed, HISTORICAL_TOPOGRAPHY_NAMESPACE);
+    let prior_hash = state.metrics.topography_hash;
+    let mut topography_hash = FNV_OFFSET_BASIS;
+    topography_hash = fnv_update(topography_hash, HISTORICAL_TOPOGRAPHY_STAGE_ID.as_bytes());
+    topography_hash = fnv_update(
+        topography_hash,
+        &HISTORICAL_TOPOGRAPHY_STAGE_VERSION.to_le_bytes(),
+    );
+    topography_hash = fnv_update(topography_hash, &stage_seed.to_le_bytes());
+    topography_hash = fnv_update(topography_hash, &prior_hash.to_le_bytes());
+    state.stage.id = HISTORICAL_TOPOGRAPHY_STAGE_ID;
+    state.stage.version = HISTORICAL_TOPOGRAPHY_STAGE_VERSION;
+    state.stage.derived_seed = stage_seed;
+    state.metrics.topography_hash = topography_hash;
 }
 
 fn refresh_water_and_metrics(
@@ -114,6 +148,7 @@ fn refresh_water_and_metrics(
         .copied()
         .map(f64::from)
         .fold(f64::NEG_INFINITY, f64::max);
+    let (p05, median, p95) = area_weighted_quantiles(&state.solid_elevation_m, areas);
 
     let mut land_area = 0.0_f64;
     let mut ocean_area = 0.0_f64;
@@ -155,12 +190,9 @@ fn refresh_water_and_metrics(
     state.metrics.minimum_solid_elevation_m = minimum_solid_elevation_m;
     state.metrics.maximum_solid_elevation_m = maximum_solid_elevation_m;
     state.metrics.mean_solid_elevation_m = area_weighted_mean(&state.solid_elevation_m, areas);
-    state.metrics.p05_solid_elevation_m =
-        area_weighted_quantile(&state.solid_elevation_m, areas, 0.05);
-    state.metrics.median_solid_elevation_m =
-        area_weighted_quantile(&state.solid_elevation_m, areas, 0.50);
-    state.metrics.p95_solid_elevation_m =
-        area_weighted_quantile(&state.solid_elevation_m, areas, 0.95);
+    state.metrics.p05_solid_elevation_m = p05;
+    state.metrics.median_solid_elevation_m = median;
+    state.metrics.p95_solid_elevation_m = p95;
     state.metrics.sea_level_m = water.metrics.sea_level_m;
     state.metrics.land_area_fraction = land_area / total_area;
     state.metrics.ocean_area_fraction = ocean_area / total_area;
@@ -221,6 +253,7 @@ pub fn generate_initial_topography(
         topology, inherited, boundaries, planet, request,
     )?;
     if !has_margin {
+        finalize_historical_stage(&mut state, request);
         return Ok(state);
     }
 
@@ -262,6 +295,7 @@ pub fn generate_initial_topography(
         prior_hash,
         prior_clamped,
     )?;
+    finalize_historical_stage(&mut state, request);
     Ok(state)
 }
 
@@ -358,6 +392,8 @@ mod tests {
         assert!(historical_mean < legacy_mean - 25.0);
         assert!(historical_mean > -2_500.0);
         assert_eq!(historical.metrics.clamped_sample_count, legacy.metrics.clamped_sample_count);
+        assert_eq!(historical.stage.id, HISTORICAL_TOPOGRAPHY_STAGE_ID);
+        assert_eq!(historical.stage.version, HISTORICAL_TOPOGRAPHY_STAGE_VERSION);
         assert_ne!(
             historical.metrics.topography_hash,
             legacy.metrics.topography_hash
