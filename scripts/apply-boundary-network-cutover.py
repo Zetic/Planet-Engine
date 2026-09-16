@@ -10,6 +10,11 @@ if 'mod boundary_plate_geometry;\n' not in lib:
     lib = lib.replace(needle, 'mod boundary_plate_geometry;\n' + needle, 1)
     lib_path.write_text(lib)
 
+field_path = Path('rust/interlink-worldgen/src/boundary_plate_geometry.rs')
+field = field_path.read_text()
+field = field.replace('plate as u16 < best_plate', '(plate as u16) < best_plate')
+field_path.write_text(field)
+
 path = Path('rust/interlink-worldgen/src/dynamic_plate_evolution.rs')
 text = path.read_text()
 old = '    model.current_plate_ids = evolve_ownership(topology, &model, stage_seed)?;\n'
