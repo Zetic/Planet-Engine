@@ -47,11 +47,7 @@ use std::fmt;
 pub use boundary_refinement::{
     inherit_boundary_interfaces, InheritedBoundaryEdge, InheritedBoundarySet,
 };
-pub use causal_pipeline::{
-    inherit_physical_state, InheritedPhysicalState, LithosphericModel,
-    TECTONIC_TOPOGRAPHY_STAGE_ID as TOPOGRAPHY_STAGE_ID,
-    TECTONIC_TOPOGRAPHY_STAGE_VERSION as TOPOGRAPHY_STAGE_VERSION,
-};
+pub use causal_pipeline::{inherit_physical_state, InheritedPhysicalState, LithosphericModel};
 pub use climate::{
     generate_coupled_climate, generate_coupled_climate_reference_with_diagnostics,
     generate_coupled_climate_with_diagnostics, ClimateGenerationDiagnostics, ClimateMetrics,
@@ -116,7 +112,10 @@ pub use historical_morphology::{
 };
 pub use historical_orogen::generate_event_driven_orogen_provinces;
 pub use historical_pre_orogenic::generate_pre_orogenic_lithosphere_from_history;
-pub use historical_topography::generate_initial_topography;
+pub use historical_topography::{
+    generate_initial_topography, HISTORICAL_TOPOGRAPHY_STAGE_ID as TOPOGRAPHY_STAGE_ID,
+    HISTORICAL_TOPOGRAPHY_STAGE_VERSION as TOPOGRAPHY_STAGE_VERSION,
+};
 pub use hydroclimate::{
     build_hydroclimate_closure_report, HydroclimateClosureReport, HydroclimateLatitudeBand,
 };
@@ -204,7 +203,7 @@ pub use world_calibration::{
     WORLD_CALIBRATION_RANKED_LIMIT, WORLD_CALIBRATION_SCHEMA_ID, WORLD_CALIBRATION_SCHEMA_VERSION,
 };
 
-pub const WORLDGEN_ENGINE_VERSION: u32 = 15;
+pub const WORLDGEN_ENGINE_VERSION: u32 = 16;
 pub const SYNTHETIC_STAGE_ID: &str = "foundation:synthetic";
 pub const SYNTHETIC_STAGE_VERSION: u32 = 1;
 const SYNTHETIC_NAMESPACE: &str = "worldgen:foundation:synthetic:v1";
