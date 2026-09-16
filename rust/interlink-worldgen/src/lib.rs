@@ -11,6 +11,10 @@ mod erosion;
 mod evolution;
 mod fields;
 mod geology;
+mod historical_api;
+mod historical_epochs;
+mod historical_frontend;
+mod historical_lithosphere;
 mod hydroclimate;
 mod infill;
 mod lakes;
@@ -80,9 +84,24 @@ pub use evolution::{
 };
 pub use fields::{DenseU16Field, MAX_SYNTHETIC_SAMPLES};
 pub use geology::{
-    generate_crust_and_history, CrustKind, CrustalModel, GeologicalBoundary,
-    GeologicalBoundaryRegime, GeologyMetrics, GeologyRequest, PlateScaleClass, PlateSummary,
-    SubductionPolarity, GEOLOGY_STAGE_ID, GEOLOGY_STAGE_VERSION,
+    CrustKind, CrustalModel, GeologicalBoundary, GeologicalBoundaryRegime, GeologyMetrics,
+    GeologyRequest, PlateScaleClass, PlateSummary, SubductionPolarity, GEOLOGY_STAGE_ID,
+    GEOLOGY_STAGE_VERSION,
+};
+pub use historical_api::{
+    generate_crust_and_history, generate_historical_lithosphere,
+    generate_legacy_crust_and_history, generate_tectonics,
+};
+pub use historical_epochs::HISTORICAL_EPOCH_COUNT;
+pub use historical_frontend::{
+    generate_historical_frontend, inherit_historical_identity, project_historical_crust,
+    project_historical_modern_tectonics, HistoricalFrontend, InheritedHistoricalIdentity,
+    HISTORICAL_INHERITANCE_STAGE_ID, HISTORICAL_INHERITANCE_STAGE_VERSION,
+};
+pub use historical_lithosphere::{
+    CrustFragment, HistoricalEventKind, HistoricalLithosphereMetrics, HistoricalLithosphereModel,
+    HistoricalLithosphereRequest, HistoricalTectonicEvent, HISTORICAL_LITHOSPHERE_STAGE_ID,
+    HISTORICAL_LITHOSPHERE_STAGE_VERSION,
 };
 pub use hydroclimate::{
     build_hydroclimate_closure_report, HydroclimateClosureReport, HydroclimateLatitudeBand,
@@ -147,8 +166,8 @@ pub use tectonic_history::{
     TECTONIC_HISTORY_STAGE_ID, TECTONIC_HISTORY_STAGE_VERSION,
 };
 pub use tectonics::{
-    generate_tectonics, PlateBoundaryEdge, PlateBoundaryKind, TectonicMetrics, TectonicModel,
-    TectonicPlate, TectonicsRequest, MAX_TECTONIC_PLATES, MIN_TECTONIC_PLATES, TECTONICS_STAGE_ID,
+    PlateBoundaryEdge, PlateBoundaryKind, TectonicMetrics, TectonicModel, TectonicPlate,
+    TectonicsRequest, MAX_TECTONIC_PLATES, MIN_TECTONIC_PLATES, TECTONICS_STAGE_ID,
     TECTONICS_STAGE_VERSION,
 };
 pub use topography::{TopographyMetrics, TopographyParameters, TopographyRequest, TopographyState};
@@ -171,7 +190,7 @@ pub use world_calibration::{
     WORLD_CALIBRATION_RANKED_LIMIT, WORLD_CALIBRATION_SCHEMA_ID, WORLD_CALIBRATION_SCHEMA_VERSION,
 };
 
-pub const WORLDGEN_ENGINE_VERSION: u32 = 14;
+pub const WORLDGEN_ENGINE_VERSION: u32 = 15;
 pub const SYNTHETIC_STAGE_ID: &str = "foundation:synthetic";
 pub const SYNTHETIC_STAGE_VERSION: u32 = 1;
 const SYNTHETIC_NAMESPACE: &str = "worldgen:foundation:synthetic:v1";
@@ -302,9 +321,9 @@ mod tests {
         let result = generate_synthetic(&SyntheticRequest::new("stats", 32, 16)).unwrap();
         assert_eq!(result.generator_version, WORLDGEN_ENGINE_VERSION);
         assert_eq!(result.stage.id, SYNTHETIC_STAGE_ID);
-        assert_eq!(result.statistics.sample_count, 512);
         assert!(result.statistics.minimum <= result.statistics.maximum);
         assert!(result.statistics.mean.is_finite());
+        assert_eq!(result.statistics.sample_count, 512);
         assert_eq!(result.statistics.hash_hex().len(), 16);
     }
 }

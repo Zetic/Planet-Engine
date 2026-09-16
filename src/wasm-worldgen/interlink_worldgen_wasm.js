@@ -5070,6 +5070,15 @@ export class WasmWorldgenInheritance {
     /**
      * @returns {Float32Array}
      */
+    crust_birth_age_myr() {
+        const ret = wasm.wasmworldgeninheritance_crust_birth_age_myr(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
     crust_density_kg_per_m3() {
         const ret = wasm.wasmworldgeninheritance_crust_density_kg_per_m3(this.__wbg_ptr);
         var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
@@ -5110,6 +5119,15 @@ export class WasmWorldgenInheritance {
         const ret = wasm.wasmworldgeninheritance_crustal_strain(this.__wbg_ptr);
         var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Uint16Array}
+     */
+    current_plate_ids() {
+        const ret = wasm.wasmworldgeninheritance_current_plate_ids(this.__wbg_ptr);
+        var v1 = getArrayU16FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 2, 2);
         return v1;
     }
     /**
@@ -5215,6 +5233,30 @@ export class WasmWorldgenInheritance {
         let deferred1_1;
         try {
             const ret = wasm.wasmworldgeninheritance_geology_hash_hex(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {Uint16Array}
+     */
+    historical_fragment_ids() {
+        const ret = wasm.wasmworldgeninheritance_historical_fragment_ids(this.__wbg_ptr);
+        var v1 = getArrayU16FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 2, 2);
+        return v1;
+    }
+    /**
+     * @returns {string}
+     */
+    historical_identity_hash_hex() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmworldgeninheritance_historical_identity_hash_hex(this.__wbg_ptr);
             deferred1_0 = ret[0];
             deferred1_1 = ret[1];
             return getStringFromWasm0(ret[0], ret[1]);
@@ -5359,6 +5401,15 @@ export class WasmWorldgenInheritance {
     ocean_water_density_kg_per_m3() {
         const ret = wasm.wasmworldgeninheritance_ocean_water_density_kg_per_m3(this.__wbg_ptr);
         return ret;
+    }
+    /**
+     * @returns {Uint16Array}
+     */
+    origin_plate_ids() {
+        const ret = wasm.wasmworldgeninheritance_origin_plate_ids(this.__wbg_ptr);
+        var v1 = getArrayU16FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 2, 2);
+        return v1;
     }
     /**
      * @returns {Float32Array}

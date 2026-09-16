@@ -1,9 +1,8 @@
 use interlink_worldgen::{
-    build_icosphere, generate_crust_and_history, generate_initial_topography, generate_lithosphere,
-    generate_tectonics, inherit_boundary_interfaces, inherit_physical_state, GeodesicTopology,
-    GeologyRequest, InheritedBoundarySet, InheritedPhysicalState, LithosphereRequest,
-    PlanetPhysicalParameters, TectonicsRequest, TopographyRequest, TopographyState,
-    WORLDGEN_ENGINE_VERSION,
+    build_icosphere, generate_historical_frontend, generate_initial_topography,
+    generate_lithosphere, inherit_boundary_interfaces, inherit_physical_state, GeodesicTopology,
+    HistoricalLithosphereRequest, InheritedBoundarySet, InheritedPhysicalState, LithosphereRequest,
+    PlanetPhysicalParameters, TopographyRequest, TopographyState, WORLDGEN_ENGINE_VERSION,
 };
 use wasm_bindgen::prelude::*;
 
@@ -40,19 +39,14 @@ impl WasmWorldgenTopography {
             build_icosphere(coarse_level).map_err(|error| JsValue::from_str(&error.to_string()))?;
         let fine_topology =
             build_icosphere(fine_level).map_err(|error| JsValue::from_str(&error.to_string()))?;
-        let tectonics = generate_tectonics(
+        let frontend = generate_historical_frontend(
             &coarse_topology,
-            &TectonicsRequest::new(seed.as_str(), plate_count),
+            &HistoricalLithosphereRequest::new(seed.as_str(), plate_count),
             parameters,
         )
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
-        let geology = generate_crust_and_history(
-            &coarse_topology,
-            &tectonics,
-            &GeologyRequest::new(seed.as_str()),
-            parameters,
-        )
-        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        let tectonics = frontend.tectonics;
+        let geology = frontend.geology;
         let lithosphere = generate_lithosphere(
             &coarse_topology,
             &tectonics,

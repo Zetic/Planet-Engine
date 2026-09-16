@@ -1,13 +1,13 @@
 use interlink_worldgen::{
     build_icosphere, build_world_calibration_report, generate_bounded_terrain_evolution,
-    generate_coupled_climate_with_diagnostics, generate_crust_and_history,
-    generate_drainage_topology, generate_fluvial_erosion_sediment, generate_initial_topography,
+    generate_coupled_climate_with_diagnostics, generate_drainage_topology,
+    generate_fluvial_erosion_sediment, generate_historical_frontend, generate_initial_topography,
     generate_lake_sediment_infill, generate_lakes_closed_basins, generate_lithosphere,
     generate_post_erosion_hydrology, generate_runoff_discharge, generate_seasonal_hydrology,
-    generate_tectonics, inherit_boundary_interfaces, inherit_physical_state, ClimateRequest,
-    DrainageRequest, FluvialErosionRequest, GeologyRequest, LakeRequest, LakeSedimentInfillRequest,
+    inherit_boundary_interfaces, inherit_physical_state, ClimateRequest, DrainageRequest,
+    FluvialErosionRequest, HistoricalLithosphereRequest, LakeRequest, LakeSedimentInfillRequest,
     LithosphereRequest, PlanetPhysicalParameters, PostErosionHydrologyRequest, RunoffRequest,
-    SeasonalHydrologyRequest, TectonicsRequest, TerrainEvolutionRequest, TopographyRequest,
+    SeasonalHydrologyRequest, TerrainEvolutionRequest, TopographyRequest,
 };
 use std::{env, process};
 
@@ -87,37 +87,32 @@ fn run(options: &Options) -> Result<String, String> {
     let planet = PlanetPhysicalParameters::earthlike_reference();
     let coarse = build_icosphere(options.coarse_level).map_err(|error| error.to_string())?;
     let fine = build_icosphere(options.level).map_err(|error| error.to_string())?;
-    let tectonics = generate_tectonics(
+    let frontend = generate_historical_frontend(
         &coarse,
-        &TectonicsRequest::new(options.seed.as_str(), options.plates),
+        &HistoricalLithosphereRequest::new(options.seed.as_str(), options.plates),
         planet,
     )
     .map_err(|error| error.to_string())?;
-    let geology = generate_crust_and_history(
-        &coarse,
-        &tectonics,
-        &GeologyRequest::new(options.seed.as_str()),
-        planet,
-    )
-    .map_err(|error| error.to_string())?;
+    let tectonics = &frontend.tectonics;
+    let geology = &frontend.geology;
     let lithosphere = generate_lithosphere(
         &coarse,
-        &tectonics,
-        &geology,
+        tectonics,
+        geology,
         &LithosphereRequest::new(options.seed.as_str()),
     )
     .map_err(|error| error.to_string())?;
     let inherited = inherit_physical_state(
         &fine,
         options.coarse_level,
-        &tectonics,
-        &geology,
+        tectonics,
+        geology,
         &lithosphere,
         planet,
     )
     .map_err(|error| error.to_string())?;
     let boundaries =
-        inherit_boundary_interfaces(&coarse, &fine, &tectonics, &geology, &inherited.plate_ids)
+        inherit_boundary_interfaces(&coarse, &fine, tectonics, geology, &inherited.plate_ids)
             .map_err(|error| error.to_string())?;
     let terrain = generate_initial_topography(
         &fine,
