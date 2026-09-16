@@ -32,6 +32,7 @@ jobs:
         run: |
           python scripts/apply-dynamic-plate-evolution.py
           python scripts/tune-dynamic-plate-evolution.py
+          python scripts/fix-dynamic-fragment-transfers.py
       - name: Format Rust
         run: cargo fmt --all
       - name: Compile workspace
