@@ -9,7 +9,7 @@ const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 const MIN_SPLIT_SAMPLES: usize = 8;
 const MIN_CHILD_FRACTION: f64 = 0.16;
-// Epoch work is deliberately bounded so historical lineage stays sparse and production-safe.
+// Epoch work remains deliberately bounded so historical lineage stays sparse and production-safe.
 
 fn fnv_update(mut hash: u64, bytes: &[u8]) -> u64 {
     for byte in bytes {
