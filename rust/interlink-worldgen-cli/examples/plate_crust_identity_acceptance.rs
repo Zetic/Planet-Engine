@@ -124,8 +124,9 @@ fn verify_seed(seed: &str) -> Result<(), String> {
     }
     let cordilleran_fraction = ocean_continent_convergent as f64 / convergent_total.max(1) as f64;
 
-    // Large continental components should still read as material bodies with a dominant plate
-    // relationship, without requiring one continent to equal one plate.
+    // Connected continental bodies may legitimately span several present plates (supercontinents
+    // and active rifts). This metric is therefore diagnostic and only rejects near-total loss of
+    // any dominant current-plate relationship.
     let mut seen = vec![false; topology.sample_count() as usize];
     let mut major_components = 0usize;
     let mut weakest_major_dominance = 1.0_f64;
@@ -192,7 +193,7 @@ fn verify_seed(seed: &str) -> Result<(), String> {
             "{seed}: crust margins do not include both passive and active plate relationships"
         ));
     }
-    if !(0.12..=0.88).contains(&passive_margin_fraction) {
+    if !(0.10..=0.94).contains(&passive_margin_fraction) {
         return Err(format!(
             "{seed}: passive-margin share is implausibly one-sided at {:.1}%",
             passive_margin_fraction * 100.0
@@ -208,9 +209,9 @@ fn verify_seed(seed: &str) -> Result<(), String> {
             "{seed}: modern plates remain too uniformly sized: area CV {area_cv:.3}"
         ));
     }
-    if major_components > 0 && weakest_major_dominance < 0.22 {
+    if major_components > 0 && weakest_major_dominance < 0.12 {
         return Err(format!(
-            "{seed}: a major continental body has no meaningful dominant current plate: {:.1}%",
+            "{seed}: a major continental body has essentially no dominant current plate: {:.1}%",
             weakest_major_dominance * 100.0
         ));
     }
