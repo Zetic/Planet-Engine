@@ -1,9 +1,12 @@
 use crate::{
-    geology, historical_frontend, historical_lithosphere, tectonics, CrustalModel, GeologyRequest,
-    HistoricalLithosphereRequest, PlanetPhysicalParameters, PlanetTopology, TectonicModel,
-    TectonicsRequest, WorldgenError,
+    derive_stage_seed, geology, historical_frontend, historical_lithosphere, tectonics, CrustalModel,
+    GeologyRequest, HistoricalLithosphereRequest, PlanetPhysicalParameters, PlanetTopology,
+    TectonicModel, TectonicsRequest, WorldgenError,
 };
 use std::cell::Cell;
+
+const ANCESTRAL_TECTONICS_NAMESPACE: &str =
+    "worldgen:geology:historical-lithosphere:ancestral:v1";
 
 thread_local! {
     // Historical generation reuses the deterministic WG-2 partition builder for ancestral plates.
@@ -34,6 +37,19 @@ fn raw_tectonics_requested() -> bool {
     RAW_TECTONICS_DEPTH.with(|depth| depth.get() > 0)
 }
 
+fn is_ancestral_partition_request(seed: &str) -> bool {
+    let Some((base_seed, encoded)) = seed.rsplit_once(':') else {
+        return false;
+    };
+    if encoded.len() != 16 || !encoded.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return false;
+    }
+    let Ok(encoded_seed) = u64::from_str_radix(encoded, 16) else {
+        return false;
+    };
+    encoded_seed == derive_stage_seed(base_seed, ANCESTRAL_TECTONICS_NAMESPACE)
+}
+
 /// Public WG-2 authority after the historical-lithosphere cutover.
 ///
 /// The existing spherical partition/motion solver remains the ancestral-domain primitive. Public
@@ -44,7 +60,7 @@ pub fn generate_tectonics<T: PlanetTopology>(
     request: &TectonicsRequest,
     parameters: PlanetPhysicalParameters,
 ) -> Result<TectonicModel, WorldgenError> {
-    if raw_tectonics_requested() {
+    if raw_tectonics_requested() || is_ancestral_partition_request(request.seed.as_str()) {
         return tectonics::generate_tectonics(topology, request, parameters);
     }
 
@@ -135,6 +151,15 @@ mod tests {
     use crate::build_icosphere;
 
     #[test]
+    fn ancestral_request_encoding_resolves_to_raw_partition() {
+        let seed = "ancestral-detection";
+        let derived = derive_stage_seed(seed, ANCESTRAL_TECTONICS_NAMESPACE);
+        assert!(is_ancestral_partition_request(&format!("{seed}:{derived:016x}")));
+        assert!(!is_ancestral_partition_request(seed));
+        assert!(!is_ancestral_partition_request(&format!("{seed}:0000000000000000")));
+    }
+
+    #[test]
     fn public_wg2_and_wg3_are_the_historical_frontend_projection() {
         let topology = build_icosphere(3).unwrap();
         let planet = PlanetPhysicalParameters::earthlike_reference();
@@ -152,13 +177,11 @@ mod tests {
             planet,
         )
         .unwrap();
-        let frontend = with_raw_tectonics_scope(|| {
-            historical_frontend::generate_historical_frontend(
-                &topology,
-                &HistoricalLithosphereRequest::new(seed, 10),
-                planet,
-            )
-        })
+        let frontend = historical_frontend::generate_historical_frontend(
+            &topology,
+            &HistoricalLithosphereRequest::new(seed, 10),
+            planet,
+        )
         .unwrap();
         assert_eq!(tectonics.metrics.tectonic_hash, frontend.tectonics.metrics.tectonic_hash);
         assert_eq!(tectonics.plate_ids, frontend.historical.current_plate_ids);
