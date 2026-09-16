@@ -28,3 +28,12 @@ test('WG-3.75 WASM bridge exposes ancestry explicitly without redefining compati
   assert.match(source, /pub fn crust_age_myr[\s\S]*self\.inner\.crust_age_myr/);
   assert.match(source, /pub fn fragment_ids[\s\S]*self\.inner\.fragment_ids/);
 });
+
+test('committed browser WASM bindings include historical ancestry diagnostics', () => {
+  const bindings = fs.readFileSync('src/wasm-worldgen/interlink_worldgen_wasm.d.ts', 'utf8');
+  assert.match(bindings, /historical_identity_hash_hex\(\): string/);
+  assert.match(bindings, /origin_plate_ids\(\): Uint16Array/);
+  assert.match(bindings, /historical_fragment_ids\(\): Uint16Array/);
+  assert.match(bindings, /current_plate_ids\(\): Uint16Array/);
+  assert.match(bindings, /crust_birth_age_myr\(\): Float32Array/);
+});
