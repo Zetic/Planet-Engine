@@ -24,6 +24,8 @@ impl WasmWorldgenLithosphere {
         let topology =
             build_icosphere(level).map_err(|error| JsValue::from_str(&error.to_string()))?;
         let parameters = PlanetPhysicalParameters::earthlike_reference();
+        // Historical material is authoritative before WG-3.5 mechanics. The compatibility
+        // tectonic/geology views below are projections of that persistent ancestry.
         let frontend = generate_historical_frontend(
             &topology,
             &HistoricalLithosphereRequest::new(seed.as_str(), plate_count),
