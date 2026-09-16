@@ -28,6 +28,17 @@ jobs:
         run: python scripts/apply-tectonic-synthesis-cleanup.py
       - name: Apply final synthesis fixes and gates
         run: python scripts/finalize-tectonic-synthesis-cleanup.py
+      - name: Restore retained crust-kind import
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('rust/interlink-worldgen/src/orogen_provinces.rs')
+          text = path.read_text()
+          old = '    random, CrustalModel, GeologicalBoundaryRegime, InheritedStructureKind,\n'
+          new = '    random, CrustKind, CrustalModel, GeologicalBoundaryRegime, InheritedStructureKind,\n'
+          assert text.count(old) == 1, 'expected rewritten orogen import exactly once'
+          path.write_text(text.replace(old, new, 1))
+          PY
       - name: Format Rust
         run: cargo fmt --all
       - name: Test historical synthesis
