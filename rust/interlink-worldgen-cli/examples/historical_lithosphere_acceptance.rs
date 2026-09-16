@@ -89,11 +89,17 @@ fn verify_seed(seed: &str) -> Result<(), String> {
                 ));
             }
             let parent = &history.fragments[parent_id as usize];
-            if parent.origin_plate_id != fragment.origin_plate_id
-                || parent.current_plate_id != fragment.current_plate_id
+            if parent.origin_plate_id != fragment.origin_plate_id {
+                return Err(format!(
+                    "{seed}: fragment {} changed ancestral provenance across its parent edge",
+                    fragment.id
+                ));
+            }
+            if parent.current_plate_id != fragment.current_plate_id
+                && fragment.capture_age_myr.is_none()
             {
                 return Err(format!(
-                    "{seed}: fragment {} changed material ownership across its parent edge",
+                    "{seed}: fragment {} changed modern ownership without capture age provenance",
                     fragment.id
                 ));
             }
@@ -107,6 +113,8 @@ fn verify_seed(seed: &str) -> Result<(), String> {
 
     let mut split_events = 0_usize;
     let mut split_event_children = BTreeSet::<u16>::new();
+    let mut capture_event_children = BTreeSet::<u16>::new();
+    let mut capture_partition_parents = BTreeSet::<u16>::new();
     for (event_index, event) in history.events.iter().enumerate() {
         if event.id as usize != event_index {
             return Err(format!(
@@ -132,18 +140,29 @@ fn verify_seed(seed: &str) -> Result<(), String> {
             split_event_children.insert(event.fragment_a);
             split_event_children.insert(event.fragment_b);
         }
+        if event.kind == HistoricalEventKind::Capture && event.fragment_a != event.fragment_b {
+            capture_event_children.insert(event.fragment_b);
+            if let Some(parent) = history.fragments[event.fragment_b as usize].parent_fragment_id {
+                capture_partition_parents.insert(parent);
+            }
+        }
     }
     if split_events == 0 {
         return Err(format!(
             "{seed}: bounded historical epochs produced no explicit split/rift event"
         ));
     }
-    if parented_fragment_ids
-        .iter()
-        .any(|fragment| !split_event_children.contains(fragment))
-    {
+    if parented_fragment_ids.iter().any(|fragment| {
+        if split_event_children.contains(fragment) || capture_event_children.contains(fragment) {
+            return false;
+        }
+        history.fragments[*fragment as usize]
+            .parent_fragment_id
+            .map(|parent| !capture_partition_parents.contains(&parent))
+            .unwrap_or(true)
+    }) {
         return Err(format!(
-            "{seed}: parented fragment lineage is missing explicit split-event provenance"
+            "{seed}: parented fragment lineage is missing explicit rift/capture partition provenance"
         ));
     }
 
@@ -162,11 +181,13 @@ fn verify_seed(seed: &str) -> Result<(), String> {
 
     let mut modern_origins = BTreeMap::<u16, BTreeSet<u16>>::new();
     let mut modern_fragments = BTreeMap::<u16, BTreeSet<u16>>::new();
-    let mut origin_to_current = vec![u16::MAX; history.ancestral_tectonics.plates.len()];
+    let mut origin_to_current =
+        vec![BTreeSet::<u16>::new(); history.ancestral_tectonics.plates.len()];
     let mut current_area = vec![0.0_f64; history.metrics.modern_plate_count as usize];
     let mut active_fragment_area = vec![0.0_f64; history.fragments.len()];
     let mut internal_fragment_edges = 0_u32;
     let mut origin_discontinuity_edges = 0_u32;
+    let mut modern_boundary_inside_origin_edges = 0_u32;
     let mut oceanic_samples = 0_u32;
     let mut oceanic_age_min = f32::INFINITY;
     let mut oceanic_age_max = f32::NEG_INFINITY;
@@ -193,12 +214,7 @@ fn verify_seed(seed: &str) -> Result<(), String> {
                 "{seed}: fragment metadata disagrees with material identity at sample {sample}"
             ));
         }
-        let mapped_current = &mut origin_to_current[origin as usize];
-        if *mapped_current == u16::MAX {
-            *mapped_current = current;
-        } else if *mapped_current != current {
-            return Err(format!("{seed}: one ancestral plate maps to multiple modern owners without split provenance"));
-        }
+        origin_to_current[origin as usize].insert(current);
         modern_origins.entry(current).or_default().insert(origin);
         modern_fragments
             .entry(current)
@@ -246,6 +262,9 @@ fn verify_seed(seed: &str) -> Result<(), String> {
             if history.current_plate_ids[ni] == current && history.origin_plate_ids[ni] != origin {
                 origin_discontinuity_edges += 1;
             }
+            if history.current_plate_ids[ni] != current && history.origin_plate_ids[ni] == origin {
+                modern_boundary_inside_origin_edges += 1;
+            }
         }
     }
 
@@ -287,6 +306,11 @@ fn verify_seed(seed: &str) -> Result<(), String> {
             "{seed}: no fossil material discontinuities survived inside modern plates"
         ));
     }
+    if modern_boundary_inside_origin_edges == 0 {
+        return Err(format!(
+            "{seed}: modern plate boundaries remained locked to ancestral plate edges"
+        ));
+    }
     if oceanic_samples == 0 || oceanic_age_max - oceanic_age_min < 20.0 {
         return Err(format!(
             "{seed}: oceanic chronology lacks a meaningful birth-age gradient"
@@ -317,28 +341,27 @@ fn verify_seed(seed: &str) -> Result<(), String> {
         .iter()
         .filter(|event| event.kind == HistoricalEventKind::Capture)
     {
-        if usize::from(event.plate_a) >= origin_to_current.len()
-            || usize::from(event.plate_b) >= origin_to_current.len()
+        if usize::from(event.fragment_a) >= history.fragments.len()
+            || usize::from(event.fragment_b) >= history.fragments.len()
         {
             return Err(format!(
-                "{seed}: capture event {} references invalid ancestral plates",
+                "{seed}: capture event {} references invalid fragments",
                 event.id
             ));
         }
-        let current_a = origin_to_current[event.plate_a as usize];
-        let current_b = origin_to_current[event.plate_b as usize];
-        if current_a == u16::MAX || current_a != current_b {
+        let current = history.fragments[event.fragment_b as usize].current_plate_id;
+        if current >= history.metrics.modern_plate_count {
             return Err(format!(
-                "{seed}: capture event {} does not explain a consolidated modern owner",
+                "{seed}: capture event {} resolves to an invalid modern owner",
                 event.id
             ));
         }
-        capture_events_by_current[current_a as usize] += 1;
+        capture_events_by_current[current as usize] += 1;
     }
     for (current, origins) in &modern_origins {
-        if origins.len() > 1 && capture_events_by_current[*current as usize] < origins.len() - 1 {
+        if origins.len() > 1 && capture_events_by_current[*current as usize] == 0 {
             return Err(format!(
-                "{seed}: modern plate {current} consolidates {} ancestral plates but lacks capture provenance",
+                "{seed}: modern plate {current} consolidates {} ancestral plates but has no capture provenance",
                 origins.len()
             ));
         }

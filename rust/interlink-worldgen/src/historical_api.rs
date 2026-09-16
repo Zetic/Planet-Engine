@@ -1,8 +1,9 @@
 use crate::{
-    derive_stage_seed, geology, historical_causal, historical_epochs, historical_frontend,
-    historical_lithosphere, tectonics, CrustalModel, GeologyRequest, HistoricalLithosphereModel,
-    HistoricalLithosphereRequest, LithosphereRequest, LithosphericModel, PlanetPhysicalParameters,
-    PlanetTopology, TectonicModel, TectonicsRequest, WorldgenError,
+    derive_stage_seed, dynamic_plate_evolution, geology, historical_causal, historical_epochs,
+    historical_frontend, historical_lithosphere, tectonics, CrustalModel, GeologyRequest,
+    HistoricalLithosphereModel, HistoricalLithosphereRequest, LithosphereRequest,
+    LithosphericModel, PlanetPhysicalParameters, PlanetTopology, TectonicModel, TectonicsRequest,
+    WorldgenError,
 };
 use std::cell::Cell;
 
@@ -55,7 +56,14 @@ pub fn generate_historical_lithosphere<T: PlanetTopology>(
     let base = with_raw_tectonics_scope(|| {
         historical_lithosphere::generate_historical_lithosphere(topology, request, parameters)
     })?;
-    historical_epochs::evolve_historical_lithosphere(topology, base, request.seed.as_str())
+    let lineage =
+        historical_epochs::evolve_historical_lithosphere(topology, base, request.seed.as_str())?;
+    dynamic_plate_evolution::evolve_modern_plate_geometry(
+        topology,
+        lineage,
+        request.seed.as_str(),
+        parameters,
+    )
 }
 
 pub fn generate_tectonics<T: PlanetTopology>(

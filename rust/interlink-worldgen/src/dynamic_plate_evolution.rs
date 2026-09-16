@@ -116,8 +116,8 @@ fn choose_anchors<T: PlanetTopology>(
             .iter()
             .filter(|neighbor| owners[**neighbor as usize] as usize == plate)
             .count() as f64;
-        let score = same
-            + unit_random(seed ^ u64::from(sample).wrapping_mul(0x9e37_79b9_7f4a_7c15)) * 0.01;
+        let score =
+            same + unit_random(seed ^ u64::from(sample).wrapping_mul(0x9e37_79b9_7f4a_7c15)) * 0.01;
         if score > best_score[plate] {
             best_score[plate] = score;
             anchors[plate] = sample;
@@ -382,7 +382,92 @@ fn evolve_ownership<T: PlanetTopology>(
         owners[*anchor as usize] = plate as u16;
     }
     repair_connectivity(topology, &mut owners, &anchors, plate_count);
+    rebalance_dominant_plates(topology, &mut owners, &anchors, plate_count, seed);
+    repair_connectivity(topology, &mut owners, &anchors, plate_count);
     Ok(owners)
+}
+
+fn rebalance_dominant_plates<T: PlanetTopology>(
+    topology: &T,
+    owners: &mut [u16],
+    anchors: &[u32],
+    plate_count: usize,
+    seed: u64,
+) {
+    let target_samples = ((owners.len() as f64) * 0.27).ceil() as usize;
+    for pass in 0..12 {
+        let mut sizes = vec![0usize; plate_count];
+        for owner in owners.iter().copied() {
+            sizes[owner as usize] += 1;
+        }
+        let oversized = (0..plate_count)
+            .filter(|plate| sizes[*plate] > target_samples)
+            .collect::<Vec<_>>();
+        if oversized.is_empty() {
+            break;
+        }
+
+        let mut proposals = Vec::<(f64, u32, u16, u16)>::new();
+        for plate in oversized {
+            for sample in 0..topology.sample_count() {
+                let index = sample as usize;
+                if owners[index] != plate as u16 || anchors[plate] == sample {
+                    continue;
+                }
+                let mut neighbor_counts = BTreeMap::<u16, usize>::new();
+                for neighbor in topology.neighbors(sample) {
+                    let other = owners[*neighbor as usize];
+                    if other != plate as u16 {
+                        *neighbor_counts.entry(other).or_insert(0) += 1;
+                    }
+                }
+                if neighbor_counts.is_empty() {
+                    continue;
+                }
+                let (&target, &contact) = neighbor_counts
+                    .iter()
+                    .min_by(|(owner_a, contact_a), (owner_b, contact_b)| {
+                        sizes[**owner_a as usize]
+                            .cmp(&sizes[**owner_b as usize])
+                            .then_with(|| contact_b.cmp(contact_a))
+                            .then_with(|| owner_a.cmp(owner_b))
+                    })
+                    .unwrap();
+                let target_fraction = sizes[target as usize] as f64 / owners.len() as f64;
+                let score = contact as f64 * 0.28
+                    + (0.27 - target_fraction).max(0.0) * 2.2
+                    + unit_random(
+                        seed ^ u64::from(sample).wrapping_mul(0x517c_c1b7_2722_0a95)
+                            ^ (pass as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15),
+                    ) * 0.03;
+                proposals.push((score, sample, plate as u16, target));
+            }
+        }
+        proposals.sort_by(|left, right| {
+            right
+                .0
+                .total_cmp(&left.0)
+                .then_with(|| left.1.cmp(&right.1))
+        });
+
+        let mut moved = 0usize;
+        for (_, sample, from, to) in proposals {
+            if owners[sample as usize] != from
+                || sizes[from as usize] <= target_samples
+                || sizes[to as usize] >= target_samples
+            {
+                continue;
+            }
+            owners[sample as usize] = to;
+            sizes[from as usize] -= 1;
+            sizes[to as usize] += 1;
+            moved += 1;
+        }
+        repair_connectivity(topology, owners, anchors, plate_count);
+        if moved == 0 {
+            break;
+        }
+    }
 }
 
 fn split_fragments_at_modern_boundaries<T: PlanetTopology>(
@@ -406,7 +491,33 @@ fn split_fragments_at_modern_boundaries<T: PlanetTopology>(
             continue;
         }
         if by_owner.len() == 1 {
-            model.fragments[fragment_id as usize].current_plate_id = *by_owner.keys().next().unwrap();
+            let owner = *by_owner.keys().next().unwrap();
+            let index = fragment_id as usize;
+            let previous_owner = model.fragments[index].current_plate_id;
+            if owner != previous_owner {
+                let capture_age = (6.0
+                    + unit_random(
+                        seed ^ u64::from(fragment_id).wrapping_mul(0xd6e8_feb8_6659_fd93),
+                    ) * 54.0) as f32;
+                model.fragments[index].current_plate_id = owner;
+                model.fragments[index].capture_age_myr = Some(capture_age);
+                let origin = model.fragments[index].origin_plate_id;
+                let geometry = model.fragments[index].seed_sample;
+                model.events.push(HistoricalTectonicEvent {
+                    id: model.events.len() as u32,
+                    kind: HistoricalEventKind::Capture,
+                    epoch: 7,
+                    age_myr: capture_age,
+                    plate_a: origin,
+                    plate_b: origin,
+                    fragment_a: fragment_id,
+                    fragment_b: fragment_id,
+                    displacement_km: 0.0,
+                    strength: 0.18,
+                    geometry_sample_a: geometry,
+                    geometry_sample_b: geometry,
+                });
+            }
             continue;
         }
         if model.fragments.len() + by_owner.len() >= usize::from(u16::MAX) {
@@ -414,13 +525,6 @@ fn split_fragments_at_modern_boundaries<T: PlanetTopology>(
                 "dynamic modern plate evolution exhausted fragment id capacity",
             ));
         }
-
-        let dominant_owner = by_owner
-            .iter()
-            .max_by_key(|(owner, samples)| (samples.len(), std::cmp::Reverse(**owner)))
-            .map(|(owner, _)| *owner)
-            .unwrap_or(parent.current_plate_id);
-        model.fragments[fragment_id as usize].current_plate_id = dominant_owner;
 
         for (owner, samples) in by_owner {
             let child_id = model.fragments.len() as u16;
@@ -430,10 +534,9 @@ fn split_fragments_at_modern_boundaries<T: PlanetTopology>(
                 .sum::<f64>();
             let capture_age = if owner != parent.current_plate_id {
                 Some(
-                    (6.0
-                        + unit_random(
-                            seed ^ u64::from(child_id).wrapping_mul(0xd6e8_feb8_6659_fd93),
-                        ) * 54.0) as f32,
+                    (6.0 + unit_random(
+                        seed ^ u64::from(child_id).wrapping_mul(0xd6e8_feb8_6659_fd93),
+                    ) * 54.0) as f32,
                 )
             } else {
                 parent.capture_age_myr
@@ -643,7 +746,10 @@ mod tests {
                 }
             }
         }
-        assert!(evolved_edges > 0, "modern boundaries never cut ancestral material");
+        assert!(
+            evolved_edges > 0,
+            "modern boundaries never cut ancestral material"
+        );
         assert!(
             evolved_edges * 20 >= inherited_edges.max(1),
             "modern geometry remained overwhelmingly inherited from ancestral cell edges"
