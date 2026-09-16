@@ -1,11 +1,13 @@
 use interlink_worldgen::{
     build_icosphere, generate_historical_frontend, inherit_historical_identity, CrustKind,
-    HistoricalLithosphereRequest, PlanetPhysicalParameters, PlanetTopology,
+    HistoricalEventKind, HistoricalLithosphereRequest, PlanetPhysicalParameters, PlanetTopology,
+    HISTORICAL_EPOCH_COUNT,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
 // Permanent PR-A acceptance: material identity must survive the complete historical front end,
-// modern-plate projection, compatibility geology projection, and coarse-to-fine inheritance.
+// bounded fragment epochs, modern-plate projection, compatibility geology projection, and
+// coarse-to-fine inheritance.
 fn verify_seed(seed: &str) -> Result<(), String> {
     let coarse_level = 4;
     let topology = build_icosphere(coarse_level).map_err(|error| error.to_string())?;
@@ -46,6 +48,41 @@ fn verify_seed(seed: &str) -> Result<(), String> {
     }
     if geology.crust_kind != history.crust_kind {
         return Err(format!("{seed}: geology regenerated crust kind instead of consuming historical material"));
+    }
+
+    let mut parented_fragments = 0_usize;
+    for (index, fragment) in history.fragments.iter().enumerate() {
+        if usize::from(fragment.id) != index {
+            return Err(format!("{seed}: fragment ids are not dense lineage indices"));
+        }
+        if let Some(parent_id) = fragment.parent_fragment_id {
+            parented_fragments += 1;
+            if parent_id >= fragment.id || usize::from(parent_id) >= history.fragments.len() {
+                return Err(format!("{seed}: fragment {} has an invalid/cyclic parent {parent_id}", fragment.id));
+            }
+            let parent = &history.fragments[parent_id as usize];
+            if parent.origin_plate_id != fragment.origin_plate_id
+                || parent.current_plate_id != fragment.current_plate_id
+            {
+                return Err(format!("{seed}: fragment {} changed material ownership across its parent edge", fragment.id));
+            }
+        }
+    }
+    if parented_fragments == 0 {
+        return Err(format!("{seed}: bounded historical epochs produced no parent/child fragment lineage"));
+    }
+
+    let mut split_events = 0_usize;
+    for event in &history.events {
+        if event.epoch >= HISTORICAL_EPOCH_COUNT {
+            return Err(format!("{seed}: event {} lies outside the bounded epoch schedule", event.id));
+        }
+        if event.kind == HistoricalEventKind::Rift && event.fragment_a != event.fragment_b {
+            split_events += 1;
+        }
+    }
+    if split_events == 0 {
+        return Err(format!("{seed}: bounded historical epochs produced no explicit split/rift event"));
     }
 
     let mut modern_origins = BTreeMap::<u16, BTreeSet<u16>>::new();
@@ -152,9 +189,11 @@ fn verify_seed(seed: &str) -> Result<(), String> {
     }
 
     println!(
-        "historical-lithosphere seed={seed} old={} fragments={} modern={} events={} continent={:.1}% transitional={:.1}% ocean={:.1}% ocean-age={:.1}..{:.1}Myr multi-origin-modern={} internal-fragment-edges={} internal-origin-edges={} history={} tectonics={} geology={} inheritance={}",
+        "historical-lithosphere seed={seed} old={} fragments={} parented={} split-events={} modern={} events={} continent={:.1}% transitional={:.1}% ocean={:.1}% ocean-age={:.1}..{:.1}Myr multi-origin-modern={} internal-fragment-edges={} internal-origin-edges={} history={} tectonics={} geology={} inheritance={}",
         history.metrics.ancestral_plate_count,
         history.metrics.fragment_count,
+        parented_fragments,
+        split_events,
         history.metrics.modern_plate_count,
         history.metrics.event_count,
         history.metrics.continental_area_fraction * 100.0,
