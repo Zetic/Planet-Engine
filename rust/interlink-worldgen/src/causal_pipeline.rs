@@ -473,7 +473,7 @@ fn province_relief(inherited: &InheritedPhysicalState, index: usize) -> (f64, f6
             + 1_350.0 * plateau * broad_transmission
             + 1_150.0 * fold
             + 2_000.0 * transpression
-            + 180.0 * intensity
+            + 360.0 * intensity
             - foreland_deflection
             - 70.0 * suture);
     (collision_relief, 0.0)

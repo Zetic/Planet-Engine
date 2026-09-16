@@ -67,6 +67,7 @@ fn area_weighted_quantiles(values: &[f32], areas: &[f64]) -> (f64, f64, f64) {
 fn passive_margin_deflection_m(inherited: &InheritedPhysicalState, sample: usize) -> f64 {
     if inherited.structural_zone_kind[sample] != InheritedStructureKind::ContinentalMargin as u8
         || inherited.crust_kind[sample] == CrustKind::Oceanic as u8
+        || inherited.province_kind[sample] != 0
     {
         return 0.0;
     }
