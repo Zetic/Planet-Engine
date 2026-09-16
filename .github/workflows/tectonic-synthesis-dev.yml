@@ -28,16 +28,32 @@ jobs:
         run: python scripts/apply-tectonic-synthesis-cleanup.py
       - name: Apply final synthesis fixes and gates
         run: python scripts/finalize-tectonic-synthesis-cleanup.py
-      - name: Restore retained crust-kind import
+      - name: Finalize generated synthesis source
         run: |
           python - <<'PY'
           from pathlib import Path
-          path = Path('rust/interlink-worldgen/src/orogen_provinces.rs')
-          text = path.read_text()
+
+          orogen = Path('rust/interlink-worldgen/src/orogen_provinces.rs')
+          text = orogen.read_text()
           old = '    random, CrustalModel, GeologicalBoundaryRegime, InheritedStructureKind,\n'
           new = '    random, CrustKind, CrustalModel, GeologicalBoundaryRegime, InheritedStructureKind,\n'
           assert text.count(old) == 1, 'expected rewritten orogen import exactly once'
-          path.write_text(text.replace(old, new, 1))
+          orogen.write_text(text.replace(old, new, 1))
+
+          history = Path('rust/interlink-worldgen/src/historical_lithosphere.rs')
+          text = history.read_text()
+          old = '''        let edge_warp = unit_random(
+              seed ^ u64::from(sample).wrapping_mul(0xe703_7ed1_a0b4_28db) ^ (fragment as u64),
+          );
+          let kind = if sample_carrier[sample_index] {
+              let local_transition_steps = transition_steps
+                  + if edge_warp > 0.72 && transition_steps < 3 { 1 } else { 0 };
+'''
+          new = '''        let kind = if sample_carrier[sample_index] {
+              let local_transition_steps = transition_steps;
+'''
+          assert text.count(old) == 1, 'expected expanded transitional margin block exactly once'
+          history.write_text(text.replace(old, new, 1))
           PY
       - name: Format Rust
         run: cargo fmt --all
