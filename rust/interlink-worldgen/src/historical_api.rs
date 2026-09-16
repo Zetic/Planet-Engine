@@ -1,8 +1,8 @@
 use crate::{
-    derive_stage_seed, geology, historical_epochs, historical_frontend, historical_lithosphere,
-    tectonics, CrustalModel, GeologyRequest, HistoricalLithosphereModel,
-    HistoricalLithosphereRequest, PlanetPhysicalParameters, PlanetTopology, TectonicModel,
-    TectonicsRequest, WorldgenError,
+    derive_stage_seed, geology, historical_causal, historical_epochs, historical_frontend,
+    historical_lithosphere, tectonics, CrustalModel, GeologyRequest, HistoricalLithosphereModel,
+    HistoricalLithosphereRequest, LithosphereRequest, LithosphericModel, PlanetPhysicalParameters,
+    PlanetTopology, TectonicModel, TectonicsRequest, WorldgenError,
 };
 use std::cell::Cell;
 
@@ -10,9 +10,6 @@ const ANCESTRAL_TECTONICS_NAMESPACE: &str =
     "worldgen:geology:historical-lithosphere:ancestral:v1";
 
 thread_local! {
-    // Historical generation reuses the deterministic WG-2 partition builder for ancestral plates.
-    // Public WG-2 calls enter through this adapter; nested calls made while historical material is
-    // being assembled must resolve to the raw partition builder rather than recurse into history.
     static RAW_TECTONICS_DEPTH: Cell<u32> = const { Cell::new(0) };
 }
 
@@ -51,11 +48,6 @@ fn is_ancestral_partition_request(seed: &str) -> bool {
     encoded_seed == derive_stage_seed(base_seed, ANCESTRAL_TECTONICS_NAMESPACE)
 }
 
-/// Public historical-material authority.
-///
-/// The base material partition is assembled while WG-2 is forced into its raw ancestral mode,
-/// then a bounded deterministic epoch pass creates persistent parent/child fragment lineage before
-/// modern tectonic and crust compatibility projections consume the state.
 pub fn generate_historical_lithosphere<T: PlanetTopology>(
     topology: &T,
     request: &HistoricalLithosphereRequest,
@@ -67,11 +59,6 @@ pub fn generate_historical_lithosphere<T: PlanetTopology>(
     historical_epochs::evolve_historical_lithosphere(topology, base, request.seed.as_str())
 }
 
-/// Public WG-2 authority after the historical-lithosphere cutover.
-///
-/// The existing spherical partition/motion solver remains the ancestral-domain primitive. Public
-/// callers now receive the modern kinematic projection produced after persistent material ancestry,
-/// bounded fragment epochs, and deterministic consolidation have been established.
 pub fn generate_tectonics<T: PlanetTopology>(
     topology: &T,
     request: &TectonicsRequest,
@@ -94,13 +81,6 @@ pub fn generate_tectonics<T: PlanetTopology>(
     )
 }
 
-/// Public WG-3 authority after the historical-lithosphere cutover.
-///
-/// The legacy global craton-affinity implementation remains available inside `geology.rs` for
-/// targeted historical regression tests, but normal engine callers no longer use it as the crust
-/// authority. WG-3 deterministically reconstructs the same historical material state that produced
-/// the supplied modern tectonic model and projects that material into the compatibility
-/// `CrustalModel` consumed by WG-3.5+.
 pub fn generate_crust_and_history<T: PlanetTopology>(
     topology: &T,
     tectonics_model: &TectonicModel,
@@ -147,8 +127,68 @@ pub fn generate_crust_and_history<T: PlanetTopology>(
     )
 }
 
-/// Explicit legacy WG-3 entrypoint retained only for source-level comparison and migration tests.
-/// Product pipelines should call `generate_crust_and_history`, which is historical-material based.
+/// Public WG-3.5/WG-3.6 authority after the material-history morphology cutover.
+///
+/// Compatibility callers that only retain modern tectonics/geology deterministically reconstruct
+/// the same PR-A historical material model, verify both projections, then route through the
+/// history-aware lithosphere/orogen implementation. Callers already holding `HistoricalFrontend`
+/// should use `generate_lithosphere_from_history` directly to avoid this reconstruction.
+pub fn generate_lithosphere<T: PlanetTopology>(
+    topology: &T,
+    tectonics_model: &TectonicModel,
+    geology_model: &CrustalModel,
+    request: &LithosphereRequest,
+) -> Result<LithosphericModel, WorldgenError> {
+    if request.seed.trim().is_empty() {
+        return Err(WorldgenError::InvalidLithosphere(
+            "lithosphere seed must not be empty",
+        ));
+    }
+    let planet = PlanetPhysicalParameters::earthlike_reference();
+    let historical = generate_historical_lithosphere(
+        topology,
+        &HistoricalLithosphereRequest::new(
+            request.seed.as_str(),
+            tectonics_model.metrics.plate_count,
+        ),
+        planet,
+    )?;
+    let projected_tectonics = historical_frontend::project_historical_modern_tectonics(
+        topology,
+        &historical,
+        request.seed.as_str(),
+        planet,
+    )?;
+    if projected_tectonics.metrics.tectonic_hash != tectonics_model.metrics.tectonic_hash
+        || projected_tectonics.plate_ids != tectonics_model.plate_ids
+    {
+        return Err(WorldgenError::InvalidLithosphere(
+            "WG-3.5 historical material does not match supplied modern tectonic ancestry",
+        ));
+    }
+    let projected_geology = historical_frontend::project_historical_crust(
+        topology,
+        &historical,
+        tectonics_model,
+        request.seed.as_str(),
+    )?;
+    if projected_geology.metrics.geology_hash != geology_model.metrics.geology_hash
+        || projected_geology.crust_kind != geology_model.crust_kind
+        || projected_geology.crust_province_id != geology_model.crust_province_id
+    {
+        return Err(WorldgenError::InvalidLithosphere(
+            "WG-3.5 historical material does not match supplied WG-3 crust projection",
+        ));
+    }
+    historical_causal::generate_lithosphere_from_history(
+        topology,
+        &historical,
+        tectonics_model,
+        geology_model,
+        request,
+    )
+}
+
 pub fn generate_legacy_crust_and_history<T: PlanetTopology>(
     topology: &T,
     tectonics_model: &TectonicModel,
@@ -218,6 +258,35 @@ mod tests {
         assert_eq!(tectonics.plate_ids, frontend.historical.current_plate_ids);
         assert_eq!(geology.metrics.geology_hash, frontend.geology.metrics.geology_hash);
         assert_eq!(geology.crust_kind, frontend.historical.crust_kind);
+    }
+
+    #[test]
+    fn public_lithosphere_consumes_historical_morphology() {
+        let topology = build_icosphere(3).unwrap();
+        let planet = PlanetPhysicalParameters::earthlike_reference();
+        let seed = "historical-public-morphology";
+        let tectonics = generate_tectonics(
+            &topology,
+            &TectonicsRequest::new(seed, 10),
+            planet,
+        )
+        .unwrap();
+        let geology = generate_crust_and_history(
+            &topology,
+            &tectonics,
+            &GeologyRequest::new(seed),
+            planet,
+        )
+        .unwrap();
+        let lithosphere = generate_lithosphere(
+            &topology,
+            &tectonics,
+            &geology,
+            &LithosphereRequest::new(seed),
+        )
+        .unwrap();
+        assert!(lithosphere.pre_orogenic.metrics.paleo_suture_sample_count > 0);
+        assert!(lithosphere.pre_orogenic.metrics.inherited_rift_sample_count > 0);
     }
 
     #[test]
