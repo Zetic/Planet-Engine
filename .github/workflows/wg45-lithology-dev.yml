@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+env:
+  RUST_VERSION: '1.98.1'
+  WASM_BINDGEN_VERSION: '0.2.127'
+
 jobs:
   validate:
     if: github.actor != 'github-actions[bot]'
@@ -21,16 +25,19 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-      - name: Install Rust stable
+      - name: Install pinned Rust
         run: |
-          rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown
-          rustup default stable
+          rustup toolchain install "${RUST_VERSION}" --profile minimal --target wasm32-unknown-unknown
+          rustup default "${RUST_VERSION}"
+      - name: Install pinned wasm-bindgen CLI
+        run: cargo +${RUST_VERSION} install wasm-bindgen-cli --version "${WASM_BINDGEN_VERSION}" --locked
       - run: npm ci
       - name: Apply WG-4.5 wiring
         run: |
           python3 scripts/apply-wg45-lithology-wiring.py || true
           python3 scripts/apply-wg45-browser-wiring.py
           python3 scripts/fix-wg45-browser-metrics.py
+          python3 scripts/fix-wg45-protocol-v22.py
       - name: Format
         run: cargo fmt --all
       - name: Compile workspace
@@ -39,6 +46,8 @@ jobs:
         run: cargo run --release -p interlink-worldgen-cli --example lithology_substrate_acceptance
       - name: Compile browser bridge
         run: cargo check -p interlink-worldgen-wasm --target wasm32-unknown-unknown
+      - name: Rebuild browser WASM package
+        run: npm run build:worldgen-wasm
       - name: Build browser modules
         run: npm run build
       - name: Run browser regressions
@@ -50,13 +59,14 @@ jobs:
           git add rust/interlink-worldgen/src/lib.rs \
             rust/interlink-worldgen/src/lithology.rs \
             rust/interlink-worldgen-cli/examples/lithology_substrate_acceptance.rs \
+            rust/interlink-worldgen-wasm/src/lib.rs \
             rust/interlink-worldgen-wasm/src/climate_bridge.rs \
             src/worldgen/protocol.ts \
             src/worldgen/worldgenWorker.ts \
             src/worldgen/diagnostics/worldgenClimateLabStandalone.ts \
             index.html \
-            tests/worldgenRewrite.test.ts \
-            tests/historicalAncestryBrowser.test.ts \
-            dist/worldgen
+            tests \
+            dist/worldgen \
+            src/wasm-worldgen
           git commit -m 'feat(worldgen): expose WG-4.5 lithology substrate' || exit 0
           git push origin HEAD:feat/wg45-lithology-substrate
