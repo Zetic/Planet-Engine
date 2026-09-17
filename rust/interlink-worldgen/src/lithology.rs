@@ -88,12 +88,7 @@ fn unit_random(value: u64) -> f64 {
     ((mix64(value) >> 11) as f64) * (1.0 / 9_007_199_254_740_992.0)
 }
 
-fn provenance_variation(
-    stage_seed: u64,
-    origin_plate_id: u16,
-    fragment_id: u16,
-    lane: u64,
-) -> f64 {
+fn provenance_variation(stage_seed: u64, origin_plate_id: u16, fragment_id: u16, lane: u64) -> f64 {
     let key = stage_seed
         ^ (u64::from(origin_plate_id) << 40)
         ^ (u64::from(fragment_id) << 16)
@@ -186,9 +181,7 @@ fn classify_bedrock(
     );
 
     if crust == CrustKind::Oceanic as u8 {
-        let sediment_score = 0.46 * clamp01(age / 190.0)
-            + 0.30 * subsidence
-            + 0.25 * basin
+        let sediment_score = 0.46 * clamp01(age / 190.0) + 0.30 * subsidence + 0.25 * basin
             - 0.38 * ridge
             - 0.18 * thermal;
         return if sediment_score > 0.53 {
@@ -210,9 +203,7 @@ fn classify_bedrock(
     if (inherited_rift || rift > 0.62) && thermal.max(ridge) > 0.28 {
         return BedrockClass::RiftVolcanic;
     }
-    if inherited.province_kind[sample] != 0
-        && (orogen > 0.34 || suture > 0.34 || paleo_suture)
-    {
+    if inherited.province_kind[sample] != 0 && (orogen > 0.34 || suture > 0.34 || paleo_suture) {
         return BedrockClass::OrogenicMetamorphic;
     }
     if (paleo_suture || shear_zone || craton_boundary)
@@ -222,10 +213,8 @@ fn classify_bedrock(
         return BedrockClass::AccretedTerrane;
     }
 
-    let sediment_score = 0.42 * basin
-        + 0.34 * subsidence
-        + 0.22 * rift
-        + if passive_margin { 0.28 } else { 0.0 };
+    let sediment_score =
+        0.42 * basin + 0.34 * subsidence + 0.22 * rift + if passive_margin { 0.28 } else { 0.0 };
     if sediment_score > 0.45 {
         let carbonate_score = 0.46 * carbonate_bias
             + 0.24 * (1.0 - arc)
@@ -305,12 +294,10 @@ fn material_properties(
             + 0.04 * fabric,
     );
     let permeability = clamp01(
-        base_permeability + 0.14 * weakness + 0.08 * fabric + 0.06 * subsidence
-            - 0.06 * strength,
+        base_permeability + 0.14 * weakness + 0.08 * fabric + 0.06 * subsidence - 0.06 * strength,
     );
-    let weathering = clamp01(
-        base_weathering + 0.11 * thermal + 0.07 * weakness + (composition - 0.5) * 0.04,
-    );
+    let weathering =
+        clamp01(base_weathering + 0.11 * thermal + 0.07 * weakness + (composition - 0.5) * 0.04);
     let fines = clamp01(base_fines + 0.17 * basin + 0.12 * subsidence - 0.08 * strength);
     let carbonate = clamp01(base_carbonate + (carbonate_bias - 0.5) * 0.12 - 0.10 * thermal);
 

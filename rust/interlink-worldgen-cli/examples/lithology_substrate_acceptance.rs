@@ -6,12 +6,7 @@ use interlink_worldgen::{
 };
 use std::collections::{BTreeMap, BTreeSet};
 
-const SEEDS: [&str; 4] = [
-    "interlink-wg7c",
-    "1",
-    "2",
-    "lithology-substrate-holdout",
-];
+const SEEDS: [&str; 4] = ["interlink-wg7c", "1", "2", "lithology-substrate-holdout"];
 
 #[derive(Debug)]
 struct Report {
@@ -70,13 +65,9 @@ fn run_seed(seed: &'static str) -> Result<Report, String> {
     .map_err(|error| error.to_string())?;
     let identity = inherit_historical_identity(&fine, coarse_level, &frontend.historical)
         .map_err(|error| error.to_string())?;
-    let state = generate_lithology_substrate(
-        &fine,
-        &inherited,
-        &identity,
-        &LithologyRequest::new(seed),
-    )
-    .map_err(|error| error.to_string())?;
+    let state =
+        generate_lithology_substrate(&fine, &inherited, &identity, &LithologyRequest::new(seed))
+            .map_err(|error| error.to_string())?;
 
     let count = fine.sample_count() as usize;
     let fields: [&[f32]; 6] = [
@@ -88,17 +79,27 @@ fn run_seed(seed: &'static str) -> Result<Report, String> {
         &state.carbonate_fraction,
     ];
     if state.bedrock_class.len() != count || fields.iter().any(|field| field.len() != count) {
-        return Err(format!("{seed}: lithology fields do not cover fine topology"));
+        return Err(format!(
+            "{seed}: lithology fields do not cover fine topology"
+        ));
     }
     for field in fields {
-        if field.iter().any(|value| !value.is_finite() || !(0.0..=1.0).contains(value)) {
-            return Err(format!("{seed}: lithology property escaped normalized bounds"));
+        if field
+            .iter()
+            .any(|value| !value.is_finite() || !(0.0..=1.0).contains(value))
+        {
+            return Err(format!(
+                "{seed}: lithology property escaped normalized bounds"
+            ));
         }
     }
 
     let classes = state.bedrock_class.iter().copied().collect::<BTreeSet<_>>();
     if classes.len() < 5 {
-        return Err(format!("{seed}: lithology collapsed to {} classes", classes.len()));
+        return Err(format!(
+            "{seed}: lithology collapsed to {} classes",
+            classes.len()
+        ));
     }
 
     for sample in 0..count {
@@ -106,10 +107,14 @@ fn run_seed(seed: &'static str) -> Result<Report, String> {
         let oceanic_class = class == BedrockClass::OceanicBasalt as u8
             || class == BedrockClass::OceanicSediment as u8;
         if inherited.crust_kind[sample] == CrustKind::Oceanic as u8 && !oceanic_class {
-            return Err(format!("{seed}: oceanic crust received continental bedrock class"));
+            return Err(format!(
+                "{seed}: oceanic crust received continental bedrock class"
+            ));
         }
         if inherited.crust_kind[sample] != CrustKind::Oceanic as u8 && oceanic_class {
-            return Err(format!("{seed}: non-oceanic crust received oceanic bedrock class"));
+            return Err(format!(
+                "{seed}: non-oceanic crust received oceanic bedrock class"
+            ));
         }
     }
 
@@ -145,7 +150,9 @@ fn run_seed(seed: &'static str) -> Result<Report, String> {
     })
     .unwrap_or(0.0);
     if classes.contains(&(BedrockClass::CarbonatePlatform as u8)) && carbonate_mean < 0.60 {
-        return Err(format!("{seed}: carbonate platforms lack carbonate identity"));
+        return Err(format!(
+            "{seed}: carbonate platforms lack carbonate identity"
+        ));
     }
 
     let mut fragments = BTreeMap::<u16, (f64, u64)>::new();
@@ -171,7 +178,9 @@ fn run_seed(seed: &'static str) -> Result<Report, String> {
         fragment_strength_range.1 - fragment_strength_range.0
     };
     if fragment_strength_range < 0.08 {
-        return Err(format!("{seed}: fragment provenance is not materially legible"));
+        return Err(format!(
+            "{seed}: fragment provenance is not materially legible"
+        ));
     }
 
     let mut same_sum = 0.0_f64;
@@ -188,12 +197,10 @@ fn run_seed(seed: &'static str) -> Result<Report, String> {
             let contrast = (f64::from(state.rock_strength_index[a])
                 - f64::from(state.rock_strength_index[b]))
             .abs()
-                + (f64::from(state.erodibility_index[a])
-                    - f64::from(state.erodibility_index[b]))
-                .abs()
-                + (f64::from(state.carbonate_fraction[a])
-                    - f64::from(state.carbonate_fraction[b]))
-                .abs();
+                + (f64::from(state.erodibility_index[a]) - f64::from(state.erodibility_index[b]))
+                    .abs()
+                + (f64::from(state.carbonate_fraction[a]) - f64::from(state.carbonate_fraction[b]))
+                    .abs();
             if identity.fragment_ids[a] == identity.fragment_ids[b] {
                 same_sum += contrast;
                 same_edges += 1;

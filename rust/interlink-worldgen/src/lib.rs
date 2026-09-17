@@ -25,6 +25,7 @@ mod historical_topography;
 mod hydroclimate;
 mod infill;
 mod lakes;
+mod lithology;
 mod lithosphere;
 mod orogen_provinces;
 mod parameters;
@@ -130,6 +131,10 @@ pub use lakes::{
     LAKE_KIND_ENDORHEIC, LAKE_KIND_NONE, LAKE_KIND_OVERFLOWING, LAKE_KIND_TERMINAL_STORAGE,
     LAKE_STAGE_ID, LAKE_STAGE_VERSION,
 };
+pub use lithology::{
+    generate_lithology_substrate, BedrockClass, LithologyMetrics, LithologyRequest, LithologyState,
+    LITHOLOGY_STAGE_ID, LITHOLOGY_STAGE_VERSION,
+};
 pub use lithosphere::{
     LithosphereMetrics, LithosphereRequest, StructuralZoneKind, TectonicFragment,
     TectonicFragmentKind, LITHOSPHERE_STAGE_ID, LITHOSPHERE_STAGE_VERSION, MAX_TECTONIC_FRAGMENTS,
@@ -204,7 +209,7 @@ pub use world_calibration::{
     WORLD_CALIBRATION_RANKED_LIMIT, WORLD_CALIBRATION_SCHEMA_ID, WORLD_CALIBRATION_SCHEMA_VERSION,
 };
 
-pub const WORLDGEN_ENGINE_VERSION: u32 = 20;
+pub const WORLDGEN_ENGINE_VERSION: u32 = 21;
 pub const SYNTHETIC_STAGE_ID: &str = "foundation:synthetic";
 pub const SYNTHETIC_STAGE_VERSION: u32 = 1;
 const SYNTHETIC_NAMESPACE: &str = "worldgen:foundation:synthetic:v1";
@@ -218,6 +223,7 @@ pub enum WorldgenError {
     InvalidTectonics(&'static str),
     InvalidGeology(&'static str),
     InvalidLithosphere(&'static str),
+    InvalidLithology(&'static str),
     InvalidRefinement(&'static str),
     InvalidTopography(&'static str),
     InvalidClimate(&'static str),
@@ -234,6 +240,7 @@ impl fmt::Display for WorldgenError {
             | Self::InvalidTectonics(message)
             | Self::InvalidGeology(message)
             | Self::InvalidLithosphere(message)
+            | Self::InvalidLithology(message)
             | Self::InvalidRefinement(message)
             | Self::InvalidTopography(message)
             | Self::InvalidClimate(message)
