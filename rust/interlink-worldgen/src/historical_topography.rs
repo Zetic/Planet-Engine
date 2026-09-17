@@ -5,8 +5,8 @@ use crate::{
 };
 
 pub const HISTORICAL_TOPOGRAPHY_STAGE_ID: &str = "terrain:initial-topography";
-pub const HISTORICAL_TOPOGRAPHY_STAGE_VERSION: u32 = 15;
-const HISTORICAL_TOPOGRAPHY_NAMESPACE: &str = "terrain:historical-material-morphology:v1";
+pub const HISTORICAL_TOPOGRAPHY_STAGE_VERSION: u32 = 16;
+const HISTORICAL_TOPOGRAPHY_NAMESPACE: &str = "terrain:historical-material-morphology:v2";
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 
@@ -83,6 +83,47 @@ fn passive_margin_deflection_m(inherited: &InheritedPhysicalState, sample: usize
     -scale_m * margin_memory
 }
 
+fn stable_continental_buoyancy_support_m(
+    inherited: &InheritedPhysicalState,
+    sample: usize,
+) -> f64 {
+    if inherited.crust_kind[sample] != CrustKind::Continental as u8
+        || inherited.province_kind[sample] != 0
+        || inherited.structural_zone_kind[sample]
+            == InheritedStructureKind::ContinentalMargin as u8
+        || inherited.structural_zone_kind[sample]
+            == InheritedStructureKind::InheritedRift as u8
+    {
+        return 0.0;
+    }
+
+    // Stable continental interiors should retain a modest freeboard advantage from their thick,
+    // buoyant lithospheric columns. This is deliberately a bounded isostatic correction rather
+    // than a land-mask command: active rifts, subsiding basins, passive margins, and active
+    // orogenic provinces retain their own causal topography and may remain submerged.
+    let rift = f64::from(inherited.rift_history[sample]).clamp(0.0, 1.0);
+    let subsidence = f64::from(inherited.subsidence_history[sample]).clamp(0.0, 1.0);
+    let basin = f64::from(inherited.basin_potential[sample]).clamp(0.0, 1.0);
+    let release = clamp01((rift - 0.12) / 0.35)
+        .max(clamp01((subsidence - 0.16) / 0.40))
+        .max(clamp01((basin - 0.18) / 0.45));
+    let stability = 1.0 - release;
+    if stability <= 0.0 {
+        return 0.0;
+    }
+
+    let buoyancy = clamp01(
+        (f64::from(inherited.compensated_buoyancy_index[sample]) + 0.25) / 1.25,
+    );
+    let thickness = clamp01((f64::from(inherited.crust_thickness_km[sample]) - 30.0) / 22.0);
+    let strength = f64::from(inherited.strength_index[sample]).clamp(0.0, 1.0);
+    let physical_support = (0.76 + 0.24 * buoyancy)
+        * (0.84 + 0.16 * thickness)
+        * (0.90 + 0.10 * strength);
+
+    480.0 * stability.powf(1.15) * physical_support
+}
+
 fn finalize_historical_stage(state: &mut TopographyState, request: &TopographyRequest) {
     let stage_seed = crate::derive_stage_seed(&request.seed, HISTORICAL_TOPOGRAPHY_NAMESPACE);
     let prior_hash = state.metrics.topography_hash;
@@ -112,7 +153,7 @@ fn refresh_water_and_metrics(
     let areas = topology.dual_area_steradians();
 
     // The causal WG-4 solve already identified the connected global ocean. Reuse only submerged
-    // oceanic-crust cells as seeds after the passive-margin deflection, so newly lowered shelves can
+    // oceanic-crust cells as seeds after the historical hypsometry adjustment, so newly lowered shelves can
     // be flooded through a real marine path without reviving isolated inland/oceanic sliver seeds.
     let ocean_seed_mask = (0..count)
         .map(|sample| {
@@ -173,7 +214,7 @@ fn refresh_water_and_metrics(
     let mut topography_hash = FNV_OFFSET_BASIS;
     topography_hash = fnv_update(
         topography_hash,
-        b"terrain:historical-passive-margin-topography:v1\0",
+        b"terrain:historical-continental-hypsometry:v2\0",
     );
     topography_hash = fnv_update(topography_hash, &prior_hash.to_le_bytes());
     for value in &state.solid_elevation_m {
@@ -220,9 +261,10 @@ fn refresh_water_and_metrics(
 
 /// WG-4 material-history adapter.
 ///
-/// Persistent rifting already produces `ContinentalMargin` structure in WG-3.5. Materialize that
-/// inherited state as a bounded shelf/basin deflection after the accepted tectonic-province WG-4
-/// solve. The operation is in-place: no second `InheritedPhysicalState` is retained at L8.
+/// Persistent material state controls the final continental freeboard adjustment after the
+/// accepted tectonic-province WG-4 solve. Stable thick continental interiors receive bounded
+/// buoyancy support, while inherited passive margins retain their shelf/basin deflection. The
+/// operation is in-place: no second `InheritedPhysicalState` is retained at L8.
 pub fn generate_initial_topography(
     topology: &GeodesicTopology,
     inherited: &InheritedPhysicalState,
@@ -234,10 +276,16 @@ pub fn generate_initial_topography(
     if inherited.structural_zone_kind.len() != count
         || inherited.structural_fabric_strength.len() != count
         || inherited.weakness_index.len() != count
+        || inherited.strength_index.len() != count
         || inherited.crust_kind.len() != count
+        || inherited.crust_thickness_km.len() != count
+        || inherited.compensated_buoyancy_index.len() != count
+        || inherited.rift_history.len() != count
+        || inherited.subsidence_history.len() != count
+        || inherited.basin_potential.len() != count
     {
         return Err(WorldgenError::InvalidTopography(
-            "historical passive-margin inputs are not aligned to WG-4 topology",
+            "historical hypsometry inputs are not aligned to WG-4 topology",
         ));
     }
 
@@ -249,29 +297,37 @@ pub fn generate_initial_topography(
             *kind == InheritedStructureKind::ContinentalMargin as u8
                 && inherited.crust_kind[sample] != CrustKind::Oceanic as u8
         });
+    let has_continental_support = (0..count)
+        .any(|sample| stable_continental_buoyancy_support_m(inherited, sample) > 0.0);
     let mut state = causal_pipeline::generate_initial_topography(
         topology, inherited, boundaries, planet, request,
     )?;
-    if !has_margin {
+    if !has_margin && !has_continental_support {
         finalize_historical_stage(&mut state, request);
         return Ok(state);
     }
 
     let areas = topology.dual_area_steradians();
     let total_area = areas.iter().sum::<f64>().max(1.0e-12);
-    let mut area_weighted_deflection = 0.0_f64;
+    let mut area_weighted_adjustment = 0.0_f64;
     for sample in 0..count {
-        let deflection = passive_margin_deflection_m(inherited, sample);
-        if deflection == 0.0 {
-            continue;
+        let support = stable_continental_buoyancy_support_m(inherited, sample);
+        if support != 0.0 {
+            state.isostatic_elevation_m[sample] += support as f32;
+            state.solid_elevation_m[sample] += support as f32;
+            area_weighted_adjustment += support * areas[sample];
         }
-        state.rift_basin_elevation_m[sample] += deflection as f32;
-        state.solid_elevation_m[sample] += deflection as f32;
-        area_weighted_deflection += deflection * areas[sample];
+
+        let deflection = passive_margin_deflection_m(inherited, sample);
+        if deflection != 0.0 {
+            state.rift_basin_elevation_m[sample] += deflection as f32;
+            state.solid_elevation_m[sample] += deflection as f32;
+            area_weighted_adjustment += deflection * areas[sample];
+        }
     }
 
-    // Preserve the WG-4 global solid datum after adding the local shelf/basin term.
-    let datum_shift = area_weighted_deflection / total_area;
+    // Preserve the WG-4 global solid datum after adding the local isostatic and shelf terms.
+    let datum_shift = area_weighted_adjustment / total_area;
     let mut newly_clamped = 0_u32;
     for value in &mut state.solid_elevation_m {
         let shifted = f64::from(*value) - datum_shift;
