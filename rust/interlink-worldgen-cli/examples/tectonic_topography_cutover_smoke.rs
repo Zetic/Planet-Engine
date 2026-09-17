@@ -124,7 +124,7 @@ fn main() -> Result<(), String> {
         terrain.metrics.topography_hash_hex(),
     );
 
-    if terrain.stage.version != TOPOGRAPHY_STAGE_VERSION || terrain.stage.version != 15 {
+    if terrain.stage.version != TOPOGRAPHY_STAGE_VERSION || terrain.stage.version != 16 {
         return Err("WG-4 did not route through historical-material topography".to_string());
     }
     if active_samples == 0
