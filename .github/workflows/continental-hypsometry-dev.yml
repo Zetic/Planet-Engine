@@ -1,0 +1,24 @@
+name: Continental hypsometry development
+
+on:
+  push:
+    branches:
+      - calibrate/continental-hypsometry
+
+concurrency:
+  group: continental-hypsometry-dev
+  cancel-in-progress: true
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust stable
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - name: Compile calibration target
+        run: cargo check -p interlink-worldgen -p interlink-worldgen-cli --all-targets
+      - name: Measure continental hypsometry
+        run: cargo run --release -p interlink-worldgen-cli --example continental_hypsometry_acceptance
