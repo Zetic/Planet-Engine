@@ -123,3 +123,11 @@ new = 'if terrain.stage.version != TOPOGRAPHY_STAGE_VERSION || terrain.stage.ver
 if old not in t:
     raise SystemExit('topography stage assertion anchor not found')
 smoke.write_text(t.replace(old, new, 1))
+
+lib = Path('rust/interlink-worldgen/src/lib.rs')
+u = lib.read_text()
+old = 'pub const WORLDGEN_ENGINE_VERSION: u32 = 19;'
+new = 'pub const WORLDGEN_ENGINE_VERSION: u32 = 20;'
+if old not in u:
+    raise SystemExit('engine version anchor not found')
+lib.write_text(u.replace(old, new, 1))
