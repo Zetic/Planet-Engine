@@ -86,7 +86,7 @@ fn verify_seed(seed: &str) -> Result<(), String> {
 
     let mut continental = AreaBucket::default();
     let mut stable_continental = AreaBucket::default();
-    let mut margin_continental = AreaBucket::default();
+    let mut modified_continental = AreaBucket::default();
     let mut transitional = AreaBucket::default();
     let mut oceanic = AreaBucket::default();
     let total_area = fine.dual_area_steradians().iter().sum::<f64>();
@@ -109,7 +109,7 @@ fn verify_seed(seed: &str) -> Result<(), String> {
                 if stable {
                     add_sample(&mut stable_continental, area, submerged, depth_m);
                 } else {
-                    add_sample(&mut margin_continental, area, submerged, depth_m);
+                    add_sample(&mut modified_continental, area, submerged, depth_m);
                 }
             }
             value if value == CrustKind::Transitional as u8 => {
@@ -120,12 +120,12 @@ fn verify_seed(seed: &str) -> Result<(), String> {
     }
 
     println!(
-        "continental-hypsometry seed={seed} land={:.1}% continental-area={:.1}% continental-submerged={:.1}% stable-submerged={:.1}% margin-submerged={:.1}% transitional-submerged={:.1}% continental-shallow={:.1}% continental-depth={:.0}m oceanic-submerged={:.1}%",
+        "continental-hypsometry seed={seed} land={:.1}% continental-area={:.1}% continental-submerged={:.1}% stable-submerged={:.1}% modified-submerged={:.1}% transitional-submerged={:.1}% continental-shallow={:.1}% continental-depth={:.0}m oceanic-submerged={:.1}%",
         terrain.metrics.land_area_fraction * 100.0,
         continental.total / total_area * 100.0,
         continental.submerged_fraction() * 100.0,
         stable_continental.submerged_fraction() * 100.0,
-        margin_continental.submerged_fraction() * 100.0,
+        modified_continental.submerged_fraction() * 100.0,
         transitional.submerged_fraction() * 100.0,
         continental.shallow_fraction_of_submerged() * 100.0,
         continental.mean_submerged_depth_m(),
@@ -139,9 +139,53 @@ fn verify_seed(seed: &str) -> Result<(), String> {
         ));
     }
     if continental.total <= 0.0 || stable_continental.total <= 0.0 || transitional.total <= 0.0 {
-        return Err(format!("{seed}: continental hypsometry diagnostic lacked required crust classes"));
+        return Err(format!(
+            "{seed}: continental hypsometry diagnostic lacked required crust classes"
+        ));
     }
-    if oceanic.submerged_fraction() < 0.65 {
+    if !(0.20..=0.38).contains(&terrain.metrics.land_area_fraction) {
+        return Err(format!(
+            "{seed}: emergent land moved outside the broad Earthlike calibration envelope: {:.1}%",
+            terrain.metrics.land_area_fraction * 100.0
+        ));
+    }
+    if stable_continental.submerged_fraction() > 0.24 {
+        return Err(format!(
+            "{seed}: stable continental interiors remain systematically drowned at {:.1}% submerged",
+            stable_continental.submerged_fraction() * 100.0
+        ));
+    }
+    if continental.submerged_fraction() > 0.44 {
+        return Err(format!(
+            "{seed}: total continental crust remains excessively submerged at {:.1}%",
+            continental.submerged_fraction() * 100.0
+        ));
+    }
+    if modified_continental.submerged_fraction()
+        < stable_continental.submerged_fraction() + 0.08
+    {
+        return Err(format!(
+            "{seed}: stable interiors are not measurably freer-standing than rifted/margin continental crust: {:.1}% vs {:.1}% submerged",
+            stable_continental.submerged_fraction() * 100.0,
+            modified_continental.submerged_fraction() * 100.0
+        ));
+    }
+    if continental.submerged_fraction() < 0.20
+        || continental.shallow_fraction_of_submerged() < 0.25
+    {
+        return Err(format!(
+            "{seed}: calibration erased legitimate submerged continental shelves: {:.1}% submerged, {:.1}% of submerged area shallow",
+            continental.submerged_fraction() * 100.0,
+            continental.shallow_fraction_of_submerged() * 100.0
+        ));
+    }
+    if transitional.submerged_fraction() < 0.75 {
+        return Err(format!(
+            "{seed}: transitional crust lost its shelf/margin character at {:.1}% submerged",
+            transitional.submerged_fraction() * 100.0
+        ));
+    }
+    if oceanic.submerged_fraction() < 0.90 {
         return Err(format!(
             "{seed}: oceanic crust is insufficiently marine at {:.1}% submerged",
             oceanic.submerged_fraction() * 100.0
