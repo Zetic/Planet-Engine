@@ -55,6 +55,8 @@ jobs:
         run: cargo run --release -p interlink-worldgen-cli --example dynamic_plate_geometry_acceptance
       - name: Verify boundary-first modern plate geometry
         run: cargo run --release -p interlink-worldgen-cli --example boundary_network_geometry_acceptance
+      - name: Verify material-aware plate/crust identity
+        run: cargo run --release -p interlink-worldgen-cli --example plate_crust_identity_acceptance
       - name: Verify event-driven tectonic morphology
         run: cargo run --release -p interlink-worldgen-cli --example historical_morphology_acceptance
       - name: Verify historical passive-margin shelves
