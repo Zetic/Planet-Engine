@@ -18,7 +18,13 @@ jobs:
         run: |
           rustup toolchain install stable --profile minimal
           rustup default stable
+      - name: Apply candidate continental freeboard calibration
+        run: python3 scripts/apply-continental-hypsometry-calibration.py
       - name: Compile calibration target
         run: cargo check -p interlink-worldgen -p interlink-worldgen-cli --all-targets
       - name: Measure continental hypsometry
         run: cargo run --release -p interlink-worldgen-cli --example continental_hypsometry_acceptance
+      - name: Preserve WG-4 tectonic topology acceptance
+        run: cargo run --release -p interlink-worldgen-cli --example tectonic_topography_cutover_smoke
+      - name: Preserve passive-margin shelves
+        run: cargo test -p interlink-worldgen historical_passive_margins_create_bounded_shelf_subsidence
