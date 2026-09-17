@@ -30,6 +30,7 @@ jobs:
         run: |
           python3 scripts/apply-wg45-lithology-wiring.py || true
           python3 scripts/apply-wg45-browser-wiring.py
+          python3 scripts/fix-wg45-browser-metrics.py
       - name: Format
         run: cargo fmt --all
       - name: Compile workspace
