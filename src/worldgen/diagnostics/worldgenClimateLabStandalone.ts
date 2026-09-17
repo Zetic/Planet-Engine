@@ -7,6 +7,15 @@ import {
   WORLDGEN_BOUNDARY_CONVERGENT,
   WORLDGEN_BOUNDARY_DIVERGENT,
   WORLDGEN_BOUNDARY_TRANSFORM,
+  WORLDGEN_BEDROCK_ACCRETED_TERRANE,
+  WORLDGEN_BEDROCK_ARC_VOLCANIC,
+  WORLDGEN_BEDROCK_CARBONATE_PLATFORM,
+  WORLDGEN_BEDROCK_CLASTIC_SEDIMENTARY,
+  WORLDGEN_BEDROCK_CRYSTALLINE_BASEMENT,
+  WORLDGEN_BEDROCK_OCEANIC_BASALT,
+  WORLDGEN_BEDROCK_OCEANIC_SEDIMENT,
+  WORLDGEN_BEDROCK_OROGENIC_METAMORPHIC,
+  WORLDGEN_BEDROCK_RIFT_VOLCANIC,
   WORLDGEN_CRUST_CONTINENTAL,
   WORLDGEN_CRUST_OCEANIC,
   WORLDGEN_CRUST_TRANSITIONAL,
@@ -67,6 +76,18 @@ function crustColor(kind: number): string {
   if (kind === WORLDGEN_CRUST_CONTINENTAL) return '#b79a72';
   if (kind === WORLDGEN_CRUST_TRANSITIONAL) return '#9aab87';
   if (kind === WORLDGEN_CRUST_OCEANIC) return '#477aa3';
+  return '#d7e2ef';
+}
+function bedrockColor(kind: number): string {
+  if (kind === WORLDGEN_BEDROCK_OCEANIC_BASALT) return '#355f7c';
+  if (kind === WORLDGEN_BEDROCK_OCEANIC_SEDIMENT) return '#768896';
+  if (kind === WORLDGEN_BEDROCK_CRYSTALLINE_BASEMENT) return '#9c765d';
+  if (kind === WORLDGEN_BEDROCK_OROGENIC_METAMORPHIC) return '#7b657d';
+  if (kind === WORLDGEN_BEDROCK_ARC_VOLCANIC) return '#a94c3d';
+  if (kind === WORLDGEN_BEDROCK_RIFT_VOLCANIC) return '#b97842';
+  if (kind === WORLDGEN_BEDROCK_CLASTIC_SEDIMENTARY) return '#c0a477';
+  if (kind === WORLDGEN_BEDROCK_CARBONATE_PLATFORM) return '#ddd5a5';
+  if (kind === WORLDGEN_BEDROCK_ACCRETED_TERRANE) return '#6f8b68';
   return '#d7e2ef';
 }
 function structuralColor(kind: number): string {
@@ -539,6 +560,12 @@ function scalarField(result: WorldgenClimateResult, mode: string, phase: number)
     case 'arc-relief': return { values: result.arcElevationM, minimum: 0, maximum: 3_000, lowHue: 50, highHue: 5 };
     case 'mantle-relief': return { values: result.mantleDynamicElevationM, minimum: -1_200, maximum: 1_200, lowHue: 245, highHue: 25 };
     case 'historical-crust-birth-age': return { values: result.crustBirthAgeMyr, minimum: 0, maximum: 3_500, lowHue: 205, highHue: 24 };
+    case 'rock-strength': return { values: result.rockStrengthIndex, minimum: 0, maximum: 1, lowHue: 95, highHue: 355 };
+    case 'lithology-erodibility': return { values: result.lithologyErodibilityIndex, minimum: 0, maximum: 1, lowHue: 160, highHue: 5 };
+    case 'permeability': return { values: result.permeabilityIndex, minimum: 0, maximum: 1, lowHue: 35, highHue: 205 };
+    case 'weathering-susceptibility': return { values: result.weatheringSusceptibility, minimum: 0, maximum: 1, lowHue: 55, highHue: 300 };
+    case 'fines-fraction': return { values: result.finesFraction, minimum: 0, maximum: 1, lowHue: 90, highHue: 25 };
+    case 'carbonate-fraction': return { values: result.carbonateFraction, minimum: 0, maximum: 1, lowHue: 210, highHue: 48 };
     case 'historical-event-age': return { values: result.latestHistoricalEventAgeMyr, minimum: 0, maximum: 350, lowHue: 205, highHue: 24 };
     case 'historical-rift': return { values: result.historicalRiftIntensity, minimum: 0, maximum: 1, lowHue: 210, highHue: 25 };
     case 'historical-rift-age': return { values: result.historicalRiftAgeMyr, minimum: 0, maximum: 350, lowHue: 205, highHue: 24 };
@@ -689,6 +716,7 @@ function sampleColor(result: WorldgenClimateResult, mode: string, sample: number
   if (mode === 'plates' || mode === 'tectonic-boundaries' || mode === 'geological-boundaries' || mode === 'boundary-provenance') return plateColor(result.plateIds[sample]!);
   if (mode === 'kinematic-domains') return plateColor(result.kinematicDomainIds[sample]!);
   if (mode === 'crust-type') return crustColor(result.crustKind[sample]!);
+  if (mode === 'bedrock-class') return bedrockColor(result.bedrockClass[sample]!);
   if (mode === 'structural-zones') return structuralColor(result.structuralZoneKind[sample]!);
   if (mode === 'seasonal-flow-regime') {
     if (result.submergedMask[sample]) return '#102c43';

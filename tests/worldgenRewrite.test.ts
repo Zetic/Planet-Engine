@@ -53,9 +53,9 @@ import {
   worldgenTopologyCommand,
 } from '../dist/worldgen/protocol.js';
 
-const PROTOCOL = 21;
+const PROTOCOL = 22;
 
-test('Planet Engine browser protocol v21 preserves WG-0 through WG-3.75 contracts', () => {
+test('Planet Engine browser protocol v22 preserves WG-0 through WG-3.75 contracts', () => {
   assert.equal(WORLDGEN_PROTOCOL_VERSION, PROTOCOL);
   assert.equal(WORLDGEN_SYNTHETIC_MAX_SAMPLES, 4_194_304);
   assert.equal(WORLDGEN_TOPOLOGY_MAX_LEVEL, 8);

@@ -29,6 +29,7 @@ pub struct WorldCalibrationHashes {
     pub tectonic_hash: String,
     pub geology_hash: String,
     pub lithosphere_hash: String,
+    pub lithology_hash: String,
     pub inheritance_hash: String,
     pub topography_hash: String,
     pub climate_hash: String,
@@ -490,6 +491,7 @@ pub fn build_world_calibration_report(
     tectonic_hash: &str,
     geology_hash: &str,
     lithosphere_hash: &str,
+    lithology_hash: &str,
 ) -> Result<WorldCalibrationReport, WorldgenError> {
     let count = topology.metrics().sample_count as usize;
     if inherited.crust_kind.len() != count
@@ -534,6 +536,7 @@ pub fn build_world_calibration_report(
             tectonic_hash: tectonic_hash.to_owned(),
             geology_hash: geology_hash.to_owned(),
             lithosphere_hash: lithosphere_hash.to_owned(),
+            lithology_hash: lithology_hash.to_owned(),
             inheritance_hash: inherited.inheritance_hash_hex(),
             topography_hash: terrain.metrics.topography_hash_hex(),
             climate_hash: climate.metrics.climate_hash_hex(),
@@ -736,6 +739,7 @@ impl WorldCalibrationReport {
             ("tectonic", &self.hashes.tectonic_hash),
             ("geology", &self.hashes.geology_hash),
             ("lithosphere", &self.hashes.lithosphere_hash),
+            ("lithology", &self.hashes.lithology_hash),
             ("inheritance", &self.hashes.inheritance_hash),
             ("topography", &self.hashes.topography_hash),
             ("climate", &self.hashes.climate_hash),
@@ -942,11 +946,12 @@ impl WorldCalibrationReport {
         let _ = writeln!(out, "\n## Causal identity");
         let _ = writeln!(
             out,
-            "`tectonic {}` → `geology {}` → `lithosphere {}` → `topography {}` → `climate {}`",
+            "`tectonic {}` → `geology {}` → `lithosphere {}` → `topography {}` → `lithology {}` → `climate {}`",
             self.hashes.tectonic_hash,
             self.hashes.geology_hash,
             self.hashes.lithosphere_hash,
             self.hashes.topography_hash,
+            self.hashes.lithology_hash,
             self.hashes.climate_hash
         );
         let _ = writeln!(out, "`drainage {}` → `runoff {}` → `lakes {}` → `seasonal {}` → `erosion {}` → `evolution {}` → `infill {}`", self.hashes.final_drainage_hash, self.hashes.final_runoff_hash, self.hashes.final_lake_hash, self.hashes.final_seasonal_hash, self.hashes.erosion_hash, self.hashes.evolution_hash, self.hashes.infill_hash);

@@ -2,10 +2,11 @@ use interlink_worldgen::{
     build_icosphere, build_world_calibration_report, generate_bounded_terrain_evolution,
     generate_coupled_climate_with_diagnostics, generate_drainage_topology,
     generate_fluvial_erosion_sediment, generate_historical_frontend, generate_initial_topography,
-    generate_lake_sediment_infill, generate_lakes_closed_basins, generate_lithosphere_from_history,
-    generate_post_erosion_hydrology, generate_runoff_discharge, generate_seasonal_hydrology,
-    inherit_boundary_interfaces, inherit_physical_state, ClimateRequest, DrainageRequest,
-    FluvialErosionRequest, HistoricalLithosphereRequest, LakeRequest, LakeSedimentInfillRequest,
+    generate_lake_sediment_infill, generate_lakes_closed_basins, generate_lithology_substrate,
+    generate_lithosphere_from_history, generate_post_erosion_hydrology, generate_runoff_discharge,
+    generate_seasonal_hydrology, inherit_boundary_interfaces, inherit_historical_identity,
+    inherit_physical_state, ClimateRequest, DrainageRequest, FluvialErosionRequest,
+    HistoricalLithosphereRequest, LakeRequest, LakeSedimentInfillRequest, LithologyRequest,
     LithosphereRequest, PlanetPhysicalParameters, PostErosionHydrologyRequest, RunoffRequest,
     SeasonalHydrologyRequest, TerrainEvolutionRequest, TopographyRequest,
 };
@@ -112,6 +113,9 @@ fn run(options: &Options) -> Result<String, String> {
         planet,
     )
     .map_err(|error| error.to_string())?;
+    let historical_identity =
+        inherit_historical_identity(&fine, options.coarse_level, &frontend.historical)
+            .map_err(|error| error.to_string())?;
     let boundaries =
         inherit_boundary_interfaces(&coarse, &fine, tectonics, geology, &inherited.plate_ids)
             .map_err(|error| error.to_string())?;
@@ -121,6 +125,13 @@ fn run(options: &Options) -> Result<String, String> {
         &boundaries,
         planet,
         &TopographyRequest::new(options.seed.as_str()),
+    )
+    .map_err(|error| error.to_string())?;
+    let lithology = generate_lithology_substrate(
+        &fine,
+        &inherited,
+        &historical_identity,
+        &LithologyRequest::new(options.seed.as_str()),
     )
     .map_err(|error| error.to_string())?;
     let climate_request = ClimateRequest::new(options.seed.as_str());
@@ -237,6 +248,7 @@ fn run(options: &Options) -> Result<String, String> {
         &tectonics.metrics.tectonic_hash_hex(),
         &geology.metrics.geology_hash_hex(),
         &lithosphere.metrics.lithosphere_hash_hex(),
+        &lithology.metrics.lithology_hash_hex(),
     )
     .map_err(|error| error.to_string())?;
 
