@@ -28,13 +28,13 @@ jobs:
       - name: Install pinned Rust
         run: |
           rustup toolchain install "${RUST_VERSION}" --profile minimal --target wasm32-unknown-unknown
+          rustup component add rustfmt --toolchain "${RUST_VERSION}"
           rustup default "${RUST_VERSION}"
       - name: Install pinned wasm-bindgen CLI
         run: cargo +${RUST_VERSION} install wasm-bindgen-cli --version "${WASM_BINDGEN_VERSION}" --locked
       - run: npm ci
       - name: Apply WG-4.5 wiring
         run: |
-          python3 scripts/apply-wg45-lithology-wiring.py || true
           python3 scripts/apply-wg45-browser-wiring.py
           python3 scripts/fix-wg45-browser-metrics.py
           python3 scripts/fix-wg45-protocol-v22.py
