@@ -115,3 +115,11 @@ if old_loop not in s:
 s = s.replace(old_loop, new_loop, 1)
 
 p.write_text(s)
+
+smoke = Path('rust/interlink-worldgen-cli/examples/tectonic_topography_cutover_smoke.rs')
+t = smoke.read_text()
+old = 'if terrain.stage.version != TOPOGRAPHY_STAGE_VERSION || terrain.stage.version != 15 {'
+new = 'if terrain.stage.version != TOPOGRAPHY_STAGE_VERSION || terrain.stage.version != 16 {'
+if old not in t:
+    raise SystemExit('topography stage assertion anchor not found')
+smoke.write_text(t.replace(old, new, 1))
