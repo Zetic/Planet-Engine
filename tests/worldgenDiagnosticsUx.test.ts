@@ -44,3 +44,50 @@ test('every selectable diagnostic belongs to exactly one category', () => {
   const grouped = groups.flatMap(match => Array.from(match[2].matchAll(/<option value="([^"]+)"/g), option => option[1]));
   assert.deepEqual(grouped.sort(), values.sort());
 });
+
+
+test('diagnostic explanations are specific, collapsed by default, and cover every selectable mode', () => {
+  const html = fs.readFileSync('index.html', 'utf8');
+  const source = fs.readFileSync('src/worldgen/diagnostics/worldgenClimateLabStandalone.ts', 'utf8');
+  assert.doesNotMatch(source, /Colors below are the display encoding for this view/);
+  assert.match(source, /const DIAGNOSTIC_SUMMARIES: Record<string, string>/);
+  assert.match(source, /document\.createElement\('details'\)/);
+  assert.match(source, /toggle\.textContent = 'About this diagnostic'/);
+  assert.match(source, /How to read the scale:/);
+  assert.doesNotMatch(source, /details\.open\s*=/);
+
+  const selectStart = html.indexOf('<select id="worldgen-visualization">');
+  const selectEnd = html.indexOf('</select>', selectStart);
+  const fragment = html.slice(selectStart, selectEnd);
+  const modes = Array.from(fragment.matchAll(/<option value="([^"]+)"/g), match => match[1]!);
+
+  const helpStart = source.indexOf('const DIAGNOSTIC_SUMMARIES: Record<string, string>');
+  const helpEnd = source.indexOf('const DIAGNOSTIC_SCALE_HELP', helpStart);
+  const help = source.slice(helpStart, helpEnd);
+  const covered = new Set(Array.from(help.matchAll(/^\s*"([^"]+)":/gm), match => match[1]!));
+  assert.deepEqual([...covered].sort(), [...modes].sort());
+});
+
+test('every enabled overlay grows the UI with its own renderer-aligned legend', () => {
+  const html = fs.readFileSync('index.html', 'utf8');
+  const source = fs.readFileSync('src/worldgen/diagnostics/worldgenClimateLabStandalone.ts', 'utf8');
+  const css = fs.readFileSync('styles/worldgenLab.css', 'utf8');
+  assert.match(html, /id="worldgen-overlay-legends"/);
+  assert.match(source, /const OVERLAY_LEGENDS: Record<string, OverlayLegendDefinition>/);
+  assert.match(source, /function refreshOverlayLegends/);
+  assert.match(source, /refreshOverlayLegends\(\)/);
+
+  const overlays = Array.from(html.matchAll(/data-worldgen-overlay value="([^"]+)"/g), match => match[1]!);
+  const registryStart = source.indexOf('const OVERLAY_LEGENDS: Record<string, OverlayLegendDefinition>');
+  const registryEnd = source.indexOf('function refreshOverlayLegends', registryStart);
+  const registry = source.slice(registryStart, registryEnd);
+  const covered = new Set(Array.from(registry.matchAll(/^\s*'([^']+)':\s*\{/gm), match => match[1]!));
+  assert.deepEqual([...covered].sort(), [...overlays].sort());
+
+  assert.match(source, /tectonicBoundaryColor\(WORLDGEN_BOUNDARY_CONVERGENT\)/);
+  assert.match(source, /geologicalBoundaryColor\(WORLDGEN_GEOLOGY_OCEAN_CONTINENT_SUBDUCTION\)/);
+  assert.match(source, /500 \/ 1000 \/ 2000 \/ 3000 \/ 4500 m/);
+  assert.match(css, /\.worldgen-overlay-legends/);
+  assert.match(css, /\.worldgen-overlay-legend/);
+  assert.match(css, /\.worldgen-legend-line/);
+});
