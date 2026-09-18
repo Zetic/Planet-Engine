@@ -93,8 +93,8 @@ pub use geology::{
     GEOLOGY_STAGE_VERSION,
 };
 pub use historical_api::{
-    generate_crust_and_history, generate_historical_lithosphere, generate_legacy_crust_and_history,
-    generate_lithosphere, generate_tectonics,
+    generate_crust_and_history, generate_historical_lithosphere, generate_lithosphere,
+    generate_tectonics,
 };
 pub use historical_causal::generate_lithosphere_from_history;
 pub use historical_epochs::HISTORICAL_EPOCH_COUNT;
