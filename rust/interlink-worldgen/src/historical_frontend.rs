@@ -1110,7 +1110,7 @@ fn build_plate_summaries<T: PlanetTopology>(
 
 fn geology_hash(stage_seed: u64, model: &CrustalModel, history_hash: u64) -> u64 {
     let mut hash = FNV_OFFSET_BASIS;
-    hash = fnv_update(hash, b"geology:historical-crust-projection:v1\0");
+    hash = fnv_update(hash, b"geology:historical-crust-projection:v2\0");
     hash = fnv_update(hash, &stage_seed.to_le_bytes());
     hash = fnv_update(hash, &history_hash.to_le_bytes());
     hash = fnv_update(hash, &model.crust_kind);
@@ -1119,6 +1119,10 @@ fn geology_hash(stage_seed: u64, model: &CrustalModel, history_hash: u64) -> u64
     }
     for field in [
         &model.crust_age_myr,
+        &model.oceanic_age_myr,
+        &model.continental_basement_age_myr,
+        &model.last_tectonic_reworking_age_myr,
+        &model.continental_stability_index,
         &model.crust_thickness_km,
         &model.crust_density_kg_per_m3,
         &model.buoyancy_index,
@@ -1144,6 +1148,7 @@ fn compute_geology_metrics<T: PlanetTopology>(
     topology: &T,
     kinds: &[u8],
     ages: &[f32],
+    reworking_age_myr: &[f32],
     thickness: &[f32],
     boundaries: &[GeologicalBoundary],
     hash: u64,
@@ -1154,6 +1159,7 @@ fn compute_geology_metrics<T: PlanetTopology>(
         .max(1.0e-12);
     let mut area = [0.0_f64; 3];
     let mut age_sum = [0.0_f64; 3];
+    let mut reworking_sum = [0.0_f64; 3];
     let mut thickness_sum = [0.0_f64; 3];
     for sample in 0..topology.sample_count() {
         let index = sample as usize;
@@ -1165,6 +1171,7 @@ fn compute_geology_metrics<T: PlanetTopology>(
         let cell_area = topology.area_steradians(sample);
         area[bucket] += cell_area;
         age_sum[bucket] += cell_area * f64::from(ages[index]);
+        reworking_sum[bucket] += cell_area * f64::from(reworking_age_myr[index]);
         thickness_sum[bucket] += cell_area * f64::from(thickness[index]);
     }
     let mut regime_counts = [0_u32; 7];
@@ -1183,6 +1190,11 @@ fn compute_geology_metrics<T: PlanetTopology>(
         },
         mean_oceanic_age_myr: if area[0] > 0.0 {
             age_sum[0] / area[0]
+        } else {
+            0.0
+        },
+        mean_continental_reworking_age_myr: if area[2] > 0.0 {
+            reworking_sum[2] / area[2]
         } else {
             0.0
         },
