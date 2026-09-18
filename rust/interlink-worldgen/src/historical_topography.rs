@@ -168,7 +168,7 @@ fn relaxed_stable_continental_support(
 
             let mut weighted_sum = 0.0_f64;
             let mut weight_sum = 0.0_f64;
-            for neighbor in topology.neighbors(sample) {
+            for neighbor in topology.neighbors_of(sample) {
                 let ni = *neighbor as usize;
                 if !eligible[ni] || inherited.plate_ids[ni] != inherited.plate_ids[index] {
                     continue;
