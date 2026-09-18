@@ -305,6 +305,50 @@ fn mechanical_edge_domain_factor(
     }
 }
 
+fn relax_quiet_provenance_isostasy(
+    topology: &GeodesicTopology,
+    inherited: &InheritedPhysicalState,
+    values: &mut [f32],
+) {
+    const PASSES: usize = 2;
+    const RELAXATION: f64 = 0.32;
+    let areas = topology.dual_area_steradians();
+
+    for _ in 0..PASSES {
+        for sample in 0..topology.metrics().sample_count {
+            let a = sample as usize;
+            for neighbor in topology.neighbors_of(sample) {
+                if *neighbor <= sample {
+                    continue;
+                }
+                let b = *neighbor as usize;
+                let quiet_contact = inherited.crust_province_id[a] != inherited.crust_province_id[b]
+                    && inherited.plate_ids[a] == inherited.plate_ids[b]
+                    && inherited.crust_kind[a] == inherited.crust_kind[b]
+                    && inherited.crust_kind[a] != CRUST_OCEANIC
+                    && inherited.province_kind[a] == 0
+                    && inherited.province_kind[b] == 0
+                    && !explicit_mechanical_structure(inherited.structural_zone_kind[a])
+                    && !explicit_mechanical_structure(inherited.structural_zone_kind[b]);
+                if !quiet_contact {
+                    continue;
+                }
+
+                // Relax only the topographic expression of a quiet provenance contact. The
+                // inherited crustal properties remain unchanged. Area-weighted pair exchange
+                // conserves the isostatic load while removing a categorical elevation step.
+                let area_a = areas[a].max(1.0e-12);
+                let area_b = areas[b].max(1.0e-12);
+                let value_a = f64::from(values[a]);
+                let value_b = f64::from(values[b]);
+                let mean = (value_a * area_a + value_b * area_b) / (area_a + area_b);
+                values[a] = (value_a + RELAXATION * (mean - value_a)) as f32;
+                values[b] = (value_b + RELAXATION * (mean - value_b)) as f32;
+            }
+        }
+    }
+}
+
 fn mechanically_filter(
     topology: &GeodesicTopology,
     raw: &[f64],
@@ -536,9 +580,14 @@ pub fn generate_initial_topography(
 
     // Compute the accepted non-orogenic WG-4 components, then discard the legacy radial
     // collision/arc fields before constructing the final surface.
-    let baseline = crate::topography::generate_initial_topography(
+    let mut baseline = crate::topography::generate_initial_topography(
         topology, inherited, boundaries, planet, request,
     )?;
+    relax_quiet_provenance_isostasy(
+        topology,
+        inherited,
+        &mut baseline.isostatic_elevation_m,
+    );
     let count = topology.metrics().sample_count as usize;
     if inherited.orogenic_history.len() != count
         || inherited.crustal_root_index.len() != count
