@@ -276,75 +276,6 @@ pub fn inherit_physical_state(
     })
 }
 
-fn explicit_mechanical_structure(kind: u8) -> bool {
-    kind == InheritedStructureKind::PaleoSuture as u8
-        || kind == InheritedStructureKind::InheritedRift as u8
-        || kind == InheritedStructureKind::ShearZone as u8
-        || kind == InheritedStructureKind::ContinentalMargin as u8
-}
-
-fn mechanical_edge_domain_factor(
-    inherited: &InheritedPhysicalState,
-    sample: usize,
-    neighbor: usize,
-) -> f64 {
-    if inherited.kinematic_domain_ids[neighbor] == inherited.kinematic_domain_ids[sample] {
-        1.0
-    } else {
-        0.25
-    }
-}
-
-fn relax_quiet_provenance_isostasy(
-    topology: &GeodesicTopology,
-    inherited: &InheritedPhysicalState,
-    values: &mut [f32],
-) {
-    const PASSES: usize = 2;
-    const RELAXATION: f64 = 0.32;
-    let areas = topology.dual_area_steradians();
-
-    for _ in 0..PASSES {
-        for sample in 0..topology.metrics().sample_count {
-            let a = sample as usize;
-            for neighbor in topology.neighbors_of(sample) {
-                if *neighbor <= sample {
-                    continue;
-                }
-                let b = *neighbor as usize;
-                let quiet_contact = inherited.crust_province_id[a] != inherited.crust_province_id[b]
-                    && inherited.plate_ids[a] == inherited.plate_ids[b]
-                    && inherited.crust_kind[a] == inherited.crust_kind[b]
-                    && inherited.crust_kind[a] != CRUST_OCEANIC
-                    && inherited.province_kind[a] == 0
-                    && inherited.province_kind[b] == 0
-                    && !explicit_mechanical_structure(inherited.structural_zone_kind[a])
-                    && !explicit_mechanical_structure(inherited.structural_zone_kind[b])
-                    && f64::from(inherited.rift_history[a]) < 0.18
-                    && f64::from(inherited.rift_history[b]) < 0.18
-                    && f64::from(inherited.subsidence_history[a]) < 0.22
-                    && f64::from(inherited.subsidence_history[b]) < 0.22
-                    && f64::from(inherited.basin_potential[a]) < 0.24
-                    && f64::from(inherited.basin_potential[b]) < 0.24;
-                if !quiet_contact {
-                    continue;
-                }
-
-                // Relax only the topographic expression of a quiet provenance contact. The
-                // inherited crustal properties remain unchanged. Area-weighted pair exchange
-                // conserves the isostatic load while removing a categorical elevation step.
-                let area_a = areas[a].max(1.0e-12);
-                let area_b = areas[b].max(1.0e-12);
-                let value_a = f64::from(values[a]);
-                let value_b = f64::from(values[b]);
-                let mean = (value_a * area_a + value_b * area_b) / (area_a + area_b);
-                values[a] = (value_a + RELAXATION * (mean - value_a)) as f32;
-                values[b] = (value_b + RELAXATION * (mean - value_b)) as f32;
-            }
-        }
-    }
-}
-
 fn mechanically_filter(
     topology: &GeodesicTopology,
     raw: &[f64],
@@ -656,11 +587,6 @@ pub fn generate_initial_topography(
     let mut baseline = crate::topography::generate_initial_topography(
         topology, inherited, boundaries, planet, request,
     )?;
-    relax_quiet_provenance_isostasy(
-        topology,
-        inherited,
-        &mut baseline.isostatic_elevation_m,
-    );
     let count = topology.metrics().sample_count as usize;
     if inherited.orogenic_history.len() != count
         || inherited.crustal_root_index.len() != count
