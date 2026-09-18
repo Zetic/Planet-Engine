@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, VecDeque};
 use std::f64::consts::PI;
 
 pub const PRE_OROGENIC_LITHOSPHERE_STAGE_ID: &str = "geology:pre-orogenic-lithosphere";
-pub const PRE_OROGENIC_LITHOSPHERE_STAGE_VERSION: u32 = 1;
+pub const PRE_OROGENIC_LITHOSPHERE_STAGE_VERSION: u32 = 2;
 pub const MAX_PRE_OROGENIC_FRAGMENTS: usize = 256;
 const PRE_OROGENIC_NAMESPACE: &str = "worldgen:lithosphere:pre-orogenic:v1";
 const PRE_OROGENIC_MECHANICAL_NAMESPACE: &str = "worldgen:lithosphere:pre-orogenic:mechanics:v1";
