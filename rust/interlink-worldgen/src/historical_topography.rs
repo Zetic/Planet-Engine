@@ -87,12 +87,7 @@ fn stable_continental_buoyancy_support_m(
     inherited: &InheritedPhysicalState,
     sample: usize,
 ) -> f64 {
-    if inherited.crust_kind[sample] != CrustKind::Continental as u8
-        || inherited.structural_zone_kind[sample]
-            == InheritedStructureKind::ContinentalMargin as u8
-        || inherited.structural_zone_kind[sample]
-            == InheritedStructureKind::InheritedRift as u8
-    {
+    if inherited.crust_kind[sample] != CrustKind::Continental as u8 {
         return 0.0;
     }
 
@@ -120,7 +115,20 @@ fn stable_continental_buoyancy_support_m(
         * (0.84 + 0.16 * thickness)
         * (0.90 + 0.10 * strength);
 
-    550.0 * stability.powf(1.15) * physical_support
+    // Removing cross-plate ridge leakage exposed a calibration shortcut: rifted and
+    // margin continental crust previously lost this entire freeboard term and was partly held
+    // above water by unrelated ridge kernels. Retain a bounded fraction of continental-column
+    // buoyancy instead. Actual thinning/subsidence is still expressed by the history fields and
+    // the crust-thickness term, so modified margins remain preferentially lower than interiors.
+    let structural_retention = match inherited.structural_zone_kind[sample] {
+        value if value == InheritedStructureKind::ContinentalMargin as u8 => 0.32,
+        value if value == InheritedStructureKind::InheritedRift as u8 => 0.42,
+        value if value == InheritedStructureKind::ShearZone as u8 => 0.72,
+        value if value == InheritedStructureKind::PaleoSuture as u8 => 0.78,
+        _ => 1.0,
+    };
+
+    550.0 * stability.powf(1.15) * physical_support * structural_retention
 }
 
 fn stable_support_relaxation_barrier(kind: u8) -> bool {
