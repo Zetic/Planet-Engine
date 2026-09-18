@@ -632,8 +632,8 @@ fn build_material_properties<T: PlanetTopology>(
                 // Preserve the accepted Earth-like mean continental column without using
                 // basement formation age as a thickness/density shortcut. Spatial variation is
                 // sample-owned; event history below supplies the causal thickening/thinning.
-                (37.0 + jitter * 1.25).clamp(33.5, 40.5),
-                (2760.0 + jitter * 14.0).clamp(2720.0, 2800.0),
+                (39.0 + jitter * 1.35).clamp(35.0, 43.0),
+                (2745.0 + jitter * 14.0).clamp(2705.0, 2785.0),
             ),
             CrustKind::Transitional => (
                 (19.0 + jitter * 1.8).clamp(14.0, 24.0),
