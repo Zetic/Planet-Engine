@@ -43,6 +43,95 @@ fn weighted_mean<T: PlanetTopology>(topology: &T, values: &[f32]) -> f64 {
     weighted / area.max(1.0e-12)
 }
 
+fn material_history_signal(morphology: &HistoricalMorphologyModel, sample: usize) -> f64 {
+    f64::from(morphology.suture_intensity[sample])
+        .max(f64::from(morphology.rift_intensity[sample]))
+        .max(f64::from(morphology.shear_intensity[sample]))
+        .max(f64::from(morphology.passive_margin_index[sample]))
+        .max(f64::from(morphology.fossil_orogen_intensity[sample]) * 0.82)
+        .clamp(0.0, 1.0)
+}
+
+fn quiet_provenance_boundary_strength(
+    static_crust_boundary: f64,
+    age_discontinuity: f64,
+    historical_signal: f64,
+) -> f64 {
+    // A categorical provenance change is not, by itself, a mechanical boundary.  Preserve only
+    // a weak cratonic-contact signal, strengthened modestly by a real age discontinuity and
+    // suppressed where explicit event history already owns the structure.
+    let provenance = static_crust_boundary.clamp(0.0, 1.0);
+    let age = age_discontinuity.clamp(0.0, 1.0);
+    let event_suppression = 1.0 - (historical_signal / 0.35).clamp(0.0, 1.0);
+    provenance * (0.08 + 0.14 * age) * event_suppression
+}
+
+fn relax_quiet_continental_mechanics<T: PlanetTopology>(
+    topology: &T,
+    geology: &crate::CrustalModel,
+    morphology: &HistoricalMorphologyModel,
+    model: &mut PreOrogenicLithosphereModel,
+) {
+    const PASSES: usize = 2;
+    const RELAXATION: f64 = 0.30;
+    let count = topology.sample_count() as usize;
+
+    for _ in 0..PASSES {
+        let strength = model.intrinsic_strength_index.clone();
+        let weakness = model.intrinsic_weakness_index.clone();
+        let elastic = model.effective_elastic_thickness_km.clone();
+
+        for sample in 0..count as u32 {
+            let index = sample as usize;
+            if geology.crust_kind[index] == crate::CrustKind::Oceanic as u8
+                || material_history_signal(morphology, index) >= 0.20
+            {
+                continue;
+            }
+
+            let mut strength_sum = 0.0_f64;
+            let mut weakness_sum = 0.0_f64;
+            let mut elastic_sum = 0.0_f64;
+            let mut weight_sum = 0.0_f64;
+            for neighbor in topology.neighbors(sample) {
+                let ni = *neighbor as usize;
+                if geology.crust_kind[ni] != geology.crust_kind[index]
+                    || material_history_signal(morphology, ni) >= 0.20
+                {
+                    continue;
+                }
+                let weight = topology.area_steradians(*neighbor).max(1.0e-12);
+                strength_sum += f64::from(strength[ni]) * weight;
+                weakness_sum += f64::from(weakness[ni]) * weight;
+                elastic_sum += f64::from(elastic[ni]) * weight;
+                weight_sum += weight;
+            }
+            if weight_sum <= 0.0 {
+                continue;
+            }
+
+            let neighbor_strength = strength_sum / weight_sum;
+            let neighbor_weakness = weakness_sum / weight_sum;
+            let neighbor_elastic = elastic_sum / weight_sum;
+            model.intrinsic_strength_index[index] = (
+                f64::from(strength[index])
+                    + RELAXATION * (neighbor_strength - f64::from(strength[index]))
+            )
+                .clamp(0.0, 1.0) as f32;
+            model.intrinsic_weakness_index[index] = (
+                f64::from(weakness[index])
+                    + RELAXATION * (neighbor_weakness - f64::from(weakness[index]))
+            )
+                .clamp(0.0, 1.0) as f32;
+            model.effective_elastic_thickness_km[index] = (
+                f64::from(elastic[index])
+                    + RELAXATION * (neighbor_elastic - f64::from(elastic[index]))
+            )
+                .clamp(4.0, 92.0) as f32;
+        }
+    }
+}
+
 fn historical_pre_hash(
     base_hash: u64,
     morphology_hash: u64,
@@ -105,12 +194,17 @@ pub fn generate_pre_orogenic_lithosphere_from_history<T: PlanetTopology>(
         model.inherited_shear_memory[sample] = clamp01(shear) as f32;
 
         let static_crust_boundary = f64::from(model.province_boundary_index[sample]);
-        let craton_boundary = static_crust_boundary
-            * if historical_suture.max(historical_rift).max(historical_shear) < 0.22 {
-                0.72
-            } else {
-                0.38
-            };
+        let age_discontinuity = f64::from(model.age_discontinuity_index[sample]);
+        let explicit_history = historical_suture
+            .max(rift)
+            .max(shear)
+            .max(passive_margin)
+            .max(fossil_orogen * 0.82);
+        let craton_boundary = quiet_provenance_boundary_strength(
+            static_crust_boundary,
+            age_discontinuity,
+            explicit_history,
+        );
         let historical_fabric = historical_suture
             .max(rift)
             .max(shear)
@@ -164,6 +258,11 @@ pub fn generate_pre_orogenic_lithosphere_from_history<T: PlanetTopology>(
                 + rift.max(shear) * 0.18,
         ) as f32;
     }
+
+    // Remove remaining cell-scale mechanical steps across quiet provenance contacts. Explicit
+    // sutures, rifts, shear zones, passive margins and fossil orogens are excluded from this
+    // relaxation and retain their event-shaped mechanical contrast.
+    relax_quiet_continental_mechanics(topology, geology, morphology, &mut model);
 
     model.metrics.mean_intrinsic_strength_index =
         weighted_mean(topology, &model.intrinsic_strength_index);
@@ -251,5 +350,17 @@ mod tests {
         assert!(model.metrics.inherited_rift_sample_count > 0);
         assert!(model.metrics.mean_inherited_fabric_strength > 0.0);
         assert_ne!(model.metrics.pre_orogenic_hash, 0);
+    }
+
+    #[test]
+    fn categorical_provenance_alone_cannot_create_a_strong_craton_boundary() {
+        let quiet = quiet_provenance_boundary_strength(1.0, 1.0, 0.0);
+        let event_owned = quiet_provenance_boundary_strength(1.0, 1.0, 0.35);
+        let weak_age_break = quiet_provenance_boundary_strength(1.0, 0.0, 0.0);
+
+        assert!(quiet <= 0.22 + f64::EPSILON);
+        assert!(weak_age_break <= 0.08 + f64::EPSILON);
+        assert!(event_owned <= f64::EPSILON);
+        assert!(quiet < 0.35);
     }
 }
