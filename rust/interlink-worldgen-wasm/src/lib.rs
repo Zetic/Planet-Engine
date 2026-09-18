@@ -395,6 +395,9 @@ impl WasmWorldgenGeology {
     pub fn mean_oceanic_age_myr(&self) -> f64 {
         self.inner.metrics.mean_oceanic_age_myr
     }
+    pub fn mean_continental_reworking_age_myr(&self) -> f64 {
+        self.inner.metrics.mean_continental_reworking_age_myr
+    }
     pub fn mean_continental_thickness_km(&self) -> f64 {
         self.inner.metrics.mean_continental_thickness_km
     }
