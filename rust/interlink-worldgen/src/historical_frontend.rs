@@ -11,7 +11,7 @@ use crate::{
 use std::f64::consts::PI;
 
 const MODERN_TECTONICS_NAMESPACE: &str =
-    "worldgen:geology:historical-lithosphere:modern-tectonics:v1";
+    "worldgen:geology:historical-lithosphere:modern-tectonics:v2";
 const HISTORICAL_GEOLOGY_NAMESPACE: &str =
     "worldgen:geology:historical-lithosphere:crust-projection:v1";
 const HISTORICAL_PROPERTIES_NAMESPACE: &str =
@@ -133,6 +133,108 @@ fn classify_boundary(normal_rate: f64, shear_rate: f64) -> PlateBoundaryKind {
     }
 }
 
+fn boundary_pair(edge: &PlateBoundaryEdge) -> (u16, u16) {
+    if edge.plate_a < edge.plate_b {
+        (edge.plate_a, edge.plate_b)
+    } else {
+        (edge.plate_b, edge.plate_a)
+    }
+}
+
+fn normal_fraction(edge: &PlateBoundaryEdge) -> f64 {
+    let speed = edge
+        .normal_rate_m_per_year
+        .hypot(edge.shear_rate_m_per_year);
+    if speed <= 1.0e-12 {
+        0.0
+    } else {
+        (edge.normal_rate_m_per_year.abs() / speed).clamp(0.0, 1.0)
+    }
+}
+
+fn stabilize_boundary_kinds<T: PlanetTopology>(
+    topology: &T,
+    boundaries: &mut [PlateBoundaryEdge],
+) {
+    let mut incident = vec![Vec::<usize>::new(); topology.sample_count() as usize];
+    for (index, edge) in boundaries.iter().enumerate() {
+        incident[edge.sample_a as usize].push(index);
+        incident[edge.sample_b as usize].push(index);
+    }
+
+    // Two deterministic local passes are enough to remove one-edge regime chatter while
+    // preserving genuine transitions where the velocity normal component remains decisive.
+    for _ in 0..2 {
+        let previous = boundaries
+            .iter()
+            .map(|edge| edge.kind)
+            .collect::<Vec<_>>();
+        for edge_index in 0..boundaries.len() {
+            let edge = &boundaries[edge_index];
+            let pair = boundary_pair(edge);
+            let mut convergent = 0_u8;
+            let mut divergent = 0_u8;
+            let mut transform = 0_u8;
+
+            for sample in [edge.sample_a, edge.sample_b] {
+                for neighbor_index in &incident[sample as usize] {
+                    if *neighbor_index == edge_index
+                        || boundary_pair(&boundaries[*neighbor_index]) != pair
+                    {
+                        continue;
+                    }
+                    match previous[*neighbor_index] {
+                        PlateBoundaryKind::Convergent => convergent = convergent.saturating_add(1),
+                        PlateBoundaryKind::Divergent => divergent = divergent.saturating_add(1),
+                        PlateBoundaryKind::Transform => transform = transform.saturating_add(1),
+                    }
+                }
+            }
+
+            let fraction = normal_fraction(edge);
+            let current = previous[edge_index];
+            let signed_kind = if edge.normal_rate_m_per_year < 0.0 {
+                PlateBoundaryKind::Convergent
+            } else {
+                PlateBoundaryKind::Divergent
+            };
+            let signed_support = match signed_kind {
+                PlateBoundaryKind::Convergent => convergent,
+                PlateBoundaryKind::Divergent => divergent,
+                PlateBoundaryKind::Transform => 0,
+            };
+            let opposite_support = match signed_kind {
+                PlateBoundaryKind::Convergent => divergent,
+                PlateBoundaryKind::Divergent => convergent,
+                PlateBoundaryKind::Transform => 0,
+            };
+
+            let next = if transform >= 2
+                && transform > signed_support
+                && fraction < 0.50
+            {
+                PlateBoundaryKind::Transform
+            } else if current == PlateBoundaryKind::Transform
+                && signed_support >= 2
+                && signed_support > transform
+                && fraction >= 0.24
+            {
+                signed_kind
+            } else if current != PlateBoundaryKind::Transform
+                && fraction < 0.30
+                && (transform > 0 || opposite_support >= 2)
+            {
+                // Near a normal-rate sign reversal, use a short transform transition rather than
+                // alternating convergence/divergence on adjacent graph edges.
+                PlateBoundaryKind::Transform
+            } else {
+                current
+            };
+            boundaries[edge_index].kind = next;
+        }
+    }
+}
+
 fn build_modern_boundaries<T: PlanetTopology>(
     topology: &T,
     owners: &[u16],
@@ -179,6 +281,7 @@ fn build_modern_boundaries<T: PlanetTopology>(
             });
         }
     }
+    stabilize_boundary_kinds(topology, &mut boundaries);
     boundaries
 }
 
@@ -190,7 +293,7 @@ fn modern_tectonic_hash(
     history_hash: u64,
 ) -> u64 {
     let mut hash = FNV_OFFSET_BASIS;
-    hash = fnv_update(hash, b"tectonics:historical-modern:v1\0");
+    hash = fnv_update(hash, b"tectonics:historical-modern:v2\0");
     hash = fnv_update(hash, &stage_seed.to_le_bytes());
     hash = fnv_update(hash, &history_hash.to_le_bytes());
     for plate in plates {
