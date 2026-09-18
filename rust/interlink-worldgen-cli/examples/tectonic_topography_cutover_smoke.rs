@@ -1,5 +1,6 @@
 use interlink_worldgen::{
-    build_icosphere, generate_crust_and_history, generate_initial_topography, generate_lithosphere,
+    analyze_topography_morphology, build_icosphere, generate_crust_and_history,
+    generate_initial_topography, generate_lithosphere,
     generate_tectonics, inherit_boundary_interfaces, inherit_physical_state, CrustKind,
     GeologyRequest, LithosphereRequest, OrogenProvinceKind, PlanetPhysicalParameters,
     TectonicsRequest, TopographyRequest, TOPOGRAPHY_STAGE_VERSION,
@@ -44,6 +45,9 @@ fn main() -> Result<(), String> {
         &TopographyRequest::new(seed),
     )
     .map_err(|error| error.to_string())?;
+    let morphology =
+        analyze_topography_morphology(&fine, &inherited, &boundaries, planet, &terrain)
+            .map_err(|error| error.to_string())?;
 
     let active_samples = inherited
         .orogenic_history
@@ -122,6 +126,23 @@ fn main() -> Result<(), String> {
         terrain.metrics.land_area_fraction * 100.0,
         inherited.orogen_province_hash_hex(),
         terrain.metrics.topography_hash_hex(),
+    );
+
+    println!(
+        "PR81 morphology: provenance_edges={} provenance_ratio={:.4} boundary_isolated={}/{} ({:.4}) boundary_agreement={:.4} ocean_age_monotonic={:.4} inversions={} inland_non_oceanic_km2={:.0} unsupported_km2={:.0} unsupported_fraction={:.4} max_unsupported_distance_km={:.0} quiet_ocean_gradient={:.4}",
+        morphology.quiet_provenance_contacts.contact_edge_count,
+        morphology.quiet_provenance_contacts.contact_to_interior_gradient_ratio,
+        morphology.boundary_regime_coherence.isolated_regime_edge_count,
+        morphology.boundary_regime_coherence.edge_with_same_pair_neighbors_count,
+        morphology.boundary_regime_coherence.isolated_regime_edge_fraction,
+        morphology.boundary_regime_coherence.mean_same_pair_neighbor_agreement,
+        morphology.ocean_age_depth_monotonic_pair_fraction,
+        morphology.ocean_age_depth_inversion_count,
+        morphology.inland_marine.non_oceanic_marine_area_m2 / 1.0e6,
+        morphology.inland_marine.unsupported_inland_area_m2 / 1.0e6,
+        morphology.inland_marine.unsupported_inland_area_fraction,
+        morphology.inland_marine.maximum_unsupported_distance_from_oceanic_crust_m / 1_000.0,
+        morphology.quiet_ocean.mean_gradient_m_per_km,
     );
 
     if terrain.stage.version != TOPOGRAPHY_STAGE_VERSION || terrain.stage.version != 17 {
