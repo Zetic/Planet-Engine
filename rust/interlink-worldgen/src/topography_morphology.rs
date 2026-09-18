@@ -607,6 +607,9 @@ fn quiet_provenance_contact_morphology(
         if inherited.crust_kind[a] == CRUST_OCEANIC
             || inherited.province_kind[a] != 0
             || explicit_structure(inherited.structural_zone_kind[a])
+            || f64::from(inherited.rift_history[a]) >= 0.18
+            || f64::from(inherited.subsidence_history[a]) >= 0.22
+            || f64::from(inherited.basin_potential[a]) >= 0.24
         {
             continue;
         }
@@ -624,6 +627,9 @@ fn quiet_provenance_contact_morphology(
                 || inherited.plate_ids[b] != inherited.plate_ids[a]
                 || inherited.province_kind[b] != 0
                 || explicit_structure(inherited.structural_zone_kind[b])
+                || f64::from(inherited.rift_history[b]) >= 0.18
+                || f64::from(inherited.subsidence_history[b]) >= 0.22
+                || f64::from(inherited.basin_potential[b]) >= 0.24
             {
                 continue;
             }
