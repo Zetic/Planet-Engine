@@ -145,7 +145,7 @@ fn main() -> Result<(), String> {
         morphology.quiet_ocean.mean_gradient_m_per_km,
     );
 
-    if terrain.stage.version != TOPOGRAPHY_STAGE_VERSION || terrain.stage.version != 17 {
+    if terrain.stage.version != TOPOGRAPHY_STAGE_VERSION {
         return Err("WG-4 did not route through historical-material topography".to_string());
     }
     if active_samples == 0
