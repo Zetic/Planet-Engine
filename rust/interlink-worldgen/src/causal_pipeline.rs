@@ -421,7 +421,7 @@ fn area_weighted_quantile(values: &[f64], areas: &[f64], q: f64) -> f64 {
     values.last().copied().unwrap_or(0.0)
 }
 
-fn major_ocean_reservoir_seed_mask(
+pub(crate) fn major_ocean_reservoir_seed_mask(
     topology: &GeodesicTopology,
     crust_kind: &[u8],
     provisional_submerged: &[u8],
