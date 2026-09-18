@@ -738,10 +738,18 @@ pub fn generate_initial_topography(
             CRUST_OCEANIC => 0.0,
             _ => CONTINENTAL_RIFT_CONTINENTAL_HISTORY_RELIEF_WEIGHT,
         };
+        let basin_response_scale = match inherited.crust_kind[i] {
+            // Thick continental lithosphere does not express broad inherited basin/subsidence
+            // memory as efficiently as transitional or oceanic lithosphere. Weak continental
+            // crust approaches the full response; stronger crust retains more freeboard.
+            CRUST_OCEANIC | CRUST_TRANSITIONAL => 1.0,
+            _ => 0.72 + 0.28 * f64::from(inherited.weakness_index[i]).clamp(0.0, 1.0),
+        };
         rift_basin[i] = -(p.rift_subsidence_scale_m
             * (rift_kernel * rift_focus
                 + inherited_rift_relief_weight * f64::from(inherited.rift_history[i]))
             + p.basin_subsidence_scale_m
+                * basin_response_scale
                 * (0.55 * f64::from(inherited.basin_potential[i])
                     + 0.45 * f64::from(inherited.subsidence_history[i])));
 
