@@ -18,7 +18,7 @@ test('WG-5 browser protocol is versioned and bounded', () => {
   assert.doesNotThrow(() => validateClimateRequest({ seed: 'wg5-l8', coarseLevel: 5, fineLevel: 8, plateCount: 16 }));
   assert.doesNotThrow(() => validateClimateRequest(request));
   assert.deepEqual(worldgenClimateCommand(91, request), {
-    protocolVersion: 22,
+    protocolVersion: 23,
     requestId: 91,
     type: 'generate-climate',
     payload: request,
