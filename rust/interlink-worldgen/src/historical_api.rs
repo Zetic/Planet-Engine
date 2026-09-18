@@ -1,5 +1,5 @@
 use crate::{
-    derive_stage_seed, dynamic_plate_evolution, geology, historical_causal, historical_epochs,
+    derive_stage_seed, dynamic_plate_evolution, historical_causal, historical_epochs,
     historical_frontend, historical_lithosphere, tectonics, CrustalModel, GeologyRequest,
     HistoricalLithosphereModel, HistoricalLithosphereRequest, LithosphereRequest,
     LithosphericModel, PlanetPhysicalParameters, PlanetTopology, TectonicModel, TectonicsRequest,
@@ -194,15 +194,6 @@ pub fn generate_lithosphere<T: PlanetTopology>(
         geology_model,
         request,
     )
-}
-
-pub fn generate_legacy_crust_and_history<T: PlanetTopology>(
-    topology: &T,
-    tectonics_model: &TectonicModel,
-    request: &GeologyRequest,
-    parameters: PlanetPhysicalParameters,
-) -> Result<CrustalModel, WorldgenError> {
-    geology::generate_crust_and_history(topology, tectonics_model, request, parameters)
 }
 
 #[cfg(test)]
