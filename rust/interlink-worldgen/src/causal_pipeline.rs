@@ -276,6 +276,18 @@ pub fn inherit_physical_state(
     })
 }
 
+fn mechanical_edge_domain_factor(
+    inherited: &InheritedPhysicalState,
+    sample: usize,
+    neighbor: usize,
+) -> f64 {
+    if inherited.kinematic_domain_ids[neighbor] == inherited.kinematic_domain_ids[sample] {
+        1.0
+    } else {
+        0.25
+    }
+}
+
 fn mechanically_filter(
     topology: &GeodesicTopology,
     raw: &[f64],
@@ -584,7 +596,7 @@ pub fn generate_initial_topography(
 
     // Compute the accepted non-orogenic WG-4 components, then discard the legacy radial
     // collision/arc fields before constructing the final surface.
-    let mut baseline = crate::topography::generate_initial_topography(
+    let baseline = crate::topography::generate_initial_topography(
         topology, inherited, boundaries, planet, request,
     )?;
     let count = topology.metrics().sample_count as usize;
