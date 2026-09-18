@@ -85,10 +85,10 @@ fn multi_seed_topography_expresses_expected_signed_physical_responses() {
         let terrain = &generated.terrain;
 
         let young = conditional_mean(&terrain.thermal_elevation_m, |i| {
-            inherited.crust_kind[i] == 1 && inherited.crust_age_myr[i] < 60.0
+            inherited.crust_kind[i] == 1 && inherited.oceanic_age_myr[i] < 60.0
         });
         let old = conditional_mean(&terrain.thermal_elevation_m, |i| {
-            inherited.crust_kind[i] == 1 && inherited.crust_age_myr[i] > 120.0
+            inherited.crust_kind[i] == 1 && inherited.oceanic_age_myr[i] > 120.0
         });
         if let (Some(young), Some(old)) = (young, old) {
             if old < young {
