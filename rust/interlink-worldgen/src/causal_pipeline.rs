@@ -547,7 +547,7 @@ fn province_relief(inherited: &InheritedPhysicalState, index: usize) -> (f64, f6
             + 1_350.0 * plateau * broad_transmission
             + 1_150.0 * fold
             + 2_000.0 * transpression
-            + 360.0 * intensity
+            + 440.0 * intensity
             + continental_collision_pedestal
             + terrane_accretion_pedestal
             - foreland_deflection
