@@ -13,9 +13,9 @@ use std::f64::consts::PI;
 const MODERN_TECTONICS_NAMESPACE: &str =
     "worldgen:geology:historical-lithosphere:modern-tectonics:v2";
 const HISTORICAL_GEOLOGY_NAMESPACE: &str =
-    "worldgen:geology:historical-lithosphere:crust-projection:v1";
+    "worldgen:geology:historical-lithosphere:crust-projection:v2";
 const HISTORICAL_PROPERTIES_NAMESPACE: &str =
-    "worldgen:geology:historical-lithosphere:crust-properties:v1";
+    "worldgen:geology:historical-lithosphere:crust-properties:v2";
 const HISTORICAL_HISTORY_NAMESPACE: &str =
     "worldgen:geology:historical-lithosphere:event-raster:v1";
 pub const HISTORICAL_INHERITANCE_STAGE_ID: &str = "geology:historical-inheritance";
@@ -532,64 +532,224 @@ fn buoyancy_index(thickness_km: f64, density_kg_per_m3: f64) -> f64 {
     (density_component + thickness_component).clamp(-1.0, 1.0)
 }
 
-fn build_material_properties(
+#[derive(Clone, Debug)]
+struct MaterialProperties {
+    provinces: Vec<u16>,
+    composite_age_myr: Vec<f32>,
+    oceanic_age_myr: Vec<f32>,
+    continental_basement_age_myr: Vec<f32>,
+    thickness_km: Vec<f32>,
+    density_kg_per_m3: Vec<f32>,
+    buoyancy_index: Vec<f32>,
+}
+
+fn smooth_continental_basement_age<T: PlanetTopology>(
+    topology: &T,
+    historical: &HistoricalLithosphereModel,
+) -> Vec<f32> {
+    let count = topology.sample_count() as usize;
+    let mut current = historical
+        .crust_birth_age_myr
+        .iter()
+        .enumerate()
+        .map(|(sample, age)| match crust_kind(historical.crust_kind[sample]) {
+            CrustKind::Continental => age.clamp(450.0, 3500.0),
+            CrustKind::Transitional => age.clamp(80.0, 1200.0),
+            CrustKind::Oceanic => 0.0,
+        })
+        .collect::<Vec<_>>();
+    let mut next = current.clone();
+
+    // Basement age is historical metadata, not a fragment paint layer. Diffuse the inherited
+    // formation clock through contiguous continental material so quiet welded provenance
+    // contacts cannot survive as exact age polygons. Oceanic material is excluded entirely.
+    for _ in 0..10 {
+        for sample in 0..topology.sample_count() {
+            let index = sample as usize;
+            let kind = crust_kind(historical.crust_kind[index]);
+            if matches!(kind, CrustKind::Oceanic) {
+                next[index] = 0.0;
+                continue;
+            }
+            let mut sum = 0.0_f64;
+            let mut weight = 0.0_f64;
+            for neighbor in topology.neighbors(sample) {
+                let ni = *neighbor as usize;
+                if crust_kind(historical.crust_kind[ni]) != kind {
+                    continue;
+                }
+                sum += f64::from(current[ni]);
+                weight += 1.0;
+            }
+            next[index] = if weight > 0.0 {
+                (0.28 * f64::from(current[index]) + 0.72 * (sum / weight)) as f32
+            } else {
+                current[index]
+            };
+        }
+        std::mem::swap(&mut current, &mut next);
+    }
+    current
+}
+
+fn build_material_properties<T: PlanetTopology>(
+    topology: &T,
     historical: &HistoricalLithosphereModel,
     property_seed: u64,
-) -> (Vec<u16>, Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>) {
+) -> MaterialProperties {
     let count = historical.crust_kind.len();
+    let basement_age = smooth_continental_basement_age(topology, historical);
     let mut provinces = Vec::with_capacity(count);
-    let mut ages = historical.crust_birth_age_myr.clone();
+    let mut composite_age = Vec::with_capacity(count);
+    let mut oceanic_age = Vec::with_capacity(count);
     let mut thickness = Vec::with_capacity(count);
     let mut density = Vec::with_capacity(count);
     let mut buoyancy = Vec::with_capacity(count);
 
     for sample in 0..count {
         let fragment_id = historical.fragment_ids[sample];
-        let fragment = &historical.fragments[fragment_id as usize];
         let kind = crust_kind(historical.crust_kind[sample]);
         provinces.push(if matches!(kind, CrustKind::Oceanic) {
             OCEANIC_PROVINCE_BIT | (fragment_id & !OCEANIC_PROVINCE_BIT)
         } else {
             fragment_id & !OCEANIC_PROVINCE_BIT
         });
+
+        // Property noise is sample-owned, not fragment-owned. Crossing a quiet ancestry contact
+        // therefore cannot change the baseline crust simply because the bookkeeping id changed.
         let jitter = unit_random(
-            property_seed
-                ^ (sample as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15)
-                ^ u64::from(fragment_id).wrapping_mul(0xbf58_476d_1ce4_e5b9),
+            property_seed ^ (sample as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15),
         ) * 2.0
             - 1.0;
-        let fabric = f64::from(fragment.inherited_fabric).clamp(0.0, 1.0);
-        let age = f64::from(ages[sample]);
+        let seafloor_age = if matches!(kind, CrustKind::Oceanic) {
+            historical.crust_birth_age_myr[sample].clamp(0.0, 220.0)
+        } else {
+            0.0
+        };
+        let basement = basement_age[sample];
+
         let (cell_thickness, cell_density) = match kind {
-            CrustKind::Continental => {
-                let oldness = ((age - 450.0) / 3050.0).clamp(0.0, 1.0);
-                (
-                    (31.0 + oldness * 11.0 + fabric * 1.8 + jitter * 1.4).clamp(27.0, 48.0),
-                    (2805.0 - oldness * 92.0 + jitter * 14.0).clamp(2660.0, 2850.0),
-                )
-            }
+            CrustKind::Continental => (
+                (35.0 + jitter * 1.25).clamp(31.5, 39.5),
+                (2770.0 + jitter * 14.0).clamp(2730.0, 2810.0),
+            ),
             CrustKind::Transitional => (
-                (17.0 + fabric * 5.0 + jitter * 2.0).clamp(13.0, 27.0),
-                (2870.0 + jitter * 22.0).clamp(2810.0, 2940.0),
+                (19.0 + jitter * 1.8).clamp(14.0, 24.0),
+                (2875.0 + jitter * 18.0).clamp(2830.0, 2925.0),
             ),
             CrustKind::Oceanic => {
-                let normalized = (age / 220.0).clamp(0.0, 1.0).sqrt();
+                let thermal_maturity = (f64::from(seafloor_age) / 220.0).clamp(0.0, 1.0).sqrt();
                 (
-                    6.05 + normalized * 1.65 + jitter * 0.08,
-                    2880.0 + normalized * 118.0 + jitter * 7.0,
+                    (6.35 + thermal_maturity * 0.55 + jitter * 0.08).clamp(5.8, 7.4),
+                    (2910.0 + thermal_maturity * 42.0 + jitter * 6.0).clamp(2880.0, 2980.0),
                 )
             }
         };
-        ages[sample] = match kind {
-            CrustKind::Continental => ages[sample].clamp(450.0, 3500.0),
-            CrustKind::Transitional => ages[sample].clamp(80.0, 1200.0),
-            CrustKind::Oceanic => ages[sample].clamp(0.0, 220.0),
+
+        let compatibility_age = match kind {
+            CrustKind::Oceanic => seafloor_age,
+            CrustKind::Continental | CrustKind::Transitional => basement,
         };
+        composite_age.push(compatibility_age);
+        oceanic_age.push(seafloor_age);
         thickness.push(cell_thickness as f32);
         density.push(cell_density as f32);
         buoyancy.push(buoyancy_index(cell_thickness, cell_density) as f32);
     }
-    (provinces, ages, thickness, density, buoyancy)
+
+    MaterialProperties {
+        provinces,
+        composite_age_myr: composite_age,
+        oceanic_age_myr: oceanic_age,
+        continental_basement_age_myr: basement_age,
+        thickness_km: thickness,
+        density_kg_per_m3: density,
+        buoyancy_index: buoyancy,
+    }
+}
+
+fn build_reworking_clock_and_stability<T: PlanetTopology>(
+    topology: &T,
+    historical: &HistoricalLithosphereModel,
+    boundaries: &[GeologicalBoundary],
+    basement_age_myr: &[f32],
+    orogen: &[f32],
+    rift: &[f32],
+    subduction: &[f32],
+    transform: &[f32],
+) -> (Vec<f32>, Vec<f32>) {
+    let count = topology.sample_count() as usize;
+    let mut reworking_age = (0..count)
+        .map(|sample| match crust_kind(historical.crust_kind[sample]) {
+            CrustKind::Oceanic => historical.crust_birth_age_myr[sample].clamp(0.0, 220.0),
+            CrustKind::Continental | CrustKind::Transitional => basement_age_myr[sample],
+        })
+        .collect::<Vec<_>>();
+
+    for event in &historical.events {
+        if matches!(event.kind, HistoricalEventKind::Spreading) {
+            continue;
+        }
+        for sample in [event.geometry_sample_a, event.geometry_sample_b] {
+            let index = sample as usize;
+            if index < count && !matches!(crust_kind(historical.crust_kind[index]), CrustKind::Oceanic)
+            {
+                reworking_age[index] = reworking_age[index].min(event.age_myr.max(0.0));
+            }
+        }
+    }
+    for boundary in boundaries {
+        if matches!(boundary.regime, GeologicalBoundaryRegime::OceanicRidge) {
+            continue;
+        }
+        for sample in [boundary.sample_a, boundary.sample_b] {
+            let index = sample as usize;
+            if !matches!(crust_kind(historical.crust_kind[index]), CrustKind::Oceanic) {
+                reworking_age[index] = 0.0;
+            }
+        }
+    }
+
+    // Major tectonothermal reworking affects a belt around the event geometry. Propagate the
+    // youngest event clock only a bounded number of coarse cells; this records reworking history
+    // without turning fragment membership into a continent-wide age reset.
+    let mut next = reworking_age.clone();
+    for _ in 0..6 {
+        for sample in 0..topology.sample_count() {
+            let index = sample as usize;
+            let kind = crust_kind(historical.crust_kind[index]);
+            if matches!(kind, CrustKind::Oceanic) {
+                next[index] = reworking_age[index];
+                continue;
+            }
+            let mut youngest = reworking_age[index];
+            for neighbor in topology.neighbors(sample) {
+                let ni = *neighbor as usize;
+                if crust_kind(historical.crust_kind[ni]) == kind {
+                    youngest = youngest.min(reworking_age[ni]);
+                }
+            }
+            next[index] = youngest;
+        }
+        std::mem::swap(&mut reworking_age, &mut next);
+    }
+
+    let stability = (0..count)
+        .map(|sample| {
+            if !matches!(crust_kind(historical.crust_kind[sample]), CrustKind::Continental) {
+                return 0.0;
+            }
+            let recovery = ((f64::from(reworking_age[sample]) - 180.0) / 1350.0).clamp(0.0, 1.0);
+            let disturbance = f64::from(orogen[sample])
+                .max(f64::from(rift[sample]))
+                .max(f64::from(subduction[sample]))
+                .max(f64::from(transform[sample]))
+                .clamp(0.0, 1.0);
+            (recovery * (1.0 - 0.82 * disturbance)).clamp(0.0, 1.0) as f32
+        })
+        .collect::<Vec<_>>();
+
+    (reworking_age, stability)
 }
 
 fn classify_geological_boundary(
@@ -1074,21 +1234,38 @@ pub fn project_historical_crust<T: PlanetTopology>(
     let property_seed = derive_stage_seed(seed, HISTORICAL_PROPERTIES_NAMESPACE);
     let history_seed = derive_stage_seed(seed, HISTORICAL_HISTORY_NAMESPACE);
     let kinds = historical.crust_kind.clone();
-    let (provinces, ages, mut thickness, mut density, mut buoyancy) =
-        build_material_properties(historical, property_seed);
-    let initial_boundaries = build_geological_boundaries(&kinds, &buoyancy, tectonics);
+    let mut material = build_material_properties(topology, historical, property_seed);
+    let initial_boundaries =
+        build_geological_boundaries(&kinds, &material.buoyancy_index, tectonics);
     let (orogen, rift, ridge, subduction, trench, arc, transform, subsidence, basin, strain) =
         build_history_fields(topology, historical, &initial_boundaries);
+    let (last_reworking_age_myr, continental_stability_index) =
+        build_reworking_clock_and_stability(
+            topology,
+            historical,
+            &initial_boundaries,
+            &material.continental_basement_age_myr,
+            &orogen,
+            &rift,
+            &subduction,
+            &transform,
+        );
     apply_history_to_properties(
         &kinds,
         &orogen,
         &rift,
-        &mut thickness,
-        &mut density,
-        &mut buoyancy,
+        &mut material.thickness_km,
+        &mut material.density_kg_per_m3,
+        &mut material.buoyancy_index,
     );
-    let boundaries = build_geological_boundaries(&kinds, &buoyancy, tectonics);
-    let plate_summaries = build_plate_summaries(topology, tectonics, &kinds, &ages, &thickness);
+    let boundaries = build_geological_boundaries(&kinds, &material.buoyancy_index, tectonics);
+    let plate_summaries = build_plate_summaries(
+        topology,
+        tectonics,
+        &kinds,
+        &material.composite_age_myr,
+        &material.thickness_km,
+    );
 
     let placeholder_metrics = GeologyMetrics {
         sample_count: topology.sample_count(),
@@ -1097,6 +1274,7 @@ pub fn project_historical_crust<T: PlanetTopology>(
         oceanic_area_fraction: 0.0,
         mean_continental_age_myr: 0.0,
         mean_oceanic_age_myr: 0.0,
+        mean_continental_reworking_age_myr: 0.0,
         mean_continental_thickness_km: 0.0,
         mean_oceanic_thickness_km: 0.0,
         oceanic_subduction_edges: 0,
@@ -1118,11 +1296,15 @@ pub fn project_historical_crust<T: PlanetTopology>(
         property_seed,
         history_seed,
         crust_kind: kinds,
-        crust_province_id: provinces,
-        crust_age_myr: ages,
-        crust_thickness_km: thickness,
-        crust_density_kg_per_m3: density,
-        buoyancy_index: buoyancy,
+        crust_province_id: material.provinces,
+        crust_age_myr: material.composite_age_myr,
+        oceanic_age_myr: material.oceanic_age_myr,
+        continental_basement_age_myr: material.continental_basement_age_myr,
+        last_tectonic_reworking_age_myr,
+        continental_stability_index,
+        crust_thickness_km: material.thickness_km,
+        crust_density_kg_per_m3: material.density_kg_per_m3,
+        buoyancy_index: material.buoyancy_index,
         orogenic_history: orogen,
         rift_history: rift,
         ridge_history: ridge,
@@ -1142,6 +1324,7 @@ pub fn project_historical_crust<T: PlanetTopology>(
         topology,
         &model.crust_kind,
         &model.crust_age_myr,
+        &model.last_tectonic_reworking_age_myr,
         &model.crust_thickness_km,
         &model.boundaries,
         hash,
