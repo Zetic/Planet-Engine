@@ -11,7 +11,7 @@ import {
 } from '../dist/worldgen/protocol.js';
 
 test('WG-6A browser protocol is versioned and bounded', () => {
-  assert.equal(WORLDGEN_PROTOCOL_VERSION, 22);
+  assert.equal(WORLDGEN_PROTOCOL_VERSION, 23);
   assert.equal(WORLDGEN_DRAINAGE_COARSE_MAX_LEVEL, 6);
   assert.equal(WORLDGEN_DRAINAGE_FINE_MAX_LEVEL, 8);
   assert.equal(WORLDGEN_INVALID_SAMPLE_ID, 0xffff_ffff);
