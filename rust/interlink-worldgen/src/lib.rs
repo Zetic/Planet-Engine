@@ -210,7 +210,7 @@ pub use world_calibration::{
     WORLD_CALIBRATION_RANKED_LIMIT, WORLD_CALIBRATION_SCHEMA_ID, WORLD_CALIBRATION_SCHEMA_VERSION,
 };
 
-pub const WORLDGEN_ENGINE_VERSION: u32 = 21;
+pub const WORLDGEN_ENGINE_VERSION: u32 = 22;
 pub const SYNTHETIC_STAGE_ID: &str = "foundation:synthetic";
 pub const SYNTHETIC_STAGE_VERSION: u32 = 1;
 const SYNTHETIC_NAMESPACE: &str = "worldgen:foundation:synthetic:v1";
