@@ -154,15 +154,23 @@ fn run_seed(seed: &'static str) -> Result<Report, String> {
         ));
     }
 
-    // Genealogical IDs must be observational only. Deterministically relabel ancestral plate and
-    // fragment identities while holding every inherited physical field fixed; WG-4.5 substrate
-    // must remain bit-identical.
+    // Genealogical IDs and their regional partition geometry must be observational only.
+    // Replace both ancestry rasters with deterministic per-sample labels while holding every
+    // inherited physical/event field fixed. This destroys the original fragment/provenance
+    // regions instead of merely renumbering them; WG-4.5 substrate must remain bit-identical.
     let mut relabeled_identity = identity.clone();
-    for value in &mut relabeled_identity.origin_plate_ids {
-        *value = value.wrapping_mul(61).wrapping_add(7);
+    for (sample, value) in relabeled_identity.origin_plate_ids.iter_mut().enumerate() {
+        *value = ((sample as u32)
+            .wrapping_mul(61)
+            .wrapping_add(7)
+            % (u16::MAX as u32 + 1)) as u16;
     }
-    for value in &mut relabeled_identity.fragment_ids {
-        *value = value.wrapping_mul(73).wrapping_add(19);
+    for (sample, value) in relabeled_identity.fragment_ids.iter_mut().enumerate() {
+        *value = (((sample as u32)
+            .wrapping_mul(73)
+            .wrapping_add(19)
+            % (u16::MAX as u32))
+            + 1) as u16;
     }
     let relabeled_state = generate_lithology_substrate(
         &fine,
