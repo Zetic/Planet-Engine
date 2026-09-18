@@ -317,7 +317,7 @@ fn validate_inputs(
     let lengths = [
         inherited.plate_ids.len(),
         inherited.crust_kind.len(),
-        inherited.crust_age_myr.len(),
+        inherited.oceanic_age_myr.len(),
         inherited.crust_thickness_km.len(),
         inherited.crust_density_kg_per_m3.len(),
         inherited.orogenic_history.len(),
