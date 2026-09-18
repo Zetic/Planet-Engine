@@ -17,6 +17,8 @@ const CRUST_OCEANIC: u8 = 1;
 const CRUST_TRANSITIONAL: u8 = 2;
 const STRUCTURE_SUTURE: u8 = 1;
 const STRUCTURE_RIFT: u8 = 2;
+const STRUCTURE_SHEAR: u8 = 3;
+const STRUCTURE_MARGIN: u8 = 4;
 const OCEANIC_RIDGE_DIRECT_RESPONSE_SCALE: f64 = 0.03;
 const OCEANIC_RIDGE_BASE_RESPONSE: f64 = 0.10;
 const CONTINENTAL_RIFT_DIRECT_RESPONSE_SCALE: f64 = 0.10;
@@ -495,6 +497,38 @@ fn boundary_source_fields(
     )
 }
 
+fn explicit_mechanical_structure(kind: u8) -> bool {
+    kind == STRUCTURE_SUTURE
+        || kind == STRUCTURE_RIFT
+        || kind == STRUCTURE_SHEAR
+        || kind == STRUCTURE_MARGIN
+}
+
+fn mechanical_edge_domain_factor(
+    inherited: &InheritedPhysicalState,
+    sample: usize,
+    neighbor: usize,
+) -> f64 {
+    if inherited.plate_ids[neighbor] != inherited.plate_ids[sample] {
+        return 0.25;
+    }
+    if inherited.crust_kind[neighbor] != inherited.crust_kind[sample] {
+        return 0.40;
+    }
+    if inherited.kinematic_domain_ids[neighbor] == inherited.kinematic_domain_ids[sample] {
+        return 1.0;
+    }
+    if explicit_mechanical_structure(inherited.structural_zone_kind[sample])
+        || explicit_mechanical_structure(inherited.structural_zone_kind[neighbor])
+    {
+        0.35
+    } else {
+        // Fragment/terrane identity alone is provenance. Quiet contacts should not become
+        // resistant smoothing seams in the initial elevation field.
+        1.0
+    }
+}
+
 fn mechanically_filter(
     topology: &GeodesicTopology,
     raw: &[f64],
@@ -513,13 +547,7 @@ fn mechanically_filter(
                 let neighbor = topology.neighbor_indices()[cursor] as usize;
                 let center = topology.neighbor_center_arc_lengths_rad_values()[cursor].max(1.0e-12);
                 let interface = topology.neighbor_interface_arc_lengths_rad_values()[cursor];
-                let domain_factor = if inherited.kinematic_domain_ids[neighbor]
-                    == inherited.kinematic_domain_ids[sample]
-                {
-                    1.0
-                } else {
-                    0.35
-                };
+                let domain_factor = mechanical_edge_domain_factor(inherited, sample, neighbor);
                 let weight = interface / center * domain_factor;
                 weighted_sum += current[neighbor] * weight;
                 weight_sum += weight;
