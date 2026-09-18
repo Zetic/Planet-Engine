@@ -111,7 +111,7 @@ fn stable_continental_buoyancy_support_m(
     let basin_release = clamp01((basin - 0.18) / 0.45);
     let release = rift_release.max(subsidence_release).max(basin_release);
     let quiet_retention = 1.0 - release;
-    let recovered_column_floor = 0.38 + 0.22 * continental_stability;
+    let recovered_column_floor = 0.75 + 0.15 * continental_stability;
     let state_retention = quiet_retention.max(recovered_column_floor);
 
     let buoyancy = clamp01(
