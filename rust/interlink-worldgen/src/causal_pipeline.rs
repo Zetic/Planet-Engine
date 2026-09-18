@@ -1,7 +1,8 @@
 use crate::{
     derive_stage_seed, generate_pre_orogenic_lithosphere, generate_tectonic_history,
     generate_tectonic_orogen_provinces, GeodesicTopology, InheritedBoundarySet, LithosphereRequest,
-    OrogenProvinceKind, OrogenProvinceModel, OrogenProvinceRequest, PlanetPhysicalParameters,
+    InheritedStructureKind, OrogenProvinceKind, OrogenProvinceModel, OrogenProvinceRequest,
+    PlanetPhysicalParameters,
     PlanetTopology, PreOrogenicLithosphereModel, PreOrogenicLithosphereRequest, StageIdentity,
     TectonicHistoryModel, TectonicHistoryRequest, TectonicModel, TopographyMetrics,
     TopographyParameters, TopographyRequest, TopographyState, WorldgenError,
@@ -274,6 +275,36 @@ pub fn inherit_physical_state(
     })
 }
 
+fn explicit_mechanical_structure(kind: u8) -> bool {
+    kind == InheritedStructureKind::PaleoSuture as u8
+        || kind == InheritedStructureKind::InheritedRift as u8
+        || kind == InheritedStructureKind::ShearZone as u8
+        || kind == InheritedStructureKind::ContinentalMargin as u8
+}
+
+fn mechanical_edge_domain_factor(
+    inherited: &InheritedPhysicalState,
+    sample: usize,
+    neighbor: usize,
+) -> f64 {
+    if inherited.plate_ids[neighbor] != inherited.plate_ids[sample] {
+        return 0.20;
+    }
+    if inherited.crust_kind[neighbor] != inherited.crust_kind[sample] {
+        return 0.36;
+    }
+    if inherited.kinematic_domain_ids[neighbor] == inherited.kinematic_domain_ids[sample] {
+        return 1.0;
+    }
+    if explicit_mechanical_structure(inherited.structural_zone_kind[sample])
+        || explicit_mechanical_structure(inherited.structural_zone_kind[neighbor])
+    {
+        0.30
+    } else {
+        1.0
+    }
+}
+
 fn mechanically_filter(
     topology: &GeodesicTopology,
     raw: &[f64],
@@ -292,13 +323,7 @@ fn mechanically_filter(
                 let neighbor = topology.neighbor_indices()[cursor] as usize;
                 let center = topology.neighbor_center_arc_lengths_rad_values()[cursor].max(1.0e-12);
                 let interface = topology.neighbor_interface_arc_lengths_rad_values()[cursor];
-                let domain_factor = if inherited.kinematic_domain_ids[neighbor]
-                    == inherited.kinematic_domain_ids[sample]
-                {
-                    1.0
-                } else {
-                    0.25
-                };
+                let domain_factor = mechanical_edge_domain_factor(inherited, sample, neighbor);
                 let weight = interface / center * domain_factor;
                 weighted_sum += current[neighbor] * weight;
                 weight_sum += weight;
