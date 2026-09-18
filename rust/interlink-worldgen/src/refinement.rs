@@ -6,7 +6,7 @@ use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 
 pub const MULTIRES_STAGE_ID: &str = "foundation:multires-inheritance";
-pub const MULTIRES_STAGE_VERSION: u32 = 1;
+pub const MULTIRES_STAGE_VERSION: u32 = 2;
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 const DISTANCE_EPSILON: f64 = 1.0e-15;
@@ -469,6 +469,15 @@ pub fn inherit_physical_state(
 
     let plate_ids = refine_categorical_u16(&map, &tectonics.plate_ids)?;
     let crust_kind = refine_categorical_u8(&map, &geology.crust_kind)?;
+    // Continuous material properties must not inherit categorical crust-province Voronoi edges.
+    // Interpolate inside the same tectonic plate and crust class; keep ocean/transition/continent
+    // contacts distinct while allowing quiet ancestry contacts to remain physically continuous.
+    let material_domains = tectonics
+        .plate_ids
+        .iter()
+        .zip(geology.crust_kind.iter())
+        .map(|(plate, kind)| (*plate & 0x3fff) | (u16::from(*kind) << 14))
+        .collect::<Vec<_>>();
     let crust_province_id = refine_categorical_u16(&map, &geology.crust_province_id)?;
     let fragment_ids = refine_categorical_u16(&map, &lithosphere.fragment_ids)?;
     let kinematic_domain_ids = refine_categorical_u16(&map, &lithosphere.kinematic_domain_ids)?;
@@ -479,28 +488,28 @@ pub fn inherit_physical_state(
         coarse_level,
         &geology.crust_age_myr,
         &map,
-        &geology.crust_province_id,
+        &material_domains,
     )?;
     let crust_thickness_km = refine_scalar_f32_with_domains(
         fine_topology,
         coarse_level,
         &geology.crust_thickness_km,
         &map,
-        &geology.crust_province_id,
+        &material_domains,
     )?;
     let crust_density_kg_per_m3 = refine_scalar_f32_with_domains(
         fine_topology,
         coarse_level,
         &geology.crust_density_kg_per_m3,
         &map,
-        &geology.crust_province_id,
+        &material_domains,
     )?;
     let buoyancy_index = refine_scalar_f32_with_domains(
         fine_topology,
         coarse_level,
         &geology.buoyancy_index,
         &map,
-        &geology.crust_province_id,
+        &material_domains,
     )?;
 
     let orogenic_history =
@@ -575,7 +584,7 @@ pub fn inherit_physical_state(
         coarse_level,
         &lithosphere.compensated_buoyancy_index,
         &map,
-        &geology.crust_province_id,
+        &material_domains,
     )?;
 
     let parameter_hash = parameters.parameter_hash();
