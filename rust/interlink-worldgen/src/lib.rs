@@ -191,7 +191,8 @@ pub use tectonics::{
 };
 pub use topography::{TopographyMetrics, TopographyParameters, TopographyRequest, TopographyState};
 pub use topography_morphology::{
-    analyze_topography_morphology, OceanAgeDepthMorphology, QuietOceanMorphology,
+    analyze_topography_morphology, BoundaryRegimeCoherence, InlandMarineMorphology,
+    OceanAgeDepthMorphology, QuietOceanMorphology, QuietProvenanceContactMorphology,
     TopographyDistanceBandMorphology, TopographyMorphologyFeature, TopographyMorphologyReport,
     TopographyReliefMorphology, TOPOGRAPHY_MORPHOLOGY_DISTANCE_BAND_EDGES_M,
     TOPOGRAPHY_MORPHOLOGY_OCEAN_AGE_BAND_EDGES_MYR,
@@ -209,7 +210,7 @@ pub use world_calibration::{
     WORLD_CALIBRATION_RANKED_LIMIT, WORLD_CALIBRATION_SCHEMA_ID, WORLD_CALIBRATION_SCHEMA_VERSION,
 };
 
-pub const WORLDGEN_ENGINE_VERSION: u32 = 21;
+pub const WORLDGEN_ENGINE_VERSION: u32 = 22;
 pub const SYNTHETIC_STAGE_ID: &str = "foundation:synthetic";
 pub const SYNTHETIC_STAGE_VERSION: u32 = 1;
 const SYNTHETIC_NAMESPACE: &str = "worldgen:foundation:synthetic:v1";

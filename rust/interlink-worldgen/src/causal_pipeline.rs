@@ -1,7 +1,8 @@
 use crate::{
     derive_stage_seed, generate_pre_orogenic_lithosphere, generate_tectonic_history,
     generate_tectonic_orogen_provinces, GeodesicTopology, InheritedBoundarySet, LithosphereRequest,
-    OrogenProvinceKind, OrogenProvinceModel, OrogenProvinceRequest, PlanetPhysicalParameters,
+    InheritedStructureKind, OrogenProvinceKind, OrogenProvinceModel, OrogenProvinceRequest,
+    PlanetPhysicalParameters,
     PlanetTopology, PreOrogenicLithosphereModel, PreOrogenicLithosphereRequest, StageIdentity,
     TectonicHistoryModel, TectonicHistoryRequest, TectonicModel, TopographyMetrics,
     TopographyParameters, TopographyRequest, TopographyState, WorldgenError,
@@ -16,6 +17,7 @@ const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 const CRUST_OCEANIC: u8 = 1;
 const CRUST_TRANSITIONAL: u8 = 2;
+pub(crate) const MAX_QUIET_CONTINENTAL_MARINE_REACH_M: f64 = 600_000.0;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct LithosphericModel {
@@ -274,6 +276,75 @@ pub fn inherit_physical_state(
     })
 }
 
+fn explicit_mechanical_structure(kind: u8) -> bool {
+    kind == InheritedStructureKind::PaleoSuture as u8
+        || kind == InheritedStructureKind::InheritedRift as u8
+        || kind == InheritedStructureKind::ShearZone as u8
+        || kind == InheritedStructureKind::ContinentalMargin as u8
+}
+
+fn mechanical_edge_domain_factor(
+    inherited: &InheritedPhysicalState,
+    sample: usize,
+    neighbor: usize,
+) -> f64 {
+    if inherited.kinematic_domain_ids[neighbor] == inherited.kinematic_domain_ids[sample] {
+        1.0
+    } else {
+        0.25
+    }
+}
+
+fn relax_quiet_provenance_isostasy(
+    topology: &GeodesicTopology,
+    inherited: &InheritedPhysicalState,
+    values: &mut [f32],
+) {
+    const PASSES: usize = 2;
+    const RELAXATION: f64 = 0.32;
+    let areas = topology.dual_area_steradians();
+
+    for _ in 0..PASSES {
+        for sample in 0..topology.metrics().sample_count {
+            let a = sample as usize;
+            for neighbor in topology.neighbors_of(sample) {
+                if *neighbor <= sample {
+                    continue;
+                }
+                let b = *neighbor as usize;
+                let quiet_contact = inherited.crust_province_id[a] != inherited.crust_province_id[b]
+                    && inherited.plate_ids[a] == inherited.plate_ids[b]
+                    && inherited.crust_kind[a] == inherited.crust_kind[b]
+                    && inherited.crust_kind[a] != CRUST_OCEANIC
+                    && inherited.province_kind[a] == 0
+                    && inherited.province_kind[b] == 0
+                    && !explicit_mechanical_structure(inherited.structural_zone_kind[a])
+                    && !explicit_mechanical_structure(inherited.structural_zone_kind[b])
+                    && f64::from(inherited.rift_history[a]) < 0.18
+                    && f64::from(inherited.rift_history[b]) < 0.18
+                    && f64::from(inherited.subsidence_history[a]) < 0.22
+                    && f64::from(inherited.subsidence_history[b]) < 0.22
+                    && f64::from(inherited.basin_potential[a]) < 0.24
+                    && f64::from(inherited.basin_potential[b]) < 0.24;
+                if !quiet_contact {
+                    continue;
+                }
+
+                // Relax only the topographic expression of a quiet provenance contact. The
+                // inherited crustal properties remain unchanged. Area-weighted pair exchange
+                // conserves the isostatic load while removing a categorical elevation step.
+                let area_a = areas[a].max(1.0e-12);
+                let area_b = areas[b].max(1.0e-12);
+                let value_a = f64::from(values[a]);
+                let value_b = f64::from(values[b]);
+                let mean = (value_a * area_a + value_b * area_b) / (area_a + area_b);
+                values[a] = (value_a + RELAXATION * (mean - value_a)) as f32;
+                values[b] = (value_b + RELAXATION * (mean - value_b)) as f32;
+            }
+        }
+    }
+}
+
 fn mechanically_filter(
     topology: &GeodesicTopology,
     raw: &[f64],
@@ -292,13 +363,7 @@ fn mechanically_filter(
                 let neighbor = topology.neighbor_indices()[cursor] as usize;
                 let center = topology.neighbor_center_arc_lengths_rad_values()[cursor].max(1.0e-12);
                 let interface = topology.neighbor_interface_arc_lengths_rad_values()[cursor];
-                let domain_factor = if inherited.kinematic_domain_ids[neighbor]
-                    == inherited.kinematic_domain_ids[sample]
-                {
-                    1.0
-                } else {
-                    0.25
-                };
+                let domain_factor = mechanical_edge_domain_factor(inherited, sample, neighbor);
                 let weight = interface / center * domain_factor;
                 weighted_sum += current[neighbor] * weight;
                 weight_sum += weight;
@@ -356,7 +421,7 @@ fn area_weighted_quantile(values: &[f64], areas: &[f64], q: f64) -> f64 {
     values.last().copied().unwrap_or(0.0)
 }
 
-fn major_ocean_reservoir_seed_mask(
+pub(crate) fn major_ocean_reservoir_seed_mask(
     topology: &GeodesicTopology,
     crust_kind: &[u8],
     provisional_submerged: &[u8],
@@ -420,6 +485,83 @@ fn major_ocean_reservoir_seed_mask(
         }
     }
     seeds
+}
+
+fn marine_corridor_sample(inherited: &InheritedPhysicalState, sample: usize) -> bool {
+    if inherited.crust_kind[sample] == CRUST_OCEANIC
+        || inherited.crust_kind[sample] == CRUST_TRANSITIONAL
+        || inherited.structural_zone_kind[sample] == InheritedStructureKind::InheritedRift as u8
+        || inherited.structural_zone_kind[sample] == InheritedStructureKind::ContinentalMargin as u8
+    {
+        return true;
+    }
+
+    let rift = f64::from(inherited.rift_history[sample]);
+    let subsidence = f64::from(inherited.subsidence_history[sample]);
+    let basin = f64::from(inherited.basin_potential[sample]);
+    subsidence >= 0.30
+        || basin >= 0.32
+        || (rift >= 0.35 && (subsidence >= 0.18 || basin >= 0.20))
+}
+
+pub(crate) fn marine_connectivity_access_mask(
+    topology: &GeodesicTopology,
+    inherited: &InheritedPhysicalState,
+    planet: PlanetPhysicalParameters,
+    ocean_seed_mask: &[u8],
+) -> Vec<u8> {
+    let count = topology.metrics().sample_count as usize;
+    debug_assert_eq!(ocean_seed_mask.len(), count);
+    let mut quiet_reach_m = vec![f64::INFINITY; count];
+    let mut queued = vec![false; count];
+    let mut queue = VecDeque::<u32>::new();
+
+    // Access must originate at a major ocean reservoir. Geological rifts/basins are corridors,
+    // not independent ocean sources; an isolated inland rift therefore cannot create an ocean.
+    for sample in 0..count {
+        if ocean_seed_mask[sample] != 0 {
+            quiet_reach_m[sample] = 0.0;
+            queued[sample] = true;
+            queue.push_back(sample as u32);
+        }
+    }
+
+    // Supported marine corridors reset the amount of unsupported continental crust traversed.
+    // Quiet lowlands may bridge at most 600 km between supported segments. This keeps the rule
+    // resolution independent while allowing realistic shelves/straits without permitting a
+    // continent-spanning sea merely because distant cells carry fossil rift ancestry.
+    while let Some(sample) = queue.pop_front() {
+        let sample_index = sample as usize;
+        queued[sample_index] = false;
+        let source_quiet_reach = quiet_reach_m[sample_index];
+        for (neighbor, arc) in topology
+            .neighbors_of(sample)
+            .iter()
+            .zip(topology.neighbor_arc_lengths_of(sample).iter())
+        {
+            let index = *neighbor as usize;
+            let step_m = *arc * planet.radius_m;
+            let candidate = if marine_corridor_sample(inherited, index) {
+                0.0
+            } else {
+                source_quiet_reach + step_m
+            };
+            if candidate <= MAX_QUIET_CONTINENTAL_MARINE_REACH_M
+                && candidate + 1.0e-6 < quiet_reach_m[index]
+            {
+                quiet_reach_m[index] = candidate;
+                if !queued[index] {
+                    queued[index] = true;
+                    queue.push_back(*neighbor);
+                }
+            }
+        }
+    }
+
+    quiet_reach_m
+        .into_iter()
+        .map(|distance| u8::from(distance <= MAX_QUIET_CONTINENTAL_MARINE_REACH_M))
+        .collect()
 }
 
 fn province_relief(inherited: &InheritedPhysicalState, index: usize) -> (f64, f64) {
@@ -489,7 +631,7 @@ fn province_relief(inherited: &InheritedPhysicalState, index: usize) -> (f64, f6
             + 1_350.0 * plateau * broad_transmission
             + 1_150.0 * fold
             + 2_000.0 * transpression
-            + 360.0 * intensity
+            + 600.0 * intensity
             + continental_collision_pedestal
             + terrane_accretion_pedestal
             - foreland_deflection
@@ -511,9 +653,14 @@ pub fn generate_initial_topography(
 
     // Compute the accepted non-orogenic WG-4 components, then discard the legacy radial
     // collision/arc fields before constructing the final surface.
-    let baseline = crate::topography::generate_initial_topography(
+    let mut baseline = crate::topography::generate_initial_topography(
         topology, inherited, boundaries, planet, request,
     )?;
+    relax_quiet_provenance_isostasy(
+        topology,
+        inherited,
+        &mut baseline.isostatic_elevation_m,
+    );
     let count = topology.metrics().sample_count as usize;
     if inherited.orogenic_history.len() != count
         || inherited.crustal_root_index.len() != count
@@ -578,11 +725,14 @@ pub fn generate_initial_topography(
         &inherited.crust_kind,
         &provisional.submerged_mask,
     );
-    let water = crate::surface_water::solve_hydrostatic_surface_water_connected_f64(
+    let ocean_access_mask =
+        marine_connectivity_access_mask(topology, inherited, planet, &ocean_seed_mask);
+    let water = crate::surface_water::solve_hydrostatic_surface_water_connected_with_access_f64(
         topology,
         &solid,
         planet,
         &ocean_seed_mask,
+        &ocean_access_mask,
     )?;
     let sea_level = water.metrics.sea_level_m;
     let mut land_area = 0.0;

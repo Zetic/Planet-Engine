@@ -89,6 +89,16 @@ fn verify_seed(seed: &str) -> Result<(), String> {
     let mut modified_continental = AreaBucket::default();
     let mut transitional = AreaBucket::default();
     let mut oceanic = AreaBucket::default();
+    let mut modified_margin_area = 0.0_f64;
+    let mut modified_rift_zone_area = 0.0_f64;
+    let mut modified_rift_history_area = 0.0_f64;
+    let mut modified_subsidence_area = 0.0_f64;
+    let mut modified_basin_area = 0.0_f64;
+    let mut modified_isostatic_sum = 0.0_f64;
+    let mut modified_ridge_sum = 0.0_f64;
+    let mut modified_rift_basin_sum = 0.0_f64;
+    let mut modified_orogen_sum = 0.0_f64;
+    let mut modified_mantle_sum = 0.0_f64;
     let total_area = fine.dual_area_steradians().iter().sum::<f64>();
 
     for sample in 0..terrain.solid_elevation_m.len() {
@@ -110,6 +120,30 @@ fn verify_seed(seed: &str) -> Result<(), String> {
                     add_sample(&mut stable_continental, area, submerged, depth_m);
                 } else {
                     add_sample(&mut modified_continental, area, submerged, depth_m);
+                    modified_margin_area += area
+                        * f64::from(
+                            inherited.structural_zone_kind[sample]
+                                == InheritedStructureKind::ContinentalMargin as u8,
+                        );
+                    modified_rift_zone_area += area
+                        * f64::from(
+                            inherited.structural_zone_kind[sample]
+                                == InheritedStructureKind::InheritedRift as u8,
+                        );
+                    modified_rift_history_area +=
+                        area * f64::from(inherited.rift_history[sample] >= 0.22);
+                    modified_subsidence_area +=
+                        area * f64::from(inherited.subsidence_history[sample] >= 0.28);
+                    modified_basin_area +=
+                        area * f64::from(inherited.basin_potential[sample] >= 0.32);
+                    modified_isostatic_sum +=
+                        area * f64::from(terrain.isostatic_elevation_m[sample]);
+                    modified_ridge_sum += area * f64::from(terrain.ridge_elevation_m[sample]);
+                    modified_rift_basin_sum +=
+                        area * f64::from(terrain.rift_basin_elevation_m[sample]);
+                    modified_orogen_sum += area * f64::from(terrain.orogenic_elevation_m[sample]);
+                    modified_mantle_sum +=
+                        area * f64::from(terrain.mantle_dynamic_elevation_m[sample]);
                 }
             }
             value if value == CrustKind::Transitional as u8 => {
@@ -130,6 +164,20 @@ fn verify_seed(seed: &str) -> Result<(), String> {
         continental.shallow_fraction_of_submerged() * 100.0,
         continental.mean_submerged_depth_m(),
         oceanic.submerged_fraction() * 100.0,
+    );
+    let modified_area = modified_continental.total.max(1.0e-12);
+    println!(
+        "continental-modified seed={seed} margin={:.1}% rift-zone={:.1}% rift-history={:.1}% subsidence={:.1}% basin={:.1}% components(isostatic/ridge/rift/orogen/mantle)={:.0}/{:.0}/{:.0}/{:.0}/{:.0}m",
+        modified_margin_area / modified_area * 100.0,
+        modified_rift_zone_area / modified_area * 100.0,
+        modified_rift_history_area / modified_area * 100.0,
+        modified_subsidence_area / modified_area * 100.0,
+        modified_basin_area / modified_area * 100.0,
+        modified_isostatic_sum / modified_area,
+        modified_ridge_sum / modified_area,
+        modified_rift_basin_sum / modified_area,
+        modified_orogen_sum / modified_area,
+        modified_mantle_sum / modified_area,
     );
 
     if terrain.metrics.water_volume_relative_error.abs() > 1.0e-9 {

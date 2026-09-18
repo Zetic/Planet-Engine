@@ -8,8 +8,8 @@ use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 
 pub const TOPOGRAPHY_STAGE_ID: &str = "terrain:initial-topography";
-pub const TOPOGRAPHY_STAGE_VERSION: u32 = 11;
-const TOPOGRAPHY_NAMESPACE: &str = "terrain:structure:v1";
+pub const TOPOGRAPHY_STAGE_VERSION: u32 = 12;
+const TOPOGRAPHY_NAMESPACE: &str = "terrain:structure:v2";
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 const DISTANCE_EPSILON_M: f64 = 1.0e-6;
@@ -600,12 +600,24 @@ pub fn generate_initial_topography(
     ) = boundary_source_fields(count, inherited, boundaries);
     let (collision_distance, collision_source) =
         nearest_sources(topology, &collision_sources, None, planet.radius_m);
-    let (oceanic_ridge_distance, oceanic_ridge_source) =
-        nearest_sources(topology, &oceanic_ridge_sources, None, planet.radius_m);
-    let (transitional_ridge_distance, transitional_ridge_source) =
-        nearest_sources(topology, &transitional_ridge_sources, None, planet.radius_m);
-    let (rift_distance, rift_source) =
-        nearest_sources(topology, &rift_sources, None, planet.radius_m);
+    let (oceanic_ridge_distance, oceanic_ridge_source) = nearest_sources(
+        topology,
+        &oceanic_ridge_sources,
+        Some(&inherited.plate_ids),
+        planet.radius_m,
+    );
+    let (transitional_ridge_distance, transitional_ridge_source) = nearest_sources(
+        topology,
+        &transitional_ridge_sources,
+        Some(&inherited.plate_ids),
+        planet.radius_m,
+    );
+    let (rift_distance, rift_source) = nearest_sources(
+        topology,
+        &rift_sources,
+        Some(&inherited.plate_ids),
+        planet.radius_m,
+    );
     let (trench_distance, trench_source) = nearest_sources(
         topology,
         &trench_sources,
@@ -696,11 +708,24 @@ pub fn generate_initial_topography(
         // Broad spreading history is already expressed by oceanic crust age and thermal
         // subsidence. Keep explicit pure-oceanic ridge relief local, while preserving the
         // accepted broader TransitionalDivergence response on the existing rift-width scale.
+        let oceanic_ridge_crust_gate = match inherited.crust_kind[i] {
+            CRUST_OCEANIC => 1.0,
+            CRUST_TRANSITIONAL => 0.35,
+            _ => 0.0,
+        };
+        let transitional_ridge_crust_gate = match inherited.crust_kind[i] {
+            CRUST_OCEANIC => 0.30,
+            CRUST_TRANSITIONAL => 1.0,
+            // Transitional divergence is the rift-shoulder/uplift side of the same causal
+            // continental breakup system. Keep its full response on continental crust, while
+            // pure-oceanic ridge relief remains excluded from continents.
+            _ => 1.0,
+        };
         ridge[i] = p.ridge_uplift_scale_m
             * if oceanic_is_nearest {
-                oceanic_ridge_kernel
+                oceanic_ridge_kernel * oceanic_ridge_crust_gate
             } else {
-                transitional_ridge_kernel
+                transitional_ridge_kernel * transitional_ridge_crust_gate
             };
 
         let rift_kernel = if rift_source[i] == u32::MAX {
@@ -713,10 +738,18 @@ pub fn generate_initial_topography(
             CRUST_OCEANIC => 0.0,
             _ => CONTINENTAL_RIFT_CONTINENTAL_HISTORY_RELIEF_WEIGHT,
         };
+        let basin_response_scale = match inherited.crust_kind[i] {
+            // Thick continental lithosphere does not express broad inherited basin/subsidence
+            // memory as efficiently as transitional or oceanic lithosphere. Weak continental
+            // crust approaches the full response; stronger crust retains more freeboard.
+            CRUST_OCEANIC | CRUST_TRANSITIONAL => 1.0,
+            _ => 0.72 + 0.28 * f64::from(inherited.weakness_index[i]).clamp(0.0, 1.0),
+        };
         rift_basin[i] = -(p.rift_subsidence_scale_m
             * (rift_kernel * rift_focus
                 + inherited_rift_relief_weight * f64::from(inherited.rift_history[i]))
             + p.basin_subsidence_scale_m
+                * basin_response_scale
                 * (0.55 * f64::from(inherited.basin_potential[i])
                     + 0.45 * f64::from(inherited.subsidence_history[i])));
 

@@ -469,6 +469,9 @@ pub fn inherit_physical_state(
 
     let plate_ids = refine_categorical_u16(&map, &tectonics.plate_ids)?;
     let crust_kind = refine_categorical_u8(&map, &geology.crust_kind)?;
+    // Preserve coarse material-property truth inside each geological province. Quiet provenance
+    // contacts are relaxed later by WG-4's mechanical response rather than by averaging away the
+    // inherited crustal state itself.
     let crust_province_id = refine_categorical_u16(&map, &geology.crust_province_id)?;
     let fragment_ids = refine_categorical_u16(&map, &lithosphere.fragment_ids)?;
     let kinematic_domain_ids = refine_categorical_u16(&map, &lithosphere.kinematic_domain_ids)?;

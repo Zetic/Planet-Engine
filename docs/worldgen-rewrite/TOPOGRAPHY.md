@@ -25,6 +25,10 @@ lithospheric mechanical filtering
         ↓
 area-weighted solid-surface datum
         ↓
+major-ocean reservoir seeding
+        +
+geology-gated connected-ocean access
+        ↓
 global surface-water volume solve
         ↓
 solid elevation + sea level + water depth + land/ocean mask
@@ -36,7 +40,7 @@ The terrain state keeps forcing components separately inspectable: isostatic, oc
 
 Crustal support uses WG-3 thickness and density against the explicit isostatic mantle density. Oceanic and transitional crust subsides with a bounded square-root age relation. Fine inherited boundary interfaces seed geodesic distance fields for collision, spreading, rifting and polarized subduction morphology. Subduction polarity keeps trenches on the subducting plate and arc uplift on the overriding plate, with the arc peak displaced inland from the interface.
 
-WG-3.5 effective elastic thickness, weakness, and structural fabric control a bounded finite-volume neighbor filter using WG-1 center-distance and dual-interface geometry. This is a first mechanical-response approximation, not a full elastic thin-shell solver.
+WG-3.5 effective elastic thickness, weakness, and structural fabric control a bounded finite-volume neighbor filter using WG-1 center-distance and dual-interface geometry. Quiet same-plate provenance contacts are additionally relaxed only in their topographic expression, while explicit sutures, inherited rifts, shear zones, continental margins, active provinces, and material-state discontinuities remain mechanical barriers. The inherited geological fields themselves are not averaged away. This is a first mechanical-response approximation, not a full elastic thin-shell solver.
 
 ## Datum and water solve
 
@@ -50,7 +54,9 @@ V(S) = Σ area_sr[i] × radius² × max(0, S - elevation[i])
 
 WG-4 solves this monotonic equation against `surface_water_mass_kg / ocean_water_density_kg_per_m3`. Wet profiles therefore derive sea level from basin volume rather than a fixed land percentile. Zero-water profiles expose no fictitious sea level or submerged samples.
 
-WG-4's water mask is an initial hydrostatic standing-water surface. Closed-basin routing, lakes, rivers, overflow and freshwater belong to later hydrology.
+The accepted ocean is also connectivity constrained. Broad submerged oceanic-crust components seed the global reservoirs. Marine access then propagates outward from those reservoirs through oceanic/transitional material and event-backed rift, margin, subsidence, or basin corridors. Quiet continental terrain may bridge no more than `600 km` of unsupported crust between supported segments. A disconnected inland rift or below-datum depression therefore cannot declare itself global ocean merely because it is low; it remains non-marine unless an ocean-connected supported path reaches it. The water-volume solve still closes against the full configured water inventory.
+
+WG-4's water mask is an initial hydrostatic standing-water surface, not the final coastline. Closed-basin routing, lakes, rivers, overflow, freshwater, coastal sedimentation, shoreline migration, and final hydrostatic reconciliation belong to later stages.
 
 ## Earth-like hypsometry calibration
 
@@ -73,6 +79,18 @@ WG-4 `@11` reshapes **inherited orogenic relief** without changing the accepted 
 
 WG-3 geological history stage `v4` diversifies the upstream `orogenic_history` geometry without reopening accepted continental assembly. Orogenic sources retain deterministic tectonic provenance, while bounded narrow/standard/broad propagation envelopes are selected from convergence, crustal age/type, and local boundary-chain support. The source cores remain unity-strength; geometry changes are therefore expressed primarily through along-strike width variation and termination taper rather than amplitude retuning. No new terrain-noise source is introduced. WG-4 `@11` continues to own the history-to-relief conversion and the accepted `400 km` active-collision kernel remains unchanged.
 
+## Historical-material morphology cutover (`@17`)
+
+PR #81 moves the accepted public WG-4 surface to `terrain:initial-topography@17` / `terrain:historical-material-morphology:v3`. The older structural WG-4 implementation remains an internal non-orogenic baseline at `terrain:initial-topography@12` / `terrain:structure:v2`; the exported Planet Engine topography stage is the historical-material result.
+
+The cutover addresses four upstream morphology failures without introducing categorical terrain stamping. First, quiet crust-province/provenance contacts no longer preserve their full inherited isostatic step in the final surface; only their topographic expression is relaxed, with area-weighted load conserved. Second, present-day boundary regimes are locally stabilized along continuous plate-pair chains so one-edge transform/convergent/divergent chatter does not create alternating forcing kernels. Third, oceanic crust age is propagated through the owning spreading domain rather than by unrestricted distance to any divergent boundary, preserving monotonic age/depth structure without concentric cross-plate age kernels. Fourth, pure oceanic ridge forcing is plate-confined and crust-gated so a remote ridge cannot support continental freeboard.
+
+Continental freeboard is now explicitly retained by the thick, buoyant continental column instead of depending on leaked ridge uplift. Fossil rift history weakens that freeboard only modestly on its own; actual subsidence and basin state can release it fully. The broad basin/subsidence response on continental crust is also strength-aware, so strong lithosphere expresses inherited basin memory less efficiently than weak continental, transitional, or oceanic lithosphere.
+
+The fixed `interlink-wg7c` morphology regression requires quiet-provenance contact gradients to remain within `2.0×` quiet interior gradients, same-pair boundary agreement of at least `0.75` with at most `1%` isolated regime edges, no ocean age/depth inversions, no unsupported ocean-connected inland marine cells, and quiet-ocean mean gradient no greater than `1.5 m/km`. The current accepted sample reports a provenance ratio of about `1.69`, zero isolated regime edges, boundary agreement about `0.84`, a fully monotonic ocean-age/depth profile, and zero unsupported inland marine area.
+
+Continental hypsometry is independently checked across four fixed seeds. At the accepted calibration, total continental submerged fractions are approximately `35.3%`, `43.7%`, `34.7%`, and `38.8%`; stable continental interiors remain preferentially emergent while tectonically modified/rifted crust remains more flood-prone. These are regression envelopes for the current deterministic generator, not Earth-fitting targets.
+
 
 A five-seed L4 Earth-like ensemble now occupies a deliberately broad **pre-erosion** envelope: land fraction `23–30%`, mean land elevation `1.28–1.82 km`, mean standing-ocean depth `3.49–3.81 km`, and p95 solid elevation `4.49–5.91 km`, with exact water-volume closure and no safety clamps. These are calibration guards, not a requirement to reproduce Earth exactly; later erosion and glaciation are still expected to reshape the distribution.
 
@@ -82,7 +100,7 @@ WG-4 consumes WG-3.75 coarse-to-fine inheritance. The intended global production
 
 ## Determinism
 
-Stage identity is `terrain:initial-topography@11` with namespace `terrain:structure:v1`. The topography hash includes stage/version/seed, WG-4 model parameters, planetary parameters, WG-3.75 inheritance identity, fine boundary identity, ordered solid elevation, sea-level state, and ordered water depth. Upstream tectonic/geology/lithosphere/inheritance hashes are not mutated.
+The accepted public stage identity is `terrain:initial-topography@17` with namespace `terrain:historical-material-morphology:v3`. The internal non-orogenic baseline is `terrain:initial-topography@12` / `terrain:structure:v2`. The topography hash includes stage/version/seed, WG-4 model parameters, planetary parameters, WG-3.75 inheritance identity, fine boundary identity, ordered solid elevation, sea-level state, and ordered water depth. Upstream tectonic/geology/lithosphere/inheritance hashes are not mutated.
 
 ## Explicit non-goals
 

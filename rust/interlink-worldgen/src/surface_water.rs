@@ -193,13 +193,17 @@ fn connected_ocean_mask_at_level(
     topology: &GeodesicTopology,
     elevation_m: &[f64],
     ocean_seed_mask: &[u8],
+    ocean_access_mask: Option<&[u8]>,
     sea_level_m: f64,
 ) -> Vec<u8> {
     let count = elevation_m.len();
     let mut connected = vec![0_u8; count];
     let mut queue = VecDeque::new();
     for sample in 0..count {
-        if ocean_seed_mask[sample] != 0 && elevation_m[sample] < sea_level_m {
+        if ocean_seed_mask[sample] != 0
+            && elevation_m[sample] < sea_level_m
+            && ocean_access_mask.map_or(true, |mask| mask[sample] != 0)
+        {
             connected[sample] = 1;
             queue.push_back(sample as u32);
         }
@@ -207,7 +211,10 @@ fn connected_ocean_mask_at_level(
     while let Some(sample) = queue.pop_front() {
         for neighbor in topology.neighbors(sample) {
             let index = *neighbor as usize;
-            if connected[index] == 0 && elevation_m[index] < sea_level_m {
+            if connected[index] == 0
+                && elevation_m[index] < sea_level_m
+                && ocean_access_mask.map_or(true, |mask| mask[index] != 0)
+            {
                 connected[index] = 1;
                 queue.push_back(*neighbor);
             }
@@ -221,6 +228,7 @@ fn solve_connected_sea_level(
     elevation_m: &[f64],
     planet: PlanetPhysicalParameters,
     ocean_seed_mask: &[u8],
+    ocean_access_mask: Option<&[u8]>,
 ) -> (Option<f64>, f64, f64, Vec<u8>) {
     let count = elevation_m.len();
     if planet.surface_water_volume_m3() == 0.0 {
@@ -254,8 +262,13 @@ fn solve_connected_sea_level(
         let Some(level) = level else {
             return (None, 0.0, 0.0, vec![0; count]);
         };
-        let connected =
-            connected_ocean_mask_at_level(topology, elevation_m, ocean_seed_mask, level);
+        let connected = connected_ocean_mask_at_level(
+            topology,
+            elevation_m,
+            ocean_seed_mask,
+            ocean_access_mask,
+            level,
+        );
         let mut grew = false;
         for sample in 0..count {
             if connected[sample] != 0 && active[sample] == 0 {
@@ -391,6 +404,7 @@ fn solve_hydrostatic_surface_water_connected_impl(
     solid_elevation_m: &[f64],
     planet: PlanetPhysicalParameters,
     ocean_seed_mask: &[u8],
+    ocean_access_mask: Option<&[u8]>,
 ) -> Result<HydrostaticSurfaceWaterState, WorldgenError> {
     validate_inputs(topology, solid_elevation_m, planet)?;
     let count = topology.metrics().sample_count as usize;
@@ -399,10 +413,32 @@ fn solve_hydrostatic_surface_water_connected_impl(
             "connected-ocean seed mask is not aligned to topology",
         ));
     }
+    if let Some(access) = ocean_access_mask {
+        if access.len() != count {
+            return Err(WorldgenError::InvalidTopography(
+                "connected-ocean access mask is not aligned to topology",
+            ));
+        }
+        if ocean_seed_mask
+            .iter()
+            .zip(access.iter())
+            .any(|(seed, allowed)| *seed != 0 && *allowed == 0)
+        {
+            return Err(WorldgenError::InvalidTopography(
+                "connected-ocean seed mask contains a cell excluded by the access mask",
+            ));
+        }
+    }
 
     let target_water_volume_m3 = planet.surface_water_volume_m3();
     let (sea_level_m, solved_water_volume_m3, water_volume_relative_error, active_mask) =
-        solve_connected_sea_level(topology, solid_elevation_m, planet, ocean_seed_mask);
+        solve_connected_sea_level(
+            topology,
+            solid_elevation_m,
+            planet,
+            ocean_seed_mask,
+            ocean_access_mask,
+        );
 
     let mut elevation_above_sea_level_m = vec![0.0_f32; count];
     let mut water_depth_m = vec![0.0_f32; count];
@@ -485,20 +521,43 @@ pub fn solve_hydrostatic_surface_water_connected(
         &solid_elevation_m,
         planet,
         ocean_seed_mask,
+        None,
     )
 }
 
-pub(crate) fn solve_hydrostatic_surface_water_connected_f64(
+pub(crate) fn solve_hydrostatic_surface_water_connected_with_access(
+    topology: &GeodesicTopology,
+    solid_elevation_m: &[f32],
+    planet: PlanetPhysicalParameters,
+    ocean_seed_mask: &[u8],
+    ocean_access_mask: &[u8],
+) -> Result<HydrostaticSurfaceWaterState, WorldgenError> {
+    let solid_elevation_m = solid_elevation_m
+        .iter()
+        .map(|value| f64::from(*value))
+        .collect::<Vec<_>>();
+    solve_hydrostatic_surface_water_connected_impl(
+        topology,
+        &solid_elevation_m,
+        planet,
+        ocean_seed_mask,
+        Some(ocean_access_mask),
+    )
+}
+
+pub(crate) fn solve_hydrostatic_surface_water_connected_with_access_f64(
     topology: &GeodesicTopology,
     solid_elevation_m: &[f64],
     planet: PlanetPhysicalParameters,
     ocean_seed_mask: &[u8],
+    ocean_access_mask: &[u8],
 ) -> Result<HydrostaticSurfaceWaterState, WorldgenError> {
     solve_hydrostatic_surface_water_connected_impl(
         topology,
         solid_elevation_m,
         planet,
         ocean_seed_mask,
+        Some(ocean_access_mask),
     )
 }
 
@@ -610,6 +669,41 @@ mod tests {
         assert_eq!(state.metrics.submerged_sample_count, 1);
         assert!((f64::from(state.water_depth_m[0]) - 100.0).abs() < 1.0e-5);
         assert!(state.water_depth_m[1..].iter().all(|value| *value == 0.0));
+    }
+
+    #[test]
+    fn connected_ocean_access_mask_blocks_unsupported_marine_corridors() {
+        let topology = build_icosphere(1).unwrap();
+        let count = topology.metrics().sample_count as usize;
+        let seed = 0usize;
+        let blocked = topology.neighbors(seed as u32)[0] as usize;
+        let mut surface = vec![2_000.0_f32; count];
+        surface[seed] = -1_000.0;
+        surface[blocked] = -1_100.0;
+        let mut ocean_seed_mask = vec![0_u8; count];
+        ocean_seed_mask[seed] = 1;
+        let mut ocean_access_mask = vec![0_u8; count];
+        ocean_access_mask[seed] = 1;
+
+        let mut planet = PlanetPhysicalParameters::earthlike_reference();
+        let physical_cell_area_m2 =
+            topology.dual_area_steradians()[seed] * planet.radius_m * planet.radius_m;
+        let target_volume_m3 = 100.0 * physical_cell_area_m2;
+        planet.surface_water_mass_kg = target_volume_m3 * planet.ocean_water_density_kg_per_m3;
+
+        let state = solve_hydrostatic_surface_water_connected_with_access(
+            &topology,
+            &surface,
+            planet,
+            &ocean_seed_mask,
+            &ocean_access_mask,
+        )
+        .unwrap();
+        assert_eq!(state.submerged_mask[seed], 1);
+        assert_eq!(state.submerged_mask[blocked], 0);
+        assert_eq!(state.water_depth_m[blocked], 0.0);
+        assert!(state.elevation_above_sea_level_m[blocked] < 0.0);
+        assert!(state.metrics.water_volume_relative_error < 1.0e-10);
     }
 
     #[test]

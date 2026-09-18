@@ -3,15 +3,7 @@ use interlink_worldgen::{
     HistoricalEventKind, HistoricalLithosphereRequest, PlanetPhysicalParameters, PlanetTopology,
     PlateBoundaryKind, HISTORICAL_EPOCH_COUNT,
 };
-use std::collections::{BTreeMap, BTreeSet};
-
-fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
-    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-}
-
-fn arc_radians(a: [f64; 3], b: [f64; 3]) -> f64 {
-    dot(a, b).clamp(-1.0, 1.0).acos()
-}
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 // Permanent PR-A acceptance: material identity must survive the complete historical front end,
 // bounded fragment epochs, modern-plate projection, compatibility geology projection, and
@@ -179,6 +171,64 @@ fn verify_seed(seed: &str) -> Result<(), String> {
         ));
     }
 
+    let mut spreading_distance_km = vec![f64::INFINITY; count];
+    let mut spreading_queued = vec![false; count];
+    let mut spreading_queue = VecDeque::<u32>::new();
+    let mut register_spreading_seed = |sample: u32, plate: u16| {
+        let index = sample as usize;
+        if history.crust_kind[index] == CrustKind::Oceanic as u8
+            && history.origin_plate_ids[index] == plate
+            && spreading_distance_km[index] > 0.0
+        {
+            spreading_distance_km[index] = 0.0;
+            if !spreading_queued[index] {
+                spreading_queued[index] = true;
+                spreading_queue.push_back(sample);
+            }
+        }
+    };
+    for boundary in history
+        .ancestral_tectonics
+        .boundaries
+        .iter()
+        .filter(|boundary| boundary.kind == PlateBoundaryKind::Divergent)
+    {
+        for (sample, plate) in [
+            (boundary.sample_a, boundary.plate_a),
+            (boundary.sample_b, boundary.plate_b),
+        ] {
+            register_spreading_seed(sample, plate);
+            for neighbor in topology.neighbors(sample) {
+                register_spreading_seed(*neighbor, plate);
+            }
+        }
+    }
+    while let Some(sample) = spreading_queue.pop_front() {
+        let index = sample as usize;
+        spreading_queued[index] = false;
+        let origin = history.origin_plate_ids[index];
+        let neighbors = topology.neighbors(sample);
+        let lengths = topology.neighbor_arc_lengths_rad(sample);
+        for neighbor_index in 0..neighbors.len() {
+            let neighbor = neighbors[neighbor_index];
+            let ni = neighbor as usize;
+            if history.crust_kind[ni] != CrustKind::Oceanic as u8
+                || history.origin_plate_ids[ni] != origin
+            {
+                continue;
+            }
+            let candidate = spreading_distance_km[index]
+                + lengths[neighbor_index] * planet.radius_m / 1000.0;
+            if candidate + 1.0e-9 < spreading_distance_km[ni] {
+                spreading_distance_km[ni] = candidate;
+                if !spreading_queued[ni] {
+                    spreading_queued[ni] = true;
+                    spreading_queue.push_back(neighbor);
+                }
+            }
+        }
+    }
+
     let mut modern_origins = BTreeMap::<u16, BTreeSet<u16>>::new();
     let mut modern_fragments = BTreeMap::<u16, BTreeSet<u16>>::new();
     let mut origin_to_current =
@@ -243,12 +293,9 @@ fn verify_seed(seed: &str) -> Result<(), String> {
             oceanic_samples += 1;
             oceanic_age_min = oceanic_age_min.min(age);
             oceanic_age_max = oceanic_age_max.max(age);
-            let position = topology.unit_position(sample);
-            let nearest_ridge = divergent_samples
-                .iter()
-                .map(|ridge| arc_radians(position, topology.unit_position(*ridge)))
-                .fold(f64::INFINITY, f64::min);
-            oceanic_distance_age.push((nearest_ridge, f64::from(age)));
+            if spreading_distance_km[index].is_finite() {
+                oceanic_distance_age.push((spreading_distance_km[index], f64::from(age)));
+            }
         }
 
         for neighbor in topology.neighbors(sample) {
@@ -317,6 +364,11 @@ fn verify_seed(seed: &str) -> Result<(), String> {
         ));
     }
 
+    if oceanic_distance_age.len() < 8 {
+        return Err(format!(
+            "{seed}: too little oceanic crust is connected to its ancestral spreading system"
+        ));
+    }
     oceanic_distance_age.sort_by(|left, right| left.0.total_cmp(&right.0));
     let quartile = (oceanic_distance_age.len() / 4).max(1);
     let near_mean_age = oceanic_distance_age[..quartile]
@@ -331,7 +383,7 @@ fn verify_seed(seed: &str) -> Result<(), String> {
         / quartile as f64;
     if far_mean_age <= near_mean_age + 5.0 {
         return Err(format!(
-            "{seed}: oceanic age does not increase away from ancestral spreading geometry: near={near_mean_age:.1}Myr far={far_mean_age:.1}Myr"
+            "{seed}: oceanic age does not increase along ancestral plate-owned spreading paths: near={near_mean_age:.1}Myr far={far_mean_age:.1}Myr"
         ));
     }
 
@@ -402,7 +454,7 @@ fn verify_seed(seed: &str) -> Result<(), String> {
     }
 
     println!(
-        "historical-lithosphere seed={seed} old={} fragments={} parented={} split-events={} modern={} events={} continent={:.1}% transitional={:.1}% ocean={:.1}% ocean-age={:.1}..{:.1}Myr ridge-near={:.1} ridge-far={:.1} multi-origin-modern={} internal-fragment-edges={} internal-origin-edges={} area-closure=ok history={} tectonics={} geology={} inheritance={}",
+        "historical-lithosphere seed={seed} old={} fragments={} parented={} split-events={} modern={} events={} continent={:.1}% transitional={:.1}% ocean={:.1}% ocean-age={:.1}..{:.1}Myr spreading-path-near={:.1} spreading-path-far={:.1} multi-origin-modern={} internal-fragment-edges={} internal-origin-edges={} area-closure=ok history={} tectonics={} geology={} inheritance={}",
         history.metrics.ancestral_plate_count,
         history.metrics.fragment_count,
         parented_fragment_ids.len(),

@@ -1,6 +1,6 @@
 use crate::{
     GeodesicTopology, GeologicalBoundaryRegime, InheritedBoundarySet, InheritedPhysicalState,
-    PlanetPhysicalParameters, TopographyState, WorldgenError,
+    InheritedStructureKind, PlanetPhysicalParameters, TopographyState, WorldgenError,
 };
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
@@ -72,6 +72,37 @@ pub struct QuietOceanMorphology {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct QuietProvenanceContactMorphology {
+    pub contact_edge_count: u64,
+    pub interior_edge_count: u64,
+    pub mean_contact_gradient_m_per_km: f64,
+    pub mean_interior_gradient_m_per_km: f64,
+    pub rms_contact_gradient_m_per_km: f64,
+    pub rms_interior_gradient_m_per_km: f64,
+    pub contact_to_interior_gradient_ratio: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct BoundaryRegimeCoherence {
+    pub edge_count: u32,
+    pub edge_with_same_pair_neighbors_count: u32,
+    pub isolated_regime_edge_count: u32,
+    pub isolated_regime_edge_fraction: f64,
+    pub mean_same_pair_neighbor_agreement: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct InlandMarineMorphology {
+    pub non_oceanic_marine_sample_count: u32,
+    pub non_oceanic_marine_area_m2: f64,
+    pub maximum_distance_from_oceanic_crust_m: f64,
+    pub unsupported_inland_sample_count: u32,
+    pub unsupported_inland_area_m2: f64,
+    pub unsupported_inland_area_fraction: f64,
+    pub maximum_unsupported_distance_from_oceanic_crust_m: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct TopographyMorphologyReport {
     pub topology_level: u8,
     pub sample_count: u32,
@@ -84,7 +115,12 @@ pub struct TopographyMorphologyReport {
     pub arc: TopographyReliefMorphology,
     pub orogen: TopographyReliefMorphology,
     pub ocean_age_depth: Vec<OceanAgeDepthMorphology>,
+    pub ocean_age_depth_monotonic_pair_fraction: f64,
+    pub ocean_age_depth_inversion_count: u32,
     pub quiet_ocean: QuietOceanMorphology,
+    pub quiet_provenance_contacts: QuietProvenanceContactMorphology,
+    pub boundary_regime_coherence: BoundaryRegimeCoherence,
+    pub inland_marine: InlandMarineMorphology,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -127,6 +163,13 @@ fn validate_inputs(
     let lengths = [
         inherited.crust_kind.len(),
         inherited.crust_age_myr.len(),
+        inherited.crust_province_id.len(),
+        inherited.plate_ids.len(),
+        inherited.province_kind.len(),
+        inherited.structural_zone_kind.len(),
+        inherited.rift_history.len(),
+        inherited.subsidence_history.len(),
+        inherited.basin_potential.len(),
         terrain.solid_elevation_m.len(),
         terrain.water_depth_m.len(),
         terrain.submerged_mask.len(),
@@ -535,6 +578,302 @@ fn quiet_ocean_morphology(
     }
 }
 
+
+fn explicit_structure(kind: u8) -> bool {
+    kind == InheritedStructureKind::PaleoSuture as u8
+        || kind == InheritedStructureKind::InheritedRift as u8
+        || kind == InheritedStructureKind::ShearZone as u8
+        || kind == InheritedStructureKind::ContinentalMargin as u8
+}
+
+fn quiet_provenance_contact_morphology(
+    topology: &GeodesicTopology,
+    inherited: &InheritedPhysicalState,
+    planet: PlanetPhysicalParameters,
+    terrain: &TopographyState,
+) -> QuietProvenanceContactMorphology {
+    let mut contact_edge_count = 0_u64;
+    let mut interior_edge_count = 0_u64;
+    let mut contact_weight = 0.0_f64;
+    let mut interior_weight = 0.0_f64;
+    let mut contact_sum = 0.0_f64;
+    let mut interior_sum = 0.0_f64;
+    let mut contact_square_sum = 0.0_f64;
+    let mut interior_square_sum = 0.0_f64;
+
+    for sample in 0..topology.metrics().sample_count {
+        let a = sample as usize;
+        if inherited.crust_kind[a] == CRUST_OCEANIC
+            || inherited.province_kind[a] != 0
+            || explicit_structure(inherited.structural_zone_kind[a])
+            || f64::from(inherited.rift_history[a]) >= 0.18
+            || f64::from(inherited.subsidence_history[a]) >= 0.22
+            || f64::from(inherited.basin_potential[a]) >= 0.24
+        {
+            continue;
+        }
+        for ((neighbor, arc), interface_arc) in topology
+            .neighbors_of(sample)
+            .iter()
+            .zip(topology.neighbor_arc_lengths_of(sample).iter())
+            .zip(topology.neighbor_interface_arc_lengths_of(sample).iter())
+        {
+            if *neighbor <= sample {
+                continue;
+            }
+            let b = *neighbor as usize;
+            if inherited.crust_kind[b] != inherited.crust_kind[a]
+                || inherited.plate_ids[b] != inherited.plate_ids[a]
+                || inherited.province_kind[b] != 0
+                || explicit_structure(inherited.structural_zone_kind[b])
+                || f64::from(inherited.rift_history[b]) >= 0.18
+                || f64::from(inherited.subsidence_history[b]) >= 0.22
+                || f64::from(inherited.basin_potential[b]) >= 0.24
+            {
+                continue;
+            }
+
+            let distance_m = (*arc * planet.radius_m).max(1.0);
+            let gradient = ((f64::from(terrain.solid_elevation_m[a])
+                - f64::from(terrain.solid_elevation_m[b]))
+                .abs()
+                / distance_m)
+                * 1_000.0;
+            let weight = (*interface_arc * planet.radius_m).max(1.0);
+            if inherited.crust_province_id[a] != inherited.crust_province_id[b] {
+                contact_edge_count += 1;
+                contact_weight += weight;
+                contact_sum += gradient * weight;
+                contact_square_sum += gradient * gradient * weight;
+            } else {
+                interior_edge_count += 1;
+                interior_weight += weight;
+                interior_sum += gradient * weight;
+                interior_square_sum += gradient * gradient * weight;
+            }
+        }
+    }
+
+    let mean_contact = if contact_weight > 0.0 {
+        contact_sum / contact_weight
+    } else {
+        0.0
+    };
+    let mean_interior = if interior_weight > 0.0 {
+        interior_sum / interior_weight
+    } else {
+        0.0
+    };
+    QuietProvenanceContactMorphology {
+        contact_edge_count,
+        interior_edge_count,
+        mean_contact_gradient_m_per_km: mean_contact,
+        mean_interior_gradient_m_per_km: mean_interior,
+        rms_contact_gradient_m_per_km: if contact_weight > 0.0 {
+            (contact_square_sum / contact_weight).sqrt()
+        } else {
+            0.0
+        },
+        rms_interior_gradient_m_per_km: if interior_weight > 0.0 {
+            (interior_square_sum / interior_weight).sqrt()
+        } else {
+            0.0
+        },
+        contact_to_interior_gradient_ratio: if mean_interior > 1.0e-12 {
+            mean_contact / mean_interior
+        } else {
+            0.0
+        },
+    }
+}
+
+fn normalized_plate_pair(a: u16, b: u16) -> (u16, u16) {
+    if a < b { (a, b) } else { (b, a) }
+}
+
+fn boundary_regime_coherence(
+    topology: &GeodesicTopology,
+    boundaries: &InheritedBoundarySet,
+) -> BoundaryRegimeCoherence {
+    let mut incident = vec![Vec::<usize>::new(); topology.metrics().sample_count as usize];
+    for (index, edge) in boundaries.boundaries.iter().enumerate() {
+        incident[edge.sample_a as usize].push(index);
+        incident[edge.sample_b as usize].push(index);
+    }
+
+    let mut edges_with_neighbors = 0_u32;
+    let mut isolated = 0_u32;
+    let mut agreement_sum = 0.0_f64;
+    for (index, edge) in boundaries.boundaries.iter().enumerate() {
+        let pair = normalized_plate_pair(edge.plate_a, edge.plate_b);
+        let mut neighboring = Vec::<usize>::new();
+        for sample in [edge.sample_a, edge.sample_b] {
+            for candidate in &incident[sample as usize] {
+                if *candidate != index
+                    && normalized_plate_pair(
+                        boundaries.boundaries[*candidate].plate_a,
+                        boundaries.boundaries[*candidate].plate_b,
+                    ) == pair
+                    && !neighboring.contains(candidate)
+                {
+                    neighboring.push(*candidate);
+                }
+            }
+        }
+        if neighboring.is_empty() {
+            continue;
+        }
+        edges_with_neighbors += 1;
+        let agreeing = neighboring
+            .iter()
+            .filter(|candidate| {
+                boundaries.boundaries[**candidate].geological_regime == edge.geological_regime
+            })
+            .count();
+        agreement_sum += agreeing as f64 / neighboring.len() as f64;
+        if neighboring.len() >= 2 && agreeing == 0 {
+            isolated += 1;
+        }
+    }
+
+    BoundaryRegimeCoherence {
+        edge_count: boundaries.boundaries.len() as u32,
+        edge_with_same_pair_neighbors_count: edges_with_neighbors,
+        isolated_regime_edge_count: isolated,
+        isolated_regime_edge_fraction: if edges_with_neighbors > 0 {
+            f64::from(isolated) / f64::from(edges_with_neighbors)
+        } else {
+            0.0
+        },
+        mean_same_pair_neighbor_agreement: if edges_with_neighbors > 0 {
+            agreement_sum / f64::from(edges_with_neighbors)
+        } else {
+            1.0
+        },
+    }
+}
+
+fn oceanic_crust_distances(
+    topology: &GeodesicTopology,
+    inherited: &InheritedPhysicalState,
+    terrain: &TopographyState,
+    radius_m: f64,
+) -> Vec<f64> {
+    let count = topology.metrics().sample_count as usize;
+    let mut distance = vec![f64::INFINITY; count];
+    let mut queue = BinaryHeap::new();
+    for sample in 0..topology.metrics().sample_count {
+        let index = sample as usize;
+        if inherited.crust_kind[index] == CRUST_OCEANIC && terrain.submerged_mask[index] != 0 {
+            distance[index] = 0.0;
+            queue.push(QueueEntry { distance_m: 0.0, sample });
+        }
+    }
+    while let Some(entry) = queue.pop() {
+        let index = entry.sample as usize;
+        if entry.distance_m > distance[index] + DISTANCE_EPSILON_M {
+            continue;
+        }
+        for (neighbor, arc) in topology
+            .neighbors_of(entry.sample)
+            .iter()
+            .zip(topology.neighbor_arc_lengths_of(entry.sample).iter())
+        {
+            let candidate = entry.distance_m + *arc * radius_m;
+            let ni = *neighbor as usize;
+            if candidate + DISTANCE_EPSILON_M < distance[ni] {
+                distance[ni] = candidate;
+                queue.push(QueueEntry {
+                    distance_m: candidate,
+                    sample: *neighbor,
+                });
+            }
+        }
+    }
+    distance
+}
+
+fn inland_marine_morphology(
+    topology: &GeodesicTopology,
+    inherited: &InheritedPhysicalState,
+    planet: PlanetPhysicalParameters,
+    terrain: &TopographyState,
+) -> InlandMarineMorphology {
+    let distances = oceanic_crust_distances(topology, inherited, terrain, planet.radius_m);
+    let ocean_seed_mask = crate::causal_pipeline::major_ocean_reservoir_seed_mask(
+        topology,
+        &inherited.crust_kind,
+        &terrain.submerged_mask,
+    );
+    let marine_access = crate::causal_pipeline::marine_connectivity_access_mask(
+        topology,
+        inherited,
+        planet,
+        &ocean_seed_mask,
+    );
+    let mut sample_count = 0_u32;
+    let mut area_m2 = 0.0_f64;
+    let mut max_distance = 0.0_f64;
+    let mut unsupported_count = 0_u32;
+    let mut unsupported_area = 0.0_f64;
+    let mut max_unsupported_distance = 0.0_f64;
+
+    for sample in 0..topology.metrics().sample_count as usize {
+        if terrain.submerged_mask[sample] == 0 || inherited.crust_kind[sample] == CRUST_OCEANIC {
+            continue;
+        }
+        let area = topology.dual_area_steradians()[sample] * planet.radius_m * planet.radius_m;
+        sample_count += 1;
+        area_m2 += area;
+        max_distance = max_distance.max(distances[sample]);
+
+        let causal_support = marine_access[sample] != 0;
+        if !causal_support {
+            unsupported_count += 1;
+            unsupported_area += area;
+            max_unsupported_distance = max_unsupported_distance.max(distances[sample]);
+        }
+    }
+
+    InlandMarineMorphology {
+        non_oceanic_marine_sample_count: sample_count,
+        non_oceanic_marine_area_m2: area_m2,
+        maximum_distance_from_oceanic_crust_m: max_distance,
+        unsupported_inland_sample_count: unsupported_count,
+        unsupported_inland_area_m2: unsupported_area,
+        unsupported_inland_area_fraction: if area_m2 > 0.0 {
+            unsupported_area / area_m2
+        } else {
+            0.0
+        },
+        maximum_unsupported_distance_from_oceanic_crust_m: max_unsupported_distance,
+    }
+}
+
+fn ocean_age_depth_monotonicity(
+    bands: &[OceanAgeDepthMorphology],
+) -> (f64, u32) {
+    let populated = bands
+        .iter()
+        .filter(|band| band.sample_count > 0)
+        .collect::<Vec<_>>();
+    if populated.len() < 2 {
+        return (1.0, 0);
+    }
+    let mut comparisons = 0_u32;
+    let mut monotonic = 0_u32;
+    let mut inversions = 0_u32;
+    for pair in populated.windows(2) {
+        comparisons += 1;
+        if pair[1].mean_water_depth_m + 50.0 >= pair[0].mean_water_depth_m {
+            monotonic += 1;
+        } else {
+            inversions += 1;
+        }
+    }
+    (f64::from(monotonic) / f64::from(comparisons.max(1)), inversions)
+}
+
 pub fn analyze_topography_morphology(
     topology: &GeodesicTopology,
     inherited: &InheritedPhysicalState,
@@ -568,6 +907,10 @@ pub fn analyze_topography_morphology(
         boundary_distances(topology, boundaries, planet.radius_m, |regime| {
             regime == GeologicalBoundaryRegime::ContinentalCollision
         });
+
+    let ocean_age_depth = ocean_age_depth_profile(topology, inherited, planet, terrain);
+    let (ocean_age_depth_monotonic_pair_fraction, ocean_age_depth_inversion_count) =
+        ocean_age_depth_monotonicity(&ocean_age_depth);
 
     Ok(TopographyMorphologyReport {
         topology_level: topology.level(),
@@ -634,8 +977,15 @@ pub fn analyze_topography_morphology(
             collision_edges,
             collision_samples,
         ),
-        ocean_age_depth: ocean_age_depth_profile(topology, inherited, planet, terrain),
+        ocean_age_depth,
+        ocean_age_depth_monotonic_pair_fraction,
+        ocean_age_depth_inversion_count,
         quiet_ocean: quiet_ocean_morphology(topology, inherited, boundaries, planet, terrain),
+        quiet_provenance_contacts: quiet_provenance_contact_morphology(
+            topology, inherited, planet, terrain,
+        ),
+        boundary_regime_coherence: boundary_regime_coherence(topology, boundaries),
+        inland_marine: inland_marine_morphology(topology, inherited, planet, terrain),
     })
 }
 
@@ -727,5 +1077,27 @@ mod tests {
         assert!(first.quiet_ocean.mean_gradient_m_per_km.is_finite());
         assert!(first.quiet_ocean.mean_gradient_turn_degrees.is_finite());
         assert!(first.quiet_ocean.rms_gradient_turn_degrees.is_finite());
+        assert!(first
+            .quiet_provenance_contacts
+            .mean_contact_gradient_m_per_km
+            .is_finite());
+        assert!(first
+            .quiet_provenance_contacts
+            .contact_to_interior_gradient_ratio
+            .is_finite());
+        assert!(first
+            .boundary_regime_coherence
+            .isolated_regime_edge_fraction
+            .is_finite());
+        assert!(first
+            .boundary_regime_coherence
+            .mean_same_pair_neighbor_agreement
+            .is_finite());
+        assert!(first.inland_marine.unsupported_inland_area_fraction.is_finite());
+        assert!(first
+            .inland_marine
+            .maximum_unsupported_distance_from_oceanic_crust_m
+            .is_finite());
+        assert!((0.0..=1.0).contains(&first.ocean_age_depth_monotonic_pair_fraction));
     }
 }

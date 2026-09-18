@@ -5,8 +5,8 @@ use crate::{
 };
 
 pub const HISTORICAL_TOPOGRAPHY_STAGE_ID: &str = "terrain:initial-topography";
-pub const HISTORICAL_TOPOGRAPHY_STAGE_VERSION: u32 = 16;
-const HISTORICAL_TOPOGRAPHY_NAMESPACE: &str = "terrain:historical-material-morphology:v2";
+pub const HISTORICAL_TOPOGRAPHY_STAGE_VERSION: u32 = 17;
+const HISTORICAL_TOPOGRAPHY_NAMESPACE: &str = "terrain:historical-material-morphology:v3";
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 
@@ -87,26 +87,25 @@ fn stable_continental_buoyancy_support_m(
     inherited: &InheritedPhysicalState,
     sample: usize,
 ) -> f64 {
-    if inherited.crust_kind[sample] != CrustKind::Continental as u8
-        || inherited.province_kind[sample] != 0
-        || inherited.structural_zone_kind[sample]
-            == InheritedStructureKind::ContinentalMargin as u8
-        || inherited.structural_zone_kind[sample]
-            == InheritedStructureKind::InheritedRift as u8
-    {
+    if inherited.crust_kind[sample] != CrustKind::Continental as u8 {
         return 0.0;
     }
 
-    // Stable continental interiors should retain a modest freeboard advantage from their thick,
-    // buoyant lithospheric columns. This is deliberately a bounded isostatic correction rather
-    // than a land-mask command: active rifts, subsiding basins, passive margins, and active
-    // orogenic provinces retain their own causal topography and may remain submerged.
+    // Continental crust retains a modest freeboard advantage from its thick, buoyant lithospheric
+    // column even when an active orogenic province overlies it. This is deliberately a bounded
+    // isostatic correction rather than a land-mask command: active rifts, subsiding basins, and
+    // passive margins can release the support and may remain submerged.
     let rift = f64::from(inherited.rift_history[sample]).clamp(0.0, 1.0);
     let subsidence = f64::from(inherited.subsidence_history[sample]).clamp(0.0, 1.0);
     let basin = f64::from(inherited.basin_potential[sample]).clamp(0.0, 1.0);
-    let release = clamp01((rift - 0.12) / 0.35)
-        .max(clamp01((subsidence - 0.16) / 0.40))
-        .max(clamp01((basin - 0.18) / 0.45));
+    // Rift history is provenance of extension, not proof that the present crustal column remains
+    // deeply subsided. Let it weaken freeboard modestly on its own, while actual subsidence/basin
+    // state can release the support completely. This prevents ancient rift memory from drowning
+    // most modified continental crust after unrelated ridge uplift is removed.
+    let rift_release = 0.20 * clamp01((rift - 0.20) / 0.50);
+    let subsidence_release = clamp01((subsidence - 0.16) / 0.40);
+    let basin_release = clamp01((basin - 0.18) / 0.45);
+    let release = rift_release.max(subsidence_release).max(basin_release);
     let stability = 1.0 - release;
     if stability <= 0.0 {
         return 0.0;
@@ -121,7 +120,108 @@ fn stable_continental_buoyancy_support_m(
         * (0.84 + 0.16 * thickness)
         * (0.90 + 0.10 * strength);
 
-    480.0 * stability.powf(1.15) * physical_support
+    // Removing cross-plate ridge leakage exposed a calibration shortcut: rifted and
+    // margin continental crust previously lost this entire freeboard term and was partly held
+    // above water by unrelated ridge kernels. Retain a bounded fraction of continental-column
+    // buoyancy instead. Actual thinning/subsidence is still expressed by the history fields and
+    // the crust-thickness term, so modified margins remain preferentially lower than interiors.
+    let structural_retention = match inherited.structural_zone_kind[sample] {
+        value if value == InheritedStructureKind::ContinentalMargin as u8 => 0.32,
+        value if value == InheritedStructureKind::InheritedRift as u8 => 0.42,
+        value if value == InheritedStructureKind::ShearZone as u8 => 0.72,
+        value if value == InheritedStructureKind::PaleoSuture as u8 => 0.78,
+        _ => 1.0,
+    };
+
+    600.0 * stability.powf(1.15) * physical_support * structural_retention
+}
+
+fn stable_support_relaxation_barrier(kind: u8) -> bool {
+    kind == InheritedStructureKind::PaleoSuture as u8
+        || kind == InheritedStructureKind::InheritedRift as u8
+        || kind == InheritedStructureKind::ShearZone as u8
+        || kind == InheritedStructureKind::ContinentalMargin as u8
+}
+
+fn relaxed_stable_continental_support(
+    topology: &GeodesicTopology,
+    inherited: &InheritedPhysicalState,
+) -> Vec<f64> {
+    const PASSES: usize = 3;
+    const RELAXATION: f64 = 0.42;
+    let count = topology.metrics().sample_count as usize;
+    let areas = topology.dual_area_steradians();
+    let mut support = (0..count)
+        .map(|sample| stable_continental_buoyancy_support_m(inherited, sample))
+        .collect::<Vec<_>>();
+    let eligible = (0..count)
+        .map(|sample| {
+            support[sample] > 0.0
+                && inherited.crust_kind[sample] == CrustKind::Continental as u8
+                && inherited.province_kind[sample] == 0
+                && !stable_support_relaxation_barrier(inherited.structural_zone_kind[sample])
+        })
+        .collect::<Vec<_>>();
+
+    let original_weighted = support
+        .iter()
+        .zip(areas.iter())
+        .map(|(value, area)| *value * *area)
+        .sum::<f64>();
+
+    let mut next = support.clone();
+    for _ in 0..PASSES {
+        for sample in 0..count as u32 {
+            let index = sample as usize;
+            if !eligible[index] {
+                next[index] = support[index];
+                continue;
+            }
+
+            let mut weighted_sum = 0.0_f64;
+            let mut weight_sum = 0.0_f64;
+            for neighbor in topology.neighbors_of(sample) {
+                let ni = *neighbor as usize;
+                if !eligible[ni] || inherited.plate_ids[ni] != inherited.plate_ids[index] {
+                    continue;
+                }
+                let weight = areas[ni].max(1.0e-12);
+                weighted_sum += support[ni] * weight;
+                weight_sum += weight;
+            }
+            if weight_sum > 0.0 {
+                let neighbor_mean = weighted_sum / weight_sum;
+                next[index] =
+                    support[index] + RELAXATION * (neighbor_mean - support[index]);
+            } else {
+                next[index] = support[index];
+            }
+        }
+        std::mem::swap(&mut support, &mut next);
+    }
+
+    // Keep the calibrated global freeboard contribution unchanged. The relaxation changes only
+    // how support is distributed through quiet continental interiors, not its area-weighted load.
+    let relaxed_weighted = support
+        .iter()
+        .zip(areas.iter())
+        .map(|(value, area)| *value * *area)
+        .sum::<f64>();
+    let eligible_area = eligible
+        .iter()
+        .zip(areas.iter())
+        .filter_map(|(enabled, area)| enabled.then_some(*area))
+        .sum::<f64>();
+    if eligible_area > 0.0 {
+        let correction = (original_weighted - relaxed_weighted) / eligible_area;
+        for sample in 0..count {
+            if eligible[sample] {
+                support[sample] = (support[sample] + correction).max(0.0);
+            }
+        }
+    }
+
+    support
 }
 
 fn finalize_historical_stage(state: &mut TopographyState, request: &TopographyRequest) {
@@ -171,11 +271,18 @@ fn refresh_water_and_metrics(
     state.water_depth_m = Vec::new();
     state.submerged_mask = Vec::new();
 
-    let water = crate::surface_water::solve_hydrostatic_surface_water_connected(
+    let ocean_access_mask = crate::causal_pipeline::marine_connectivity_access_mask(
+        topology,
+        inherited,
+        planet,
+        &ocean_seed_mask,
+    );
+    let water = crate::surface_water::solve_hydrostatic_surface_water_connected_with_access(
         topology,
         &state.solid_elevation_m,
         planet,
         &ocean_seed_mask,
+        &ocean_access_mask,
     )?;
 
     let minimum_solid_elevation_m = state
@@ -214,7 +321,7 @@ fn refresh_water_and_metrics(
     let mut topography_hash = FNV_OFFSET_BASIS;
     topography_hash = fnv_update(
         topography_hash,
-        b"terrain:historical-continental-hypsometry:v2\0",
+        b"terrain:historical-continental-hypsometry:v3\0",
     );
     topography_hash = fnv_update(topography_hash, &prior_hash.to_le_bytes());
     for value in &state.solid_elevation_m {
@@ -309,9 +416,10 @@ pub fn generate_initial_topography(
 
     let areas = topology.dual_area_steradians();
     let total_area = areas.iter().sum::<f64>().max(1.0e-12);
+    let stable_support = relaxed_stable_continental_support(topology, inherited);
     let mut area_weighted_adjustment = 0.0_f64;
     for sample in 0..count {
-        let support = stable_continental_buoyancy_support_m(inherited, sample);
+        let support = stable_support[sample];
         if support != 0.0 {
             state.isostatic_elevation_m[sample] += support as f32;
             state.solid_elevation_m[sample] += support as f32;

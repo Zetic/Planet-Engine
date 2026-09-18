@@ -102,6 +102,39 @@ fn run(seed: &str, cohort: &str) -> Result<(), String> {
         report.quiet_ocean.mean_gradient_turn_degrees,
         report.quiet_ocean.rms_gradient_turn_degrees,
     );
+    println!(
+        "provenance_leakage\t{cohort}\t{seed}\tcontact_edges={}\tinterior_edges={}\tcontact_gradient_m_per_km={:.6}\tinterior_gradient_m_per_km={:.6}\tcontact_rms_m_per_km={:.6}\tinterior_rms_m_per_km={:.6}\tratio={:.5}",
+        report.quiet_provenance_contacts.contact_edge_count,
+        report.quiet_provenance_contacts.interior_edge_count,
+        report.quiet_provenance_contacts.mean_contact_gradient_m_per_km,
+        report.quiet_provenance_contacts.mean_interior_gradient_m_per_km,
+        report.quiet_provenance_contacts.rms_contact_gradient_m_per_km,
+        report.quiet_provenance_contacts.rms_interior_gradient_m_per_km,
+        report.quiet_provenance_contacts.contact_to_interior_gradient_ratio,
+    );
+    println!(
+        "boundary_coherence\t{cohort}\t{seed}\tedges={}\tedges_with_neighbors={}\tisolated={}\tisolated_fraction={:.6}\tmean_neighbor_agreement={:.6}",
+        report.boundary_regime_coherence.edge_count,
+        report.boundary_regime_coherence.edge_with_same_pair_neighbors_count,
+        report.boundary_regime_coherence.isolated_regime_edge_count,
+        report.boundary_regime_coherence.isolated_regime_edge_fraction,
+        report.boundary_regime_coherence.mean_same_pair_neighbor_agreement,
+    );
+    println!(
+        "inland_marine\t{cohort}\t{seed}\tnon_oceanic_samples={}\tarea_km2={:.0}\tmax_distance_km={:.1}\tunsupported_samples={}\tunsupported_area_km2={:.0}\tunsupported_fraction={:.6}\tmax_unsupported_distance_km={:.1}",
+        report.inland_marine.non_oceanic_marine_sample_count,
+        report.inland_marine.non_oceanic_marine_area_m2 / 1.0e6,
+        report.inland_marine.maximum_distance_from_oceanic_crust_m / 1_000.0,
+        report.inland_marine.unsupported_inland_sample_count,
+        report.inland_marine.unsupported_inland_area_m2 / 1.0e6,
+        report.inland_marine.unsupported_inland_area_fraction,
+        report.inland_marine.maximum_unsupported_distance_from_oceanic_crust_m / 1_000.0,
+    );
+    println!(
+        "ocean_age_causality\t{cohort}\t{seed}\tmonotonic_pair_fraction={:.6}\tinversions={}",
+        report.ocean_age_depth_monotonic_pair_fraction,
+        report.ocean_age_depth_inversion_count,
+    );
     Ok(())
 }
 

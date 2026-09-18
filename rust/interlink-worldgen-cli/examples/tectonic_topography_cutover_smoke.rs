@@ -1,5 +1,6 @@
 use interlink_worldgen::{
-    build_icosphere, generate_crust_and_history, generate_initial_topography, generate_lithosphere,
+    analyze_topography_morphology, build_icosphere, generate_crust_and_history,
+    generate_initial_topography, generate_lithosphere,
     generate_tectonics, inherit_boundary_interfaces, inherit_physical_state, CrustKind,
     GeologyRequest, LithosphereRequest, OrogenProvinceKind, PlanetPhysicalParameters,
     TectonicsRequest, TopographyRequest, TOPOGRAPHY_STAGE_VERSION,
@@ -44,6 +45,9 @@ fn main() -> Result<(), String> {
         &TopographyRequest::new(seed),
     )
     .map_err(|error| error.to_string())?;
+    let morphology =
+        analyze_topography_morphology(&fine, &inherited, &boundaries, planet, &terrain)
+            .map_err(|error| error.to_string())?;
 
     let active_samples = inherited
         .orogenic_history
@@ -124,7 +128,24 @@ fn main() -> Result<(), String> {
         terrain.metrics.topography_hash_hex(),
     );
 
-    if terrain.stage.version != TOPOGRAPHY_STAGE_VERSION || terrain.stage.version != 16 {
+    println!(
+        "PR81 morphology: provenance_edges={} provenance_ratio={:.4} boundary_isolated={}/{} ({:.4}) boundary_agreement={:.4} ocean_age_monotonic={:.4} inversions={} inland_non_oceanic_km2={:.0} unsupported_km2={:.0} unsupported_fraction={:.4} max_unsupported_distance_km={:.0} quiet_ocean_gradient={:.4}",
+        morphology.quiet_provenance_contacts.contact_edge_count,
+        morphology.quiet_provenance_contacts.contact_to_interior_gradient_ratio,
+        morphology.boundary_regime_coherence.isolated_regime_edge_count,
+        morphology.boundary_regime_coherence.edge_with_same_pair_neighbors_count,
+        morphology.boundary_regime_coherence.isolated_regime_edge_fraction,
+        morphology.boundary_regime_coherence.mean_same_pair_neighbor_agreement,
+        morphology.ocean_age_depth_monotonic_pair_fraction,
+        morphology.ocean_age_depth_inversion_count,
+        morphology.inland_marine.non_oceanic_marine_area_m2 / 1.0e6,
+        morphology.inland_marine.unsupported_inland_area_m2 / 1.0e6,
+        morphology.inland_marine.unsupported_inland_area_fraction,
+        morphology.inland_marine.maximum_unsupported_distance_from_oceanic_crust_m / 1_000.0,
+        morphology.quiet_ocean.mean_gradient_m_per_km,
+    );
+
+    if terrain.stage.version != TOPOGRAPHY_STAGE_VERSION || terrain.stage.version != 17 {
         return Err("WG-4 did not route through historical-material topography".to_string());
     }
     if active_samples == 0
@@ -149,6 +170,58 @@ fn main() -> Result<(), String> {
             flooded_continental_orogen, continental_orogen
         ));
     }
+    let provenance = &morphology.quiet_provenance_contacts;
+    if provenance.contact_edge_count == 0 || provenance.interior_edge_count == 0 {
+        return Err("quiet provenance morphology was not exercised".to_string());
+    }
+    if provenance.contact_to_interior_gradient_ratio > 2.0 {
+        return Err(format!(
+            "quiet provenance contacts still over-express as terrain seams: ratio={:.3}",
+            provenance.contact_to_interior_gradient_ratio
+        ));
+    }
+
+    let coherence = &morphology.boundary_regime_coherence;
+    if coherence.isolated_regime_edge_fraction > 0.01
+        || coherence.mean_same_pair_neighbor_agreement < 0.75
+    {
+        return Err(format!(
+            "modern boundary regimes remain locally incoherent: isolated={:.3} agreement={:.3}",
+            coherence.isolated_regime_edge_fraction,
+            coherence.mean_same_pair_neighbor_agreement
+        ));
+    }
+
+    if morphology.ocean_age_depth_inversion_count != 0
+        || morphology.ocean_age_depth_monotonic_pair_fraction < 0.99
+    {
+        return Err(format!(
+            "oceanic age/depth relation is not monotonic: fraction={:.3} inversions={}",
+            morphology.ocean_age_depth_monotonic_pair_fraction,
+            morphology.ocean_age_depth_inversion_count
+        ));
+    }
+
+    let inland = &morphology.inland_marine;
+    if inland.unsupported_inland_sample_count != 0
+        || inland.unsupported_inland_area_fraction > 1.0e-12
+        || inland.maximum_unsupported_distance_from_oceanic_crust_m > 1.0
+    {
+        return Err(format!(
+            "marine mask contains unsupported inland penetration: samples={} fraction={:.6} max_distance_km={:.1}",
+            inland.unsupported_inland_sample_count,
+            inland.unsupported_inland_area_fraction,
+            inland.maximum_unsupported_distance_from_oceanic_crust_m / 1_000.0
+        ));
+    }
+
+    if morphology.quiet_ocean.mean_gradient_m_per_km > 1.5 {
+        return Err(format!(
+            "quiet-ocean bathymetry remains too rough: mean_gradient={:.3} m/km",
+            morphology.quiet_ocean.mean_gradient_m_per_km
+        ));
+    }
+
     if terrain
         .solid_elevation_m
         .iter()
