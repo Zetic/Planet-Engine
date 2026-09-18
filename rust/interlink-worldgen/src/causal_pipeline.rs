@@ -318,7 +318,13 @@ fn relax_quiet_provenance_isostasy(
                     && inherited.province_kind[a] == 0
                     && inherited.province_kind[b] == 0
                     && !explicit_mechanical_structure(inherited.structural_zone_kind[a])
-                    && !explicit_mechanical_structure(inherited.structural_zone_kind[b]);
+                    && !explicit_mechanical_structure(inherited.structural_zone_kind[b])
+                    && f64::from(inherited.rift_history[a]) < 0.18
+                    && f64::from(inherited.rift_history[b]) < 0.18
+                    && f64::from(inherited.subsidence_history[a]) < 0.22
+                    && f64::from(inherited.subsidence_history[b]) < 0.22
+                    && f64::from(inherited.basin_potential[a]) < 0.24
+                    && f64::from(inherited.basin_potential[b]) < 0.24;
                 if !quiet_contact {
                     continue;
                 }
