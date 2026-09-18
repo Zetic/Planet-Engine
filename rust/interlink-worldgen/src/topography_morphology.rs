@@ -12,6 +12,7 @@ pub const TOPOGRAPHY_MORPHOLOGY_OCEAN_AGE_BAND_EDGES_MYR: [f64; 7] =
 pub const TOPOGRAPHY_MORPHOLOGY_QUIET_OCEAN_MIN_BOUNDARY_DISTANCE_M: f64 = 750_000.0;
 
 const CRUST_OCEANIC: u8 = 1;
+const CRUST_TRANSITIONAL: u8 = 2;
 const DISTANCE_EPSILON_M: f64 = 1.0e-6;
 const GRADIENT_EPSILON: f64 = 1.0e-12;
 
@@ -811,7 +812,7 @@ fn inland_marine_morphology(
         max_distance = max_distance.max(distances[sample]);
 
         let structure = inherited.structural_zone_kind[sample];
-        let causal_support = inherited.crust_kind[sample] == 2
+        let causal_support = inherited.crust_kind[sample] == CRUST_TRANSITIONAL
             || structure == InheritedStructureKind::InheritedRift as u8
             || structure == InheritedStructureKind::ContinentalMargin as u8
             || f64::from(inherited.rift_history[sample]) >= 0.18
@@ -897,6 +898,10 @@ pub fn analyze_topography_morphology(
             regime == GeologicalBoundaryRegime::ContinentalCollision
         });
 
+    let ocean_age_depth = ocean_age_depth_profile(topology, inherited, planet, terrain);
+    let (ocean_age_depth_monotonic_pair_fraction, ocean_age_depth_inversion_count) =
+        ocean_age_depth_monotonicity(&ocean_age_depth);
+
     Ok(TopographyMorphologyReport {
         topology_level: topology.level(),
         sample_count: topology.metrics().sample_count,
@@ -962,18 +967,9 @@ pub fn analyze_topography_morphology(
             collision_edges,
             collision_samples,
         ),
-        ocean_age_depth: {
-            let bands = ocean_age_depth_profile(topology, inherited, planet, terrain);
-            bands
-        },
-        ocean_age_depth_monotonic_pair_fraction: {
-            let bands = ocean_age_depth_profile(topology, inherited, planet, terrain);
-            ocean_age_depth_monotonicity(&bands).0
-        },
-        ocean_age_depth_inversion_count: {
-            let bands = ocean_age_depth_profile(topology, inherited, planet, terrain);
-            ocean_age_depth_monotonicity(&bands).1
-        },
+        ocean_age_depth,
+        ocean_age_depth_monotonic_pair_fraction,
+        ocean_age_depth_inversion_count,
         quiet_ocean: quiet_ocean_morphology(topology, inherited, boundaries, planet, terrain),
         quiet_provenance_contacts: quiet_provenance_contact_morphology(
             topology, inherited, planet, terrain,
