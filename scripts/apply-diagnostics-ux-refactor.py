@@ -469,7 +469,7 @@ refreshCrashDebugSummary();
 setDiagnosticCategory('world', 'physical-elevation');
 applyViewPreset(preset.value);
 refreshDiagnosticLegend();
-generationStage.textContent = 'Ready for canonical maximum-fidelity generation';
+generationStage.textContent = 'Ready for canonical L8 generation · maximum fidelity';
 generationStep.textContent = 'L' + WORLDGEN_CLIMATE_COARSE_MAX_LEVEL + ' coarse physical state → L' + WORLDGEN_CLIMATE_FINE_MAX_LEVEL + ' final physical planet';
 status.textContent = 'Ready. Generate the canonical L' + WORLDGEN_CLIMATE_COARSE_MAX_LEVEL + ' → L' + WORLDGEN_CLIMATE_FINE_MAX_LEVEL + ' physical world when you want to allocate the full-resolution state.';"""
 if old not in s:
