@@ -9,8 +9,8 @@ import {
   worldgenTopographyCommand,
 } from '../dist/worldgen/protocol.js';
 
-test('WG-4 browser contract remains available under protocol v22', () => {
-  assert.equal(WORLDGEN_PROTOCOL_VERSION, 22);
+test('WG-4 browser contract remains available under protocol v23', () => {
+  assert.equal(WORLDGEN_PROTOCOL_VERSION, 23);
   assert.equal(WORLDGEN_TOPOGRAPHY_COARSE_MAX_LEVEL, 6);
   assert.equal(WORLDGEN_TOPOGRAPHY_FINE_MAX_LEVEL, 8);
   assert.doesNotThrow(() => validateTopographyRequest({ seed: 'wg4', coarseLevel: 5, fineLevel: 8, plateCount: 18 }));
