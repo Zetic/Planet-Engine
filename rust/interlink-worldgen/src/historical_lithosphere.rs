@@ -7,10 +7,10 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 pub const HISTORICAL_LITHOSPHERE_STAGE_ID: &str = "geology:historical-lithosphere";
 pub const HISTORICAL_LITHOSPHERE_STAGE_VERSION: u32 = 3;
-const HISTORICAL_LITHOSPHERE_NAMESPACE: &str = "worldgen:geology:historical-lithosphere:v3";
+const HISTORICAL_LITHOSPHERE_NAMESPACE: &str = "worldgen:geology:historical-lithosphere:v2";
 const ANCESTRAL_TECTONICS_NAMESPACE: &str = "worldgen:geology:historical-lithosphere:ancestral:v1";
 const FRAGMENT_NAMESPACE: &str = "worldgen:geology:historical-lithosphere:fragments:v1";
-const CRUST_NAMESPACE: &str = "worldgen:geology:historical-lithosphere:crust:v3";
+const CRUST_NAMESPACE: &str = "worldgen:geology:historical-lithosphere:crust:v2";
 const MODERN_GROUPING_NAMESPACE: &str = "worldgen:geology:historical-lithosphere:modern:v2";
 const EVENT_NAMESPACE: &str = "worldgen:geology:historical-lithosphere:events:v1";
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
@@ -468,7 +468,7 @@ fn oceanic_spreading_distance_km<T: PlanetTopology>(
     let mut queued = vec![false; count];
     let mut queue = VecDeque::<u32>::new();
 
-    let mut register_seed = |sample: u32, plate: u16, distance_km: &mut [f64], queued: &mut [bool], queue: &mut VecDeque<u32>| {
+    let register_seed = |sample: u32, plate: u16, distance_km: &mut [f64], queued: &mut [bool], queue: &mut VecDeque<u32>| {
         let index = sample as usize;
         if !sample_carrier[index]
             && sample_origin[index] == plate
