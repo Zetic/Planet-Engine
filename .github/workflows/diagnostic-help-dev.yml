@@ -1,0 +1,35 @@
+name: Validate diagnostic help and overlay legends
+
+on:
+  push:
+    branches:
+      - refactor/diagnostic-help-overlay-legends
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/diagnostic-help-overlay-legends
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build browser modules
+        run: npm run build
+      - name: Run browser regressions
+        run: npm run test:ts
+      - name: Commit generated browser modules
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add dist
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "build(lab): regenerate diagnostic help browser module"
+          git push origin HEAD:refactor/diagnostic-help-overlay-legends
