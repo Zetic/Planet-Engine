@@ -88,3 +88,19 @@
 .worldgen-legend-scale { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; color:#a9bfd8; font-variant-numeric:tabular-nums; }
 .worldgen-legend-scale span:nth-child(2) { text-align:center; }
 .worldgen-legend-scale span:last-child { text-align:right; }
+
+.worldgen-diagnostic-help { border-top: 1px solid #1f2c3d; padding-top: 5px; }
+.worldgen-diagnostic-help summary { cursor: pointer; color: #92a9c3; font-weight: 600; user-select: none; }
+.worldgen-diagnostic-help summary:hover { color: #b9cbe0; }
+.worldgen-diagnostic-help[open] summary { margin-bottom: 7px; }
+.worldgen-diagnostic-help p { margin: 0 0 7px; color: #8197ae; }
+.worldgen-diagnostic-help p:last-child { margin-bottom: 0; }
+.worldgen-diagnostic-help p strong { color: #a9bfd8; font-weight: 600; }
+.worldgen-overlay-legends { display: grid; gap: 8px; }
+.worldgen-overlay-legends[hidden] { display: none; }
+.worldgen-overlay-legend { display: grid; gap: 6px; padding: 9px 10px; border: 1px solid #253246; background: #0a121c; color: #9eb0c4; font-size: 11px; line-height: 1.35; }
+.worldgen-overlay-legend > strong { color: #c1d0df; font-size: 12px; font-weight: 600; }
+.worldgen-overlay-legend p { margin: 0; color: #8197ae; }
+.worldgen-overlay-legend small { color: #6f849d; }
+.worldgen-legend-swatches i.worldgen-legend-line { flex-basis: 24px; width: 24px; height: 3px; border: 0; border-radius: 2px; }
+.worldgen-legend-swatches i.worldgen-legend-vector { background-image: repeating-linear-gradient(90deg, transparent 0 4px, rgba(8,13,20,0.75) 4px 7px); }
