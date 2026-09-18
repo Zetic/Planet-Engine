@@ -5,7 +5,7 @@ use std::collections::VecDeque;
 use std::f64::consts::PI;
 
 pub const LITHOSPHERE_STAGE_ID: &str = "geology:lithosphere-refinement";
-pub const LITHOSPHERE_STAGE_VERSION: u32 = 1;
+pub const LITHOSPHERE_STAGE_VERSION: u32 = 2;
 pub const MAX_TECTONIC_FRAGMENTS: usize = 192;
 const LITHOSPHERE_NAMESPACE: &str = "worldgen:lithosphere:state:v1";
 const MECHANICAL_NAMESPACE: &str = "worldgen:lithosphere:mechanics:v1";
