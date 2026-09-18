@@ -85,6 +85,10 @@ function geologyScalar(result: WorldgenLithosphereResult, geology: WorldgenGeolo
   if (!geology) return null;
   switch (mode) {
     case 'crust-age': return { values: geology.crustAgeMyr, minimum: 0, maximum: 3500, lowHue: 205, highHue: 24 };
+    case 'oceanic-age': return { values: geology.oceanicAgeMyr, minimum: 0, maximum: 220, lowHue: 185, highHue: 285 };
+    case 'continental-basement-age': return { values: geology.continentalBasementAgeMyr, minimum: 0, maximum: 3500, lowHue: 205, highHue: 24 };
+    case 'tectonic-reworking-age': return { values: geology.lastTectonicReworkingAgeMyr, minimum: 0, maximum: 3500, lowHue: 30, highHue: 210 };
+    case 'continental-stability': return { values: geology.continentalStabilityIndex, minimum: 0, maximum: 1, lowHue: 15, highHue: 135 };
     case 'crust-thickness': return { values: geology.crustThicknessKm, minimum: 5, maximum: 56, lowHue: 205, highHue: 350 };
     case 'crust-density': return { values: geology.crustDensityKgPerM3, minimum: 2670, maximum: 3010, lowHue: 48, highHue: 258 };
     case 'buoyancy': return { values: geology.buoyancyIndex, minimum: -1, maximum: 1, lowHue: 250, highHue: 42 };
