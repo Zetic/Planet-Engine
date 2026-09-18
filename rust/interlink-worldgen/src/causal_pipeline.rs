@@ -17,6 +17,7 @@ const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 const CRUST_OCEANIC: u8 = 1;
 const CRUST_TRANSITIONAL: u8 = 2;
+pub(crate) const MAX_QUIET_CONTINENTAL_MARINE_REACH_M: f64 = 600_000.0;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct LithosphericModel {
@@ -486,6 +487,60 @@ fn major_ocean_reservoir_seed_mask(
     seeds
 }
 
+fn marine_support_sample(inherited: &InheritedPhysicalState, sample: usize) -> bool {
+    inherited.crust_kind[sample] == CRUST_OCEANIC
+        || inherited.crust_kind[sample] == CRUST_TRANSITIONAL
+        || inherited.structural_zone_kind[sample] == InheritedStructureKind::InheritedRift as u8
+        || inherited.structural_zone_kind[sample] == InheritedStructureKind::ContinentalMargin as u8
+        || f64::from(inherited.rift_history[sample]) >= 0.18
+        || f64::from(inherited.subsidence_history[sample]) >= 0.22
+        || f64::from(inherited.basin_potential[sample]) >= 0.24
+}
+
+pub(crate) fn marine_connectivity_access_mask(
+    topology: &GeodesicTopology,
+    inherited: &InheritedPhysicalState,
+    planet: PlanetPhysicalParameters,
+) -> Vec<u8> {
+    let count = topology.metrics().sample_count as usize;
+    let mut distance_m = vec![f64::INFINITY; count];
+    let mut queue = VecDeque::<u32>::new();
+
+    for sample in 0..count {
+        if marine_support_sample(inherited, sample) {
+            distance_m[sample] = 0.0;
+            queue.push_back(sample as u32);
+        }
+    }
+
+    // Multi-source bounded relaxation. The reach is deliberately physical-distance based rather
+    // than cell-count based so the coastline rule is resolution independent. Quiet continental
+    // lowlands may be reached for a bounded coastal distance; farther marine penetration requires
+    // rift, margin, subsidence, basin, transitional, or oceanic support.
+    while let Some(sample) = queue.pop_front() {
+        let source_distance = distance_m[sample as usize];
+        for (neighbor, arc) in topology
+            .neighbors_of(sample)
+            .iter()
+            .zip(topology.neighbor_arc_lengths_of(sample).iter())
+        {
+            let candidate = source_distance + *arc * planet.radius_m;
+            let index = *neighbor as usize;
+            if candidate <= MAX_QUIET_CONTINENTAL_MARINE_REACH_M
+                && candidate + 1.0e-6 < distance_m[index]
+            {
+                distance_m[index] = candidate;
+                queue.push_back(*neighbor);
+            }
+        }
+    }
+
+    distance_m
+        .into_iter()
+        .map(|distance| u8::from(distance <= MAX_QUIET_CONTINENTAL_MARINE_REACH_M))
+        .collect()
+}
+
 fn province_relief(inherited: &InheritedPhysicalState, index: usize) -> (f64, f64) {
     let intensity = f64::from(inherited.orogenic_history[index]).clamp(0.0, 1.0);
     let mountain_core = f64::from(inherited.mountain_core_index[index]).clamp(0.0, 1.0);
@@ -647,11 +702,13 @@ pub fn generate_initial_topography(
         &inherited.crust_kind,
         &provisional.submerged_mask,
     );
-    let water = crate::surface_water::solve_hydrostatic_surface_water_connected_f64(
+    let ocean_access_mask = marine_connectivity_access_mask(topology, inherited, planet);
+    let water = crate::surface_water::solve_hydrostatic_surface_water_connected_with_access_f64(
         topology,
         &solid,
         planet,
         &ocean_seed_mask,
+        &ocean_access_mask,
     )?;
     let sea_level = water.metrics.sea_level_m;
     let mut land_area = 0.0;
