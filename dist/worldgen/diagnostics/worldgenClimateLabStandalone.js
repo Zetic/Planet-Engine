@@ -1679,6 +1679,7 @@ const DIAGNOSTIC_UNITS = {
 const CATEGORICAL_LEGENDS = {
     'land-water': [{ label: 'Land', color: '#a99b72' }, { label: 'Ocean / water', color: '#214d7a' }],
     'crust-type': [{ label: 'Continental', color: '#b79a72' }, { label: 'Transitional', color: '#9aab87' }, { label: 'Oceanic', color: '#477aa3' }],
+    'historical-event': [{ label: 'Rift', color: '#f59e42' }, { label: 'Spreading', color: '#50b9e8' }, { label: 'Shear / transform', color: '#7656d6' }, { label: 'Collision', color: '#e94f4f' }, { label: 'Accretion / capture', color: '#e8d35a' }, { label: 'Subduction', color: '#5dd18b' }, { label: 'Other inherited event', color: '#c178df' }],
     'bedrock-class': [
         { label: 'Oceanic basalt', color: '#355f7c' }, { label: 'Oceanic sediment', color: '#768896' }, { label: 'Crystalline basement', color: '#9c765d' },
         { label: 'Orogenic metamorphic', color: '#7b657d' }, { label: 'Arc volcanic', color: '#a94c3d' }, { label: 'Rift volcanic', color: '#b97842' },
@@ -1759,6 +1760,26 @@ function addLegendGradient(lowColor, highColor, lowLabel, middleLabel, highLabel
     }
     diagnosticLegend.append(ramp, labels);
 }
+function addScalarLegendGradient(mode, field) {
+    const ramp = document.createElement('div');
+    ramp.className = 'worldgen-legend-ramp';
+    const stops = [];
+    for (let index = 0; index <= 8; index += 1) {
+        const t = index / 8;
+        const value = field.minimum + (field.maximum - field.minimum) * t;
+        stops.push(scalarColor(value, field) + ' ' + (t * 100).toFixed(1) + '%');
+    }
+    ramp.style.background = 'linear-gradient(90deg, ' + stops.join(', ') + ')';
+    const labels = document.createElement('div');
+    labels.className = 'worldgen-legend-scale';
+    const middle = (field.minimum + field.maximum) * 0.5;
+    for (const value of [formatLegendNumber(mode, field.minimum), formatLegendNumber(mode, middle), formatLegendNumber(mode, field.maximum)]) {
+        const span = document.createElement('span');
+        span.textContent = value;
+        labels.append(span);
+    }
+    diagnosticLegend.append(ramp, labels);
+}
 function customGradientForMode(mode) {
     const gradients = {
         'runoff-fraction': [48, 205, 'fraction'], 'actual-et': [42, 168, 'mm/yr'], 'annual-runoff': [44, 218, 'mm/yr'],
@@ -1784,7 +1805,14 @@ function refreshDiagnosticLegend() {
         return;
     }
     if (IDENTITY_MODES.has(mode)) {
-        addLegendSwatches([{ label: 'ID / domain A', color: historicalIdentityColor(1, 42) }, { label: 'ID / domain B', color: historicalIdentityColor(2, 42) }, { label: 'ID / domain C', color: historicalIdentityColor(3, 42) }]);
+        const colorAt = mode === 'plates' || mode === 'kinematic-domains'
+            ? plateColor
+            : mode === 'basins' || mode === 'flow-direction' || mode === 'depressions'
+                ? discreteDrainageColor
+                : mode === 'provenance' || mode === 'boundary-provenance'
+                    ? provenanceColor
+                    : (id) => historicalIdentityColor(id, mode === 'historical-fragments' ? 104 : mode === 'historical-current' ? 18 : mode === 'historical-provenance' ? 154 : 42);
+        addLegendSwatches([{ label: 'ID / domain A', color: colorAt(1) }, { label: 'ID / domain B', color: colorAt(2) }, { label: 'ID / domain C', color: colorAt(3) }]);
         const note = document.createElement('small');
         note.textContent = 'Hue identifies a deterministic categorical ID; color ordering is not numeric.';
         diagnosticLegend.append(note);
@@ -1801,8 +1829,7 @@ function refreshDiagnosticLegend() {
     if (current) {
         const field = scalarField(current, mode, orbitalPhase());
         if (field) {
-            const middle = (field.minimum + field.maximum) * 0.5;
-            addLegendGradient('hsl(' + field.lowHue + ' 68% 37%)', 'hsl(' + field.highHue + ' 68% 60%)', formatLegendNumber(mode, field.minimum), formatLegendNumber(mode, middle), formatLegendNumber(mode, field.maximum));
+            addScalarLegendGradient(mode, field);
             return;
         }
     }
@@ -1842,6 +1869,18 @@ function selectedDiagnosticSampleText(result, sample) {
         return result.submergedMask[sample] ? 'Water' : 'Land';
     if (mode === 'bedrock-class')
         return bedrockLabel(result.bedrockClass[sample]);
+    if (mode === 'crust-type') {
+        const kind = result.crustKind[sample];
+        return kind === WORLDGEN_CRUST_CONTINENTAL ? 'Continental crust' : kind === WORLDGEN_CRUST_TRANSITIONAL ? 'Transitional crust' : kind === WORLDGEN_CRUST_OCEANIC ? 'Oceanic crust' : 'Crust ' + kind;
+    }
+    if (mode === 'historical-event') {
+        const kind = result.latestHistoricalEventKind[sample];
+        return kind === 1 ? 'Rift' : kind === 2 ? 'Spreading' : kind === 3 ? 'Shear / transform' : kind === 4 ? 'Collision' : kind === 5 ? 'Accretion / capture' : kind === 6 ? 'Subduction' : kind === 7 ? 'Other inherited event' : 'No recent event';
+    }
+    if (mode === 'structural-zones') {
+        const kind = result.structuralZoneKind[sample];
+        return kind === WORLDGEN_STRUCTURE_SUTURE ? 'Suture' : kind === WORLDGEN_STRUCTURE_RIFT ? 'Rift' : kind === WORLDGEN_STRUCTURE_TRANSFORM ? 'Transform' : kind === WORLDGEN_STRUCTURE_CONTINENTAL_MARGIN ? 'Continental margin' : 'No structural zone';
+    }
     if (mode === 'plates')
         return 'Plate ' + result.plateIds[sample].toLocaleString();
     if (mode === 'kinematic-domains')
