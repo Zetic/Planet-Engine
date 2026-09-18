@@ -242,7 +242,7 @@ mod tests {
     }
 
     #[test]
-    fn crust_provenance_ids_are_inert_to_physical_topography() {
+    fn genealogical_labels_and_partitions_are_inert_to_physical_topography() {
         let seed = "province-id-causal-invariance";
         let planet = PlanetPhysicalParameters::earthlike_reference();
         let coarse_level = 3;
@@ -329,7 +329,7 @@ mod tests {
             planet,
         )
         .unwrap();
-        let relabeled_inherited = inherit_physical_state(
+        let mut relabeled_inherited = inherit_physical_state(
             &fine,
             coarse_level,
             &frontend.tectonics,
@@ -341,6 +341,31 @@ mod tests {
         assert_ne!(
             original_inherited.crust_province_id,
             relabeled_inherited.crust_province_id
+        );
+
+        // Broaden the intervention at the fine physical grid: replace both provenance and
+        // fragment partitions with deterministic per-sample categorical labels while every
+        // continuous/event field remains fixed. This destroys the original regional genealogy
+        // geometry rather than merely renumbering its IDs. WG-4 must therefore remain bit-identical
+        // if ancestry is genuinely observational.
+        for (sample, value) in relabeled_inherited.crust_province_id.iter_mut().enumerate() {
+            let marker = *value & 0x8000;
+            let arbitrary = ((sample as u32)
+                .wrapping_mul(251)
+                .wrapping_add(97)
+                % 0x7fff) as u16;
+            *value = marker | arbitrary;
+        }
+        for (sample, value) in relabeled_inherited.fragment_ids.iter_mut().enumerate() {
+            *value = (((sample as u32)
+                .wrapping_mul(193)
+                .wrapping_add(41)
+                % 0xfffe)
+                + 1) as u16;
+        }
+        assert_ne!(
+            original_inherited.fragment_ids,
+            relabeled_inherited.fragment_ids
         );
         assert_eq!(
             original_inherited.crust_thickness_km,
