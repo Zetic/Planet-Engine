@@ -236,6 +236,7 @@ export function buildWorldCalibrationPacket(result, seed, plateCount) {
             tectonic: result.metrics.tectonicHash,
             geology: result.metrics.geologyHash,
             lithosphere: result.metrics.lithosphereHash,
+            lithology: result.lithologyHash,
             inheritance: result.metrics.inheritanceHash,
             topography: result.metrics.topographyHash,
             climate: result.metrics.climateHash,
@@ -396,7 +397,7 @@ export function worldCalibrationMarkdown(result, seed, plateCount) {
         `WG-7D: ${g.filled_depression_count} filled depressions / ${g.filled_sample_count} samples · max fill ${g.maximum_lake_fill_depth_m.toFixed(1)} m · lakes ${g.pre_infill_lake_count} → ${g.post_infill_lake_count}`,
         '',
         '## Causal identity',
-        `\`tectonic ${packet.hashes.tectonic}\` → \`geology ${packet.hashes.geology}\` → \`lithosphere ${packet.hashes.lithosphere}\` → \`topography ${packet.hashes.topography}\` → \`climate ${packet.hashes.climate}\``,
+        `\`tectonic ${packet.hashes.tectonic}\` → \`geology ${packet.hashes.geology}\` → \`lithosphere ${packet.hashes.lithosphere}\` → \`topography ${packet.hashes.topography}\` → \`lithology ${packet.hashes.lithology}\` → \`climate ${packet.hashes.climate}\``,
         `\`drainage ${packet.hashes.final_drainage}\` → \`runoff ${packet.hashes.final_runoff}\` → \`lakes ${packet.hashes.final_lake}\` → \`seasonal ${packet.hashes.final_seasonal}\` → \`erosion ${packet.hashes.erosion}\` → \`evolution ${packet.hashes.evolution}\` → \`infill ${packet.hashes.infill}\``,
         '',
     ];

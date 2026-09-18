@@ -211,6 +211,15 @@ export class WasmWorldgenClimate {
         return v1;
     }
     /**
+     * @returns {Uint8Array}
+     */
+    bedrock_class() {
+        const ret = wasm.wasmworldgenclimate_bedrock_class(this.__wbg_ptr);
+        var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        return v1;
+    }
+    /**
      * @returns {Uint32Array}
      */
     boundary_coarse_source_indices() {
@@ -249,6 +258,15 @@ export class WasmWorldgenClimate {
     boundary_samples() {
         const ret = wasm.wasmworldgenclimate_boundary_samples(this.__wbg_ptr);
         var v1 = getArrayU32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    carbonate_fraction() {
+        const ret = wasm.wasmworldgenclimate_carbonate_fraction(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
         return v1;
     }
@@ -1049,6 +1067,15 @@ export class WasmWorldgenClimate {
         } finally {
             wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
         }
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    fines_fraction() {
+        const ret = wasm.wasmworldgenclimate_fines_fraction(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
     }
     /**
      * @returns {number}
@@ -2041,6 +2068,67 @@ export class WasmWorldgenClimate {
         return v1;
     }
     /**
+     * @returns {Float32Array}
+     */
+    lithology_erodibility_index() {
+        const ret = wasm.wasmworldgenclimate_lithology_erodibility_index(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {string}
+     */
+    lithology_hash_hex() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmworldgenclimate_lithology_hash_hex(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {string}
+     */
+    lithology_stage_id() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmworldgenclimate_lithology_stage_id(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {string}
+     */
+    lithology_stage_seed_hex() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.wasmworldgenclimate_lithology_stage_seed_hex(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * @returns {number}
+     */
+    lithology_stage_version() {
+        const ret = wasm.wasmworldgenclimate_lithology_stage_version(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
      * @returns {string}
      */
     lithosphere_hash_hex() {
@@ -2552,6 +2640,15 @@ export class WasmWorldgenClimate {
      */
     passive_margin_index() {
         const ret = wasm.wasmworldgenclimate_passive_margin_index(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    permeability_index() {
+        const ret = wasm.wasmworldgenclimate_permeability_index(this.__wbg_ptr);
         var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
         return v1;
@@ -3109,6 +3206,15 @@ export class WasmWorldgenClimate {
      */
     rift_basin_elevation_m() {
         const ret = wasm.wasmworldgenclimate_rift_basin_elevation_m(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    rock_strength_index() {
+        const ret = wasm.wasmworldgenclimate_rock_strength_index(this.__wbg_ptr);
         var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
         return v1;
@@ -3870,6 +3976,15 @@ export class WasmWorldgenClimate {
      */
     weakness_index() {
         const ret = wasm.wasmworldgenclimate_weakness_index(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    weathering_susceptibility() {
+        const ret = wasm.wasmworldgenclimate_weathering_susceptibility(this.__wbg_ptr);
         var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
         return v1;

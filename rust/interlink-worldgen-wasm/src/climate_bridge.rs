@@ -3,21 +3,22 @@ use interlink_worldgen::{
     generate_coupled_climate_with_diagnostics, generate_crust_and_history,
     generate_drainage_topology, generate_fluvial_erosion_sediment, generate_historical_frontend,
     generate_initial_topography, generate_lake_sediment_infill, generate_lakes_closed_basins,
-    generate_lithosphere, generate_lithosphere_from_history, generate_post_erosion_hydrology,
-    generate_runoff_discharge, generate_seasonal_hydrology, generate_tectonics,
-    inherit_boundary_interfaces, inherit_historical_identity, inherit_physical_state,
-    ClimatePhysicalParameters, ClimateRequest, ClimateState, DrainageRequest,
-    FluvialErosionRequest, FluvialErosionState, GeodesicTopology, GeologyRequest,
+    generate_lithology_substrate, generate_lithosphere, generate_lithosphere_from_history,
+    generate_post_erosion_hydrology, generate_runoff_discharge, generate_seasonal_hydrology,
+    generate_tectonics, inherit_boundary_interfaces, inherit_historical_identity,
+    inherit_physical_state, ClimatePhysicalParameters, ClimateRequest, ClimateState,
+    DrainageRequest, FluvialErosionRequest, FluvialErosionState, GeodesicTopology, GeologyRequest,
     HistoricalLithosphereRequest, InheritedBoundarySet, InheritedHistoricalIdentity,
     InheritedPhysicalState, LakeRequest, LakeSedimentInfillRequest, LakeSedimentInfillState,
-    LithosphereRequest, PlanetPhysicalParameters, PostErosionHydrologyMetrics,
-    PostErosionHydrologyRequest, PostErosionHydrologyState, RunoffRequest,
-    SeasonalHydrologyRequest, StageIdentity, TectonicsRequest, TerrainEvolutionRequest,
-    TerrainEvolutionState, TopographyRequest, TopographyState, WORLDGEN_ENGINE_VERSION,
+    LithologyRequest, LithologyState, LithosphereRequest, PlanetPhysicalParameters,
+    PostErosionHydrologyMetrics, PostErosionHydrologyRequest, PostErosionHydrologyState,
+    RunoffRequest, SeasonalHydrologyRequest, StageIdentity, TectonicsRequest,
+    TerrainEvolutionRequest, TerrainEvolutionState, TopographyRequest, TopographyState,
+    WORLDGEN_ENGINE_VERSION,
 };
 use wasm_bindgen::prelude::*;
 
-const GENERATION_STAGE_COUNT: u32 = 18;
+const GENERATION_STAGE_COUNT: u32 = 19;
 
 fn report_generation_progress(
     callback: Option<&js_sys::Function>,
@@ -68,6 +69,7 @@ pub struct WasmWorldgenClimate {
     fossil_orogen_intensity: Vec<f32>,
     boundaries: InheritedBoundarySet,
     terrain: TopographyState,
+    lithology: LithologyState,
     climate: ClimateState,
     erosion: FluvialErosionState,
     evolution: TerrainEvolutionState,
@@ -195,6 +197,15 @@ impl WasmWorldgenClimate {
         )
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
         report_generation_progress(progress, "topography", 7, 1, 1);
+        report_generation_progress(progress, "lithology-substrate", 8, 0, 1);
+        let lithology = generate_lithology_substrate(
+            &fine_topology,
+            &inherited,
+            &historical_identity,
+            &LithologyRequest::new(seed.as_str()),
+        )
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        report_generation_progress(progress, "lithology-substrate", 8, 1, 1);
         inherited.release_topography_scratch();
         let coarse_topology_hash = coarse_topology.metrics().topology_hash_hex();
         let tectonic_hash = tectonics.metrics.tectonic_hash_hex();
@@ -209,7 +220,7 @@ impl WasmWorldgenClimate {
         report_generation_progress(
             progress,
             "climate-spinup",
-            8,
+            9,
             0,
             climate_request.parameters.maximum_spinup_years as u32,
         );
@@ -231,7 +242,7 @@ impl WasmWorldgenClimate {
         )
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
 
-        report_generation_progress(progress, "drainage-topology", 9, 0, 1);
+        report_generation_progress(progress, "drainage-topology", 10, 0, 1);
         let drainage = generate_drainage_topology(
             &fine_topology,
             &terrain,
@@ -239,9 +250,9 @@ impl WasmWorldgenClimate {
             &DrainageRequest::new(seed.as_str()),
         )
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
-        report_generation_progress(progress, "drainage-topology", 9, 1, 1);
+        report_generation_progress(progress, "drainage-topology", 10, 1, 1);
 
-        report_generation_progress(progress, "runoff-discharge", 10, 0, 1);
+        report_generation_progress(progress, "runoff-discharge", 11, 0, 1);
         let runoff = generate_runoff_discharge(
             &fine_topology,
             &terrain,
@@ -251,9 +262,9 @@ impl WasmWorldgenClimate {
             &RunoffRequest::new(seed.as_str()),
         )
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
-        report_generation_progress(progress, "runoff-discharge", 10, 1, 1);
+        report_generation_progress(progress, "runoff-discharge", 11, 1, 1);
 
-        report_generation_progress(progress, "lake-equilibrium", 11, 0, 1);
+        report_generation_progress(progress, "lake-equilibrium", 12, 0, 1);
         let lakes = generate_lakes_closed_basins(
             &fine_topology,
             &terrain,
@@ -264,9 +275,9 @@ impl WasmWorldgenClimate {
             &LakeRequest::new(seed.as_str()),
         )
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
-        report_generation_progress(progress, "lake-equilibrium", 11, 1, 1);
+        report_generation_progress(progress, "lake-equilibrium", 12, 1, 1);
 
-        report_generation_progress(progress, "seasonal-hydrology", 12, 0, 1);
+        report_generation_progress(progress, "seasonal-hydrology", 13, 0, 1);
         let seasonal = generate_seasonal_hydrology(
             &fine_topology,
             &terrain,
@@ -279,9 +290,9 @@ impl WasmWorldgenClimate {
             &SeasonalHydrologyRequest::new(seed.as_str()),
         )
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
-        report_generation_progress(progress, "seasonal-hydrology", 12, 1, 1);
+        report_generation_progress(progress, "seasonal-hydrology", 13, 1, 1);
 
-        report_generation_progress(progress, "fluvial-erosion-sediment", 13, 0, 1);
+        report_generation_progress(progress, "fluvial-erosion-sediment", 14, 0, 1);
         let mut erosion = generate_fluvial_erosion_sediment(
             &fine_topology,
             &inherited,
@@ -293,10 +304,10 @@ impl WasmWorldgenClimate {
             &FluvialErosionRequest::new(seed.as_str()),
         )
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
-        report_generation_progress(progress, "fluvial-erosion-sediment", 13, 1, 1);
+        report_generation_progress(progress, "fluvial-erosion-sediment", 14, 1, 1);
         inherited.release_post_erosion_scratch();
 
-        report_generation_progress(progress, "bounded-terrain-evolution", 14, 0, 1);
+        report_generation_progress(progress, "bounded-terrain-evolution", 15, 0, 1);
         let mut evolution = generate_bounded_terrain_evolution(
             &fine_topology,
             &terrain,
@@ -308,9 +319,9 @@ impl WasmWorldgenClimate {
             &TerrainEvolutionRequest::new(seed.as_str()),
         )
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
-        report_generation_progress(progress, "bounded-terrain-evolution", 14, 1, 1);
+        report_generation_progress(progress, "bounded-terrain-evolution", 15, 1, 1);
 
-        report_generation_progress(progress, "post-erosion-hydrology", 15, 0, 1);
+        report_generation_progress(progress, "post-erosion-hydrology", 16, 0, 1);
         let mut reconciliation = generate_post_erosion_hydrology(
             &fine_topology,
             &terrain,
@@ -325,7 +336,7 @@ impl WasmWorldgenClimate {
             &PostErosionHydrologyRequest::new(seed.as_str()),
         )
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
-        report_generation_progress(progress, "post-erosion-hydrology", 15, 1, 1);
+        report_generation_progress(progress, "post-erosion-hydrology", 16, 1, 1);
 
         // These pre-erosion states have reached their final consumer. End their heap lifetime
         // before WG-7D allocates another seasonal solution.
@@ -333,7 +344,7 @@ impl WasmWorldgenClimate {
         drop(runoff);
         reconciliation.compact_for_infill();
 
-        report_generation_progress(progress, "lake-sediment-infill", 16, 0, 1);
+        report_generation_progress(progress, "lake-sediment-infill", 17, 0, 1);
         let mut infill = generate_lake_sediment_infill(
             &fine_topology,
             &terrain,
@@ -348,7 +359,7 @@ impl WasmWorldgenClimate {
             &LakeSedimentInfillRequest::new(seed.as_str()),
         )
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
-        report_generation_progress(progress, "lake-sediment-infill", 16, 1, 1);
+        report_generation_progress(progress, "lake-sediment-infill", 17, 1, 1);
 
         evolution.release_post_infill_scratch();
         erosion.release_post_infill_scratch();
@@ -398,6 +409,7 @@ impl WasmWorldgenClimate {
             fossil_orogen_intensity,
             boundaries,
             terrain,
+            lithology,
             climate,
             erosion,
             evolution,
@@ -663,6 +675,39 @@ impl WasmWorldgenClimate {
     }
     pub fn crust_birth_age_myr(&self) -> Vec<f32> {
         self.historical_identity.crust_birth_age_myr.clone()
+    }
+    pub fn lithology_stage_id(&self) -> String {
+        self.lithology.stage.id.to_owned()
+    }
+    pub fn lithology_stage_version(&self) -> u32 {
+        self.lithology.stage.version
+    }
+    pub fn lithology_stage_seed_hex(&self) -> String {
+        format!("{:016x}", self.lithology.stage.derived_seed)
+    }
+    pub fn lithology_hash_hex(&self) -> String {
+        self.lithology.metrics.lithology_hash_hex()
+    }
+    pub fn bedrock_class(&self) -> Vec<u8> {
+        self.lithology.bedrock_class.clone()
+    }
+    pub fn rock_strength_index(&self) -> Vec<f32> {
+        self.lithology.rock_strength_index.clone()
+    }
+    pub fn lithology_erodibility_index(&self) -> Vec<f32> {
+        self.lithology.erodibility_index.clone()
+    }
+    pub fn permeability_index(&self) -> Vec<f32> {
+        self.lithology.permeability_index.clone()
+    }
+    pub fn weathering_susceptibility(&self) -> Vec<f32> {
+        self.lithology.weathering_susceptibility.clone()
+    }
+    pub fn fines_fraction(&self) -> Vec<f32> {
+        self.lithology.fines_fraction.clone()
+    }
+    pub fn carbonate_fraction(&self) -> Vec<f32> {
+        self.lithology.carbonate_fraction.clone()
     }
     pub fn latest_historical_event_kind(&self) -> Vec<u8> {
         self.latest_event_kind.clone()

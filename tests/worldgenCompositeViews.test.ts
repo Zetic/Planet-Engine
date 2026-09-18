@@ -3,8 +3,8 @@ import fs from 'node:fs';
 import test from 'node:test';
 import { WORLDGEN_PROTOCOL_VERSION } from '../dist/worldgen/protocol.js';
 
-test('composite physical-world views retain WG-7C diagnostics under protocol v21', () => {
-  assert.equal(WORLDGEN_PROTOCOL_VERSION, 21);
+test('composite physical-world views retain WG-7C diagnostics under protocol v22', () => {
+  assert.equal(WORLDGEN_PROTOCOL_VERSION, 22);
   const html = fs.readFileSync('index.html', 'utf8');
   const source = fs.readFileSync('src/worldgen/diagnostics/worldgenClimateLabStandalone.ts', 'utf8');
   assert.match(html, /id="worldgen-preset"/);
@@ -59,7 +59,7 @@ test('WG-7D final physical world uses post-infill terrain and final hydrology an
   const protocol = fs.readFileSync('src/worldgen/protocol.ts', 'utf8');
   const worker = fs.readFileSync('src/worldgen/worldgenWorker.ts', 'utf8');
   const lab = fs.readFileSync('src/worldgen/diagnostics/worldgenClimateLabStandalone.ts', 'utf8');
-  assert.match(protocol, /WORLDGEN_PROTOCOL_VERSION = 21/);
+  assert.match(protocol, /WORLDGEN_PROTOCOL_VERSION = 22/);
   assert.match(protocol, /infillMetrics: WorldgenLakeSedimentInfillMetrics/);
   assert.match(protocol, /postInfillSolidElevationM: Float32Array/);
   assert.match(worker, /infill_post_infill_drainage_hash_hex/);

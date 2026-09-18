@@ -28,6 +28,8 @@ test('cumulative protocol carries compact historical diagnostics', () => {
     'crustBirthAgeMyr', 'latestHistoricalEventKind', 'historicalRiftIntensity',
     'historicalSutureIntensity', 'passiveMarginIndex', 'activeOrogenIntensity',
     'fossilOrogenIntensity',
+    'bedrockClass', 'rockStrengthIndex', 'lithologyErodibilityIndex', 'permeabilityIndex',
+    'weatheringSusceptibility', 'finesFraction', 'carbonateFraction',
   ]) assert.match(protocol, new RegExp(`${field}:`));
 });
 
