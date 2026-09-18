@@ -346,7 +346,7 @@ mod tests {
         // Broaden the intervention at the fine physical grid: replace both provenance and
         // fragment partitions with deterministic per-sample categorical labels while every
         // continuous/event field remains fixed. This destroys the original regional genealogy
-        // geometry rather than merely renumbering its IDs. WG-4 must therefore remain bit-identical
+        // geometry rather than merely renumbering its IDs. WG-4 must remain bit-identical
         // if ancestry is genuinely observational.
         for (sample, value) in relabeled_inherited.crust_province_id.iter_mut().enumerate() {
             let marker = *value & 0x8000;
