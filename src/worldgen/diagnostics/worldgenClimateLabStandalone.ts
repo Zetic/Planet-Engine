@@ -1654,7 +1654,7 @@ const DIAGNOSTIC_SUMMARIES: Record<string, string> = {
   "dynamic-support": "Shows the signed mantle-dynamic support index. Positive values favor broad support or uplift; negative values favor broad downward support.",
   "structural-zones": "Classifies inherited structural zones such as sutures, rifts, transforms, and continental margins.",
   "fragmentation": "Shows the modeled propensity for lithosphere to fragment under tectonic history and inherited weakness. Higher values indicate greater susceptibility.",
-  "bedrock-class": "Shows the persistent WG-4.5 bedrock class derived from crust type, tectonic history, structure, and fragment provenance.",
+  "bedrock-class": "Shows the persistent WG-4.5 bedrock class derived from crust type, continuous material history, tectonic structure, basin state, and lithospheric mechanics. Historical fragment IDs are diagnostic genealogy and do not select the class.",
   "rock-strength": "Shows bedrock-scale mechanical resistance intended for later surface-process work. Higher values mean more resistant substrate.",
   "lithology-erodibility": "Shows the substrate's intrinsic tendency to be eroded. Higher values mean the material is easier to remove under otherwise similar forcing.",
   "permeability": "Shows the relative ability of the substrate to transmit water through the material. Higher values represent more permeable substrate.",
