@@ -146,6 +146,7 @@ fn historical_pre_hash(
     hash = hash_f32(hash, &model.effective_elastic_thickness_km);
     hash = hash_f32(hash, &model.inherited_fabric_strength);
     hash = hash_u8(hash, &model.inherited_structure_kind);
+    hash = hash_f32(hash, &model.province_boundary_index);
     hash = hash_f32(hash, &model.inherited_rift_memory);
     hash = hash_f32(hash, &model.inherited_shear_memory);
     hash = hash_f32(hash, &model.fragmentation_propensity);
@@ -213,6 +214,18 @@ pub fn generate_pre_orogenic_lithosphere_from_history<T: PlanetTopology>(
             .max(craton_boundary)
             .clamp(0.0, 1.0);
         model.inherited_fabric_strength[sample] = historical_fabric as f32;
+
+        // Crust province identity is material ancestry, not a mechanical discontinuity.
+        // Downstream orogen propagation reads this index, so replace the raw categorical
+        // mismatch with an event-backed mechanical-contact signal. Quiet ancestry contacts
+        // retain only the bounded cratonic fallback; actual sutures/rifts/shear/margins remain strong.
+        model.province_boundary_index[sample] = craton_boundary
+            .max(historical_suture * 0.90)
+            .max(rift * 0.68)
+            .max(shear * 0.62)
+            .max(passive_margin * 0.72)
+            .max(fossil_orogen * 0.42)
+            .clamp(0.0, 1.0) as f32;
 
         model.inherited_structure_kind[sample] = if historical_fabric < 0.20 {
             InheritedStructureKind::None as u8
@@ -362,5 +375,51 @@ mod tests {
         assert!(weak_age_break <= 0.08 + f64::EPSILON);
         assert!(event_owned <= f64::EPSILON);
         assert!(quiet < 0.35);
+    }
+
+    #[test]
+    fn quiet_material_contacts_do_not_survive_as_strong_mechanical_province_edges() {
+        let topology = build_icosphere(4).unwrap();
+        let planet = PlanetPhysicalParameters::earthlike_reference();
+        let seed = "historical-quiet-provenance-boundary";
+        let frontend = generate_historical_frontend(
+            &topology,
+            &HistoricalLithosphereRequest::new(seed, 16),
+            planet,
+        )
+        .unwrap();
+        let active_history = generate_tectonic_history(
+            &topology,
+            &frontend.tectonics,
+            &TectonicHistoryRequest::new(seed),
+            planet,
+        )
+        .unwrap();
+        let morphology = build_historical_tectonic_morphology(
+            &topology,
+            &frontend.historical,
+            &frontend.tectonics,
+            seed,
+        )
+        .unwrap();
+        let model = generate_pre_orogenic_lithosphere_from_history(
+            &topology,
+            &frontend.tectonics,
+            &active_history,
+            &frontend.geology,
+            &morphology,
+            &PreOrogenicLithosphereRequest::new(seed),
+        )
+        .unwrap();
+
+        for sample in 0..topology.sample_count() as usize {
+            let explicit = material_history_signal(&morphology, sample);
+            if explicit < 0.20
+                && model.inherited_structure_kind[sample]
+                    == InheritedStructureKind::CratonBoundary as u8
+            {
+                assert!(model.province_boundary_index[sample] <= 0.22 + f32::EPSILON);
+            }
+        }
     }
 }
