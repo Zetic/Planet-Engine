@@ -11,6 +11,7 @@ const HISTORICAL_LITHOSPHERE_NAMESPACE: &str = "worldgen:geology:historical-lith
 const ANCESTRAL_TECTONICS_NAMESPACE: &str = "worldgen:geology:historical-lithosphere:ancestral:v1";
 const FRAGMENT_NAMESPACE: &str = "worldgen:geology:historical-lithosphere:fragments:v1";
 const CRUST_NAMESPACE: &str = "worldgen:geology:historical-lithosphere:crust:v2";
+const OCEANIC_SPREADING_KM_PER_MYR: f64 = 25.0;
 const MODERN_GROUPING_NAMESPACE: &str = "worldgen:geology:historical-lithosphere:modern:v2";
 const EVENT_NAMESPACE: &str = "worldgen:geology:historical-lithosphere:events:v1";
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
@@ -667,7 +668,7 @@ fn build_plate_owned_crust<T: PlanetTopology>(
             ),
             CrustKind::Oceanic => {
                 let age = if spreading_distance_km[sample_index].is_finite() {
-                    (spreading_distance_km[sample_index] / 32.0).clamp(0.0, 220.0)
+                    (spreading_distance_km[sample_index] / OCEANIC_SPREADING_KM_PER_MYR).clamp(0.0, 220.0)
                 } else {
                     110.0 + 90.0 * local_random
                 };
