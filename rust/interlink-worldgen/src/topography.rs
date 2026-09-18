@@ -716,7 +716,10 @@ pub fn generate_initial_topography(
         let transitional_ridge_crust_gate = match inherited.crust_kind[i] {
             CRUST_OCEANIC => 0.30,
             CRUST_TRANSITIONAL => 1.0,
-            _ => 0.55,
+            // Transitional divergence is the rift-shoulder/uplift side of the same causal
+            // continental breakup system. Keep its full response on continental crust, while
+            // pure-oceanic ridge relief remains excluded from continents.
+            _ => 1.0,
         };
         ridge[i] = p.ridge_uplift_scale_m
             * if oceanic_is_nearest {
