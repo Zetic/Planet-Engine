@@ -2,11 +2,11 @@
 
 WG-4.5 converts the accepted historical lithosphere into persistent material properties for later surface-process stages. It is deliberately downstream of tectonic/crust history and initial topography, and upstream of the later lithology-aware erosion, weathering, glacial, soil, and resource systems.
 
-Stage identity: `geology:lithology-substrate@1`.
+Stage identity: `geology:lithology-substrate@2`.
 
 ## Causal contract
 
-WG-4.5 consumes the fine inherited physical state plus fine historical material identity. Bedrock is therefore derived from crust kind/age/thickness, tectonic history, inherited structures, active/fossil orogenic state, and persistent `origin_plate_id` / `fragment_id` provenance. It must not regenerate geology from terrain shape or introduce per-cell decorative noise.
+WG-4.5 consumes the fine inherited physical state plus fine historical identity for alignment/diagnostics. Bedrock physics is derived from crust kind, separated oceanic/reworking clocks, crustal mechanics, tectonic history, inherited structures, active/fossil orogenic state, subsidence/basin state, and continuous stability. Persistent `origin_plate_id` / `fragment_id` values are genealogy only: relabeling those categorical IDs while holding the physical state fixed must not change bedrock class or any continuous substrate property. The stage must not regenerate geology from terrain shape or introduce per-cell decorative noise.
 
 The first-pass bedrock classes are:
 
@@ -29,7 +29,7 @@ The dense normalized material fields are:
 - `fines_fraction`;
 - `carbonate_fraction`.
 
-Fragment-scale compositional variation is deterministic and keyed by historical origin/fragment identity. This preserves coherent material domains instead of painting independent sample noise over the planet.
+Compositional variation is carried by continuous geological state rather than fragment-keyed random bias. Accreted terrane, carbonate, volcanic, sedimentary, and metamorphic classes require physical deformation, basin, thermal, stability, or structural evidence. Quiet ancestry contacts therefore do not become substrate seams merely because their IDs differ.
 
 ## Placement in the physical pipeline
 
@@ -46,8 +46,8 @@ WG-4.5 does **not** modify topography in this PR. Existing WG-7A/B erosion and t
 - oceanic/non-oceanic class consistency;
 - hard crystalline/metamorphic substrate to be substantially stronger and less erodible than sedimentary substrate;
 - carbonate platforms to retain strong carbonate identity when present;
-- persistent fragment provenance to remain materially legible;
-- material contrast not to collapse at historical fragment boundaries.
+- hard/soft and carbonate contrasts to remain physically legible without categorical ancestry forcing;
+- a deterministic ancestry-ID intervention to leave the complete WG-4.5 state bit-identical.
 
 The cumulative Planet Engine Lab exposes categorical bedrock and all six continuous substrate fields so visual review can compare lithology directly with crust, provenance, tectonic structures, and physical terrain.
 
