@@ -102,7 +102,7 @@ fn stable_continental_buoyancy_support_m(
     // deeply subsided. Let it weaken freeboard modestly on its own, while actual subsidence/basin
     // state can release the support completely. This prevents ancient rift memory from drowning
     // most modified continental crust after unrelated ridge uplift is removed.
-    let rift_release = 0.35 * clamp01((rift - 0.20) / 0.50);
+    let rift_release = 0.20 * clamp01((rift - 0.20) / 0.50);
     let subsidence_release = clamp01((subsidence - 0.16) / 0.40);
     let basin_release = clamp01((basin - 0.18) / 0.45);
     let release = rift_release.max(subsidence_release).max(basin_release);
