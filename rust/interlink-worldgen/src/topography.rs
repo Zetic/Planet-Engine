@@ -8,8 +8,8 @@ use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 
 pub const TOPOGRAPHY_STAGE_ID: &str = "terrain:initial-topography";
-pub const TOPOGRAPHY_STAGE_VERSION: u32 = 11;
-const TOPOGRAPHY_NAMESPACE: &str = "terrain:structure:v1";
+pub const TOPOGRAPHY_STAGE_VERSION: u32 = 12;
+const TOPOGRAPHY_NAMESPACE: &str = "terrain:structure:v2";
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 const DISTANCE_EPSILON_M: f64 = 1.0e-6;
@@ -600,12 +600,24 @@ pub fn generate_initial_topography(
     ) = boundary_source_fields(count, inherited, boundaries);
     let (collision_distance, collision_source) =
         nearest_sources(topology, &collision_sources, None, planet.radius_m);
-    let (oceanic_ridge_distance, oceanic_ridge_source) =
-        nearest_sources(topology, &oceanic_ridge_sources, None, planet.radius_m);
-    let (transitional_ridge_distance, transitional_ridge_source) =
-        nearest_sources(topology, &transitional_ridge_sources, None, planet.radius_m);
-    let (rift_distance, rift_source) =
-        nearest_sources(topology, &rift_sources, None, planet.radius_m);
+    let (oceanic_ridge_distance, oceanic_ridge_source) = nearest_sources(
+        topology,
+        &oceanic_ridge_sources,
+        Some(&inherited.plate_ids),
+        planet.radius_m,
+    );
+    let (transitional_ridge_distance, transitional_ridge_source) = nearest_sources(
+        topology,
+        &transitional_ridge_sources,
+        Some(&inherited.plate_ids),
+        planet.radius_m,
+    );
+    let (rift_distance, rift_source) = nearest_sources(
+        topology,
+        &rift_sources,
+        Some(&inherited.plate_ids),
+        planet.radius_m,
+    );
     let (trench_distance, trench_source) = nearest_sources(
         topology,
         &trench_sources,
@@ -696,11 +708,21 @@ pub fn generate_initial_topography(
         // Broad spreading history is already expressed by oceanic crust age and thermal
         // subsidence. Keep explicit pure-oceanic ridge relief local, while preserving the
         // accepted broader TransitionalDivergence response on the existing rift-width scale.
+        let oceanic_ridge_crust_gate = match inherited.crust_kind[i] {
+            CRUST_OCEANIC => 1.0,
+            CRUST_TRANSITIONAL => 0.35,
+            _ => 0.0,
+        };
+        let transitional_ridge_crust_gate = match inherited.crust_kind[i] {
+            CRUST_OCEANIC => 0.30,
+            CRUST_TRANSITIONAL => 1.0,
+            _ => 0.55,
+        };
         ridge[i] = p.ridge_uplift_scale_m
             * if oceanic_is_nearest {
-                oceanic_ridge_kernel
+                oceanic_ridge_kernel * oceanic_ridge_crust_gate
             } else {
-                transitional_ridge_kernel
+                transitional_ridge_kernel * transitional_ridge_crust_gate
             };
 
         let rift_kernel = if rift_source[i] == u32::MAX {
