@@ -170,6 +170,58 @@ fn main() -> Result<(), String> {
             flooded_continental_orogen, continental_orogen
         ));
     }
+    let provenance = &morphology.quiet_provenance_contacts;
+    if provenance.contact_edge_count == 0 || provenance.interior_edge_count == 0 {
+        return Err("quiet provenance morphology was not exercised".to_string());
+    }
+    if provenance.contact_to_interior_gradient_ratio > 2.0 {
+        return Err(format!(
+            "quiet provenance contacts still over-express as terrain seams: ratio={:.3}",
+            provenance.contact_to_interior_gradient_ratio
+        ));
+    }
+
+    let coherence = &morphology.boundary_regime_coherence;
+    if coherence.isolated_regime_edge_fraction > 0.01
+        || coherence.mean_same_pair_neighbor_agreement < 0.75
+    {
+        return Err(format!(
+            "modern boundary regimes remain locally incoherent: isolated={:.3} agreement={:.3}",
+            coherence.isolated_regime_edge_fraction,
+            coherence.mean_same_pair_neighbor_agreement
+        ));
+    }
+
+    if morphology.ocean_age_depth_inversion_count != 0
+        || morphology.ocean_age_depth_monotonic_pair_fraction < 0.99
+    {
+        return Err(format!(
+            "oceanic age/depth relation is not monotonic: fraction={:.3} inversions={}",
+            morphology.ocean_age_depth_monotonic_pair_fraction,
+            morphology.ocean_age_depth_inversion_count
+        ));
+    }
+
+    let inland = &morphology.inland_marine;
+    if inland.unsupported_inland_sample_count != 0
+        || inland.unsupported_inland_area_fraction > 1.0e-12
+        || inland.maximum_unsupported_distance_from_oceanic_crust_m > 1.0
+    {
+        return Err(format!(
+            "marine mask contains unsupported inland penetration: samples={} fraction={:.6} max_distance_km={:.1}",
+            inland.unsupported_inland_sample_count,
+            inland.unsupported_inland_area_fraction,
+            inland.maximum_unsupported_distance_from_oceanic_crust_m / 1_000.0
+        ));
+    }
+
+    if morphology.quiet_ocean.mean_gradient_m_per_km > 1.5 {
+        return Err(format!(
+            "quiet-ocean bathymetry remains too rough: mean_gradient={:.3} m/km",
+            morphology.quiet_ocean.mean_gradient_m_per_km
+        ));
+    }
+
     if terrain
         .solid_elevation_m
         .iter()
