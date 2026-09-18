@@ -365,6 +365,10 @@ pub struct InheritedPhysicalState {
     pub crust_kind: Vec<u8>,
     pub crust_province_id: Vec<u16>,
     pub crust_age_myr: Vec<f32>,
+    pub oceanic_age_myr: Vec<f32>,
+    pub continental_basement_age_myr: Vec<f32>,
+    pub last_tectonic_reworking_age_myr: Vec<f32>,
+    pub continental_stability_index: Vec<f32>,
     pub crust_thickness_km: Vec<f32>,
     pub crust_density_kg_per_m3: Vec<f32>,
     pub buoyancy_index: Vec<f32>,
@@ -411,6 +415,10 @@ fn validate_upstream_lengths(
         geology.crust_kind.len(),
         geology.crust_province_id.len(),
         geology.crust_age_myr.len(),
+        geology.oceanic_age_myr.len(),
+        geology.continental_basement_age_myr.len(),
+        geology.last_tectonic_reworking_age_myr.len(),
+        geology.continental_stability_index.len(),
         geology.crust_thickness_km.len(),
         geology.crust_density_kg_per_m3.len(),
         geology.buoyancy_index.len(),
@@ -467,11 +475,24 @@ pub fn inherit_physical_state(
     validate_upstream_lengths(coarse_count, tectonics, geology, lithosphere)?;
     let map = build_refinement_map(fine_topology, coarse_level)?;
 
+    // Continuous material state is allowed to cross quiet ancestry/provenance contacts. Only
+    // actual present plate ownership, crust class, or an explicit structural zone blocks
+    // interpolation. Fragment/province ids remain categorical diagnostics and genealogy.
+    let physical_material_domains = tectonics
+        .plate_ids
+        .iter()
+        .zip(geology.crust_kind.iter())
+        .zip(lithosphere.structural_zone_kind.iter())
+        .map(|((plate, kind), structure)| {
+            (*plate & 0x00ff)
+                | ((u16::from(*kind) & 0x0003) << 8)
+                | ((u16::from(*structure) & 0x0007) << 10)
+        })
+        .collect::<Vec<_>>();
+
     let plate_ids = refine_categorical_u16(&map, &tectonics.plate_ids)?;
     let crust_kind = refine_categorical_u8(&map, &geology.crust_kind)?;
-    // Preserve coarse material-property truth inside each geological province. Quiet provenance
-    // contacts are relaxed later by WG-4's mechanical response rather than by averaging away the
-    // inherited crustal state itself.
+    // Provenance remains categorical. It does not own continuous physical-state interpolation.
     let crust_province_id = refine_categorical_u16(&map, &geology.crust_province_id)?;
     let fragment_ids = refine_categorical_u16(&map, &lithosphere.fragment_ids)?;
     let kinematic_domain_ids = refine_categorical_u16(&map, &lithosphere.kinematic_domain_ids)?;
@@ -482,28 +503,56 @@ pub fn inherit_physical_state(
         coarse_level,
         &geology.crust_age_myr,
         &map,
-        &geology.crust_province_id,
+        &physical_material_domains,
+    )?;
+    let oceanic_age_myr = refine_scalar_f32_with_domains(
+        fine_topology,
+        coarse_level,
+        &geology.oceanic_age_myr,
+        &map,
+        &physical_material_domains,
+    )?;
+    let continental_basement_age_myr = refine_scalar_f32_with_domains(
+        fine_topology,
+        coarse_level,
+        &geology.continental_basement_age_myr,
+        &map,
+        &physical_material_domains,
+    )?;
+    let last_tectonic_reworking_age_myr = refine_scalar_f32_with_domains(
+        fine_topology,
+        coarse_level,
+        &geology.last_tectonic_reworking_age_myr,
+        &map,
+        &physical_material_domains,
+    )?;
+    let continental_stability_index = refine_scalar_f32_with_domains(
+        fine_topology,
+        coarse_level,
+        &geology.continental_stability_index,
+        &map,
+        &physical_material_domains,
     )?;
     let crust_thickness_km = refine_scalar_f32_with_domains(
         fine_topology,
         coarse_level,
         &geology.crust_thickness_km,
         &map,
-        &geology.crust_province_id,
+        &physical_material_domains,
     )?;
     let crust_density_kg_per_m3 = refine_scalar_f32_with_domains(
         fine_topology,
         coarse_level,
         &geology.crust_density_kg_per_m3,
         &map,
-        &geology.crust_province_id,
+        &physical_material_domains,
     )?;
     let buoyancy_index = refine_scalar_f32_with_domains(
         fine_topology,
         coarse_level,
         &geology.buoyancy_index,
         &map,
-        &geology.crust_province_id,
+        &physical_material_domains,
     )?;
 
     let orogenic_history =
@@ -578,7 +627,7 @@ pub fn inherit_physical_state(
         coarse_level,
         &lithosphere.compensated_buoyancy_index,
         &map,
-        &geology.crust_province_id,
+        &physical_material_domains,
     )?;
 
     let parameter_hash = parameters.parameter_hash();
@@ -608,6 +657,10 @@ pub fn inherit_physical_state(
         crust_kind,
         crust_province_id,
         crust_age_myr,
+        oceanic_age_myr,
+        continental_basement_age_myr,
+        last_tectonic_reworking_age_myr,
+        continental_stability_index,
         crust_thickness_km,
         crust_density_kg_per_m3,
         buoyancy_index,
