@@ -273,43 +273,52 @@ fn static_crust_indices<T: PlanetTopology>(
     geology: &CrustalModel,
 ) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
     let count = topology.sample_count() as usize;
-    let mut province_boundary = vec![0.0_f64; count];
-    let mut age_discontinuity = vec![0.0_f64; count];
+    let mut physical_boundary = vec![0.0_f64; count];
+    let mut history_discontinuity = vec![0.0_f64; count];
     let mut margin = vec![0.0_f64; count];
 
     for sample in 0..topology.sample_count() {
         let index = sample as usize;
         let kind = geology.crust_kind[index];
-        let province = geology.crust_province_id[index];
-        let age = f64::from(geology.crust_age_myr[index]);
+        let stability = f64::from(geology.continental_stability_index[index]);
+        let reworking_age = f64::from(geology.last_tectonic_reworking_age_myr[index]);
         let neighbors = topology.neighbors(sample);
-        let mut province_mismatch = 0.0;
         let mut kind_mismatch = 0.0;
-        let mut max_age_delta = 0.0_f64;
+        let mut max_stability_delta = 0.0_f64;
+        let mut max_history_delta = 0.0_f64;
 
         for neighbor in neighbors {
             let ni = *neighbor as usize;
-            if geology.crust_province_id[ni] != province {
-                province_mismatch += 1.0;
-            }
             if geology.crust_kind[ni] != kind {
                 kind_mismatch += 1.0;
+                continue;
             }
-            let other_age = f64::from(geology.crust_age_myr[ni]);
-            let scale = if kind == CrustKind::Oceanic as u8 {
+            max_stability_delta = max_stability_delta.max(
+                (stability - f64::from(geology.continental_stability_index[ni]))
+                    .abs()
+                    .clamp(0.0, 1.0),
+            );
+            let history_scale = if kind == CrustKind::Oceanic as u8 {
                 180.0
             } else {
-                1800.0
+                1000.0
             };
-            max_age_delta = max_age_delta.max(((age - other_age).abs() / scale).clamp(0.0, 1.0));
+            max_history_delta = max_history_delta.max(
+                ((reworking_age
+                    - f64::from(geology.last_tectonic_reworking_age_myr[ni]))
+                    .abs()
+                    / history_scale)
+                    .clamp(0.0, 1.0),
+            );
         }
         let degree = neighbors.len() as f64;
-        province_boundary[index] = (province_mismatch / degree).clamp(0.0, 1.0);
+        physical_boundary[index] =
+            (max_stability_delta * 0.78 + max_history_delta * 0.22).clamp(0.0, 1.0);
         margin[index] = (kind_mismatch / degree).clamp(0.0, 1.0);
-        age_discontinuity[index] = max_age_delta;
+        history_discontinuity[index] = max_history_delta;
     }
 
-    (province_boundary, age_discontinuity, margin)
+    (physical_boundary, history_discontinuity, margin)
 }
 
 fn build_pre_orogenic_state<T: PlanetTopology>(
@@ -348,34 +357,39 @@ fn build_pre_orogenic_state<T: PlanetTopology>(
 
     for sample in 0..count {
         let crust = geology.crust_kind[sample];
-        let age_myr = f64::from(geology.crust_age_myr[sample]);
+        let oceanic_age_myr = f64::from(geology.oceanic_age_myr[sample]);
+        let reworking_age_myr = f64::from(geology.last_tectonic_reworking_age_myr[sample]);
+        let stability = f64::from(geology.continental_stability_index[sample]).clamp(0.0, 1.0);
         let inherited = mechanical_texture[sample];
         let mantle = mantle_texture[sample];
 
         let age_factor = match crust {
-            value if value == CrustKind::Continental as u8 => clamp01(age_myr / 3200.0),
-            value if value == CrustKind::Transitional as u8 => clamp01(age_myr / 1200.0),
-            _ => clamp01(age_myr / 220.0),
+            value if value == CrustKind::Continental as u8 => stability,
+            value if value == CrustKind::Transitional as u8 => {
+                clamp01(reworking_age_myr / 900.0) * 0.65
+            }
+            _ => clamp01(oceanic_age_myr / 220.0),
         };
         let young_thermal = match crust {
-            value if value == CrustKind::Oceanic as u8 => 1.0 - clamp01(age_myr / 220.0),
+            value if value == CrustKind::Oceanic as u8 => {
+                1.0 - clamp01(oceanic_age_myr / 220.0)
+            }
             value if value == CrustKind::Transitional as u8 => 0.22 * (1.0 - age_factor),
-            _ => 0.08 * (1.0 - age_factor),
+            _ => 0.08 * (1.0 - stability),
         };
         let thermal_state = clamp_signed(
             mantle * 0.62 + young_thermal * 0.42 + rift_memory[sample] * 0.18 - age_factor * 0.16,
         );
 
+        // The base mechanical substrate no longer infers sutures from categorical province
+        // identity. Persistent event history in historical_pre_orogenic owns actual sutures.
         let suture = if crust != CrustKind::Oceanic as u8 {
-            clamp01(
-                province_boundary[sample] * 0.72 + age_discontinuity[sample] * 0.46
-                    - margin[sample] * 0.22,
-            )
+            clamp01(age_discontinuity[sample] * 0.16 - margin[sample] * 0.08)
         } else {
             0.0
         };
         let craton_boundary = if crust == CrustKind::Continental as u8 {
-            clamp01(province_boundary[sample] * 0.70 + age_discontinuity[sample] * 0.24)
+            clamp01(province_boundary[sample])
         } else {
             0.0
         };
@@ -423,7 +437,7 @@ fn build_pre_orogenic_state<T: PlanetTopology>(
             _ => 0.48,
         };
         let interior_coherence =
-            clamp01(1.0 - province_boundary[sample] * 0.85 - age_discontinuity[sample] * 0.35);
+            clamp01(0.55 + stability * 0.45 - province_boundary[sample] * 0.45);
         let damage = clamp01(
             suture * 0.28
                 + rift * 0.42
@@ -446,8 +460,8 @@ fn build_pre_orogenic_state<T: PlanetTopology>(
         let fragmentation = clamp01(
             intrinsic_weakness * 0.44
                 + inherited_fabric * 0.30
-                + province_boundary[sample] * 0.13
-                + age_discontinuity[sample] * 0.08
+                + province_boundary[sample] * 0.10
+                + age_discontinuity[sample] * 0.04
                 + rift.max(shear) * 0.18,
         );
 
