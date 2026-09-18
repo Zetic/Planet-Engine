@@ -191,7 +191,8 @@ pub use tectonics::{
 };
 pub use topography::{TopographyMetrics, TopographyParameters, TopographyRequest, TopographyState};
 pub use topography_morphology::{
-    analyze_topography_morphology, OceanAgeDepthMorphology, QuietOceanMorphology,
+    analyze_topography_morphology, BoundaryRegimeCoherence, InlandMarineMorphology,
+    OceanAgeDepthMorphology, QuietOceanMorphology, QuietProvenanceContactMorphology,
     TopographyDistanceBandMorphology, TopographyMorphologyFeature, TopographyMorphologyReport,
     TopographyReliefMorphology, TOPOGRAPHY_MORPHOLOGY_DISTANCE_BAND_EDGES_M,
     TOPOGRAPHY_MORPHOLOGY_OCEAN_AGE_BAND_EDGES_MYR,
