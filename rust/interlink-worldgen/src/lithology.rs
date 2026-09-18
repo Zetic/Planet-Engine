@@ -104,7 +104,10 @@ fn validate_inputs(
     let count = topology.metrics().sample_count as usize;
     let inherited_lengths = [
         inherited.crust_kind.len(),
-        inherited.crust_age_myr.len(),
+        inherited.oceanic_age_myr.len(),
+        inherited.continental_basement_age_myr.len(),
+        inherited.last_tectonic_reworking_age_myr.len(),
+        inherited.continental_stability_index.len(),
         inherited.crust_thickness_km.len(),
         inherited.rift_history.len(),
         inherited.ridge_history.len(),
@@ -154,7 +157,7 @@ fn classify_bedrock(
     stage_seed: u64,
 ) -> BedrockClass {
     let crust = inherited.crust_kind[sample];
-    let age = f64::from(inherited.crust_age_myr[sample]).max(0.0);
+    let oceanic_age = f64::from(inherited.oceanic_age_myr[sample]).max(0.0);
     let rift = clamp01(f64::from(inherited.rift_history[sample]));
     let ridge = clamp01(f64::from(inherited.ridge_history[sample]));
     let subduction = clamp01(f64::from(inherited.subduction_history[sample]));
@@ -181,7 +184,8 @@ fn classify_bedrock(
     );
 
     if crust == CrustKind::Oceanic as u8 {
-        let sediment_score = 0.46 * clamp01(age / 190.0) + 0.30 * subsidence + 0.25 * basin
+        let sediment_score =
+            0.46 * clamp01(oceanic_age / 190.0) + 0.30 * subsidence + 0.25 * basin
             - 0.38 * ridge
             - 0.18 * thermal;
         return if sediment_score > 0.53 {
