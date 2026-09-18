@@ -1568,6 +1568,7 @@ const preset = element('worldgen-preset');
 const diagnosticCategory = element('worldgen-diagnostic-category');
 const visualization = element('worldgen-visualization');
 const diagnosticLegend = element('worldgen-diagnostic-legend');
+const overlayLegends = element('worldgen-overlay-legends');
 const season = element('worldgen-season');
 const seasonValue = element('worldgen-season-value');
 const zoomControl = element('worldgen-zoom');
@@ -1662,6 +1663,233 @@ function updateOverlaySummary() {
         overlaySummary.textContent = selected[0].dataset.label ?? selected[0].value;
     else
         overlaySummary.textContent = `${selected.length} selected`;
+    refreshOverlayLegends();
+}
+const DIAGNOSTIC_SUMMARIES = {
+    "physical-world": "Shows the final post-infill physical surface: evolved land relief, the fixed WG-4 ocean mask, and bathymetric depth. Use it as the closest current view of the finished physical planet.",
+    "physical-elevation": "Shows the accepted WG-4 elevation and bathymetry before WG-7 terrain evolution and lake-sediment infill. It is the baseline surface inherited by climate and the first hydrology solve.",
+    "relative-elevation": "Maps solid-surface height relative to the solved sea level, making positive land relief and negative submerged terrain directly comparable.",
+    "solid-elevation": "Maps absolute solid elevation relative to the model datum before subtracting sea level. This separates terrain construction from the hydrostatic ocean solution.",
+    "land-water": "Shows the binary WG-4 land/ocean partition used by downstream climate and hydrology. It answers whether a sample is submerged, not what crust type lies beneath it.",
+    "water-depth": "Maps solved ocean water depth over submerged samples, exposing shelves, slopes, abyssal basins, trenches, and the consequences of the fixed ocean volume.",
+    "plates": "Shows modern macro-plate ownership on the final mesh. Colors identify present kinematic plates, not crust type or continent membership.",
+    "kinematic-domains": "Shows the refined modern kinematic domains carried into the fine mesh, making coarse-to-fine plate ownership visible.",
+    "historical-origin": "Shows each sample's ancestral plate of origin before later fragmentation, capture, and modern plate reorganization.",
+    "historical-fragments": "Shows persistent crust fragments produced by the historical lithosphere model. Several fragments may occupy one modern plate.",
+    "historical-current": "Shows current plate ownership as recorded by the historical material system, allowing inherited material identity to be compared with present kinematics.",
+    "historical-provenance": "Shows the WG-3 crust-province identity inherited by each fine sample. Colors distinguish provenance blocks rather than physical magnitude.",
+    "historical-crust-birth-age": "Maps the modeled formation age of inherited crustal material. Young values mark recently created material; large values mark old surviving crust.",
+    "historical-event": "Shows the most recent recorded historical tectonic event affecting each material sample, such as rifting, spreading, collision, accretion, or subduction.",
+    "historical-event-age": "Maps time since the latest recorded historical event. Small ages are geologically recent; large ages indicate older inherited events.",
+    "historical-rift": "Shows accumulated historical rift influence. Higher values identify material more strongly affected by extension and rifting.",
+    "historical-rift-age": "Maps the age of inherited rifting. Low values indicate recent extension; high values indicate old rift inheritance.",
+    "historical-shear": "Shows inherited shear/transform influence. Higher values mark material with a stronger history of lateral tectonic deformation.",
+    "historical-suture": "Shows inherited suture intensity from collision and assembly. Higher values mark stronger fossil joins between previously separate material blocks.",
+    "historical-suture-age": "Maps the age of inherited sutures. Low values identify recent joins; high values identify older assembly boundaries.",
+    "historical-passive-margin": "Shows how strongly each sample belongs to a passive-margin setting inherited from rifting and continental breakup.",
+    "historical-active-orogen": "Shows present or young orogenic intensity derived from active tectonic shortening and mountain-building history.",
+    "historical-fossil-orogen": "Shows inherited but no longer active orogenic structure. Higher values preserve stronger fossil mountain-belt ancestry.",
+    "crust-type": "Classifies crust as continental, transitional, or oceanic. This is material identity, not a land/ocean mask: continental crust may be submerged.",
+    "crust-age": "Maps the modeled age of current crustal material, especially useful for reading ocean-basin spreading patterns and old continental interiors.",
+    "crust-thickness": "Maps modeled crustal thickness. Thick values generally mark continental or orogenic crust, while thin values generally mark oceanic lithosphere.",
+    "orogeny-history": "Shows cumulative inherited mountain-building influence retained in the lithosphere. Higher values indicate stronger orogenic ancestry.",
+    "ridge-history": "Shows cumulative inherited spreading-ridge influence. Higher values identify crust more strongly associated with ridge creation or spreading.",
+    "trench-history": "Shows cumulative inherited trench/subduction influence. Higher values identify crust more strongly shaped by convergent-margin history.",
+    "strength": "Shows the lithosphere-scale mechanical strength index inherited by topography and structural refinement.",
+    "weakness": "Shows the lithospheric weakness field used to identify mechanically susceptible zones.",
+    "dynamic-support": "Shows the signed mantle-dynamic support index. Positive values favor broad support or uplift; negative values favor broad downward support.",
+    "structural-zones": "Classifies inherited structural zones such as sutures, rifts, transforms, and continental margins.",
+    "fragmentation": "Shows the modeled propensity for lithosphere to fragment under tectonic history and inherited weakness. Higher values indicate greater susceptibility.",
+    "bedrock-class": "Shows the persistent WG-4.5 bedrock class derived from crust type, tectonic history, structure, and fragment provenance.",
+    "rock-strength": "Shows bedrock-scale mechanical resistance intended for later surface-process work. Higher values mean more resistant substrate.",
+    "lithology-erodibility": "Shows the substrate's intrinsic tendency to be eroded. Higher values mean the material is easier to remove under otherwise similar forcing.",
+    "permeability": "Shows the relative ability of the substrate to transmit water through the material. Higher values represent more permeable substrate.",
+    "weathering-susceptibility": "Shows how readily bedrock is expected to weather under suitable climate forcing. Higher values indicate more weathering-prone material.",
+    "fines-fraction": "Shows the relative fine-grained fraction of substrate available to later sediment, regolith, and soil processes.",
+    "carbonate-fraction": "Shows the modeled carbonate content of the substrate. High values identify carbonate-rich platform or sedimentary material.",
+    "isostatic": "Shows the WG-4 isostatic elevation contribution from crustal buoyancy and compensation before all terrain terms are summed.",
+    "thermal": "Shows oceanic thermal-subsidence relief. More negative values correspond to stronger cooling-related subsidence of oceanic lithosphere.",
+    "orogenic-relief": "Shows elevation added by collision and orogenic processes. Larger positive values mark stronger tectonic mountain support.",
+    "ridge-relief": "Shows elevation added around spreading ridges. Larger positive values identify stronger ridge-related topographic support.",
+    "rift-basin": "Shows signed relief associated with rifting and basin formation. More negative values indicate stronger subsidence.",
+    "trench-relief": "Shows trench-related topographic depression generated at subduction systems. More negative values indicate deeper trench forcing.",
+    "arc-relief": "Shows positive volcanic-arc relief generated by subduction-related magmatic systems.",
+    "mantle-relief": "Shows the signed elevation contribution from broad mantle-dynamic support after conversion from the lithospheric support index.",
+    "temperature": "Maps annual-mean near-surface temperature retained by WG-5 after climate spin-up.",
+    "seasonal-temperature": "Reconstructs near-surface temperature at the selected orbital phase from the stored annual harmonic; the season slider changes the view without rerunning climate.",
+    "temperature-range": "Maps the difference between modeled annual maximum and minimum temperature, highlighting climates with strong seasonal thermal swings.",
+    "annual-insolation": "Maps annual-mean incoming stellar energy at the top-of-atmosphere forcing used by the climate model.",
+    "seasonal-insolation": "Maps the amplitude of the annual insolation cycle. Higher values indicate stronger seasonal variation in received stellar energy.",
+    "sst": "Maps annual-mean sea-surface temperature over the accepted ocean surface.",
+    "seasonal-sst": "Reconstructs sea-surface temperature at the selected orbital phase from the stored seasonal harmonic.",
+    "wind-speed": "Maps annual-mean horizontal wind-speed magnitude, independent of direction.",
+    "surface-pressure": "Maps local surface atmospheric pressure after elevation and climate-state effects.",
+    "current-speed": "Maps annual-mean surface-ocean current-speed magnitude over the ocean.",
+    "ocean-heat": "Shows the signed ocean heat-transport index used to diagnose where surface circulation exports or imports heat relative to the local mean.",
+    "humidity": "Maps annual-mean atmospheric specific humidity: the mass fraction of water vapor in air.",
+    "precipitation": "Maps annual precipitation delivered by WG-5. It shows climate water input before runoff, lake storage, or river routing.",
+    "seasonal-precipitation": "Shows precipitation rate at the selected orbital phase using the retained phase climatology.",
+    "precip-seasonality": "Shows how strongly precipitation is concentrated into part of the year rather than distributed evenly.",
+    "potential-evaporation": "Maps the atmosphere's annual potential evaporative demand before water availability limits actual evapotranspiration.",
+    "moisture-balance": "Shows precipitation minus potential evaporation. Positive values indicate climatic moisture surplus; negative values indicate climatic deficit.",
+    "aridity": "Shows the dimensionless aridity diagnostic used by WG-5 to distinguish humid from water-limited climates.",
+    "snowfall": "Shows the fraction of precipitation expected to fall as snow under the modeled temperature regime.",
+    "persistent-snow": "Shows modeled potential for snow to persist through the annual cycle on land.",
+    "sea-ice": "Shows modeled potential for persistent or recurrent sea ice over ocean samples.",
+    "contributing-area": "Maps the upstream land area draining through each sample in the canonical drainage graph. Large values identify major trunk channels and basin outlets.",
+    "basins": "Colors each drainage basin by basin ID and marks basin outlets. Color is categorical and exists to separate neighboring catchments.",
+    "flow-direction": "Colors drainage basins and overlays a sampled set of receiver links, showing downstream routing direction in the drainage graph.",
+    "depression-depth": "Maps the vertical depth of closed topographic depressions relative to their spill elevation.",
+    "depressions": "Colors each identified closed depression by depression ID, separating distinct potential lake or storage basins.",
+    "escape-elevation": "Maps the minimum hydrologic escape elevation a sample must reach along its drainage path to leave local containment.",
+    "potential-discharge": "Maps annual discharge implied by runoff production and drainage accumulation before equilibrium lake storage and overflow alter realized flow.",
+    "annual-runoff": "Maps locally generated annual runoff depth after precipitation and actual evapotranspiration are reconciled.",
+    "runoff-fraction": "Shows the fraction of local precipitation that becomes runoff rather than actual evapotranspiration.",
+    "actual-et": "Maps annual actual evapotranspiration after water availability limits atmospheric evaporative demand.",
+    "realized-discharge": "Maps annual river discharge after equilibrium lakes retain water or release solved overflow.",
+    "lake-depth": "Maps equilibrium lake-water depth for land samples occupied by solved lakes.",
+    "lake-state": "Classifies solved lake state as absent, endorheic, overflowing, or terminal storage.",
+    "lake-fraction": "Shows the fraction of a sample's surface occupied by the solved equilibrium lake.",
+    "seasonal-realized-discharge": "Maps realized river discharge at the selected orbital phase after seasonal runoff timing, snowmelt, routing, and lake storage.",
+    "seasonal-flow-presence": "Shows the fraction of orbital phases in which realized flow is present at each land sample.",
+    "seasonal-flow-regime": "Classifies final flow as dry, intermittent, or perennial from modeled seasonal presence.",
+    "seasonal-snow-storage": "Maps snow-water-equivalent storage at the selected orbital phase after snowfall accumulation and degree-day melt.",
+    "reconciliation-lake-depth-delta": "Shows the change in lake depth caused by rebuilding hydrology on the WG-7B evolved terrain.",
+    "reconciliation-lake-change": "Marks samples where lake state changed when hydrology was reconciled to evolved terrain.",
+    "reconciliation-realized-discharge-delta": "Shows the signed change in annual realized discharge after post-erosion hydrology reconciliation.",
+    "reconciliation-flow-presence-delta": "Shows the signed change in seasonal flow-presence fraction after terrain evolution and hydrology reconciliation.",
+    "reconciliation-flow-regime-change": "Marks samples whose dry, intermittent, or perennial flow regime changed after post-erosion reconciliation.",
+    "erosion-effective-discharge": "Maps discharge actually used by the WG-7A erosion diagnostic after seasonal and lake constraints are applied.",
+    "erosion-channel-slope": "Maps the downstream channel slope used by the fluvial erosion calculation.",
+    "erosion-channel-width": "Maps the hydraulic channel-width estimate used to distribute erosive forcing.",
+    "erosion-erodibility": "Shows the inherited WG-7A erodibility field used by the current erosion model before the planned lithology-aware retrofit.",
+    "erosion-incision-potential": "Maps the bounded stream-power incision rate that WG-7A predicts before terrain mutation.",
+    "erosion-sediment-supply": "Maps local sediment mass generated by erosion before routing downstream.",
+    "erosion-sediment-load": "Maps sediment mass flux being routed through the drainage network.",
+    "erosion-sediment-deposition": "Maps sediment mass deposited locally by the conservative sediment-routing diagnostic.",
+    "evolution-solid-elevation": "Shows the WG-7B evolved solid surface after bounded erosion and deposition have been applied.",
+    "evolution-terrain-delta": "Shows signed WG-7B terrain change relative to the accepted WG-4 surface. Negative values are erosion; positive values are deposition.",
+    "evolution-applied-erosion": "Maps the depth of erosion actually applied by bounded terrain evolution.",
+    "evolution-applied-deposition": "Maps the depth of land deposition actually applied by bounded terrain evolution.",
+    "evolution-receiver-change": "Marks land samples whose drainage receiver changed after terrain evolution rebuilt the drainage graph.",
+    "evolution-contributing-area": "Maps contributing drainage area after WG-7B terrain evolution and drainage reconstruction.",
+    "evolution-potential-discharge": "Maps potential annual discharge on the post-erosion drainage network.",
+    "infill-solid-elevation": "Shows the final post-WG-7D solid surface after bounded lake-sediment infill has modified eligible basin floors.",
+    "infill-fill-depth": "Maps the depth of lake-sediment fill applied by WG-7D to historical lake depressions.",
+    "inherited-mask": "Marks which fine samples are exact inherited coarse samples versus samples introduced by refinement.",
+    "provenance": "Colors each fine sample by its nearest coarse source, exposing the spatial footprint of multiresolution inheritance.",
+    "boundary-provenance": "Colors fine tectonic boundary segments by the coarse boundary or source provenance that produced them.",
+    "mesh": "Shows the fine physical-topology neighbor mesh used by the L8 planet surface. It is a structural diagnostic rather than a physical field."
+};
+const DIAGNOSTIC_SCALE_HELP = {
+    'physical-world': 'Blue bands encode water depth; land uses a hypsometric elevation ramp plus bounded hillshade. The colors are descriptive terrain bands rather than a single linear scalar ramp.',
+    'physical-elevation': 'Blue bands encode water depth and land colors encode WG-4 elevation above sea level. Hillshade changes brightness but not the underlying elevation value.',
+    'land-water': 'This is categorical: tan means land and blue means submerged. There is no numeric ordering between the two colors.',
+    'plates': 'Colors are deterministic plate identifiers. Hue has no ordinal or physical magnitude meaning.',
+    'kinematic-domains': 'Colors are deterministic domain identifiers. Hue has no ordinal or physical magnitude meaning.',
+    'historical-origin': 'Colors are deterministic ancestral-plate identifiers. Hue has no ordinal meaning.',
+    'historical-fragments': 'Colors are deterministic fragment identifiers. Hue has no ordinal meaning.',
+    'historical-current': 'Colors are deterministic current-owner identifiers. Hue has no ordinal meaning.',
+    'historical-provenance': 'Colors are deterministic provenance identifiers. Hue has no ordinal meaning.',
+    'historical-event': 'Colors are event classes, not a magnitude scale.',
+    'crust-type': 'Colors are continental, transitional, and oceanic crust classes; they are categorical rather than ordered.',
+    'structural-zones': 'Colors identify structural-zone classes. They do not encode intensity.',
+    'bedrock-class': 'Colors identify bedrock classes. They do not imply that one rock class is numerically greater than another.',
+    'basins': 'Colors are basin IDs; adjacent colors only distinguish catchments. White points mark basin outlets.',
+    'flow-direction': 'Colors are basin IDs; the light receiver segments show downstream direction. Basin hue is not a magnitude.',
+    'depressions': 'Colors are depression IDs used to separate closed basins. Hue is categorical.',
+    'lake-state': 'Colors identify discrete lake states rather than a numeric magnitude.',
+    'seasonal-flow-regime': 'Colors identify dry, intermittent, perennial, and ocean states rather than a numeric magnitude.',
+    'reconciliation-lake-change': 'The scale is binary: 0 means unchanged and 1 means the lake state changed.',
+    'reconciliation-flow-regime-change': 'The scale is binary: 0 means unchanged and 1 means the seasonal flow regime changed.',
+    'evolution-receiver-change': 'The scale is binary: 0 means the receiver is unchanged and 1 means the drainage receiver changed.',
+    'inherited-mask': 'The scale is binary/categorical: one color marks inherited coarse samples and the other marks samples introduced by refinement.',
+    'provenance': 'Colors are deterministic coarse-source identifiers. Hue has no numeric meaning.',
+    'boundary-provenance': 'Colors are deterministic coarse-boundary/source identifiers. Hue has no numeric meaning.',
+    'mesh': 'The lines are topology edges only. There is no scalar value or ordered color scale.',
+    'dynamic-support': 'The index is signed from -1 to +1: negative values indicate downward dynamic support and positive values indicate upward support.',
+    'mantle-relief': 'Values are signed meters: negative values lower the surface and positive values raise it.',
+    'ocean-heat': 'The index is signed: negative and positive values indicate opposite directions of local heat-transport tendency relative to zero.',
+    'moisture-balance': 'Values are precipitation minus potential evaporation in mm/yr: negative means climatic moisture deficit and positive means surplus.',
+    'reconciliation-lake-depth-delta': 'Values are signed meters: negative means shallower after reconciliation and positive means deeper.',
+    'reconciliation-realized-discharge-delta': 'Values are signed m³/s: negative means less realized flow after reconciliation and positive means more.',
+    'reconciliation-flow-presence-delta': 'Values are signed fractions: negative means flow occurs in fewer orbital phases and positive means it occurs in more.',
+    'evolution-terrain-delta': 'Values are signed meters: negative is net erosion and positive is net deposition.',
+    'runoff-fraction': 'Values are fractions from 0 to 1: 0 means none of local precipitation becomes runoff and 1 means all of it does.',
+    'lake-fraction': 'Values are fractions from 0 to 1: 0 means no lake-covered area in the sample and 1 means full coverage.',
+    'seasonal-flow-presence': 'Values are fractions from 0 to 1: 0 means no modeled orbital phase has realized flow and 1 means every phase does.',
+    'snowfall': 'Values are fractions from 0 to 1: 0 means precipitation is rain-dominated and 1 means it is snow-dominated.',
+    'persistent-snow': 'Values are normalized from 0 to 1: higher values indicate greater persistent-snow potential.',
+    'sea-ice': 'Values are normalized from 0 to 1: higher values indicate greater sea-ice potential.',
+    'historical-rift': 'Values are normalized from 0 to 1: higher values mean stronger inherited rift influence.',
+    'historical-shear': 'Values are normalized from 0 to 1: higher values mean stronger inherited shear influence.',
+    'historical-suture': 'Values are normalized from 0 to 1: higher values mean stronger inherited suture influence.',
+    'historical-passive-margin': 'Values are normalized from 0 to 1: higher values mean stronger passive-margin character.',
+    'historical-active-orogen': 'Values are normalized from 0 to 1: higher values mean stronger active-orogen influence.',
+    'historical-fossil-orogen': 'Values are normalized from 0 to 1: higher values mean stronger fossil-orogen inheritance.',
+    'orogeny-history': 'Values are normalized from 0 to 1: higher values mean stronger cumulative orogenic history.',
+    'ridge-history': 'Values are normalized from 0 to 1: higher values mean stronger cumulative ridge history.',
+    'trench-history': 'Values are normalized from 0 to 1: higher values mean stronger cumulative trench/subduction history.',
+    'strength': 'Values are normalized from 0 to 1: higher values mean a stronger lithosphere.',
+    'weakness': 'Values are normalized from 0 to 1: higher values mean a weaker lithosphere.',
+    'fragmentation': 'Values are normalized from 0 to 1: higher values mean greater fragmentation propensity.',
+    'rock-strength': 'Values are normalized from 0 to 1: higher values mean more mechanically resistant bedrock.',
+    'lithology-erodibility': 'Values are normalized from 0 to 1: higher values mean easier erosion.',
+    'permeability': 'Values are normalized from 0 to 1: higher values mean greater relative permeability.',
+    'weathering-susceptibility': 'Values are normalized from 0 to 1: higher values mean greater weathering susceptibility.',
+    'fines-fraction': 'Values are normalized from 0 to 1: higher values mean a greater fine-grained material fraction.',
+    'carbonate-fraction': 'Values are normalized from 0 to 1: higher values mean a greater carbonate fraction.',
+    'precip-seasonality': 'The dimensionless display runs from 0 to 5. Values near 0 indicate precipitation distributed more evenly through the year; larger values indicate stronger seasonal concentration.',
+    'aridity': 'The dimensionless display runs from 0 to 2. Lower values indicate wetter conditions relative to atmospheric demand; larger values indicate stronger water limitation.',
+    'erosion-erodibility': 'This is the current WG-7A dimensionless erodibility index. Larger values increase erosive response under comparable flow and slope.',
+    'erosion-channel-slope': 'This is dimensionless rise/run. Zero is flat; larger values represent steeper downstream channel gradients.',
+    'contributing-area': 'Color uses a logarithmic transform of upstream area so small and continental-scale catchments can be seen together; larger values mean more upstream area.',
+    'depression-depth': 'Color uses a logarithmic transform of depression depth; larger values mean a deeper closed basin below its spill level.',
+    'escape-elevation': 'Color maps hydrologic escape elevation over a fixed display range; larger values mean water must reach a higher elevation to escape local containment.',
+    'potential-discharge': 'Color is logarithmic in m³/s so low-flow and major-river values remain visible together; larger values mean more potential annual flow.',
+    'annual-runoff': 'Color is logarithmic in annual runoff depth; larger values mean more locally generated runoff.',
+    'actual-et': 'Color uses a saturating transform of annual actual evapotranspiration, so differences remain visible across both low- and high-ET climates.',
+    'realized-discharge': 'Color is logarithmic in m³/s after lake storage and overflow; larger values mean greater annual realized river flow.',
+    'lake-depth': 'Color is logarithmic in lake depth; larger values mean deeper equilibrium lakes.',
+    'seasonal-realized-discharge': 'Color is logarithmic in m³/s at the selected orbital phase; larger values mean greater realized seasonal flow.',
+    'seasonal-snow-storage': 'The displayed 0-1 color value is a bounded transform of snow-water storage; higher colors mean more stored snow water.',
+    'evolution-contributing-area': 'Color is logarithmic in post-erosion contributing area; larger values identify larger reconstructed catchments.',
+    'evolution-potential-discharge': 'Color is logarithmic in post-erosion potential discharge; larger values mean more accumulated annual flow.',
+    'erosion-effective-discharge': 'Color is logarithmic in effective erosive discharge; larger values mean stronger flow available to drive incision.',
+    'erosion-sediment-supply': 'Color is logarithmic in local sediment production (kg/s); larger values mean more sediment generated at that sample.',
+    'erosion-sediment-load': 'Color is logarithmic in routed sediment load (kg/s); larger values mean more sediment carried through the channel network.',
+    'erosion-sediment-deposition': 'Color is logarithmic in local deposition rate (kg/s); larger values mean more routed sediment is deposited.'
+};
+function diagnosticScaleMeaning(mode) {
+    const specific = DIAGNOSTIC_SCALE_HELP[mode];
+    if (specific)
+        return specific;
+    const categorical = CATEGORICAL_LEGENDS[mode];
+    if (categorical)
+        return 'Colors identify discrete classes; they are categorical rather than an ordered numeric scale.';
+    const unit = DIAGNOSTIC_UNITS[mode];
+    if (unit)
+        return 'Legend values are shown directly in ' + unit + '. Colors progress from the displayed minimum to maximum, with values outside the display range clamped to an endpoint color.';
+    if (current) {
+        const field = scalarField(current, mode, orbitalPhase());
+        if (field)
+            return 'The numeric legend runs from ' + formatLegendNumber(mode, field.minimum) + ' to ' + formatLegendNumber(mode, field.maximum) + '; larger legend values correspond to larger values of this diagnostic.';
+    }
+    return 'The legend shows the ordering used by this diagnostic; generate a planet to see any data-dependent numeric bounds.';
+}
+function addDiagnosticHelp(mode) {
+    const details = document.createElement('details');
+    details.className = 'worldgen-diagnostic-help';
+    const toggle = document.createElement('summary');
+    toggle.textContent = 'About this diagnostic';
+    const what = document.createElement('p');
+    what.textContent = DIAGNOSTIC_SUMMARIES[mode] ?? diagnosticLabel(mode);
+    const scale = document.createElement('p');
+    const label = document.createElement('strong');
+    label.textContent = 'How to read the scale: ';
+    scale.append(label, document.createTextNode(diagnosticScaleMeaning(mode)));
+    details.append(toggle, what, scale);
+    diagnosticLegend.append(details);
 }
 const DIAGNOSTIC_UNITS = {
     'solid-elevation': 'm', 'relative-elevation': 'm', 'water-depth': 'm', 'isostatic': 'm', 'thermal': 'm', 'orogenic-relief': 'm',
@@ -1688,7 +1916,10 @@ const CATEGORICAL_LEGENDS = {
     'structural-zones': [{ label: 'None', color: '#425362' }, { label: 'Suture', color: '#ff7466' }, { label: 'Rift', color: '#ffb45d' }, { label: 'Transform', color: '#c690ff' }, { label: 'Continental margin', color: '#65d7ac' }],
     'seasonal-flow-regime': [{ label: 'Dry', color: '#31423c' }, { label: 'Intermittent', color: '#e3a54f' }, { label: 'Perennial', color: '#4ea7dd' }, { label: 'Ocean', color: '#102c43' }],
     'lake-state': [{ label: 'No lake', color: '#31423c' }, { label: 'Endorheic', color: '#3aa7c9' }, { label: 'Overflowing', color: '#63d0a5' }, { label: 'Terminal storage', color: '#9b78d0' }, { label: 'Ocean', color: '#102c43' }],
-    'inherited-mask': [{ label: 'Inherited coarse sample', color: '#f4e27a' }, { label: 'Fine-only sample', color: '#5794c8' }]
+    'inherited-mask': [{ label: 'Inherited coarse sample', color: '#f4e27a' }, { label: 'Fine-only sample', color: '#5794c8' }],
+    'reconciliation-lake-change': [{ label: 'Unchanged', color: 'hsl(210 68% 37%)' }, { label: 'Changed', color: 'hsl(5 68% 60%)' }],
+    'reconciliation-flow-regime-change': [{ label: 'Unchanged', color: 'hsl(210 68% 37%)' }, { label: 'Changed', color: 'hsl(5 68% 60%)' }],
+    'evolution-receiver-change': [{ label: 'Unchanged', color: 'hsl(210 68% 37%)' }, { label: 'Changed', color: 'hsl(5 68% 60%)' }]
 };
 const IDENTITY_MODES = new Set(['plates', 'kinematic-domains', 'historical-origin', 'historical-fragments', 'historical-current', 'historical-provenance', 'provenance', 'boundary-provenance', 'basins', 'flow-direction', 'depressions']);
 const LOG_DISPLAY_MODES = new Set(['seasonal-realized-discharge', 'evolution-contributing-area', 'evolution-potential-discharge', 'erosion-effective-discharge', 'erosion-sediment-load', 'erosion-sediment-supply', 'erosion-sediment-deposition']);
@@ -1735,17 +1966,18 @@ function formatLegendNumber(mode, value) {
     const unit = DIAGNOSTIC_UNITS[mode];
     return display.toFixed(digits) + (unit ? ' ' + unit : '');
 }
-function addLegendSwatches(items) {
+function addLegendSwatches(items, target = diagnosticLegend) {
     const list = document.createElement('div');
     list.className = 'worldgen-legend-swatches';
     for (const item of items) {
         const row = document.createElement('span');
         const swatch = document.createElement('i');
+        swatch.className = item.kind === 'line' ? 'worldgen-legend-line' : item.kind === 'vector' ? 'worldgen-legend-line worldgen-legend-vector' : '';
         swatch.style.background = item.color;
         row.append(swatch, document.createTextNode(item.label));
         list.append(row);
     }
-    diagnosticLegend.append(list);
+    target.append(list);
 }
 function addLegendGradient(lowColor, highColor, lowLabel, middleLabel, highLabel) {
     const ramp = document.createElement('div');
@@ -1796,9 +2028,8 @@ function refreshDiagnosticLegend() {
     const mode = visualization.value;
     const heading = document.createElement('strong');
     heading.textContent = diagnosticLabel(mode);
-    const description = document.createElement('p');
-    description.textContent = diagnosticLabel(mode) + ' diagnostic. Colors below are the display encoding for this view.';
-    diagnosticLegend.append(heading, description);
+    diagnosticLegend.append(heading);
+    addDiagnosticHelp(mode);
     const categorical = CATEGORICAL_LEGENDS[mode];
     if (categorical) {
         addLegendSwatches(categorical);
@@ -1911,6 +2142,44 @@ function selectedDiagnosticSampleText(result, sample) {
     if (field)
         return diagnosticLabel(mode) + ' ' + formatLegendNumber(mode, field.values[sample]);
     return diagnosticLabel(mode);
+}
+const OVERLAY_LEGENDS = {
+    'cell-boundaries': { description: 'Draws the canonical L8 dual-cell perimeter when the globe is zoomed far enough for individual physical cells to be screen-resolved.', items: () => [{ label: 'Physical cell edge', color: 'rgb(225,236,246)', kind: 'line' }], note: 'The border fades in with zoom; it is topology, not a geological boundary.' },
+    'evolved-topography': { description: 'Draws elevation contours on the final post-WG-7D solid surface.', items: () => [{ label: '500 / 1000 / 2000 / 3000 / 4500 m', color: 'rgba(238,242,235,0.64)', kind: 'line' }], note: 'Higher contour levels are rendered slightly stronger and thicker.' },
+    'final-rivers': { description: 'Draws final WG-7D realized river routing. Line width increases with realized annual discharge.', items: () => [{ label: 'Intermittent flow', color: 'rgba(99,188,224,0.74)', kind: 'line' }, { label: 'Perennial flow', color: 'rgba(65,177,236,0.92)', kind: 'line' }], note: 'Dry reaches and flows below the display threshold are omitted.' },
+    'final-lakes': { description: 'Marks solved final lakes on land after WG-7D reconciliation and infill.', items: () => [{ label: 'Lake surface', color: 'rgba(65,174,224,0.82)' }], note: 'Opacity increases with modeled lake depth.' },
+    'basin-divides': { description: 'Draws boundaries between neighboring final drainage basins.', items: () => [{ label: 'Drainage divide', color: 'rgba(236,207,132,0.72)', kind: 'line' }] },
+    'cryosphere': { description: 'Overlays WG-5 persistent-snow potential on land and sea-ice potential over ocean.', items: () => [{ label: 'Persistent snow', color: 'rgba(245,248,250,0.78)' }, { label: 'Sea ice', color: 'rgba(190,229,244,0.78)' }], note: 'Samples below 0.2 potential are not drawn; opacity rises with potential.' },
+    'topography': { description: 'Draws elevation contours on the original accepted WG-4 surface before WG-7 terrain evolution.', items: () => [{ label: '500 / 1000 / 2000 / 3000 / 4500 m', color: 'rgba(245,248,252,0.68)', kind: 'line' }], note: 'Compare with Final topographic contours to see where later geomorphology changed relief.' },
+    'coastline': { description: 'Draws the fixed WG-4 land/ocean boundary used by the current climate and downstream surface pipeline.', items: () => [{ label: 'Coastline', color: 'rgba(225,236,246,0.84)', kind: 'line' }] },
+    'winds': { description: 'Draws prevailing wind vectors reconstructed for the selected orbital phase.', items: () => [{ label: 'Wind direction / speed', color: 'rgba(245,249,255,0.82)', kind: 'vector' }], note: 'Vector direction follows reconstructed ENU wind; displayed length increases with speed and is bounded for readability.' },
+    'currents': { description: 'Draws surface-ocean current vectors reconstructed for the selected orbital phase.', items: () => [{ label: 'Current direction / speed', color: 'rgba(91,220,255,0.92)', kind: 'vector' }], note: 'Vectors appear only over ocean; displayed length increases with current speed and is bounded for readability.' },
+    'tectonic-boundaries': { description: 'Draws fine modern plate boundaries classified from relative kinematic motion.', items: () => [{ label: 'Convergent', color: tectonicBoundaryColor(WORLDGEN_BOUNDARY_CONVERGENT), kind: 'line' }, { label: 'Divergent', color: tectonicBoundaryColor(WORLDGEN_BOUNDARY_DIVERGENT), kind: 'line' }, { label: 'Transform', color: tectonicBoundaryColor(WORLDGEN_BOUNDARY_TRANSFORM), kind: 'line' }] },
+    'geological-boundaries': { description: 'Draws fine boundary segments classified by crustal setting and tectonic regime.', items: () => [{ label: 'Oceanic subduction', color: geologicalBoundaryColor(WORLDGEN_GEOLOGY_OCEANIC_SUBDUCTION), kind: 'line' }, { label: 'Ocean-continent subduction', color: geologicalBoundaryColor(WORLDGEN_GEOLOGY_OCEAN_CONTINENT_SUBDUCTION), kind: 'line' }, { label: 'Continental collision', color: geologicalBoundaryColor(WORLDGEN_GEOLOGY_CONTINENTAL_COLLISION), kind: 'line' }, { label: 'Oceanic ridge', color: geologicalBoundaryColor(WORLDGEN_GEOLOGY_OCEANIC_RIDGE), kind: 'line' }, { label: 'Continental rift', color: geologicalBoundaryColor(WORLDGEN_GEOLOGY_CONTINENTAL_RIFT), kind: 'line' }, { label: 'Transitional divergence', color: geologicalBoundaryColor(WORLDGEN_GEOLOGY_TRANSITIONAL_DIVERGENCE), kind: 'line' }, { label: 'Transform', color: geologicalBoundaryColor(WORLDGEN_GEOLOGY_TRANSFORM), kind: 'line' }] }
+};
+function refreshOverlayLegends() {
+    overlayLegends.replaceChildren();
+    const selected = overlayInputs.filter(input => input.checked);
+    overlayLegends.hidden = selected.length === 0;
+    for (const input of selected) {
+        const definition = OVERLAY_LEGENDS[input.value];
+        if (!definition)
+            continue;
+        const card = document.createElement('section');
+        card.className = 'worldgen-overlay-legend';
+        const heading = document.createElement('strong');
+        heading.textContent = input.dataset.label ?? input.value;
+        const description = document.createElement('p');
+        description.textContent = definition.description;
+        card.append(heading, description);
+        addLegendSwatches(definition.items(), card);
+        if (definition.note) {
+            const note = document.createElement('small');
+            note.textContent = definition.note;
+            card.append(note);
+        }
+        overlayLegends.append(card);
+    }
 }
 const VIEW_PRESETS = {
     'custom': { mode: 'physical-elevation', overlays: [] },
