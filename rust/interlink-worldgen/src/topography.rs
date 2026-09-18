@@ -653,7 +653,7 @@ pub fn generate_initial_topography(
             _ => 0.0,
         };
         thermal[i] = -p.oceanic_subsidence_100_myr_m
-            * (f64::from(inherited.crust_age_myr[i]).max(0.0) / 100.0)
+            * (f64::from(inherited.oceanic_age_myr[i]).max(0.0) / 100.0)
                 .sqrt()
                 .min(1.55)
             * ocean_weight;
