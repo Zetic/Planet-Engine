@@ -6,11 +6,11 @@ use crate::{
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 pub const HISTORICAL_LITHOSPHERE_STAGE_ID: &str = "geology:historical-lithosphere";
-pub const HISTORICAL_LITHOSPHERE_STAGE_VERSION: u32 = 2;
-const HISTORICAL_LITHOSPHERE_NAMESPACE: &str = "worldgen:geology:historical-lithosphere:v2";
+pub const HISTORICAL_LITHOSPHERE_STAGE_VERSION: u32 = 3;
+const HISTORICAL_LITHOSPHERE_NAMESPACE: &str = "worldgen:geology:historical-lithosphere:v3";
 const ANCESTRAL_TECTONICS_NAMESPACE: &str = "worldgen:geology:historical-lithosphere:ancestral:v1";
 const FRAGMENT_NAMESPACE: &str = "worldgen:geology:historical-lithosphere:fragments:v1";
-const CRUST_NAMESPACE: &str = "worldgen:geology:historical-lithosphere:crust:v2";
+const CRUST_NAMESPACE: &str = "worldgen:geology:historical-lithosphere:crust:v3";
 const MODERN_GROUPING_NAMESPACE: &str = "worldgen:geology:historical-lithosphere:modern:v2";
 const EVENT_NAMESPACE: &str = "worldgen:geology:historical-lithosphere:events:v1";
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
@@ -456,6 +456,75 @@ fn build_continental_assemblies<T: PlanetTopology>(
     (carriers, assemblies)
 }
 
+fn oceanic_spreading_distance_km<T: PlanetTopology>(
+    topology: &T,
+    sample_origin: &[u16],
+    sample_carrier: &[bool],
+    ancestral: &TectonicModel,
+    planet: PlanetPhysicalParameters,
+) -> Vec<f64> {
+    let count = topology.sample_count() as usize;
+    let mut distance_km = vec![f64::INFINITY; count];
+    let mut queued = vec![false; count];
+    let mut queue = VecDeque::<u32>::new();
+
+    let mut register_seed = |sample: u32, plate: u16, distance_km: &mut [f64], queued: &mut [bool], queue: &mut VecDeque<u32>| {
+        let index = sample as usize;
+        if !sample_carrier[index]
+            && sample_origin[index] == plate
+            && distance_km[index] > 0.0
+        {
+            distance_km[index] = 0.0;
+            if !queued[index] {
+                queued[index] = true;
+                queue.push_back(sample);
+            }
+        }
+    };
+
+    for boundary in ancestral
+        .boundaries
+        .iter()
+        .filter(|boundary| boundary.kind == PlateBoundaryKind::Divergent)
+    {
+        for (sample, plate) in [
+            (boundary.sample_a, boundary.plate_a),
+            (boundary.sample_b, boundary.plate_b),
+        ] {
+            register_seed(sample, plate, &mut distance_km, &mut queued, &mut queue);
+            for neighbor in topology.neighbors(sample) {
+                register_seed(*neighbor, plate, &mut distance_km, &mut queued, &mut queue);
+            }
+        }
+    }
+
+    while let Some(sample) = queue.pop_front() {
+        let index = sample as usize;
+        queued[index] = false;
+        let origin = sample_origin[index];
+        let neighbors = topology.neighbors(sample);
+        let lengths = topology.neighbor_arc_lengths_rad(sample);
+        for neighbor_index in 0..neighbors.len() {
+            let neighbor = neighbors[neighbor_index];
+            let ni = neighbor as usize;
+            if sample_carrier[ni] || sample_origin[ni] != origin {
+                continue;
+            }
+            let candidate =
+                distance_km[index] + lengths[neighbor_index] * planet.radius_m / 1000.0;
+            if candidate + 1.0e-9 < distance_km[ni] {
+                distance_km[ni] = candidate;
+                if !queued[ni] {
+                    queued[ni] = true;
+                    queue.push_back(neighbor);
+                }
+            }
+        }
+    }
+
+    distance_km
+}
+
 fn build_plate_owned_crust<T: PlanetTopology>(
     topology: &T,
     fragment_ids: &[u16],
@@ -538,12 +607,16 @@ fn build_plate_owned_crust<T: PlanetTopology>(
     };
     let transition_steps = (360.0 / mean_edge_km.max(1.0)).ceil().clamp(1.0, 3.0) as u16;
 
-    let divergent_samples = ancestral
-        .boundaries
-        .iter()
-        .filter(|boundary| boundary.kind == PlateBoundaryKind::Divergent)
-        .flat_map(|boundary| [boundary.sample_a, boundary.sample_b])
-        .collect::<Vec<_>>();
+    // Oceanic chronology propagates through the material domain that owns the crust instead of
+    // using unrestricted great-circle distance to any ridge. This prevents unrelated spreading
+    // systems from stamping concentric age/bathymetry kernels through intervening plates.
+    let spreading_distance_km = oceanic_spreading_distance_km(
+        topology,
+        &sample_origin,
+        &sample_carrier,
+        ancestral,
+        planet,
+    );
 
     let mut crust_kind = vec![CrustKind::Oceanic as u8; count];
     let mut birth_age = vec![0.0_f32; count];
@@ -593,14 +666,8 @@ fn build_plate_owned_crust<T: PlanetTopology>(
                 1,
             ),
             CrustKind::Oceanic => {
-                let position = topology.unit_position(sample);
-                let nearest_ridge_rad = divergent_samples
-                    .iter()
-                    .map(|ridge| arc_radians(position, topology.unit_position(*ridge)))
-                    .fold(f64::INFINITY, f64::min);
-                let age = if nearest_ridge_rad.is_finite() {
-                    let distance_km = nearest_ridge_rad * planet.radius_m / 1000.0;
-                    (distance_km / 32.0).clamp(0.0, 220.0)
+                let age = if spreading_distance_km[sample_index].is_finite() {
+                    (spreading_distance_km[sample_index] / 32.0).clamp(0.0, 220.0)
                 } else {
                     110.0 + 90.0 * local_random
                 };
