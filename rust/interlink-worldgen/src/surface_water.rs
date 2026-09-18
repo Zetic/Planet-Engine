@@ -525,21 +525,6 @@ pub fn solve_hydrostatic_surface_water_connected(
     )
 }
 
-pub(crate) fn solve_hydrostatic_surface_water_connected_f64(
-    topology: &GeodesicTopology,
-    solid_elevation_m: &[f64],
-    planet: PlanetPhysicalParameters,
-    ocean_seed_mask: &[u8],
-) -> Result<HydrostaticSurfaceWaterState, WorldgenError> {
-    solve_hydrostatic_surface_water_connected_impl(
-        topology,
-        solid_elevation_m,
-        planet,
-        ocean_seed_mask,
-        None,
-    )
-}
-
 pub(crate) fn solve_hydrostatic_surface_water_connected_with_access(
     topology: &GeodesicTopology,
     solid_elevation_m: &[f32],
