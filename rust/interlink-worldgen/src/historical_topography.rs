@@ -101,18 +101,18 @@ fn stable_continental_buoyancy_support_m(
     let subsidence = f64::from(inherited.subsidence_history[sample]).clamp(0.0, 1.0);
     let basin = f64::from(inherited.basin_potential[sample]).clamp(0.0, 1.0);
 
-    // The crustal column itself remains buoyant after tectonothermal reworking. Reworking state
-    // controls how much additional stable-lithosphere support is retained, while present basin
-    // and subsidence state only attenuate that support. Their negative relief is already applied
-    // explicitly by WG-4, so allowing them to erase the whole column term double-counted
-    // extension and drowned broad modified continental interiors.
-    let recovered_column_retention = 0.72 + 0.28 * continental_stability;
-    let active_subsidence = subsidence.max(basin);
-    let active_subsidence_retention =
-        1.0 - 0.18 * clamp01((active_subsidence - 0.18) / 0.55);
-    let rift_memory_retention = 1.0 - 0.10 * clamp01((rift - 0.22) / 0.55);
-    let state_retention =
-        recovered_column_retention * active_subsidence_retention * rift_memory_retention;
+    // Preserve the accepted quiet-interior support curve, but do not let inherited basin/rift
+    // memory erase the entire buoyant continental column. Actual thinning and negative basin
+    // relief are already explicit WG-3/WG-4 state. The event-derived recovery index therefore
+    // supplies only a bounded retention floor when those other fields would otherwise zero the
+    // freeboard term.
+    let rift_release = 0.20 * clamp01((rift - 0.20) / 0.50);
+    let subsidence_release = clamp01((subsidence - 0.16) / 0.40);
+    let basin_release = clamp01((basin - 0.18) / 0.45);
+    let release = rift_release.max(subsidence_release).max(basin_release);
+    let quiet_retention = 1.0 - release;
+    let recovered_column_floor = 0.38 + 0.22 * continental_stability;
+    let state_retention = quiet_retention.max(recovered_column_floor);
 
     let buoyancy = clamp01(
         (f64::from(inherited.compensated_buoyancy_index[sample]) + 0.25) / 1.25,
