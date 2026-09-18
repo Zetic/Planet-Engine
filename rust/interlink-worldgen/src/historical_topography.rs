@@ -271,8 +271,12 @@ fn refresh_water_and_metrics(
     state.water_depth_m = Vec::new();
     state.submerged_mask = Vec::new();
 
-    let ocean_access_mask =
-        crate::causal_pipeline::marine_connectivity_access_mask(topology, inherited, planet);
+    let ocean_access_mask = crate::causal_pipeline::marine_connectivity_access_mask(
+        topology,
+        inherited,
+        planet,
+        &ocean_seed_mask,
+    );
     let water = crate::surface_water::solve_hydrostatic_surface_water_connected_with_access(
         topology,
         &state.solid_elevation_m,
