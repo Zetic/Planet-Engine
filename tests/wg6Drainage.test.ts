@@ -11,7 +11,7 @@ import {
 } from '../dist/worldgen/protocol.js';
 
 test('WG-6A browser protocol is versioned and bounded', () => {
-  assert.equal(WORLDGEN_PROTOCOL_VERSION, 22);
+  assert.equal(WORLDGEN_PROTOCOL_VERSION, 23);
   assert.equal(WORLDGEN_DRAINAGE_COARSE_MAX_LEVEL, 6);
   assert.equal(WORLDGEN_DRAINAGE_FINE_MAX_LEVEL, 8);
   assert.equal(WORLDGEN_INVALID_SAMPLE_ID, 0xffff_ffff);
@@ -41,7 +41,7 @@ test('WG-6A browser protocol is versioned and bounded', () => {
 test('WG-6A command uses the dedicated drainage transport contract', () => {
   const payload = { seed: 'wg6a-command', coarseLevel: 4, fineLevel: 6, plateCount: 16 };
   const command = worldgenDrainageCommand(91, payload);
-  assert.equal(command.protocolVersion, 22);
+  assert.equal(command.protocolVersion, 23);
   assert.equal(command.requestId, 91);
   assert.equal(command.type, 'generate-drainage');
   assert.deepEqual(command.payload, payload);

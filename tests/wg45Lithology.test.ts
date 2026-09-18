@@ -3,8 +3,8 @@ import fs from 'node:fs';
 import test from 'node:test';
 import { WORLDGEN_PROTOCOL_VERSION } from '../dist/worldgen/protocol.js';
 
-test('WG-4.5 lithology is part of cumulative protocol v22', () => {
-  assert.equal(WORLDGEN_PROTOCOL_VERSION, 22);
+test('WG-4.5 lithology is part of cumulative protocol v23', () => {
+  assert.equal(WORLDGEN_PROTOCOL_VERSION, 23);
   const protocol = fs.readFileSync('src/worldgen/protocol.ts', 'utf8');
   const worker = fs.readFileSync('src/worldgen/worldgenWorker.ts', 'utf8');
   const bridge = fs.readFileSync('rust/interlink-worldgen-wasm/src/climate_bridge.rs', 'utf8');

@@ -363,6 +363,24 @@ export class WasmWorldgenClimate {
         }
     }
     /**
+     * @returns {Float32Array}
+     */
+    continental_basement_age_myr() {
+        const ret = wasm.wasmworldgenclimate_continental_basement_age_myr(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    continental_stability_index() {
+        const ret = wasm.wasmworldgenclimate_continental_stability_index(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
      * @returns {Float64Array}
      */
     contributing_area_m2() {
@@ -2052,6 +2070,15 @@ export class WasmWorldgenClimate {
     /**
      * @returns {Float32Array}
      */
+    last_tectonic_reworking_age_myr() {
+        const ret = wasm.wasmworldgenclimate_last_tectonic_reworking_age_myr(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
     latest_historical_event_age_myr() {
         const ret = wasm.wasmworldgenclimate_latest_historical_event_age_myr(this.__wbg_ptr);
         var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
@@ -2569,6 +2596,15 @@ export class WasmWorldgenClimate {
      */
     ocean_heat_transport_index() {
         const ret = wasm.wasmworldgenclimate_ocean_heat_transport_index(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    oceanic_age_myr() {
+        const ret = wasm.wasmworldgenclimate_oceanic_age_myr(this.__wbg_ptr);
         var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
         return v1;
@@ -4697,6 +4733,15 @@ export class WasmWorldgenGeology {
         return ret;
     }
     /**
+     * @returns {Float32Array}
+     */
+    continental_basement_age_myr() {
+        const ret = wasm.wasmworldgengeology_continental_basement_age_myr(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
      * @returns {number}
      */
     continental_collision_edges() {
@@ -4709,6 +4754,15 @@ export class WasmWorldgenGeology {
     continental_rift_edges() {
         const ret = wasm.wasmworldgengeology_continental_rift_edges(this.__wbg_ptr);
         return ret >>> 0;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    continental_stability_index() {
+        const ret = wasm.wasmworldgengeology_continental_stability_index(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
     }
     /**
      * @returns {Float32Array}
@@ -4820,6 +4874,15 @@ export class WasmWorldgenGeology {
         }
     }
     /**
+     * @returns {Float32Array}
+     */
+    last_tectonic_reworking_age_myr() {
+        const ret = wasm.wasmworldgengeology_last_tectonic_reworking_age_myr(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
      * @returns {number}
      */
     level() {
@@ -4831,6 +4894,13 @@ export class WasmWorldgenGeology {
      */
     mean_continental_age_myr() {
         const ret = wasm.wasmworldgengeology_mean_continental_age_myr(this.__wbg_ptr);
+        return ret;
+    }
+    /**
+     * @returns {number}
+     */
+    mean_continental_reworking_age_myr() {
+        const ret = wasm.wasmworldgengeology_mean_continental_reworking_age_myr(this.__wbg_ptr);
         return ret;
     }
     /**
@@ -4894,6 +4964,15 @@ export class WasmWorldgenGeology {
     ocean_continent_subduction_edges() {
         const ret = wasm.wasmworldgengeology_ocean_continent_subduction_edges(this.__wbg_ptr);
         return ret >>> 0;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    oceanic_age_myr() {
+        const ret = wasm.wasmworldgengeology_oceanic_age_myr(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
     }
     /**
      * @returns {number}
@@ -5350,6 +5429,24 @@ export class WasmWorldgenInheritance {
     /**
      * @returns {Float32Array}
      */
+    continental_basement_age_myr() {
+        const ret = wasm.wasmworldgeninheritance_continental_basement_age_myr(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    continental_stability_index() {
+        const ret = wasm.wasmworldgeninheritance_continental_stability_index(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
     crust_age_myr() {
         const ret = wasm.wasmworldgeninheritance_crust_age_myr(this.__wbg_ptr);
         var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
@@ -5672,6 +5769,15 @@ export class WasmWorldgenInheritance {
     /**
      * @returns {Float32Array}
      */
+    last_tectonic_reworking_age_myr() {
+        const ret = wasm.wasmworldgeninheritance_last_tectonic_reworking_age_myr(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
     latest_historical_event_age_myr() {
         const ret = wasm.wasmworldgeninheritance_latest_historical_event_age_myr(this.__wbg_ptr);
         var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
@@ -5777,6 +5883,15 @@ export class WasmWorldgenInheritance {
     ocean_water_density_kg_per_m3() {
         const ret = wasm.wasmworldgeninheritance_ocean_water_density_kg_per_m3(this.__wbg_ptr);
         return ret;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    oceanic_age_myr() {
+        const ret = wasm.wasmworldgeninheritance_oceanic_age_myr(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
     }
     /**
      * @returns {Uint16Array}
@@ -7066,6 +7181,24 @@ export class WasmWorldgenTopography {
     /**
      * @returns {Float32Array}
      */
+    continental_basement_age_myr() {
+        const ret = wasm.wasmworldgentopography_continental_basement_age_myr(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    continental_stability_index() {
+        const ret = wasm.wasmworldgentopography_continental_stability_index(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * @returns {Float32Array}
+     */
     crust_age_myr() {
         const ret = wasm.wasmworldgentopography_crust_age_myr(this.__wbg_ptr);
         var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
@@ -7262,6 +7395,15 @@ export class WasmWorldgenTopography {
         return ret;
     }
     /**
+     * @returns {Float32Array}
+     */
+    last_tectonic_reworking_age_myr() {
+        const ret = wasm.wasmworldgentopography_last_tectonic_reworking_age_myr(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
      * @returns {string}
      */
     lithosphere_hash_hex() {
@@ -7407,6 +7549,15 @@ export class WasmWorldgenTopography {
     ocean_water_density_kg_per_m3() {
         const ret = wasm.wasmworldgentopography_ocean_water_density_kg_per_m3(this.__wbg_ptr);
         return ret;
+    }
+    /**
+     * @returns {Float32Array}
+     */
+    oceanic_age_myr() {
+        const ret = wasm.wasmworldgentopography_oceanic_age_myr(this.__wbg_ptr);
+        var v1 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
     }
     /**
      * @returns {Float32Array}

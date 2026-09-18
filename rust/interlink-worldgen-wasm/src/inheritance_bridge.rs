@@ -309,6 +309,18 @@ impl WasmWorldgenInheritance {
     pub fn crust_age_myr(&self) -> Vec<f32> {
         self.inner.crust_age_myr.clone()
     }
+    pub fn oceanic_age_myr(&self) -> Vec<f32> {
+        self.inner.oceanic_age_myr.clone()
+    }
+    pub fn continental_basement_age_myr(&self) -> Vec<f32> {
+        self.inner.continental_basement_age_myr.clone()
+    }
+    pub fn last_tectonic_reworking_age_myr(&self) -> Vec<f32> {
+        self.inner.last_tectonic_reworking_age_myr.clone()
+    }
+    pub fn continental_stability_index(&self) -> Vec<f32> {
+        self.inner.continental_stability_index.clone()
+    }
     pub fn crust_thickness_km(&self) -> Vec<f32> {
         self.inner.crust_thickness_km.clone()
     }

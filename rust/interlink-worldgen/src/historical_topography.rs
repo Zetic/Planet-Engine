@@ -5,8 +5,8 @@ use crate::{
 };
 
 pub const HISTORICAL_TOPOGRAPHY_STAGE_ID: &str = "terrain:initial-topography";
-pub const HISTORICAL_TOPOGRAPHY_STAGE_VERSION: u32 = 17;
-const HISTORICAL_TOPOGRAPHY_NAMESPACE: &str = "terrain:historical-material-morphology:v3";
+pub const HISTORICAL_TOPOGRAPHY_STAGE_VERSION: u32 = 18;
+const HISTORICAL_TOPOGRAPHY_NAMESPACE: &str = "terrain:historical-material-morphology:v4";
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 
@@ -95,21 +95,24 @@ fn stable_continental_buoyancy_support_m(
     // column even when an active orogenic province overlies it. This is deliberately a bounded
     // isostatic correction rather than a land-mask command: active rifts, subsiding basins, and
     // passive margins can release the support and may remain submerged.
+    let continental_stability =
+        f64::from(inherited.continental_stability_index[sample]).clamp(0.0, 1.0);
     let rift = f64::from(inherited.rift_history[sample]).clamp(0.0, 1.0);
     let subsidence = f64::from(inherited.subsidence_history[sample]).clamp(0.0, 1.0);
     let basin = f64::from(inherited.basin_potential[sample]).clamp(0.0, 1.0);
-    // Rift history is provenance of extension, not proof that the present crustal column remains
-    // deeply subsided. Let it weaken freeboard modestly on its own, while actual subsidence/basin
-    // state can release the support completely. This prevents ancient rift memory from drowning
-    // most modified continental crust after unrelated ridge uplift is removed.
+
+    // Preserve the accepted quiet-interior support curve, but do not let inherited basin/rift
+    // memory erase the entire buoyant continental column. Actual thinning and negative basin
+    // relief are already explicit WG-3/WG-4 state. The event-derived recovery index therefore
+    // supplies only a bounded retention floor when those other fields would otherwise zero the
+    // freeboard term.
     let rift_release = 0.20 * clamp01((rift - 0.20) / 0.50);
     let subsidence_release = clamp01((subsidence - 0.16) / 0.40);
     let basin_release = clamp01((basin - 0.18) / 0.45);
     let release = rift_release.max(subsidence_release).max(basin_release);
-    let stability = 1.0 - release;
-    if stability <= 0.0 {
-        return 0.0;
-    }
+    let quiet_retention = 1.0 - release;
+    let recovered_column_floor = 0.75 + 0.15 * continental_stability;
+    let state_retention = quiet_retention.max(recovered_column_floor);
 
     let buoyancy = clamp01(
         (f64::from(inherited.compensated_buoyancy_index[sample]) + 0.25) / 1.25,
@@ -133,7 +136,7 @@ fn stable_continental_buoyancy_support_m(
         _ => 1.0,
     };
 
-    600.0 * stability.powf(1.15) * physical_support * structural_retention
+    650.0 * state_retention * physical_support * structural_retention
 }
 
 fn stable_support_relaxation_barrier(kind: u8) -> bool {
@@ -385,6 +388,7 @@ pub fn generate_initial_topography(
         || inherited.weakness_index.len() != count
         || inherited.strength_index.len() != count
         || inherited.crust_kind.len() != count
+        || inherited.continental_stability_index.len() != count
         || inherited.crust_thickness_km.len() != count
         || inherited.compensated_buoyancy_index.len() != count
         || inherited.rift_history.len() != count

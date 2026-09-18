@@ -1,4 +1,4 @@
-export const WORLDGEN_PROTOCOL_VERSION = 22;
+export const WORLDGEN_PROTOCOL_VERSION = 23;
 export const WORLDGEN_SYNTHETIC_MAX_SAMPLES = 4_194_304;
 export const WORLDGEN_TOPOLOGY_MAX_LEVEL = 8;
 export const WORLDGEN_TECTONICS_MAX_LEVEL = 6;
@@ -99,6 +99,7 @@ export interface WorldgenGeologyMetrics {
   oceanicAreaFraction: number;
   meanContinentalAgeMyr: number;
   meanOceanicAgeMyr: number;
+  meanContinentalReworkingAgeMyr: number;
   meanContinentalThicknessKm: number;
   meanOceanicThicknessKm: number;
   oceanicSubductionEdges: number;
@@ -134,6 +135,10 @@ export interface WorldgenGeologyResult {
   crustKind: Uint8Array;
   crustProvinceId: Uint16Array;
   crustAgeMyr: Float32Array;
+  oceanicAgeMyr: Float32Array;
+  continentalBasementAgeMyr: Float32Array;
+  lastTectonicReworkingAgeMyr: Float32Array;
+  continentalStabilityIndex: Float32Array;
   crustThicknessKm: Float32Array;
   crustDensityKgPerM3: Float32Array;
   buoyancyIndex: Float32Array;
@@ -287,6 +292,10 @@ export interface WorldgenInheritanceResult {
   crustKind: Uint8Array;
   crustProvinceId: Uint16Array;
   crustAgeMyr: Float32Array;
+  oceanicAgeMyr: Float32Array;
+  continentalBasementAgeMyr: Float32Array;
+  lastTectonicReworkingAgeMyr: Float32Array;
+  continentalStabilityIndex: Float32Array;
   crustThicknessKm: Float32Array;
   crustDensityKgPerM3: Float32Array;
   buoyancyIndex: Float32Array;
@@ -372,6 +381,10 @@ export interface WorldgenTopographyResult {
   nearestCoarseSource: Uint32Array;
   inheritedSampleMask: Uint8Array;
   crustAgeMyr: Float32Array;
+  oceanicAgeMyr: Float32Array;
+  continentalBasementAgeMyr: Float32Array;
+  lastTectonicReworkingAgeMyr: Float32Array;
+  continentalStabilityIndex: Float32Array;
   crustThicknessKm: Float32Array;
   orogenicHistory: Float32Array;
   ridgeHistory: Float32Array;
@@ -586,6 +599,10 @@ export interface WorldgenClimateResult {
   nearestCoarseSource: Uint32Array;
   inheritedSampleMask: Uint8Array;
   crustAgeMyr: Float32Array;
+  oceanicAgeMyr: Float32Array;
+  continentalBasementAgeMyr: Float32Array;
+  lastTectonicReworkingAgeMyr: Float32Array;
+  continentalStabilityIndex: Float32Array;
   crustThicknessKm: Float32Array;
   orogenicHistory: Float32Array;
   ridgeHistory: Float32Array;

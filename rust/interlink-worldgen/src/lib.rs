@@ -93,8 +93,8 @@ pub use geology::{
     GEOLOGY_STAGE_VERSION,
 };
 pub use historical_api::{
-    generate_crust_and_history, generate_historical_lithosphere, generate_legacy_crust_and_history,
-    generate_lithosphere, generate_tectonics,
+    generate_crust_and_history, generate_historical_lithosphere, generate_lithosphere,
+    generate_tectonics,
 };
 pub use historical_causal::generate_lithosphere_from_history;
 pub use historical_epochs::HISTORICAL_EPOCH_COUNT;
@@ -210,7 +210,7 @@ pub use world_calibration::{
     WORLD_CALIBRATION_RANKED_LIMIT, WORLD_CALIBRATION_SCHEMA_ID, WORLD_CALIBRATION_SCHEMA_VERSION,
 };
 
-pub const WORLDGEN_ENGINE_VERSION: u32 = 22;
+pub const WORLDGEN_ENGINE_VERSION: u32 = 23;
 pub const SYNTHETIC_STAGE_ID: &str = "foundation:synthetic";
 pub const SYNTHETIC_STAGE_VERSION: u32 = 1;
 const SYNTHETIC_NAMESPACE: &str = "worldgen:foundation:synthetic:v1";

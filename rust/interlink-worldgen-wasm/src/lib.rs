@@ -16,7 +16,7 @@ use interlink_worldgen::{
 };
 use wasm_bindgen::prelude::*;
 
-pub const WORLDGEN_WASM_PROTOCOL_VERSION: u32 = 22;
+pub const WORLDGEN_WASM_PROTOCOL_VERSION: u32 = 23;
 #[wasm_bindgen]
 pub fn worldgen_protocol_version() -> u32 {
     WORLDGEN_WASM_PROTOCOL_VERSION
@@ -395,6 +395,9 @@ impl WasmWorldgenGeology {
     pub fn mean_oceanic_age_myr(&self) -> f64 {
         self.inner.metrics.mean_oceanic_age_myr
     }
+    pub fn mean_continental_reworking_age_myr(&self) -> f64 {
+        self.inner.metrics.mean_continental_reworking_age_myr
+    }
     pub fn mean_continental_thickness_km(&self) -> f64 {
         self.inner.metrics.mean_continental_thickness_km
     }
@@ -457,6 +460,18 @@ impl WasmWorldgenGeology {
     }
     pub fn crust_age_myr(&self) -> Vec<f32> {
         self.inner.crust_age_myr.clone()
+    }
+    pub fn oceanic_age_myr(&self) -> Vec<f32> {
+        self.inner.oceanic_age_myr.clone()
+    }
+    pub fn continental_basement_age_myr(&self) -> Vec<f32> {
+        self.inner.continental_basement_age_myr.clone()
+    }
+    pub fn last_tectonic_reworking_age_myr(&self) -> Vec<f32> {
+        self.inner.last_tectonic_reworking_age_myr.clone()
+    }
+    pub fn continental_stability_index(&self) -> Vec<f32> {
+        self.inner.continental_stability_index.clone()
     }
     pub fn crust_thickness_km(&self) -> Vec<f32> {
         self.inner.crust_thickness_km.clone()

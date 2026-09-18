@@ -80,7 +80,7 @@ fn multi_seed_geology_retains_physical_crust_separation_and_causal_history() {
                 continue;
             }
             let ridge = geology.ridge_history[sample];
-            let age = f64::from(geology.crust_age_myr[sample]);
+            let age = f64::from(geology.oceanic_age_myr[sample]);
             if ridge >= 0.60 {
                 ridge_near_age_sum += age;
                 ridge_near_count += 1;

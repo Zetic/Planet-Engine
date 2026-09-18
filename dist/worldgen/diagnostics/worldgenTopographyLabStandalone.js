@@ -80,6 +80,10 @@ function scalarField(result, mode) {
         case 'arc-relief': return { values: result.arcElevationM, minimum: 0, maximum: 3_000, lowHue: 50, highHue: 5 };
         case 'mantle-relief': return { values: result.mantleDynamicElevationM, minimum: -1_200, maximum: 1_200, lowHue: 245, highHue: 25 };
         case 'crust-age': return { values: result.crustAgeMyr, minimum: 0, maximum: 3500, lowHue: 205, highHue: 24 };
+        case 'oceanic-age': return { values: result.oceanicAgeMyr, minimum: 0, maximum: 220, lowHue: 185, highHue: 285 };
+        case 'continental-basement-age': return { values: result.continentalBasementAgeMyr, minimum: 0, maximum: 3500, lowHue: 205, highHue: 24 };
+        case 'tectonic-reworking-age': return { values: result.lastTectonicReworkingAgeMyr, minimum: 0, maximum: 3500, lowHue: 30, highHue: 210 };
+        case 'continental-stability': return { values: result.continentalStabilityIndex, minimum: 0, maximum: 1, lowHue: 15, highHue: 135 };
         case 'crust-thickness': return { values: result.crustThicknessKm, minimum: 5, maximum: 56, lowHue: 205, highHue: 350 };
         case 'orogeny-history': return { values: result.orogenicHistory, minimum: 0, maximum: 1, lowHue: 50, highHue: 350 };
         case 'ridge-history': return { values: result.ridgeHistory, minimum: 0, maximum: 1, lowHue: 225, highHue: 170 };

@@ -2,7 +2,7 @@ use crate::{
     derive_stage_seed, CrustFragment, HistoricalEventKind, HistoricalLithosphereModel,
     HistoricalTectonicEvent, PlanetPhysicalParameters, PlanetTopology, WorldgenError,
 };
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet};
 
 const DYNAMIC_PLATE_NAMESPACE: &str = "worldgen:geology:dynamic-modern-plates:v2";
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
@@ -244,6 +244,7 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
 mod tests {
     use super::*;
     use crate::{build_icosphere, HistoricalLithosphereRequest};
+    use std::collections::VecDeque;
 
     fn connected_plate_count<T: PlanetTopology>(
         topology: &T,

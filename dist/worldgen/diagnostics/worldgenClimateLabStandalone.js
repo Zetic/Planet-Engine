@@ -590,6 +590,10 @@ function scalarField(result, mode, phase) {
         case 'historical-active-orogen': return { values: result.activeOrogenIntensity, minimum: 0, maximum: 1, lowHue: 215, highHue: 15 };
         case 'historical-fossil-orogen': return { values: result.fossilOrogenIntensity, minimum: 0, maximum: 1, lowHue: 215, highHue: 285 };
         case 'crust-age': return { values: result.crustAgeMyr, minimum: 0, maximum: 3_500, lowHue: 205, highHue: 24 };
+        case 'oceanic-age': return { values: result.oceanicAgeMyr, minimum: 0, maximum: 220, lowHue: 185, highHue: 285 };
+        case 'continental-basement-age': return { values: result.continentalBasementAgeMyr, minimum: 0, maximum: 3_500, lowHue: 205, highHue: 24 };
+        case 'tectonic-reworking-age': return { values: result.lastTectonicReworkingAgeMyr, minimum: 0, maximum: 3_500, lowHue: 30, highHue: 210 };
+        case 'continental-stability': return { values: result.continentalStabilityIndex, minimum: 0, maximum: 1, lowHue: 15, highHue: 135 };
         case 'crust-thickness': return { values: result.crustThicknessKm, minimum: 5, maximum: 56, lowHue: 205, highHue: 350 };
         case 'orogeny-history': return { values: result.orogenicHistory, minimum: 0, maximum: 1, lowHue: 50, highHue: 350 };
         case 'ridge-history': return { values: result.ridgeHistory, minimum: 0, maximum: 1, lowHue: 225, highHue: 170 };
@@ -1690,7 +1694,11 @@ const DIAGNOSTIC_SUMMARIES = {
     "historical-active-orogen": "Shows present or young orogenic intensity derived from active tectonic shortening and mountain-building history.",
     "historical-fossil-orogen": "Shows inherited but no longer active orogenic structure. Higher values preserve stronger fossil mountain-belt ancestry.",
     "crust-type": "Classifies crust as continental, transitional, or oceanic. This is material identity, not a land/ocean mask: continental crust may be submerged.",
-    "crust-age": "Maps the modeled age of current crustal material, especially useful for reading ocean-basin spreading patterns and old continental interiors.",
+    "crust-age": "Compatibility composite: oceanic samples show seafloor age while continental and transitional samples show basement formation age. It is retained for older consumers and is not a single physical clock.",
+    "oceanic-age": "Maps seafloor age on oceanic material. This is the age clock consumed by WG-4 oceanic thermal subsidence; non-oceanic samples are zero.",
+    "continental-basement-age": "Maps modeled continental basement formation age. This is geological ancestry metadata; PR #82 no longer uses basement age directly to set continental thickness, density, freeboard, or rheology.",
+    "tectonic-reworking-age": "Maps time since the most recent major tectonothermal reworking represented by the material-history model. Younger values identify recently disturbed crust; older values indicate longer mechanical recovery.",
+    "continental-stability": "Maps the bounded present-day continental stability state derived from reworking age and tectonic disturbance. This state can affect lithospheric rheology without turning basement-age or fragment boundaries into terrain.",
     "crust-thickness": "Maps modeled crustal thickness. Thick values generally mark continental or orogenic crust, while thin values generally mark oceanic lithosphere.",
     "orogeny-history": "Shows cumulative inherited mountain-building influence retained in the lithosphere. Higher values indicate stronger orogenic ancestry.",
     "ridge-history": "Shows cumulative inherited spreading-ridge influence. Higher values identify crust more strongly associated with ridge creation or spreading.",
@@ -1700,7 +1708,7 @@ const DIAGNOSTIC_SUMMARIES = {
     "dynamic-support": "Shows the signed mantle-dynamic support index. Positive values favor broad support or uplift; negative values favor broad downward support.",
     "structural-zones": "Classifies inherited structural zones such as sutures, rifts, transforms, and continental margins.",
     "fragmentation": "Shows the modeled propensity for lithosphere to fragment under tectonic history and inherited weakness. Higher values indicate greater susceptibility.",
-    "bedrock-class": "Shows the persistent WG-4.5 bedrock class derived from crust type, tectonic history, structure, and fragment provenance.",
+    "bedrock-class": "Shows the persistent WG-4.5 bedrock class derived from crust type, continuous material history, tectonic structure, basin state, and lithospheric mechanics. Historical fragment IDs are diagnostic genealogy and do not select the class.",
     "rock-strength": "Shows bedrock-scale mechanical resistance intended for later surface-process work. Higher values mean more resistant substrate.",
     "lithology-erodibility": "Shows the substrate's intrinsic tendency to be eroded. Higher values mean the material is easier to remove under otherwise similar forcing.",
     "permeability": "Shows the relative ability of the substrate to transmit water through the material. Higher values represent more permeable substrate.",
@@ -1894,7 +1902,7 @@ function addDiagnosticHelp(mode) {
 const DIAGNOSTIC_UNITS = {
     'solid-elevation': 'm', 'relative-elevation': 'm', 'water-depth': 'm', 'isostatic': 'm', 'thermal': 'm', 'orogenic-relief': 'm',
     'ridge-relief': 'm', 'rift-basin': 'm', 'trench-relief': 'm', 'arc-relief': 'm', 'mantle-relief': 'm', 'historical-crust-birth-age': 'Myr',
-    'historical-event-age': 'Myr', 'historical-rift-age': 'Myr', 'historical-suture-age': 'Myr', 'crust-age': 'Myr', 'crust-thickness': 'km',
+    'historical-event-age': 'Myr', 'historical-rift-age': 'Myr', 'historical-suture-age': 'Myr', 'crust-age': 'Myr', 'oceanic-age': 'Myr', 'continental-basement-age': 'Myr', 'tectonic-reworking-age': 'Myr', 'crust-thickness': 'km',
     'annual-insolation': 'W/m²', 'seasonal-insolation': 'W/m²', 'temperature': 'K', 'seasonal-temperature': 'K', 'temperature-range': 'K',
     'sst': 'K', 'seasonal-sst': 'K', 'surface-pressure': 'Pa', 'wind-speed': 'm/s', 'current-speed': 'm/s', 'humidity': 'kg/kg',
     'precipitation': 'mm/yr', 'seasonal-precipitation': 'mm/yr', 'potential-evaporation': 'mm/yr', 'moisture-balance': 'mm/yr',

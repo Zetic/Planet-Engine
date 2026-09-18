@@ -4,8 +4,8 @@ use crate::{
 };
 
 pub const LITHOLOGY_STAGE_ID: &str = "geology:lithology-substrate";
-pub const LITHOLOGY_STAGE_VERSION: u32 = 1;
-const LITHOLOGY_NAMESPACE: &str = "worldgen:geology:lithology-substrate:v1";
+pub const LITHOLOGY_STAGE_VERSION: u32 = 2;
+const LITHOLOGY_NAMESPACE: &str = "worldgen:geology:lithology-substrate:v2";
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 
@@ -76,26 +76,6 @@ fn fnv_update(mut hash: u64, bytes: &[u8]) -> u64 {
     hash
 }
 
-fn mix64(mut value: u64) -> u64 {
-    value ^= value >> 30;
-    value = value.wrapping_mul(0xbf58_476d_1ce4_e5b9);
-    value ^= value >> 27;
-    value = value.wrapping_mul(0x94d0_49bb_1331_11eb);
-    value ^ (value >> 31)
-}
-
-fn unit_random(value: u64) -> f64 {
-    ((mix64(value) >> 11) as f64) * (1.0 / 9_007_199_254_740_992.0)
-}
-
-fn provenance_variation(stage_seed: u64, origin_plate_id: u16, fragment_id: u16, lane: u64) -> f64 {
-    let key = stage_seed
-        ^ (u64::from(origin_plate_id) << 40)
-        ^ (u64::from(fragment_id) << 16)
-        ^ lane.wrapping_mul(0x9e37_79b9_7f4a_7c15);
-    unit_random(key)
-}
-
 fn validate_inputs(
     topology: &GeodesicTopology,
     inherited: &InheritedPhysicalState,
@@ -104,7 +84,10 @@ fn validate_inputs(
     let count = topology.metrics().sample_count as usize;
     let inherited_lengths = [
         inherited.crust_kind.len(),
-        inherited.crust_age_myr.len(),
+        inherited.oceanic_age_myr.len(),
+        inherited.continental_basement_age_myr.len(),
+        inherited.last_tectonic_reworking_age_myr.len(),
+        inherited.continental_stability_index.len(),
         inherited.crust_thickness_km.len(),
         inherited.rift_history.len(),
         inherited.ridge_history.len(),
@@ -149,12 +132,12 @@ fn validate_inputs(
 
 fn classify_bedrock(
     inherited: &InheritedPhysicalState,
-    historical: &InheritedHistoricalIdentity,
     sample: usize,
-    stage_seed: u64,
 ) -> BedrockClass {
     let crust = inherited.crust_kind[sample];
-    let age = f64::from(inherited.crust_age_myr[sample]).max(0.0);
+    let oceanic_age = f64::from(inherited.oceanic_age_myr[sample]).max(0.0);
+    let reworking_age = f64::from(inherited.last_tectonic_reworking_age_myr[sample]).max(0.0);
+    let stability = clamp01(f64::from(inherited.continental_stability_index[sample]));
     let rift = clamp01(f64::from(inherited.rift_history[sample]));
     let ridge = clamp01(f64::from(inherited.ridge_history[sample]));
     let subduction = clamp01(f64::from(inherited.subduction_history[sample]));
@@ -167,21 +150,10 @@ fn classify_bedrock(
     let orogen = clamp01(f64::from(inherited.orogenic_history[sample]));
     let suture = clamp01(f64::from(inherited.suture_index[sample]));
     let structure = inherited.structural_zone_kind[sample];
-    let fragment_bias = provenance_variation(
-        stage_seed,
-        historical.origin_plate_ids[sample],
-        historical.fragment_ids[sample],
-        1,
-    );
-    let carbonate_bias = provenance_variation(
-        stage_seed,
-        historical.origin_plate_ids[sample],
-        historical.fragment_ids[sample],
-        2,
-    );
 
     if crust == CrustKind::Oceanic as u8 {
-        let sediment_score = 0.46 * clamp01(age / 190.0) + 0.30 * subsidence + 0.25 * basin
+        let sediment_score =
+            0.46 * clamp01(oceanic_age / 190.0) + 0.30 * subsidence + 0.25 * basin
             - 0.38 * ridge
             - 0.18 * thermal;
         return if sediment_score > 0.53 {
@@ -206,21 +178,28 @@ fn classify_bedrock(
     if inherited.province_kind[sample] != 0 && (orogen > 0.34 || suture > 0.34 || paleo_suture) {
         return BedrockClass::OrogenicMetamorphic;
     }
-    if (paleo_suture || shear_zone || craton_boundary)
-        && fragmentation.max(weakness) > 0.56
-        && fragment_bias > 0.30
-    {
+
+    // Accreted terranes are now identified by physical deformation/reworking state rather than
+    // by categorical fragment ancestry. A quiet fragment contact therefore cannot create a rock
+    // class boundary by itself.
+    let reworked = clamp01(1.0 - reworking_age / 1800.0);
+    let terrane_score = 0.34 * fragmentation
+        + 0.28 * weakness
+        + 0.22 * suture
+        + 0.10 * orogen
+        + 0.06 * reworked;
+    if (paleo_suture || shear_zone || craton_boundary) && terrane_score > 0.54 {
         return BedrockClass::AccretedTerrane;
     }
 
     let sediment_score =
         0.42 * basin + 0.34 * subsidence + 0.22 * rift + if passive_margin { 0.28 } else { 0.0 };
     if sediment_score > 0.45 {
-        let carbonate_score = 0.46 * carbonate_bias
-            + 0.24 * (1.0 - arc)
-            + 0.18 * (1.0 - thermal)
+        let carbonate_score = 0.28 * (1.0 - arc)
+            + 0.22 * (1.0 - thermal)
+            + 0.18 * stability
             + 0.18 * if passive_margin { 1.0 } else { 0.0 }
-            - 0.16 * rift;
+            + 0.14 * (1.0 - rift);
         if carbonate_score > 0.58 {
             return BedrockClass::CarbonatePlatform;
         }
@@ -228,14 +207,14 @@ fn classify_bedrock(
     }
 
     if crust == CrustKind::Transitional as u8 {
-        if carbonate_bias > 0.62 && rift < 0.48 {
+        if passive_margin && rift < 0.48 && thermal < 0.46 && basin > 0.18 {
             BedrockClass::CarbonatePlatform
         } else {
             BedrockClass::ClasticSedimentary
         }
     } else if orogen > 0.26 || suture > 0.28 {
         BedrockClass::OrogenicMetamorphic
-    } else if fragmentation > 0.70 && fragment_bias > 0.60 {
+    } else if terrane_score > 0.62 {
         BedrockClass::AccretedTerrane
     } else {
         BedrockClass::CrystallineBasement
@@ -259,9 +238,7 @@ fn base_properties(class: BedrockClass) -> [f64; 6] {
 fn material_properties(
     class: BedrockClass,
     inherited: &InheritedPhysicalState,
-    historical: &InheritedHistoricalIdentity,
     sample: usize,
-    stage_seed: u64,
 ) -> [f32; 6] {
     let [base_strength, base_erodibility, base_permeability, base_weathering, base_fines, base_carbonate] =
         base_properties(class);
@@ -271,22 +248,13 @@ fn material_properties(
     let basin = clamp01(f64::from(inherited.basin_potential[sample]));
     let subsidence = clamp01(f64::from(inherited.subsidence_history[sample]));
     let thermal = clamp01(f64::from(inherited.thermal_anomaly_index[sample]));
-    let composition = provenance_variation(
-        stage_seed,
-        historical.origin_plate_ids[sample],
-        historical.fragment_ids[sample],
-        3,
-    );
-    let carbonate_bias = provenance_variation(
-        stage_seed,
-        historical.origin_plate_ids[sample],
-        historical.fragment_ids[sample],
-        2,
-    );
+    let stability = clamp01(f64::from(inherited.continental_stability_index[sample]));
+    let reworking_age = f64::from(inherited.last_tectonic_reworking_age_myr[sample]).max(0.0);
+    let reworked = clamp01(1.0 - reworking_age / 1800.0);
 
     let rock_strength = clamp01(
         base_strength * (0.78 + 0.22 * strength) * (1.0 - 0.20 * weakness)
-            + (composition - 0.5) * 0.05,
+            + 0.035 * (stability - 0.5),
     );
     let erodibility = clamp01(
         base_erodibility * (1.08 - 0.24 * strength + 0.18 * weakness)
@@ -296,10 +264,13 @@ fn material_properties(
     let permeability = clamp01(
         base_permeability + 0.14 * weakness + 0.08 * fabric + 0.06 * subsidence - 0.06 * strength,
     );
-    let weathering =
-        clamp01(base_weathering + 0.11 * thermal + 0.07 * weakness + (composition - 0.5) * 0.04);
+    let weathering = clamp01(
+        base_weathering + 0.11 * thermal + 0.07 * weakness + 0.035 * reworked,
+    );
     let fines = clamp01(base_fines + 0.17 * basin + 0.12 * subsidence - 0.08 * strength);
-    let carbonate = clamp01(base_carbonate + (carbonate_bias - 0.5) * 0.12 - 0.10 * thermal);
+    let carbonate = clamp01(
+        base_carbonate + 0.05 * stability + 0.04 * (1.0 - thermal) - 0.03 * reworked,
+    );
 
     [
         rock_strength as f32,
@@ -332,14 +303,13 @@ pub fn generate_lithology_substrate(
     let mut sums = [0.0_f64; 6];
 
     let mut hash = FNV_OFFSET_BASIS;
-    hash = fnv_update(hash, b"geology:lithology-substrate:v1\0");
+    hash = fnv_update(hash, b"geology:lithology-substrate:v2\0");
     hash = fnv_update(hash, &stage_seed.to_le_bytes());
     hash = fnv_update(hash, &inherited.inheritance_hash().to_le_bytes());
-    hash = fnv_update(hash, &historical.identity_hash.to_le_bytes());
 
     for sample in 0..count {
-        let class = classify_bedrock(inherited, historical, sample, stage_seed);
-        let properties = material_properties(class, inherited, historical, sample, stage_seed);
+        let class = classify_bedrock(inherited, sample);
+        let properties = material_properties(class, inherited, sample);
         bedrock_class.push(class as u8);
         class_sample_counts[class as usize - 1] += 1;
         hash = fnv_update(hash, &[class as u8]);
