@@ -88,7 +88,6 @@ fn stable_continental_buoyancy_support_m(
     sample: usize,
 ) -> f64 {
     if inherited.crust_kind[sample] != CrustKind::Continental as u8
-        || inherited.province_kind[sample] != 0
         || inherited.structural_zone_kind[sample]
             == InheritedStructureKind::ContinentalMargin as u8
         || inherited.structural_zone_kind[sample]
@@ -97,10 +96,10 @@ fn stable_continental_buoyancy_support_m(
         return 0.0;
     }
 
-    // Stable continental interiors should retain a modest freeboard advantage from their thick,
-    // buoyant lithospheric columns. This is deliberately a bounded isostatic correction rather
-    // than a land-mask command: active rifts, subsiding basins, passive margins, and active
-    // orogenic provinces retain their own causal topography and may remain submerged.
+    // Continental crust retains a modest freeboard advantage from its thick, buoyant lithospheric
+    // column even when an active orogenic province overlies it. This is deliberately a bounded
+    // isostatic correction rather than a land-mask command: active rifts, subsiding basins, and
+    // passive margins can release the support and may remain submerged.
     let rift = f64::from(inherited.rift_history[sample]).clamp(0.0, 1.0);
     let subsidence = f64::from(inherited.subsidence_history[sample]).clamp(0.0, 1.0);
     let basin = f64::from(inherited.basin_potential[sample]).clamp(0.0, 1.0);
