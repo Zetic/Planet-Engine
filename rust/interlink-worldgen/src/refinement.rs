@@ -472,17 +472,6 @@ pub fn inherit_physical_state(
     // Preserve coarse material-property truth inside each geological province. Quiet provenance
     // contacts are relaxed later by WG-4's mechanical response rather than by averaging away the
     // inherited crustal state itself.
-    let mechanical_domains = tectonics
-        .plate_ids
-        .iter()
-        .zip(geology.crust_kind.iter())
-        .zip(lithosphere.structural_zone_kind.iter())
-        .map(|((plate, kind), structure)| {
-            (*plate & 0x00ff)
-                | ((u16::from(*kind) & 0x0003) << 8)
-                | ((u16::from(*structure) & 0x0007) << 10)
-        })
-        .collect::<Vec<_>>();
     let crust_province_id = refine_categorical_u16(&map, &geology.crust_province_id)?;
     let fragment_ids = refine_categorical_u16(&map, &lithosphere.fragment_ids)?;
     let kinematic_domain_ids = refine_categorical_u16(&map, &lithosphere.kinematic_domain_ids)?;
@@ -538,35 +527,35 @@ pub fn inherit_physical_state(
         coarse_level,
         &lithosphere.strength_index,
         &map,
-        &mechanical_domains,
+        &lithosphere.kinematic_domain_ids,
     )?;
     let weakness_index = refine_scalar_f32_with_domains(
         fine_topology,
         coarse_level,
         &lithosphere.weakness_index,
         &map,
-        &mechanical_domains,
+        &lithosphere.kinematic_domain_ids,
     )?;
     let effective_elastic_thickness_km = refine_scalar_f32_with_domains(
         fine_topology,
         coarse_level,
         &lithosphere.effective_elastic_thickness_km,
         &map,
-        &mechanical_domains,
+        &lithosphere.kinematic_domain_ids,
     )?;
     let structural_fabric_strength = refine_scalar_f32_with_domains(
         fine_topology,
         coarse_level,
         &lithosphere.structural_fabric_strength,
         &map,
-        &mechanical_domains,
+        &lithosphere.kinematic_domain_ids,
     )?;
     let fragmentation_propensity = refine_scalar_f32_with_domains(
         fine_topology,
         coarse_level,
         &lithosphere.fragmentation_propensity,
         &map,
-        &mechanical_domains,
+        &lithosphere.kinematic_domain_ids,
     )?;
 
     let thermal_anomaly_index = refine_scalar_f32(
