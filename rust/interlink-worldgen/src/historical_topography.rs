@@ -120,7 +120,7 @@ fn stable_continental_buoyancy_support_m(
         * (0.84 + 0.16 * thickness)
         * (0.90 + 0.10 * strength);
 
-    500.0 * stability.powf(1.15) * physical_support
+    550.0 * stability.powf(1.15) * physical_support
 }
 
 fn stable_support_relaxation_barrier(kind: u8) -> bool {
