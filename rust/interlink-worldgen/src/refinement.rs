@@ -469,15 +469,9 @@ pub fn inherit_physical_state(
 
     let plate_ids = refine_categorical_u16(&map, &tectonics.plate_ids)?;
     let crust_kind = refine_categorical_u8(&map, &geology.crust_kind)?;
-    // Continuous material properties must not inherit categorical crust-province Voronoi edges.
-    // Interpolate inside the same tectonic plate and crust class; keep ocean/transition/continent
-    // contacts distinct while allowing quiet ancestry contacts to remain physically continuous.
-    let material_domains = tectonics
-        .plate_ids
-        .iter()
-        .zip(geology.crust_kind.iter())
-        .map(|(plate, kind)| (*plate & 0x00ff) | ((u16::from(*kind) & 0x0003) << 8))
-        .collect::<Vec<_>>();
+    // Preserve coarse material-property truth inside each geological province. Quiet provenance
+    // contacts are relaxed later by WG-4's mechanical response rather than by averaging away the
+    // inherited crustal state itself.
     let mechanical_domains = tectonics
         .plate_ids
         .iter()
@@ -499,28 +493,28 @@ pub fn inherit_physical_state(
         coarse_level,
         &geology.crust_age_myr,
         &map,
-        &material_domains,
+        &geology.crust_province_id,
     )?;
     let crust_thickness_km = refine_scalar_f32_with_domains(
         fine_topology,
         coarse_level,
         &geology.crust_thickness_km,
         &map,
-        &material_domains,
+        &geology.crust_province_id,
     )?;
     let crust_density_kg_per_m3 = refine_scalar_f32_with_domains(
         fine_topology,
         coarse_level,
         &geology.crust_density_kg_per_m3,
         &map,
-        &material_domains,
+        &geology.crust_province_id,
     )?;
     let buoyancy_index = refine_scalar_f32_with_domains(
         fine_topology,
         coarse_level,
         &geology.buoyancy_index,
         &map,
-        &material_domains,
+        &geology.crust_province_id,
     )?;
 
     let orogenic_history =
@@ -595,7 +589,7 @@ pub fn inherit_physical_state(
         coarse_level,
         &lithosphere.compensated_buoyancy_index,
         &map,
-        &material_domains,
+        &geology.crust_province_id,
     )?;
 
     let parameter_hash = parameters.parameter_hash();
