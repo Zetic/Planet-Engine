@@ -801,6 +801,8 @@ fn inland_marine_morphology(
     terrain: &TopographyState,
 ) -> InlandMarineMorphology {
     let distances = oceanic_crust_distances(topology, inherited, terrain, planet.radius_m);
+    let marine_access =
+        crate::causal_pipeline::marine_connectivity_access_mask(topology, inherited, planet);
     let mut sample_count = 0_u32;
     let mut area_m2 = 0.0_f64;
     let mut max_distance = 0.0_f64;
@@ -817,13 +819,7 @@ fn inland_marine_morphology(
         area_m2 += area;
         max_distance = max_distance.max(distances[sample]);
 
-        let structure = inherited.structural_zone_kind[sample];
-        let causal_support = inherited.crust_kind[sample] == CRUST_TRANSITIONAL
-            || structure == InheritedStructureKind::InheritedRift as u8
-            || structure == InheritedStructureKind::ContinentalMargin as u8
-            || f64::from(inherited.rift_history[sample]) >= 0.18
-            || f64::from(inherited.subsidence_history[sample]) >= 0.22
-            || f64::from(inherited.basin_potential[sample]) >= 0.24;
+        let causal_support = marine_access[sample] != 0;
         if !causal_support {
             unsupported_count += 1;
             unsupported_area += area;
