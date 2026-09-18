@@ -487,55 +487,78 @@ fn major_ocean_reservoir_seed_mask(
     seeds
 }
 
-fn marine_support_sample(inherited: &InheritedPhysicalState, sample: usize) -> bool {
-    inherited.crust_kind[sample] == CRUST_OCEANIC
+fn marine_corridor_sample(inherited: &InheritedPhysicalState, sample: usize) -> bool {
+    if inherited.crust_kind[sample] == CRUST_OCEANIC
         || inherited.crust_kind[sample] == CRUST_TRANSITIONAL
         || inherited.structural_zone_kind[sample] == InheritedStructureKind::InheritedRift as u8
         || inherited.structural_zone_kind[sample] == InheritedStructureKind::ContinentalMargin as u8
-        || f64::from(inherited.rift_history[sample]) >= 0.18
-        || f64::from(inherited.subsidence_history[sample]) >= 0.22
-        || f64::from(inherited.basin_potential[sample]) >= 0.24
+    {
+        return true;
+    }
+
+    let rift = f64::from(inherited.rift_history[sample]);
+    let subsidence = f64::from(inherited.subsidence_history[sample]);
+    let basin = f64::from(inherited.basin_potential[sample]);
+    subsidence >= 0.30
+        || basin >= 0.32
+        || (rift >= 0.35 && (subsidence >= 0.18 || basin >= 0.20))
 }
 
 pub(crate) fn marine_connectivity_access_mask(
     topology: &GeodesicTopology,
     inherited: &InheritedPhysicalState,
     planet: PlanetPhysicalParameters,
+    ocean_seed_mask: &[u8],
 ) -> Vec<u8> {
     let count = topology.metrics().sample_count as usize;
-    let mut distance_m = vec![f64::INFINITY; count];
+    debug_assert_eq!(ocean_seed_mask.len(), count);
+    let mut quiet_reach_m = vec![f64::INFINITY; count];
+    let mut queued = vec![false; count];
     let mut queue = VecDeque::<u32>::new();
 
+    // Access must originate at a major ocean reservoir. Geological rifts/basins are corridors,
+    // not independent ocean sources; an isolated inland rift therefore cannot create an ocean.
     for sample in 0..count {
-        if marine_support_sample(inherited, sample) {
-            distance_m[sample] = 0.0;
+        if ocean_seed_mask[sample] != 0 {
+            quiet_reach_m[sample] = 0.0;
+            queued[sample] = true;
             queue.push_back(sample as u32);
         }
     }
 
-    // Multi-source bounded relaxation. The reach is deliberately physical-distance based rather
-    // than cell-count based so the coastline rule is resolution independent. Quiet continental
-    // lowlands may be reached for a bounded coastal distance; farther marine penetration requires
-    // rift, margin, subsidence, basin, transitional, or oceanic support.
+    // Supported marine corridors reset the amount of unsupported continental crust traversed.
+    // Quiet lowlands may bridge at most 600 km between supported segments. This keeps the rule
+    // resolution independent while allowing realistic shelves/straits without permitting a
+    // continent-spanning sea merely because distant cells carry fossil rift ancestry.
     while let Some(sample) = queue.pop_front() {
-        let source_distance = distance_m[sample as usize];
+        let sample_index = sample as usize;
+        queued[sample_index] = false;
+        let source_quiet_reach = quiet_reach_m[sample_index];
         for (neighbor, arc) in topology
             .neighbors_of(sample)
             .iter()
             .zip(topology.neighbor_arc_lengths_of(sample).iter())
         {
-            let candidate = source_distance + *arc * planet.radius_m;
             let index = *neighbor as usize;
+            let step_m = *arc * planet.radius_m;
+            let candidate = if marine_corridor_sample(inherited, index) {
+                0.0
+            } else {
+                source_quiet_reach + step_m
+            };
             if candidate <= MAX_QUIET_CONTINENTAL_MARINE_REACH_M
-                && candidate + 1.0e-6 < distance_m[index]
+                && candidate + 1.0e-6 < quiet_reach_m[index]
             {
-                distance_m[index] = candidate;
-                queue.push_back(*neighbor);
+                quiet_reach_m[index] = candidate;
+                if !queued[index] {
+                    queued[index] = true;
+                    queue.push_back(*neighbor);
+                }
             }
         }
     }
 
-    distance_m
+    quiet_reach_m
         .into_iter()
         .map(|distance| u8::from(distance <= MAX_QUIET_CONTINENTAL_MARINE_REACH_M))
         .collect()
@@ -702,7 +725,8 @@ pub fn generate_initial_topography(
         &inherited.crust_kind,
         &provisional.submerged_mask,
     );
-    let ocean_access_mask = marine_connectivity_access_mask(topology, inherited, planet);
+    let ocean_access_mask =
+        marine_connectivity_access_mask(topology, inherited, planet, &ocean_seed_mask);
     let water = crate::surface_water::solve_hydrostatic_surface_water_connected_with_access_f64(
         topology,
         &solid,
