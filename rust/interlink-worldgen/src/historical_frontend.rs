@@ -217,8 +217,11 @@ fn stabilize_boundary_kinds<T: PlanetTopology>(
             } else if current == PlateBoundaryKind::Transform
                 && signed_support >= 2
                 && signed_support > transform
-                && fraction >= 0.24
+                && fraction >= 0.35
             {
+                // Neighbor agreement may remove a one-edge transform interruption, but it may
+                // not promote a shear-dominated edge into extension or convergence below the
+                // physical normal-motion threshold used by the base classifier.
                 signed_kind
             } else if current != PlateBoundaryKind::Transform
                 && fraction < 0.30
