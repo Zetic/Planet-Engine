@@ -801,8 +801,17 @@ fn inland_marine_morphology(
     terrain: &TopographyState,
 ) -> InlandMarineMorphology {
     let distances = oceanic_crust_distances(topology, inherited, terrain, planet.radius_m);
-    let marine_access =
-        crate::causal_pipeline::marine_connectivity_access_mask(topology, inherited, planet);
+    let ocean_seed_mask = crate::causal_pipeline::major_ocean_reservoir_seed_mask(
+        topology,
+        &inherited.crust_kind,
+        &terrain.submerged_mask,
+    );
+    let marine_access = crate::causal_pipeline::marine_connectivity_access_mask(
+        topology,
+        inherited,
+        planet,
+        &ocean_seed_mask,
+    );
     let mut sample_count = 0_u32;
     let mut area_m2 = 0.0_f64;
     let mut max_distance = 0.0_f64;
