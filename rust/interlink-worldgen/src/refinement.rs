@@ -6,7 +6,7 @@ use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 
 pub const MULTIRES_STAGE_ID: &str = "foundation:multires-inheritance";
-pub const MULTIRES_STAGE_VERSION: u32 = 2;
+pub const MULTIRES_STAGE_VERSION: u32 = 1;
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 const DISTANCE_EPSILON: f64 = 1.0e-15;
