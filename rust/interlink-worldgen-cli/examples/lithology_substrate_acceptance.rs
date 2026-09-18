@@ -4,7 +4,7 @@ use interlink_worldgen::{
     BedrockClass, CrustKind, HistoricalLithosphereRequest, LithologyRequest, LithosphereRequest,
     PlanetPhysicalParameters, PlanetTopology,
 };
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 const SEEDS: [&str; 4] = ["interlink-wg7c", "1", "2", "lithology-substrate-holdout"];
 
@@ -17,8 +17,7 @@ struct Report {
     hard_erodibility: f64,
     soft_erodibility: f64,
     carbonate_mean: f64,
-    fragment_strength_range: f64,
-    boundary_contrast_ratio: f64,
+    ancestry_relabel_invariant: bool,
     hash: String,
 }
 
@@ -155,67 +154,27 @@ fn run_seed(seed: &'static str) -> Result<Report, String> {
         ));
     }
 
-    let mut fragments = BTreeMap::<u16, (f64, u64)>::new();
-    for sample in 0..count {
-        let entry = fragments.entry(identity.fragment_ids[sample]).or_default();
-        entry.0 += f64::from(state.rock_strength_index[sample]);
-        entry.1 += 1;
+    // Genealogical IDs must be observational only. Deterministically relabel ancestral plate and
+    // fragment identities while holding every inherited physical field fixed; WG-4.5 substrate
+    // must remain bit-identical.
+    let mut relabeled_identity = identity.clone();
+    for value in &mut relabeled_identity.origin_plate_ids {
+        *value = value.wrapping_mul(61).wrapping_add(7);
     }
-    let fragment_means = fragments
-        .values()
-        .filter(|(_, n)| *n >= 8)
-        .map(|(sum, n)| sum / *n as f64)
-        .collect::<Vec<_>>();
-    let fragment_strength_range = fragment_means
-        .iter()
-        .copied()
-        .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), value| {
-            (lo.min(value), hi.max(value))
-        });
-    let fragment_strength_range = if fragment_means.is_empty() {
-        0.0
-    } else {
-        fragment_strength_range.1 - fragment_strength_range.0
-    };
-    if fragment_strength_range < 0.08 {
+    for value in &mut relabeled_identity.fragment_ids {
+        *value = value.wrapping_mul(73).wrapping_add(19);
+    }
+    let relabeled_state = generate_lithology_substrate(
+        &fine,
+        &inherited,
+        &relabeled_identity,
+        &LithologyRequest::new(seed),
+    )
+    .map_err(|error| error.to_string())?;
+    let ancestry_relabel_invariant = relabeled_state == state;
+    if !ancestry_relabel_invariant {
         return Err(format!(
-            "{seed}: fragment provenance is not materially legible"
-        ));
-    }
-
-    let mut same_sum = 0.0_f64;
-    let mut same_edges = 0_u64;
-    let mut cross_sum = 0.0_f64;
-    let mut cross_edges = 0_u64;
-    for sample in 0..fine.sample_count() {
-        for neighbor in fine.neighbors(sample) {
-            if *neighbor <= sample {
-                continue;
-            }
-            let a = sample as usize;
-            let b = *neighbor as usize;
-            let contrast = (f64::from(state.rock_strength_index[a])
-                - f64::from(state.rock_strength_index[b]))
-            .abs()
-                + (f64::from(state.erodibility_index[a]) - f64::from(state.erodibility_index[b]))
-                    .abs()
-                + (f64::from(state.carbonate_fraction[a]) - f64::from(state.carbonate_fraction[b]))
-                    .abs();
-            if identity.fragment_ids[a] == identity.fragment_ids[b] {
-                same_sum += contrast;
-                same_edges += 1;
-            } else {
-                cross_sum += contrast;
-                cross_edges += 1;
-            }
-        }
-    }
-    let same_mean = same_sum / same_edges.max(1) as f64;
-    let cross_mean = cross_sum / cross_edges.max(1) as f64;
-    let boundary_contrast_ratio = cross_mean / same_mean.max(1.0e-9);
-    if boundary_contrast_ratio < 0.85 {
-        return Err(format!(
-            "{seed}: material boundaries are less legible than fragment interiors ({boundary_contrast_ratio:.2}x)"
+            "{seed}: categorical ancestry labels leaked into lithology physics"
         ));
     }
 
@@ -227,8 +186,7 @@ fn run_seed(seed: &'static str) -> Result<Report, String> {
         hard_erodibility,
         soft_erodibility,
         carbonate_mean,
-        fragment_strength_range,
-        boundary_contrast_ratio,
+        ancestry_relabel_invariant,
         hash: state.metrics.lithology_hash_hex(),
     })
 }
@@ -238,7 +196,7 @@ fn main() {
     for seed in SEEDS {
         match run_seed(seed) {
             Ok(report) => println!(
-                "WG-4.5 lithology: seed={} classes={} strength={:.3}/{:.3} erod={:.3}/{:.3} carbonate={:.3} fragment-range={:.3} boundary={:.2}x hash={}",
+                "WG-4.5 lithology: seed={} classes={} strength={:.3}/{:.3} erod={:.3}/{:.3} carbonate={:.3} ancestry-relabel={} hash={}",
                 report.seed,
                 report.class_count,
                 report.hard_strength,
@@ -246,8 +204,7 @@ fn main() {
                 report.hard_erodibility,
                 report.soft_erodibility,
                 report.carbonate_mean,
-                report.fragment_strength_range,
-                report.boundary_contrast_ratio,
+                report.ancestry_relabel_invariant,
                 report.hash,
             ),
             Err(error) => failures.push(error),
