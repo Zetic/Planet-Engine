@@ -287,21 +287,10 @@ fn mechanical_edge_domain_factor(
     sample: usize,
     neighbor: usize,
 ) -> f64 {
-    if inherited.plate_ids[neighbor] != inherited.plate_ids[sample] {
-        return 0.20;
-    }
-    if inherited.crust_kind[neighbor] != inherited.crust_kind[sample] {
-        return 0.36;
-    }
     if inherited.kinematic_domain_ids[neighbor] == inherited.kinematic_domain_ids[sample] {
-        return 1.0;
-    }
-    if explicit_mechanical_structure(inherited.structural_zone_kind[sample])
-        || explicit_mechanical_structure(inherited.structural_zone_kind[neighbor])
-    {
-        0.30
-    } else {
         1.0
+    } else {
+        0.25
     }
 }
 
