@@ -16,7 +16,7 @@ test('WG-4 browser contract remains available under protocol v23', () => {
   assert.doesNotThrow(() => validateTopographyRequest({ seed: 'wg4', coarseLevel: 5, fineLevel: 8, plateCount: 18 }));
   assert.throws(() => validateTopographyRequest({ seed: '', coarseLevel: 4, fineLevel: 6, plateCount: 18 }), /seed/i);
   assert.throws(() => validateTopographyRequest({ seed: 'wg4', coarseLevel: 5, fineLevel: 4, plateCount: 18 }), /fine level/i);
-  assert.deepEqual(worldgenTopographyCommand(77, { seed: 'wg4', coarseLevel: 4, fineLevel: 6, plateCount: 18 }), { protocolVersion: 22, requestId: 77, type: 'generate-topography', payload: { seed: 'wg4', coarseLevel: 4, fineLevel: 6, plateCount: 18 } });
+  assert.deepEqual(worldgenTopographyCommand(77, { seed: 'wg4', coarseLevel: 4, fineLevel: 6, plateCount: 18 }), { protocolVersion: 23, requestId: 77, type: 'generate-topography', payload: { seed: 'wg4', coarseLevel: 4, fineLevel: 6, plateCount: 18 } });
 });
 
 test('Planet Engine Lab keeps every WG-3.75 and WG-4 view cumulatively through WG-7D', () => {
