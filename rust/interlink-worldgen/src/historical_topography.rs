@@ -5,8 +5,8 @@ use crate::{
 };
 
 pub const HISTORICAL_TOPOGRAPHY_STAGE_ID: &str = "terrain:initial-topography";
-pub const HISTORICAL_TOPOGRAPHY_STAGE_VERSION: u32 = 16;
-const HISTORICAL_TOPOGRAPHY_NAMESPACE: &str = "terrain:historical-material-morphology:v2";
+pub const HISTORICAL_TOPOGRAPHY_STAGE_VERSION: u32 = 17;
+const HISTORICAL_TOPOGRAPHY_NAMESPACE: &str = "terrain:historical-material-morphology:v3";
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 
@@ -124,6 +124,94 @@ fn stable_continental_buoyancy_support_m(
     480.0 * stability.powf(1.15) * physical_support
 }
 
+fn stable_support_relaxation_barrier(kind: u8) -> bool {
+    kind == InheritedStructureKind::PaleoSuture as u8
+        || kind == InheritedStructureKind::InheritedRift as u8
+        || kind == InheritedStructureKind::ShearZone as u8
+        || kind == InheritedStructureKind::ContinentalMargin as u8
+}
+
+fn relaxed_stable_continental_support(
+    topology: &GeodesicTopology,
+    inherited: &InheritedPhysicalState,
+) -> Vec<f64> {
+    const PASSES: usize = 3;
+    const RELAXATION: f64 = 0.42;
+    let count = topology.metrics().sample_count as usize;
+    let areas = topology.dual_area_steradians();
+    let mut support = (0..count)
+        .map(|sample| stable_continental_buoyancy_support_m(inherited, sample))
+        .collect::<Vec<_>>();
+    let eligible = (0..count)
+        .map(|sample| {
+            support[sample] > 0.0
+                && inherited.crust_kind[sample] == CrustKind::Continental as u8
+                && inherited.province_kind[sample] == 0
+                && !stable_support_relaxation_barrier(inherited.structural_zone_kind[sample])
+        })
+        .collect::<Vec<_>>();
+
+    let original_weighted = support
+        .iter()
+        .zip(areas.iter())
+        .map(|(value, area)| *value * *area)
+        .sum::<f64>();
+
+    let mut next = support.clone();
+    for _ in 0..PASSES {
+        for sample in 0..count as u32 {
+            let index = sample as usize;
+            if !eligible[index] {
+                next[index] = support[index];
+                continue;
+            }
+
+            let mut weighted_sum = 0.0_f64;
+            let mut weight_sum = 0.0_f64;
+            for neighbor in topology.neighbors(sample) {
+                let ni = *neighbor as usize;
+                if !eligible[ni] || inherited.plate_ids[ni] != inherited.plate_ids[index] {
+                    continue;
+                }
+                let weight = areas[ni].max(1.0e-12);
+                weighted_sum += support[ni] * weight;
+                weight_sum += weight;
+            }
+            if weight_sum > 0.0 {
+                let neighbor_mean = weighted_sum / weight_sum;
+                next[index] =
+                    support[index] + RELAXATION * (neighbor_mean - support[index]);
+            } else {
+                next[index] = support[index];
+            }
+        }
+        std::mem::swap(&mut support, &mut next);
+    }
+
+    // Keep the calibrated global freeboard contribution unchanged. The relaxation changes only
+    // how support is distributed through quiet continental interiors, not its area-weighted load.
+    let relaxed_weighted = support
+        .iter()
+        .zip(areas.iter())
+        .map(|(value, area)| *value * *area)
+        .sum::<f64>();
+    let eligible_area = eligible
+        .iter()
+        .zip(areas.iter())
+        .filter_map(|(enabled, area)| enabled.then_some(*area))
+        .sum::<f64>();
+    if eligible_area > 0.0 {
+        let correction = (original_weighted - relaxed_weighted) / eligible_area;
+        for sample in 0..count {
+            if eligible[sample] {
+                support[sample] = (support[sample] + correction).max(0.0);
+            }
+        }
+    }
+
+    support
+}
+
 fn finalize_historical_stage(state: &mut TopographyState, request: &TopographyRequest) {
     let stage_seed = crate::derive_stage_seed(&request.seed, HISTORICAL_TOPOGRAPHY_NAMESPACE);
     let prior_hash = state.metrics.topography_hash;
@@ -214,7 +302,7 @@ fn refresh_water_and_metrics(
     let mut topography_hash = FNV_OFFSET_BASIS;
     topography_hash = fnv_update(
         topography_hash,
-        b"terrain:historical-continental-hypsometry:v2\0",
+        b"terrain:historical-continental-hypsometry:v3\0",
     );
     topography_hash = fnv_update(topography_hash, &prior_hash.to_le_bytes());
     for value in &state.solid_elevation_m {
@@ -309,9 +397,10 @@ pub fn generate_initial_topography(
 
     let areas = topology.dual_area_steradians();
     let total_area = areas.iter().sum::<f64>().max(1.0e-12);
+    let stable_support = relaxed_stable_continental_support(topology, inherited);
     let mut area_weighted_adjustment = 0.0_f64;
     for sample in 0..count {
-        let support = stable_continental_buoyancy_support_m(inherited, sample);
+        let support = stable_support[sample];
         if support != 0.0 {
             state.isostatic_elevation_m[sample] += support as f32;
             state.solid_elevation_m[sample] += support as f32;
