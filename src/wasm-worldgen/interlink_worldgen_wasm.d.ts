@@ -43,6 +43,8 @@ export class WasmWorldgenClimate {
     coarse_level(): number;
     coarse_sample_count(): number;
     coarse_topology_hash_hex(): string;
+    continental_basement_age_myr(): Float32Array;
+    continental_stability_index(): Float32Array;
     contributing_area_m2(): Float64Array;
     convergence_temperature_rms_k(): number;
     crust_age_myr(): Float32Array;
@@ -208,6 +210,7 @@ export class WasmWorldgenClimate {
     lake_water_balance_relative_error(): number;
     land_area_fraction(): number;
     land_runoff_fraction(): number;
+    last_tectonic_reworking_age_myr(): Float32Array;
     latest_historical_event_age_myr(): Float32Array;
     latest_historical_event_kind(): Uint8Array;
     lithology_erodibility_index(): Float32Array;
@@ -273,6 +276,7 @@ export class WasmWorldgenClimate {
     ocean_area_fraction(): number;
     ocean_divergence_residual_m_s(): number;
     ocean_heat_transport_index(): Float32Array;
+    oceanic_age_myr(): Float32Array;
     orbital_eccentricity(): number;
     orbital_period_s(): number;
     orbital_phase_count(): number;
@@ -506,8 +510,10 @@ export class WasmWorldgenGeology {
     boundary_samples(): Uint32Array;
     buoyancy_index(): Float32Array;
     continental_area_fraction(): number;
+    continental_basement_age_myr(): Float32Array;
     continental_collision_edges(): number;
     continental_rift_edges(): number;
+    continental_stability_index(): Float32Array;
     crust_age_myr(): Float32Array;
     crust_density_kg_per_m3(): Float32Array;
     crust_kind(): Uint8Array;
@@ -519,8 +525,10 @@ export class WasmWorldgenGeology {
     geological_boundary_regimes(): Uint8Array;
     geology_hash_hex(): string;
     history_seed_hex(): string;
+    last_tectonic_reworking_age_myr(): Float32Array;
     level(): number;
     mean_continental_age_myr(): number;
+    mean_continental_reworking_age_myr(): number;
     mean_continental_thickness_km(): number;
     mean_oceanic_age_myr(): number;
     mean_oceanic_thickness_km(): number;
@@ -528,6 +536,7 @@ export class WasmWorldgenGeology {
     neighbors(): Uint32Array;
     constructor(seed: string, level: number, plate_count: number);
     ocean_continent_subduction_edges(): number;
+    oceanic_age_myr(): Float32Array;
     oceanic_area_fraction(): number;
     oceanic_ridge_edges(): number;
     oceanic_subduction_edges(): number;
@@ -579,6 +588,8 @@ export class WasmWorldgenInheritance {
     coarse_sample_count(): number;
     coarse_topology_hash_hex(): string;
     compensated_buoyancy_index(): Float32Array;
+    continental_basement_age_myr(): Float32Array;
+    continental_stability_index(): Float32Array;
     crust_age_myr(): Float32Array;
     crust_birth_age_myr(): Float32Array;
     crust_density_kg_per_m3(): Float32Array;
@@ -613,6 +624,7 @@ export class WasmWorldgenInheritance {
     internal_heat_flux_w_per_m2(): number;
     isostatic_mantle_density_kg_per_m3(): number;
     kinematic_domain_ids(): Uint16Array;
+    last_tectonic_reworking_age_myr(): Float32Array;
     latest_historical_event_age_myr(): Float32Array;
     latest_historical_event_kind(): Uint8Array;
     lithosphere_hash_hex(): string;
@@ -624,6 +636,7 @@ export class WasmWorldgenInheritance {
     neighbors(): Uint32Array;
     constructor(seed: string, coarse_level: number, fine_level: number, plate_count: number);
     ocean_water_density_kg_per_m3(): number;
+    oceanic_age_myr(): Float32Array;
     origin_plate_ids(): Uint16Array;
     orogenic_history(): Float32Array;
     parameter_hash_hex(): string;
@@ -772,6 +785,8 @@ export class WasmWorldgenTopography {
     coarse_level(): number;
     coarse_sample_count(): number;
     coarse_topology_hash_hex(): string;
+    continental_basement_age_myr(): Float32Array;
+    continental_stability_index(): Float32Array;
     crust_age_myr(): Float32Array;
     crust_kind(): Uint8Array;
     crust_thickness_km(): Float32Array;
@@ -794,6 +809,7 @@ export class WasmWorldgenTopography {
     isostatic_mantle_density_kg_per_m3(): number;
     kinematic_domain_ids(): Uint16Array;
     land_area_fraction(): number;
+    last_tectonic_reworking_age_myr(): Float32Array;
     lithosphere_hash_hex(): string;
     mantle_dynamic_elevation_m(): Float32Array;
     mantle_dynamic_support_index(): Float32Array;
@@ -811,6 +827,7 @@ export class WasmWorldgenTopography {
     constructor(seed: string, coarse_level: number, fine_level: number, plate_count: number);
     ocean_area_fraction(): number;
     ocean_water_density_kg_per_m3(): number;
+    oceanic_age_myr(): Float32Array;
     orogenic_elevation_m(): Float32Array;
     orogenic_history(): Float32Array;
     p05_solid_elevation_m(): number;
@@ -938,6 +955,8 @@ export interface InitOutput {
     readonly wasmworldgenclimate_coarse_level: (a: number) => number;
     readonly wasmworldgenclimate_coarse_sample_count: (a: number) => number;
     readonly wasmworldgenclimate_coarse_topology_hash_hex: (a: number) => [number, number];
+    readonly wasmworldgenclimate_continental_basement_age_myr: (a: number) => [number, number];
+    readonly wasmworldgenclimate_continental_stability_index: (a: number) => [number, number];
     readonly wasmworldgenclimate_contributing_area_m2: (a: number) => [number, number];
     readonly wasmworldgenclimate_convergence_temperature_rms_k: (a: number) => number;
     readonly wasmworldgenclimate_crust_age_myr: (a: number) => [number, number];
@@ -1103,6 +1122,7 @@ export interface InitOutput {
     readonly wasmworldgenclimate_lake_water_balance_relative_error: (a: number) => number;
     readonly wasmworldgenclimate_land_area_fraction: (a: number) => number;
     readonly wasmworldgenclimate_land_runoff_fraction: (a: number) => number;
+    readonly wasmworldgenclimate_last_tectonic_reworking_age_myr: (a: number) => [number, number];
     readonly wasmworldgenclimate_latest_historical_event_age_myr: (a: number) => [number, number];
     readonly wasmworldgenclimate_latest_historical_event_kind: (a: number) => [number, number];
     readonly wasmworldgenclimate_lithology_erodibility_index: (a: number) => [number, number];
@@ -1168,6 +1188,7 @@ export interface InitOutput {
     readonly wasmworldgenclimate_ocean_area_fraction: (a: number) => number;
     readonly wasmworldgenclimate_ocean_divergence_residual_m_s: (a: number) => number;
     readonly wasmworldgenclimate_ocean_heat_transport_index: (a: number) => [number, number];
+    readonly wasmworldgenclimate_oceanic_age_myr: (a: number) => [number, number];
     readonly wasmworldgenclimate_orbital_eccentricity: (a: number) => number;
     readonly wasmworldgenclimate_orbital_period_s: (a: number) => number;
     readonly wasmworldgenclimate_orbital_phase_count: (a: number) => number;
@@ -1385,8 +1406,10 @@ export interface InitOutput {
     readonly wasmworldgengeology_boundary_samples: (a: number) => [number, number];
     readonly wasmworldgengeology_buoyancy_index: (a: number) => [number, number];
     readonly wasmworldgengeology_continental_area_fraction: (a: number) => number;
+    readonly wasmworldgengeology_continental_basement_age_myr: (a: number) => [number, number];
     readonly wasmworldgengeology_continental_collision_edges: (a: number) => number;
     readonly wasmworldgengeology_continental_rift_edges: (a: number) => number;
+    readonly wasmworldgengeology_continental_stability_index: (a: number) => [number, number];
     readonly wasmworldgengeology_crust_age_myr: (a: number) => [number, number];
     readonly wasmworldgengeology_crust_density_kg_per_m3: (a: number) => [number, number];
     readonly wasmworldgengeology_crust_kind: (a: number) => [number, number];
@@ -1397,8 +1420,10 @@ export interface InitOutput {
     readonly wasmworldgengeology_geological_boundary_regimes: (a: number) => [number, number];
     readonly wasmworldgengeology_geology_hash_hex: (a: number) => [number, number];
     readonly wasmworldgengeology_history_seed_hex: (a: number) => [number, number];
+    readonly wasmworldgengeology_last_tectonic_reworking_age_myr: (a: number) => [number, number];
     readonly wasmworldgengeology_level: (a: number) => number;
     readonly wasmworldgengeology_mean_continental_age_myr: (a: number) => number;
+    readonly wasmworldgengeology_mean_continental_reworking_age_myr: (a: number) => number;
     readonly wasmworldgengeology_mean_continental_thickness_km: (a: number) => number;
     readonly wasmworldgengeology_mean_oceanic_age_myr: (a: number) => number;
     readonly wasmworldgengeology_mean_oceanic_thickness_km: (a: number) => number;
@@ -1406,6 +1431,7 @@ export interface InitOutput {
     readonly wasmworldgengeology_neighbors: (a: number) => [number, number];
     readonly wasmworldgengeology_new: (a: number, b: number, c: number, d: number) => [number, number, number];
     readonly wasmworldgengeology_ocean_continent_subduction_edges: (a: number) => number;
+    readonly wasmworldgengeology_oceanic_age_myr: (a: number) => [number, number];
     readonly wasmworldgengeology_oceanic_area_fraction: (a: number) => number;
     readonly wasmworldgengeology_oceanic_ridge_edges: (a: number) => number;
     readonly wasmworldgengeology_oceanic_subduction_edges: (a: number) => number;
@@ -1439,6 +1465,7 @@ export interface InitOutput {
     readonly wasmworldgengeology_trench_history: (a: number) => [number, number];
     readonly wasmworldgengeology_volcanic_arc_history: (a: number) => [number, number];
     readonly wasmworldgeninheritance_active_orogen_intensity: (a: number) => [number, number];
+    readonly wasmworldgeninheritance_added_sample_count: (a: number) => number;
     readonly wasmworldgeninheritance_basin_potential: (a: number) => [number, number];
     readonly wasmworldgeninheritance_boundary_coarse_source_indices: (a: number) => [number, number];
     readonly wasmworldgeninheritance_boundary_hash_hex: (a: number) => [number, number];
@@ -1448,8 +1475,11 @@ export interface InitOutput {
     readonly wasmworldgeninheritance_boundary_shear_rates_m_per_year: (a: number) => [number, number];
     readonly wasmworldgeninheritance_buoyancy_index: (a: number) => [number, number];
     readonly wasmworldgeninheritance_coarse_level: (a: number) => number;
+    readonly wasmworldgeninheritance_coarse_sample_count: (a: number) => number;
     readonly wasmworldgeninheritance_coarse_topology_hash_hex: (a: number) => [number, number];
     readonly wasmworldgeninheritance_compensated_buoyancy_index: (a: number) => [number, number];
+    readonly wasmworldgeninheritance_continental_basement_age_myr: (a: number) => [number, number];
+    readonly wasmworldgeninheritance_continental_stability_index: (a: number) => [number, number];
     readonly wasmworldgeninheritance_crust_age_myr: (a: number) => [number, number];
     readonly wasmworldgeninheritance_crust_birth_age_myr: (a: number) => [number, number];
     readonly wasmworldgeninheritance_crust_density_kg_per_m3: (a: number) => [number, number];
@@ -1463,6 +1493,7 @@ export interface InitOutput {
     readonly wasmworldgeninheritance_faces: (a: number) => [number, number];
     readonly wasmworldgeninheritance_fine_boundary_edge_count: (a: number) => number;
     readonly wasmworldgeninheritance_fine_level: (a: number) => number;
+    readonly wasmworldgeninheritance_fine_sample_count: (a: number) => number;
     readonly wasmworldgeninheritance_fine_topology_hash_hex: (a: number) => [number, number];
     readonly wasmworldgeninheritance_fossil_orogen_intensity: (a: number) => [number, number];
     readonly wasmworldgeninheritance_fragment_ids: (a: number) => [number, number];
@@ -1482,6 +1513,7 @@ export interface InitOutput {
     readonly wasmworldgeninheritance_internal_heat_flux_w_per_m2: (a: number) => number;
     readonly wasmworldgeninheritance_isostatic_mantle_density_kg_per_m3: (a: number) => number;
     readonly wasmworldgeninheritance_kinematic_domain_ids: (a: number) => [number, number];
+    readonly wasmworldgeninheritance_last_tectonic_reworking_age_myr: (a: number) => [number, number];
     readonly wasmworldgeninheritance_latest_historical_event_age_myr: (a: number) => [number, number];
     readonly wasmworldgeninheritance_latest_historical_event_kind: (a: number) => [number, number];
     readonly wasmworldgeninheritance_lithosphere_hash_hex: (a: number) => [number, number];
@@ -1493,6 +1525,7 @@ export interface InitOutput {
     readonly wasmworldgeninheritance_neighbors: (a: number) => [number, number];
     readonly wasmworldgeninheritance_new: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
     readonly wasmworldgeninheritance_ocean_water_density_kg_per_m3: (a: number) => number;
+    readonly wasmworldgeninheritance_oceanic_age_myr: (a: number) => [number, number];
     readonly wasmworldgeninheritance_origin_plate_ids: (a: number) => [number, number];
     readonly wasmworldgeninheritance_orogenic_history: (a: number) => [number, number];
     readonly wasmworldgeninheritance_parameter_hash_hex: (a: number) => [number, number];
@@ -1618,6 +1651,8 @@ export interface InitOutput {
     readonly wasmworldgentopography_coarse_level: (a: number) => number;
     readonly wasmworldgentopography_coarse_sample_count: (a: number) => number;
     readonly wasmworldgentopography_coarse_topology_hash_hex: (a: number) => [number, number];
+    readonly wasmworldgentopography_continental_basement_age_myr: (a: number) => [number, number];
+    readonly wasmworldgentopography_continental_stability_index: (a: number) => [number, number];
     readonly wasmworldgentopography_crust_age_myr: (a: number) => [number, number];
     readonly wasmworldgentopography_crust_kind: (a: number) => [number, number];
     readonly wasmworldgentopography_crust_thickness_km: (a: number) => [number, number];
@@ -1636,6 +1671,7 @@ export interface InitOutput {
     readonly wasmworldgentopography_isostatic_elevation_m: (a: number) => [number, number];
     readonly wasmworldgentopography_isostatic_mantle_density_kg_per_m3: (a: number) => number;
     readonly wasmworldgentopography_kinematic_domain_ids: (a: number) => [number, number];
+    readonly wasmworldgentopography_last_tectonic_reworking_age_myr: (a: number) => [number, number];
     readonly wasmworldgentopography_lithosphere_hash_hex: (a: number) => [number, number];
     readonly wasmworldgentopography_mantle_dynamic_elevation_m: (a: number) => [number, number];
     readonly wasmworldgentopography_mantle_dynamic_support_index: (a: number) => [number, number];
@@ -1649,6 +1685,8 @@ export interface InitOutput {
     readonly wasmworldgentopography_neighbor_offsets: (a: number) => [number, number];
     readonly wasmworldgentopography_neighbors: (a: number) => [number, number];
     readonly wasmworldgentopography_new: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
+    readonly wasmworldgentopography_ocean_water_density_kg_per_m3: (a: number) => number;
+    readonly wasmworldgentopography_oceanic_age_myr: (a: number) => [number, number];
     readonly wasmworldgentopography_orogenic_elevation_m: (a: number) => [number, number];
     readonly wasmworldgentopography_orogenic_history: (a: number) => [number, number];
     readonly wasmworldgentopography_p05_solid_elevation_m: (a: number) => number;
@@ -1668,6 +1706,7 @@ export interface InitOutput {
     readonly wasmworldgentopography_strength_index: (a: number) => [number, number];
     readonly wasmworldgentopography_structural_zone_kind: (a: number) => [number, number];
     readonly wasmworldgentopography_submerged_mask: (a: number) => [number, number];
+    readonly wasmworldgentopography_surface_water_mass_kg: (a: number) => number;
     readonly wasmworldgentopography_tectonic_hash_hex: (a: number) => [number, number];
     readonly wasmworldgentopography_thermal_elevation_m: (a: number) => [number, number];
     readonly wasmworldgentopography_topography_hash_hex: (a: number) => [number, number];
@@ -1698,19 +1737,14 @@ export interface InitOutput {
     readonly worldgen_engine_version: () => number;
     readonly wasmworldgentopography_fine_boundary_edge_count: (a: number) => number;
     readonly wasmworldgentopography_sea_level_m: (a: number) => number;
-    readonly wasmworldgeninheritance_added_sample_count: (a: number) => number;
-    readonly wasmworldgeninheritance_coarse_sample_count: (a: number) => number;
-    readonly wasmworldgeninheritance_fine_sample_count: (a: number) => number;
     readonly wasmworldgenlithosphere_boundary_edge_count: (a: number) => number;
     readonly wasmworldgentectonics_boundary_edge_count: (a: number) => number;
     readonly wasmworldgentopography_land_area_fraction: (a: number) => number;
     readonly wasmworldgentopography_maximum_solid_elevation_m: (a: number) => number;
     readonly wasmworldgentopography_minimum_solid_elevation_m: (a: number) => number;
     readonly wasmworldgentopography_ocean_area_fraction: (a: number) => number;
-    readonly wasmworldgentopography_ocean_water_density_kg_per_m3: (a: number) => number;
     readonly wasmworldgentopography_radius_m: (a: number) => number;
     readonly wasmworldgentopography_surface_gravity_m_s2: (a: number) => number;
-    readonly wasmworldgentopography_surface_water_mass_kg: (a: number) => number;
     readonly wasmworldgentopography_target_water_volume_m3: (a: number) => number;
     readonly wasmworldgentopology_area_coefficient_of_variation: (a: number) => number;
     readonly wasmworldgentopology_edge_coefficient_of_variation: (a: number) => number;
