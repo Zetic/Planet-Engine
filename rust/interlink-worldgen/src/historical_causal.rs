@@ -167,7 +167,11 @@ pub fn generate_lithosphere_from_history<T: PlanetTopology>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{build_icosphere, generate_historical_frontend, HistoricalLithosphereRequest};
+    use crate::{
+        build_icosphere, generate_historical_frontend, generate_initial_topography,
+        inherit_boundary_interfaces, inherit_physical_state, HistoricalLithosphereRequest,
+        TopographyRequest,
+    };
 
     #[test]
     fn history_aware_lithosphere_changes_inherited_structural_authority() {
@@ -236,4 +240,171 @@ mod tests {
                 > 0
         );
     }
+
+    #[test]
+    fn crust_provenance_ids_are_inert_to_physical_topography() {
+        let seed = "province-id-causal-invariance";
+        let planet = PlanetPhysicalParameters::earthlike_reference();
+        let coarse_level = 3;
+        let coarse = build_icosphere(coarse_level).unwrap();
+        let fine = build_icosphere(4).unwrap();
+        let frontend = generate_historical_frontend(
+            &coarse,
+            &HistoricalLithosphereRequest::new(seed, 12),
+            planet,
+        )
+        .unwrap();
+
+        let original_lithosphere = generate_lithosphere_from_history(
+            &coarse,
+            &frontend.historical,
+            &frontend.tectonics,
+            &frontend.geology,
+            &LithosphereRequest::new(seed),
+        )
+        .unwrap();
+
+        // Intervene only on categorical WG-3 provenance labels. The remap preserves the oceanic
+        // marker bit but deliberately destroys the historical fragment numbering. If any physical
+        // field or WG-4 relief changes, provenance identity has leaked back into mechanics.
+        let mut relabeled_geology = frontend.geology.clone();
+        for value in &mut relabeled_geology.crust_province_id {
+            let marker = *value & 0x8000;
+            let id = *value & 0x7fff;
+            *value = marker | (id.wrapping_mul(73).wrapping_add(19) & 0x7fff);
+        }
+        assert_ne!(
+            relabeled_geology.crust_province_id,
+            frontend.geology.crust_province_id
+        );
+
+        let relabeled_lithosphere = generate_lithosphere_from_history(
+            &coarse,
+            &frontend.historical,
+            &frontend.tectonics,
+            &relabeled_geology,
+            &LithosphereRequest::new(seed),
+        )
+        .unwrap();
+
+        for (original, relabeled) in [
+            (
+                &original_lithosphere.strength_index,
+                &relabeled_lithosphere.strength_index,
+            ),
+            (
+                &original_lithosphere.weakness_index,
+                &relabeled_lithosphere.weakness_index,
+            ),
+            (
+                &original_lithosphere.effective_elastic_thickness_km,
+                &relabeled_lithosphere.effective_elastic_thickness_km,
+            ),
+            (
+                &original_lithosphere.structural_fabric_strength,
+                &relabeled_lithosphere.structural_fabric_strength,
+            ),
+            (
+                &original_lithosphere.fragmentation_propensity,
+                &relabeled_lithosphere.fragmentation_propensity,
+            ),
+        ] {
+            assert_eq!(original, relabeled);
+        }
+        assert_eq!(
+            original_lithosphere.structural_zone_kind,
+            relabeled_lithosphere.structural_zone_kind
+        );
+        assert_eq!(
+            original_lithosphere.kinematic_domain_ids,
+            relabeled_lithosphere.kinematic_domain_ids
+        );
+
+        let original_inherited = inherit_physical_state(
+            &fine,
+            coarse_level,
+            &frontend.tectonics,
+            &frontend.geology,
+            &original_lithosphere,
+            planet,
+        )
+        .unwrap();
+        let relabeled_inherited = inherit_physical_state(
+            &fine,
+            coarse_level,
+            &frontend.tectonics,
+            &relabeled_geology,
+            &relabeled_lithosphere,
+            planet,
+        )
+        .unwrap();
+        assert_ne!(
+            original_inherited.crust_province_id,
+            relabeled_inherited.crust_province_id
+        );
+        assert_eq!(
+            original_inherited.crust_thickness_km,
+            relabeled_inherited.crust_thickness_km
+        );
+        assert_eq!(
+            original_inherited.crust_density_kg_per_m3,
+            relabeled_inherited.crust_density_kg_per_m3
+        );
+        assert_eq!(
+            original_inherited.continental_stability_index,
+            relabeled_inherited.continental_stability_index
+        );
+        assert_eq!(
+            original_inherited.effective_elastic_thickness_km,
+            relabeled_inherited.effective_elastic_thickness_km
+        );
+
+        let original_boundaries = inherit_boundary_interfaces(
+            &coarse,
+            &fine,
+            &frontend.tectonics,
+            &frontend.geology,
+            &original_inherited.plate_ids,
+        )
+        .unwrap();
+        let relabeled_boundaries = inherit_boundary_interfaces(
+            &coarse,
+            &fine,
+            &frontend.tectonics,
+            &relabeled_geology,
+            &relabeled_inherited.plate_ids,
+        )
+        .unwrap();
+
+        let original_terrain = generate_initial_topography(
+            &fine,
+            &original_inherited,
+            &original_boundaries,
+            planet,
+            &TopographyRequest::new(seed),
+        )
+        .unwrap();
+        let relabeled_terrain = generate_initial_topography(
+            &fine,
+            &relabeled_inherited,
+            &relabeled_boundaries,
+            planet,
+            &TopographyRequest::new(seed),
+        )
+        .unwrap();
+
+        assert_eq!(
+            original_terrain.isostatic_elevation_m,
+            relabeled_terrain.isostatic_elevation_m
+        );
+        assert_eq!(
+            original_terrain.solid_elevation_m,
+            relabeled_terrain.solid_elevation_m
+        );
+        assert_eq!(
+            original_terrain.submerged_mask,
+            relabeled_terrain.submerged_mask
+        );
+    }
+
 }
