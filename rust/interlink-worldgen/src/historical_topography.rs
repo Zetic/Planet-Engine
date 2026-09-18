@@ -98,9 +98,14 @@ fn stable_continental_buoyancy_support_m(
     let rift = f64::from(inherited.rift_history[sample]).clamp(0.0, 1.0);
     let subsidence = f64::from(inherited.subsidence_history[sample]).clamp(0.0, 1.0);
     let basin = f64::from(inherited.basin_potential[sample]).clamp(0.0, 1.0);
-    let release = clamp01((rift - 0.12) / 0.35)
-        .max(clamp01((subsidence - 0.16) / 0.40))
-        .max(clamp01((basin - 0.18) / 0.45));
+    // Rift history is provenance of extension, not proof that the present crustal column remains
+    // deeply subsided. Let it weaken freeboard modestly on its own, while actual subsidence/basin
+    // state can release the support completely. This prevents ancient rift memory from drowning
+    // most modified continental crust after unrelated ridge uplift is removed.
+    let rift_release = 0.35 * clamp01((rift - 0.20) / 0.50);
+    let subsidence_release = clamp01((subsidence - 0.16) / 0.40);
+    let basin_release = clamp01((basin - 0.18) / 0.45);
+    let release = rift_release.max(subsidence_release).max(basin_release);
     let stability = 1.0 - release;
     if stability <= 0.0 {
         return 0.0;
