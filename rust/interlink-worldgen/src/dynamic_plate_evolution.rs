@@ -244,6 +244,7 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
 mod tests {
     use super::*;
     use crate::{build_icosphere, HistoricalLithosphereRequest};
+    use std::collections::VecDeque;
 
     fn connected_plate_count<T: PlanetTopology>(
         topology: &T,
