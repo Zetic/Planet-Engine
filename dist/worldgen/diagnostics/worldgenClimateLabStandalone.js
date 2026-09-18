@@ -3,7 +3,7 @@ import { createWorldgenCrashRecorder, installWorldgenGlobalFailureCapture } from
 import { worldCalibrationJson, worldCalibrationMarkdown } from '../calibrationPacket.js';
 import { clampEquirectangularCenterLatitude, equirectangularCameraForWorldDirectionAtScreen, equirectangularScreenToWorldDirection, mapVectorDelta, reconstructAnnualHarmonicFromBasis, wrapLongitudeRad } from './worldgenClimateMath.js';
 import { L8GlobeRenderer, buildRgbaColors, cameraForWorldDirectionAtScreen, pickNearestSample, screenToWorldDirection } from './worldgenL8GlobeRenderer.js';
-import { WORLDGEN_BOUNDARY_CONVERGENT, WORLDGEN_BOUNDARY_DIVERGENT, WORLDGEN_BOUNDARY_TRANSFORM, WORLDGEN_BEDROCK_ACCRETED_TERRANE, WORLDGEN_BEDROCK_ARC_VOLCANIC, WORLDGEN_BEDROCK_CARBONATE_PLATFORM, WORLDGEN_BEDROCK_CLASTIC_SEDIMENTARY, WORLDGEN_BEDROCK_CRYSTALLINE_BASEMENT, WORLDGEN_BEDROCK_OCEANIC_BASALT, WORLDGEN_BEDROCK_OCEANIC_SEDIMENT, WORLDGEN_BEDROCK_OROGENIC_METAMORPHIC, WORLDGEN_BEDROCK_RIFT_VOLCANIC, WORLDGEN_CRUST_CONTINENTAL, WORLDGEN_CRUST_OCEANIC, WORLDGEN_CRUST_TRANSITIONAL, WORLDGEN_GEOLOGY_CONTINENTAL_COLLISION, WORLDGEN_GEOLOGY_CONTINENTAL_RIFT, WORLDGEN_GEOLOGY_OCEANIC_RIDGE, WORLDGEN_GEOLOGY_OCEANIC_SUBDUCTION, WORLDGEN_GEOLOGY_OCEAN_CONTINENT_SUBDUCTION, WORLDGEN_GEOLOGY_TRANSFORM, WORLDGEN_GEOLOGY_TRANSITIONAL_DIVERGENCE, WORLDGEN_STRUCTURE_CONTINENTAL_MARGIN, WORLDGEN_STRUCTURE_NONE, WORLDGEN_STRUCTURE_RIFT, WORLDGEN_STRUCTURE_SUTURE, WORLDGEN_STRUCTURE_TRANSFORM, WORLDGEN_INVALID_SAMPLE_ID, WORLDGEN_PROTOCOL_VERSION, } from '../protocol.js';
+import { WORLDGEN_BOUNDARY_CONVERGENT, WORLDGEN_BOUNDARY_DIVERGENT, WORLDGEN_BOUNDARY_TRANSFORM, WORLDGEN_BEDROCK_ACCRETED_TERRANE, WORLDGEN_BEDROCK_ARC_VOLCANIC, WORLDGEN_BEDROCK_CARBONATE_PLATFORM, WORLDGEN_BEDROCK_CLASTIC_SEDIMENTARY, WORLDGEN_BEDROCK_CRYSTALLINE_BASEMENT, WORLDGEN_BEDROCK_OCEANIC_BASALT, WORLDGEN_BEDROCK_OCEANIC_SEDIMENT, WORLDGEN_BEDROCK_OROGENIC_METAMORPHIC, WORLDGEN_BEDROCK_RIFT_VOLCANIC, WORLDGEN_CRUST_CONTINENTAL, WORLDGEN_CRUST_OCEANIC, WORLDGEN_CRUST_TRANSITIONAL, WORLDGEN_GEOLOGY_CONTINENTAL_COLLISION, WORLDGEN_GEOLOGY_CONTINENTAL_RIFT, WORLDGEN_GEOLOGY_OCEANIC_RIDGE, WORLDGEN_GEOLOGY_OCEANIC_SUBDUCTION, WORLDGEN_GEOLOGY_OCEAN_CONTINENT_SUBDUCTION, WORLDGEN_GEOLOGY_TRANSFORM, WORLDGEN_GEOLOGY_TRANSITIONAL_DIVERGENCE, WORLDGEN_STRUCTURE_CONTINENTAL_MARGIN, WORLDGEN_STRUCTURE_NONE, WORLDGEN_STRUCTURE_RIFT, WORLDGEN_STRUCTURE_SUTURE, WORLDGEN_STRUCTURE_TRANSFORM, WORLDGEN_INVALID_SAMPLE_ID, WORLDGEN_CLIMATE_COARSE_MAX_LEVEL, WORLDGEN_CLIMATE_FINE_MAX_LEVEL, WORLDGEN_PROTOCOL_VERSION, } from '../protocol.js';
 const PALETTE_STEPS = 256;
 const TWO_PI = Math.PI * 2;
 function element(id) {
@@ -1565,7 +1565,9 @@ const fineLevel = element('worldgen-level');
 const plates = element('worldgen-plates');
 const projection = element('worldgen-projection');
 const preset = element('worldgen-preset');
+const diagnosticCategory = element('worldgen-diagnostic-category');
 const visualization = element('worldgen-visualization');
+const diagnosticLegend = element('worldgen-diagnostic-legend');
 const season = element('worldgen-season');
 const seasonValue = element('worldgen-season-value');
 const zoomControl = element('worldgen-zoom');
@@ -1619,6 +1621,7 @@ const GENERATION_STAGE_LABELS = {
     tectonics: 'Tectonics',
     geology: 'Geological history',
     lithosphere: 'Lithosphere',
+    'lithology-substrate': 'Lithology / substrate',
     inheritance: 'Fine-topology inheritance',
     'boundary-refinement': 'Boundary refinement',
     topography: 'Topography + sea level',
@@ -1660,9 +1663,261 @@ function updateOverlaySummary() {
     else
         overlaySummary.textContent = `${selected.length} selected`;
 }
+const DIAGNOSTIC_UNITS = {
+    'solid-elevation': 'm', 'relative-elevation': 'm', 'water-depth': 'm', 'isostatic': 'm', 'thermal': 'm', 'orogenic-relief': 'm',
+    'ridge-relief': 'm', 'rift-basin': 'm', 'trench-relief': 'm', 'arc-relief': 'm', 'mantle-relief': 'm', 'historical-crust-birth-age': 'Myr',
+    'historical-event-age': 'Myr', 'historical-rift-age': 'Myr', 'historical-suture-age': 'Myr', 'crust-age': 'Myr', 'crust-thickness': 'km',
+    'annual-insolation': 'W/m²', 'seasonal-insolation': 'W/m²', 'temperature': 'K', 'seasonal-temperature': 'K', 'temperature-range': 'K',
+    'sst': 'K', 'seasonal-sst': 'K', 'surface-pressure': 'Pa', 'wind-speed': 'm/s', 'current-speed': 'm/s', 'humidity': 'kg/kg',
+    'precipitation': 'mm/yr', 'seasonal-precipitation': 'mm/yr', 'potential-evaporation': 'mm/yr', 'moisture-balance': 'mm/yr',
+    'reconciliation-lake-depth-delta': 'm', 'infill-solid-elevation': 'm', 'infill-fill-depth': 'm', 'evolution-solid-elevation': 'm',
+    'evolution-terrain-delta': 'm', 'evolution-applied-erosion': 'm', 'evolution-applied-deposition': 'm', 'erosion-channel-width': 'm',
+    'erosion-incision-potential': 'm/yr', 'erosion-effective-discharge': 'm³/s', 'seasonal-realized-discharge': 'm³/s',
+    'reconciliation-realized-discharge-delta': 'm³/s', 'evolution-potential-discharge': 'm³/s', 'erosion-sediment-supply': 'kg/s',
+    'erosion-sediment-load': 'kg/s', 'erosion-sediment-deposition': 'kg/s'
+};
+const CATEGORICAL_LEGENDS = {
+    'land-water': [{ label: 'Land', color: '#a99b72' }, { label: 'Ocean / water', color: '#214d7a' }],
+    'crust-type': [{ label: 'Continental', color: '#b79a72' }, { label: 'Transitional', color: '#9aab87' }, { label: 'Oceanic', color: '#477aa3' }],
+    'historical-event': [{ label: 'Rift', color: '#f59e42' }, { label: 'Spreading', color: '#50b9e8' }, { label: 'Shear / transform', color: '#7656d6' }, { label: 'Collision', color: '#e94f4f' }, { label: 'Accretion / capture', color: '#e8d35a' }, { label: 'Subduction', color: '#5dd18b' }, { label: 'Other inherited event', color: '#c178df' }],
+    'bedrock-class': [
+        { label: 'Oceanic basalt', color: '#355f7c' }, { label: 'Oceanic sediment', color: '#768896' }, { label: 'Crystalline basement', color: '#9c765d' },
+        { label: 'Orogenic metamorphic', color: '#7b657d' }, { label: 'Arc volcanic', color: '#a94c3d' }, { label: 'Rift volcanic', color: '#b97842' },
+        { label: 'Clastic sedimentary', color: '#c0a477' }, { label: 'Carbonate platform', color: '#ddd5a5' }, { label: 'Accreted terrane', color: '#6f8b68' }
+    ],
+    'structural-zones': [{ label: 'None', color: '#425362' }, { label: 'Suture', color: '#ff7466' }, { label: 'Rift', color: '#ffb45d' }, { label: 'Transform', color: '#c690ff' }, { label: 'Continental margin', color: '#65d7ac' }],
+    'seasonal-flow-regime': [{ label: 'Dry', color: '#31423c' }, { label: 'Intermittent', color: '#e3a54f' }, { label: 'Perennial', color: '#4ea7dd' }, { label: 'Ocean', color: '#102c43' }],
+    'lake-state': [{ label: 'No lake', color: '#31423c' }, { label: 'Endorheic', color: '#3aa7c9' }, { label: 'Overflowing', color: '#63d0a5' }, { label: 'Terminal storage', color: '#9b78d0' }, { label: 'Ocean', color: '#102c43' }],
+    'inherited-mask': [{ label: 'Inherited coarse sample', color: '#f4e27a' }, { label: 'Fine-only sample', color: '#5794c8' }]
+};
+const IDENTITY_MODES = new Set(['plates', 'kinematic-domains', 'historical-origin', 'historical-fragments', 'historical-current', 'historical-provenance', 'provenance', 'boundary-provenance', 'basins', 'flow-direction', 'depressions']);
+const LOG_DISPLAY_MODES = new Set(['seasonal-realized-discharge', 'evolution-contributing-area', 'evolution-potential-discharge', 'erosion-effective-discharge', 'erosion-sediment-load', 'erosion-sediment-supply', 'erosion-sediment-deposition']);
+function diagnosticOption(mode = visualization.value) {
+    return Array.from(visualization.options).find(option => option.value === mode) ?? null;
+}
+function categoryForDiagnostic(mode) {
+    const group = diagnosticOption(mode)?.parentElement;
+    return group instanceof HTMLOptGroupElement ? group.dataset.diagnosticCategory ?? null : null;
+}
+function setDiagnosticCategory(categoryId, preferredMode) {
+    const groups = Array.from(visualization.querySelectorAll('optgroup[data-diagnostic-category]'));
+    let first = null;
+    for (const group of groups) {
+        const active = group.dataset.diagnosticCategory === categoryId;
+        group.hidden = !active;
+        group.disabled = !active;
+        if (active && !first)
+            first = group.querySelector('option');
+    }
+    if (preferredMode && categoryForDiagnostic(preferredMode) === categoryId)
+        visualization.value = preferredMode;
+    else if (first)
+        visualization.value = first.value;
+}
+function selectDiagnostic(mode) {
+    const categoryId = categoryForDiagnostic(mode);
+    if (categoryId) {
+        diagnosticCategory.value = categoryId;
+        setDiagnosticCategory(categoryId, mode);
+    }
+    else
+        visualization.value = mode;
+}
+function diagnosticLabel(mode = visualization.value) {
+    return diagnosticOption(mode)?.textContent?.trim() || mode;
+}
+function formatLegendNumber(mode, value) {
+    let display = LOG_DISPLAY_MODES.has(mode) ? Math.expm1(value) : value;
+    if (!Number.isFinite(display))
+        display = 0;
+    const abs = Math.abs(display);
+    const digits = abs >= 1000 ? 0 : abs >= 100 ? 1 : abs >= 10 ? 2 : abs >= 1 ? 2 : 3;
+    const unit = DIAGNOSTIC_UNITS[mode];
+    return display.toFixed(digits) + (unit ? ' ' + unit : '');
+}
+function addLegendSwatches(items) {
+    const list = document.createElement('div');
+    list.className = 'worldgen-legend-swatches';
+    for (const item of items) {
+        const row = document.createElement('span');
+        const swatch = document.createElement('i');
+        swatch.style.background = item.color;
+        row.append(swatch, document.createTextNode(item.label));
+        list.append(row);
+    }
+    diagnosticLegend.append(list);
+}
+function addLegendGradient(lowColor, highColor, lowLabel, middleLabel, highLabel) {
+    const ramp = document.createElement('div');
+    ramp.className = 'worldgen-legend-ramp';
+    ramp.style.background = 'linear-gradient(90deg, ' + lowColor + ', ' + highColor + ')';
+    const labels = document.createElement('div');
+    labels.className = 'worldgen-legend-scale';
+    for (const value of [lowLabel, middleLabel, highLabel]) {
+        const span = document.createElement('span');
+        span.textContent = value;
+        labels.append(span);
+    }
+    diagnosticLegend.append(ramp, labels);
+}
+function addScalarLegendGradient(mode, field) {
+    const ramp = document.createElement('div');
+    ramp.className = 'worldgen-legend-ramp';
+    const stops = [];
+    for (let index = 0; index <= 8; index += 1) {
+        const t = index / 8;
+        const value = field.minimum + (field.maximum - field.minimum) * t;
+        stops.push(scalarColor(value, field) + ' ' + (t * 100).toFixed(1) + '%');
+    }
+    ramp.style.background = 'linear-gradient(90deg, ' + stops.join(', ') + ')';
+    const labels = document.createElement('div');
+    labels.className = 'worldgen-legend-scale';
+    const middle = (field.minimum + field.maximum) * 0.5;
+    for (const value of [formatLegendNumber(mode, field.minimum), formatLegendNumber(mode, middle), formatLegendNumber(mode, field.maximum)]) {
+        const span = document.createElement('span');
+        span.textContent = value;
+        labels.append(span);
+    }
+    diagnosticLegend.append(ramp, labels);
+}
+function customGradientForMode(mode) {
+    const gradients = {
+        'runoff-fraction': [48, 205, 'fraction'], 'actual-et': [42, 168, 'mm/yr'], 'annual-runoff': [44, 218, 'mm/yr'],
+        'potential-discharge': [215, 18, 'm³/s'], 'realized-discharge': [205, 35, 'm³/s'], 'lake-fraction': [210, 175, 'fraction'],
+        'lake-depth': [220, 175, 'm'], 'depression-depth': [55, 270, 'm'], 'escape-elevation': [220, 20, 'm'], 'contributing-area': [225, 42, 'km²']
+    };
+    const entry = gradients[mode];
+    if (!entry)
+        return null;
+    return [drainageScalarColor(0, entry[0], entry[1]), drainageScalarColor(1, entry[0], entry[1]), 'low ' + entry[2], 'mid', 'high ' + entry[2]];
+}
+function refreshDiagnosticLegend() {
+    diagnosticLegend.replaceChildren();
+    const mode = visualization.value;
+    const heading = document.createElement('strong');
+    heading.textContent = diagnosticLabel(mode);
+    const description = document.createElement('p');
+    description.textContent = diagnosticLabel(mode) + ' diagnostic. Colors below are the display encoding for this view.';
+    diagnosticLegend.append(heading, description);
+    const categorical = CATEGORICAL_LEGENDS[mode];
+    if (categorical) {
+        addLegendSwatches(categorical);
+        return;
+    }
+    if (IDENTITY_MODES.has(mode)) {
+        const colorAt = mode === 'plates' || mode === 'kinematic-domains'
+            ? plateColor
+            : mode === 'basins' || mode === 'flow-direction' || mode === 'depressions'
+                ? discreteDrainageColor
+                : mode === 'provenance' || mode === 'boundary-provenance'
+                    ? provenanceColor
+                    : (id) => historicalIdentityColor(id, mode === 'historical-fragments' ? 104 : mode === 'historical-current' ? 18 : mode === 'historical-provenance' ? 154 : 42);
+        addLegendSwatches([{ label: 'ID / domain A', color: colorAt(1) }, { label: 'ID / domain B', color: colorAt(2) }, { label: 'ID / domain C', color: colorAt(3) }]);
+        const note = document.createElement('small');
+        note.textContent = 'Hue identifies a deterministic categorical ID; color ordering is not numeric.';
+        diagnosticLegend.append(note);
+        return;
+    }
+    if (mode === 'physical-world' || mode === 'physical-elevation') {
+        addLegendSwatches([{ label: 'Deep ocean', color: '#20516c' }, { label: 'Shelf / shallow sea', color: '#a4dce1' }, { label: 'Lowland', color: '#7faa55' }, { label: 'Highland', color: '#b49b63' }]);
+        return;
+    }
+    if (mode === 'mesh') {
+        addLegendSwatches([{ label: 'Fine topology edge', color: '#5d7890' }]);
+        return;
+    }
+    if (current) {
+        const field = scalarField(current, mode, orbitalPhase());
+        if (field) {
+            addScalarLegendGradient(mode, field);
+            return;
+        }
+    }
+    const custom = customGradientForMode(mode);
+    if (custom)
+        addLegendGradient(custom[0], custom[1], custom[2], custom[3], custom[4]);
+    else {
+        const note = document.createElement('small');
+        note.textContent = 'Legend becomes data-scaled after a planet has been generated.';
+        diagnosticLegend.append(note);
+    }
+}
+function bedrockLabel(kind) {
+    if (kind === WORLDGEN_BEDROCK_OCEANIC_BASALT)
+        return 'Oceanic basalt';
+    if (kind === WORLDGEN_BEDROCK_OCEANIC_SEDIMENT)
+        return 'Oceanic sediment';
+    if (kind === WORLDGEN_BEDROCK_CRYSTALLINE_BASEMENT)
+        return 'Crystalline basement';
+    if (kind === WORLDGEN_BEDROCK_OROGENIC_METAMORPHIC)
+        return 'Orogenic metamorphic';
+    if (kind === WORLDGEN_BEDROCK_ARC_VOLCANIC)
+        return 'Arc volcanic';
+    if (kind === WORLDGEN_BEDROCK_RIFT_VOLCANIC)
+        return 'Rift volcanic';
+    if (kind === WORLDGEN_BEDROCK_CLASTIC_SEDIMENTARY)
+        return 'Clastic sedimentary';
+    if (kind === WORLDGEN_BEDROCK_CARBONATE_PLATFORM)
+        return 'Carbonate platform';
+    if (kind === WORLDGEN_BEDROCK_ACCRETED_TERRANE)
+        return 'Accreted terrane';
+    return 'Bedrock ' + kind;
+}
+function selectedDiagnosticSampleText(result, sample) {
+    const mode = visualization.value;
+    if (mode === 'land-water')
+        return result.submergedMask[sample] ? 'Water' : 'Land';
+    if (mode === 'bedrock-class')
+        return bedrockLabel(result.bedrockClass[sample]);
+    if (mode === 'crust-type') {
+        const kind = result.crustKind[sample];
+        return kind === WORLDGEN_CRUST_CONTINENTAL ? 'Continental crust' : kind === WORLDGEN_CRUST_TRANSITIONAL ? 'Transitional crust' : kind === WORLDGEN_CRUST_OCEANIC ? 'Oceanic crust' : 'Crust ' + kind;
+    }
+    if (mode === 'historical-event') {
+        const kind = result.latestHistoricalEventKind[sample];
+        return kind === 1 ? 'Rift' : kind === 2 ? 'Spreading' : kind === 3 ? 'Shear / transform' : kind === 4 ? 'Collision' : kind === 5 ? 'Accretion / capture' : kind === 6 ? 'Subduction' : kind === 7 ? 'Other inherited event' : 'No recent event';
+    }
+    if (mode === 'structural-zones') {
+        const kind = result.structuralZoneKind[sample];
+        return kind === WORLDGEN_STRUCTURE_SUTURE ? 'Suture' : kind === WORLDGEN_STRUCTURE_RIFT ? 'Rift' : kind === WORLDGEN_STRUCTURE_TRANSFORM ? 'Transform' : kind === WORLDGEN_STRUCTURE_CONTINENTAL_MARGIN ? 'Continental margin' : 'No structural zone';
+    }
+    if (mode === 'plates')
+        return 'Plate ' + result.plateIds[sample].toLocaleString();
+    if (mode === 'kinematic-domains')
+        return 'Kinematic domain ' + result.kinematicDomainIds[sample].toLocaleString();
+    if (mode === 'historical-origin')
+        return 'Ancestral plate ' + result.originPlateIds[sample].toLocaleString();
+    if (mode === 'historical-fragments')
+        return 'Fragment ' + result.historicalFragmentIds[sample].toLocaleString();
+    if (mode === 'historical-current')
+        return 'Current plate ' + result.currentPlateIds[sample].toLocaleString();
+    if (mode === 'annual-runoff')
+        return result.localRunoffMm[sample].toFixed(1) + ' mm/yr runoff';
+    if (mode === 'runoff-fraction')
+        return (result.runoffFraction[sample] * 100).toFixed(1) + '% runoff';
+    if (mode === 'actual-et')
+        return result.actualEvapotranspirationMm[sample].toFixed(1) + ' mm/yr AET';
+    if (mode === 'potential-discharge')
+        return result.potentialDischargeM3S[sample].toFixed(1) + ' m³/s potential discharge';
+    if (mode === 'realized-discharge')
+        return result.realizedDischargeM3S[sample].toFixed(1) + ' m³/s realized discharge';
+    if (mode === 'lake-depth')
+        return result.lakeDepthM[sample].toFixed(1) + ' m lake depth';
+    if (mode === 'lake-fraction')
+        return (result.lakeFraction[sample] * 100).toFixed(1) + '% lake fraction';
+    if (mode === 'contributing-area')
+        return (result.contributingAreaM2[sample] / 1e6).toFixed(1) + ' km² contributing area';
+    const field = scalarField(result, mode, orbitalPhase());
+    if (field)
+        return diagnosticLabel(mode) + ' ' + formatLegendNumber(mode, field.values[sample]);
+    return diagnosticLabel(mode);
+}
 const VIEW_PRESETS = {
     'custom': { mode: 'physical-elevation', overlays: [] },
     'physical-world': { mode: 'physical-world', overlays: ['evolved-topography', 'coastline', 'final-rivers', 'final-lakes', 'cryosphere'] },
+    'tectonic-history': { mode: 'historical-current', overlays: ['coastline', 'tectonic-boundaries', 'geological-boundaries'] },
+    'crust-lithology': { mode: 'bedrock-class', overlays: ['coastline', 'tectonic-boundaries'] },
+    'climate': { mode: 'precipitation', overlays: ['coastline', 'winds'] },
     'hydrologic-atlas': { mode: 'physical-world', overlays: ['evolved-topography', 'coastline', 'final-rivers', 'final-lakes', 'basin-divides'] },
     'seasonal-world': { mode: 'seasonal-realized-discharge', overlays: ['evolved-topography', 'coastline', 'final-lakes', 'winds'] },
     'geomorphic-processes': { mode: 'evolution-terrain-delta', overlays: ['evolved-topography', 'coastline', 'final-rivers', 'final-lakes', 'tectonic-boundaries'] },
@@ -1671,12 +1926,13 @@ function applyViewPreset(name) {
     const definition = VIEW_PRESETS[name];
     if (!definition)
         return;
-    visualization.value = definition.mode;
+    selectDiagnostic(definition.mode);
     const wanted = new Set(definition.overlays);
     for (const input of overlayInputs)
         input.checked = wanted.has(input.value);
     styleCache = { result: null, key: '', sampleBuckets: [], boundaryBuckets: [] };
     updateOverlaySummary();
+    refreshDiagnosticLegend();
     redraw(false);
     updateAnimation();
 }
@@ -1778,7 +2034,8 @@ function inspectTile(sample) {
     const relativeElevation = current.postInfillSolidElevationM[sample] - current.metrics.seaLevelM;
     const surface = current.submergedMask[sample] ? `${current.waterDepthM[sample].toFixed(0)} m water depth` : `${relativeElevation.toFixed(0)} m final elevation`;
     const basin = current.basinId[sample] === WORLDGEN_INVALID_SAMPLE_ID ? 'no basin' : `basin ${current.basinId[sample].toLocaleString()}`;
-    cellInspector.textContent = `Cell ${sample.toLocaleString()} · ${degree === 5 ? 'pentagon' : 'hexagon'} · plate ${current.plateIds[sample].toLocaleString()} · ${surface} · ${basin}`;
+    const diagnosticValue = selectedDiagnosticSampleText(current, sample);
+    cellInspector.textContent = 'Cell ' + sample.toLocaleString() + ' · ' + (degree === 5 ? 'pentagon' : 'hexagon') + ' · plate ' + current.plateIds[sample].toLocaleString() + ' · ' + surface + ' · ' + basin + ' · ' + diagnosticValue;
 }
 function pickTileAtPointer(event) {
     if (!current)
@@ -2080,6 +2337,7 @@ async function generatePlanet() {
         crashRecorder.record('lab', 'viewer-cache-reset-complete');
         crashRecorder.record('lab', 'viewer-metrics-render-begin');
         showMetrics(loaded);
+        refreshDiagnosticLegend();
         crashRecorder.record('lab', 'viewer-metrics-render-complete');
         crashRecorder.record('lab', 'viewer-first-render-begin');
         redraw(false);
@@ -2117,9 +2375,33 @@ copyCrashReport.addEventListener('click', () => void copyCrashReportToClipboard(
 downloadCrashReport.addEventListener('click', downloadCrashReportJson);
 projection.addEventListener('change', () => { updateCameraControls(); redraw(false); });
 preset.addEventListener('change', () => applyViewPreset(preset.value));
-visualization.addEventListener('change', () => { preset.value = 'custom'; styleCache = { result: null, key: '', sampleBuckets: [], boundaryBuckets: [] }; gpuColorCache = { result: null, key: '', colors: new Uint8Array(0), alpha: 0.94 }; redraw(false); updateAnimation(); });
+diagnosticCategory.addEventListener('change', () => {
+    preset.value = 'custom';
+    setDiagnosticCategory(diagnosticCategory.value);
+    styleCache = { result: null, key: '', sampleBuckets: [], boundaryBuckets: [] };
+    gpuColorCache = { result: null, key: '', colors: new Uint8Array(0), alpha: 0.94 };
+    refreshDiagnosticLegend();
+    selectedTile = null;
+    inspectTile(null);
+    redraw(false);
+    updateAnimation();
+});
+visualization.addEventListener('change', () => {
+    preset.value = 'custom';
+    const categoryId = categoryForDiagnostic(visualization.value);
+    if (categoryId)
+        diagnosticCategory.value = categoryId;
+    styleCache = { result: null, key: '', sampleBuckets: [], boundaryBuckets: [] };
+    gpuColorCache = { result: null, key: '', colors: new Uint8Array(0), alpha: 0.94 };
+    refreshDiagnosticLegend();
+    if (selectedTile !== null)
+        inspectTile(selectedTile);
+    redraw(false);
+    updateAnimation();
+});
 overlayInputs.forEach(input => input.addEventListener('change', () => { preset.value = 'custom'; updateOverlaySummary(); redraw(false); updateAnimation(); }));
-season.addEventListener('input', () => { updateSeasonLabel(); styleCache = { result: null, key: '', sampleBuckets: [], boundaryBuckets: [] }; gpuColorCache = { result: null, key: '', colors: new Uint8Array(0), alpha: 0.94 }; redraw(false); });
+season.addEventListener('input', () => { updateSeasonLabel(); styleCache = { result: null, key: '', sampleBuckets: [], boundaryBuckets: [] }; gpuColorCache = { result: null, key: '', colors: new Uint8Array(0), alpha: 0.94 }; refreshDiagnosticLegend(); if (selectedTile !== null)
+    inspectTile(selectedTile); redraw(false); });
 zoomControl.addEventListener('input', () => setZoom(Number(zoomControl.value), true));
 resetCamera.addEventListener('click', () => {
     if (projection.value === 'map') {
@@ -2218,12 +2500,18 @@ window.addEventListener('beforeunload', () => {
     globeRenderer.dispose();
     client.dispose();
 });
+coarseLevel.max = String(WORLDGEN_CLIMATE_COARSE_MAX_LEVEL);
+coarseLevel.value = String(WORLDGEN_CLIMATE_COARSE_MAX_LEVEL);
+fineLevel.max = String(WORLDGEN_CLIMATE_FINE_MAX_LEVEL);
+fineLevel.value = String(WORLDGEN_CLIMATE_FINE_MAX_LEVEL);
 updateSeasonLabel();
 updateZoomLabel();
 updateCameraControls();
 updateOverlaySummary();
 refreshCrashDebugSummary();
+setDiagnosticCategory('world', 'physical-elevation');
 applyViewPreset(preset.value);
-generationStage.textContent = 'Ready for canonical L8 generation';
-generationStep.textContent = 'L5 coarse physical state → L8 final physical planet';
-status.textContent = 'Ready. Generate the canonical L5 → L8 physical world when you want to allocate the full-resolution state.';
+refreshDiagnosticLegend();
+generationStage.textContent = 'Ready for canonical L8 generation · maximum fidelity';
+generationStep.textContent = 'L' + WORLDGEN_CLIMATE_COARSE_MAX_LEVEL + ' coarse physical state → L' + WORLDGEN_CLIMATE_FINE_MAX_LEVEL + ' final physical planet';
+status.textContent = 'Ready. Generate the canonical L' + WORLDGEN_CLIMATE_COARSE_MAX_LEVEL + ' → L' + WORLDGEN_CLIMATE_FINE_MAX_LEVEL + ' physical world when you want to allocate the full-resolution state.';

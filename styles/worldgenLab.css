@@ -76,3 +76,15 @@
 .worldgen-debug-report strong { color: #b8cee4; font-weight: 600; }
 
 .worldgen-lab-viewport canvas[hidden] { display: none !important; }
+
+.worldgen-diagnostic-legend { display:grid; gap:7px; padding:10px; border:1px solid #253246; background:#0a121c; color:#9eb0c4; font-size:11px; line-height:1.35; }
+.worldgen-diagnostic-legend > strong { color:#c1d0df; font-size:12px; font-weight:600; }
+.worldgen-diagnostic-legend p { margin:0; color:#8197ae; }
+.worldgen-diagnostic-legend small { color:#6f849d; }
+.worldgen-legend-swatches { display:grid; grid-template-columns:repeat(auto-fit,minmax(125px,1fr)); gap:5px 8px; }
+.worldgen-legend-swatches > span { display:flex; align-items:center; gap:6px; min-width:0; }
+.worldgen-legend-swatches i { flex:0 0 13px; width:13px; height:13px; border:1px solid rgba(255,255,255,0.18); }
+.worldgen-legend-ramp { height:12px; border:1px solid rgba(255,255,255,0.18); }
+.worldgen-legend-scale { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; color:#a9bfd8; font-variant-numeric:tabular-nums; }
+.worldgen-legend-scale span:nth-child(2) { text-align:center; }
+.worldgen-legend-scale span:last-child { text-align:right; }
