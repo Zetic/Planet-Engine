@@ -95,21 +95,24 @@ fn stable_continental_buoyancy_support_m(
     // column even when an active orogenic province overlies it. This is deliberately a bounded
     // isostatic correction rather than a land-mask command: active rifts, subsiding basins, and
     // passive margins can release the support and may remain submerged.
+    let continental_stability =
+        f64::from(inherited.continental_stability_index[sample]).clamp(0.0, 1.0);
     let rift = f64::from(inherited.rift_history[sample]).clamp(0.0, 1.0);
     let subsidence = f64::from(inherited.subsidence_history[sample]).clamp(0.0, 1.0);
     let basin = f64::from(inherited.basin_potential[sample]).clamp(0.0, 1.0);
-    // Rift history is provenance of extension, not proof that the present crustal column remains
-    // deeply subsided. Let it weaken freeboard modestly on its own, while actual subsidence/basin
-    // state can release the support completely. This prevents ancient rift memory from drowning
-    // most modified continental crust after unrelated ridge uplift is removed.
-    let rift_release = 0.20 * clamp01((rift - 0.20) / 0.50);
-    let subsidence_release = clamp01((subsidence - 0.16) / 0.40);
-    let basin_release = clamp01((basin - 0.18) / 0.45);
-    let release = rift_release.max(subsidence_release).max(basin_release);
-    let stability = 1.0 - release;
-    if stability <= 0.0 {
-        return 0.0;
-    }
+
+    // The crustal column itself remains buoyant after tectonothermal reworking. Reworking state
+    // controls how much additional stable-lithosphere support is retained, while present basin
+    // and subsidence state only attenuate that support. Their negative relief is already applied
+    // explicitly by WG-4, so allowing them to erase the whole column term double-counted
+    // extension and drowned broad modified continental interiors.
+    let recovered_column_retention = 0.72 + 0.28 * continental_stability;
+    let active_subsidence = subsidence.max(basin);
+    let active_subsidence_retention =
+        1.0 - 0.18 * clamp01((active_subsidence - 0.18) / 0.55);
+    let rift_memory_retention = 1.0 - 0.10 * clamp01((rift - 0.22) / 0.55);
+    let state_retention =
+        recovered_column_retention * active_subsidence_retention * rift_memory_retention;
 
     let buoyancy = clamp01(
         (f64::from(inherited.compensated_buoyancy_index[sample]) + 0.25) / 1.25,
@@ -133,7 +136,7 @@ fn stable_continental_buoyancy_support_m(
         _ => 1.0,
     };
 
-    650.0 * stability.powf(1.15) * physical_support * structural_retention
+    650.0 * state_retention * physical_support * structural_retention
 }
 
 fn stable_support_relaxation_barrier(kind: u8) -> bool {
@@ -385,6 +388,7 @@ pub fn generate_initial_topography(
         || inherited.weakness_index.len() != count
         || inherited.strength_index.len() != count
         || inherited.crust_kind.len() != count
+        || inherited.continental_stability_index.len() != count
         || inherited.crust_thickness_km.len() != count
         || inherited.compensated_buoyancy_index.len() != count
         || inherited.rift_history.len() != count
