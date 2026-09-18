@@ -19,7 +19,7 @@
 
     <section class="worldgen-lab-controls" aria-label="Planet generation controls">
       <label>Seed <input id="worldgen-seed" type="text" value="interlink-wg7c"></label>
-      <label>Coarse physical level <input id="worldgen-coarse-level" type="number" min="0" max="6" value="5"></label>
+      <label>Coarse physical level <input id="worldgen-coarse-level" type="number" min="0" max="6" value="6"></label>
       <label>Fine planet level <input id="worldgen-level" type="number" min="0" max="8" value="8"></label>
       <label>Plate count <input id="worldgen-plates" type="number" min="4" max="48" value="16"></label>
       <button id="worldgen-generate" type="button">Generate Planet</button>
@@ -42,173 +42,166 @@
         <div class="worldgen-lab-diagnostic-controls">
           <label>View preset
             <select id="worldgen-preset">
-              <option value="physical-world">Final physical world</option>
+              <option value="physical-world">Physical world</option>
+              <option value="tectonic-history">Tectonic history</option>
+              <option value="crust-lithology">Crust &amp; lithology</option>
+              <option value="climate">Climate</option>
               <option value="hydrologic-atlas">Hydrologic atlas</option>
               <option value="seasonal-world">Seasonal physical world</option>
-              <option value="geomorphic-processes">Geomorphic processes</option>
+              <option value="geomorphic-processes">Geomorphic evolution</option>
               <option value="custom" selected>Custom</option>
+            </select>
+          </label>
+          <label>Category
+            <select id="worldgen-diagnostic-category">
+              <option value="world">World</option>
+              <option value="tectonics-history">Tectonics &amp; history</option>
+              <option value="crust-lithosphere">Crust &amp; lithosphere</option>
+              <option value="lithology-substrate">Lithology &amp; substrate</option>
+              <option value="topography-forcing">Topography &amp; forcing</option>
+              <option value="climate">Climate</option>
+              <option value="hydrology">Hydrology</option>
+              <option value="geomorphology">Geomorphology</option>
+              <option value="technical">Technical / provenance</option>
             </select>
           </label>
           <label>Diagnostic
             <select id="worldgen-visualization">
-          <optgroup label="Composite / showcase">
-            <option value="physical-world">Final physical world</option>
-          </optgroup>
-          <optgroup label="Geomorphology · Lake sediment infill / final surface (WG-7D)">
-            <option value="infill-solid-elevation">Final post-infill solid elevation</option>
-            <option value="infill-fill-depth">Lake sediment fill depth</option>
-          </optgroup>
-          <optgroup label="Hydrology · Post-erosion reconciliation (WG-7C)">
-            <option value="reconciliation-lake-depth-delta">Lake depth change after erosion</option>
-            <option value="reconciliation-lake-change">Lake state changed</option>
-            <option value="reconciliation-realized-discharge-delta">Annual realized-discharge change</option>
-            <option value="reconciliation-flow-presence-delta">Flow-presence change</option>
-            <option value="reconciliation-flow-regime-change">Flow regime changed</option>
-          </optgroup>
-          <optgroup label="Geomorphology · Evolved terrain / rebuilt drainage (WG-7B)">
-            <option value="evolution-solid-elevation">Evolved solid elevation</option>
-            <option value="evolution-terrain-delta">Terrain elevation delta</option>
-            <option value="evolution-applied-erosion">Applied erosion depth</option>
-            <option value="evolution-applied-deposition">Applied land deposition depth</option>
-            <option value="evolution-receiver-change">Changed drainage receivers</option>
-            <option value="evolution-contributing-area">Post-erosion contributing area</option>
-            <option value="evolution-potential-discharge">Post-erosion potential discharge</option>
-          </optgroup>
-          <optgroup label="Geomorphology · Fluvial erosion / sediment (WG-7A)">
-            <option value="erosion-effective-discharge">Effective erosive discharge</option>
-            <option value="erosion-channel-slope">Channel slope</option>
-            <option value="erosion-channel-width">Hydraulic channel width</option>
-            <option value="erosion-erodibility">Inherited erodibility</option>
-            <option value="erosion-incision-potential">Incision potential</option>
-            <option value="erosion-sediment-supply">Local sediment supply</option>
-            <option value="erosion-sediment-load">Routed sediment load</option>
-            <option value="erosion-sediment-deposition">Sediment deposition</option>
-          </optgroup>
-          <optgroup label="Hydrology · Seasonal flow / storage (WG-6D)">
-            <option value="seasonal-realized-discharge">Seasonal realized discharge</option>
-            <option value="seasonal-flow-presence">Realized-flow presence fraction</option>
-            <option value="seasonal-flow-regime">Intermittent / perennial flow regime</option>
-            <option value="seasonal-snow-storage">Seasonal snow storage</option>
-          </optgroup>
-          <optgroup label="Hydrology · Lakes / realized flow (WG-6C)">
-            <option value="realized-discharge">Realized annual discharge</option>
-            <option value="lake-depth">Equilibrium lake depth</option>
-            <option value="lake-state">Lake state</option>
-            <option value="lake-fraction">Lake surface fraction</option>
-          </optgroup>
-          <optgroup label="Hydrology · Runoff / discharge (WG-6B)">
-            <option value="potential-discharge">Potential annual discharge</option>
-            <option value="annual-runoff">Annual runoff depth</option>
-            <option value="runoff-fraction">Runoff fraction</option>
-            <option value="actual-et">Actual evapotranspiration</option>
-          </optgroup>
-          <optgroup label="Hydrology · Drainage topology (WG-6A)">
-            <option value="contributing-area">Contributing drainage area</option>
-            <option value="basins">Drainage basins / outlets</option>
-            <option value="flow-direction">Flow receivers</option>
-            <option value="depression-depth">Depression depth</option>
-            <option value="depressions">Depression regions</option>
-            <option value="escape-elevation">Hydrologic escape elevation</option>
-          </optgroup>
-          <optgroup label="Climate · Radiation / temperature (WG-5)">
-            <option value="temperature">Annual mean temperature</option>
-            <option value="seasonal-temperature">Seasonal temperature</option>
-            <option value="temperature-range">Annual temperature range</option>
-            <option value="annual-insolation">Annual mean insolation</option>
-            <option value="seasonal-insolation">Seasonal insolation amplitude</option>
-            <option value="sst">Annual mean sea-surface temperature</option>
-            <option value="seasonal-sst">Seasonal sea-surface temperature</option>
-          </optgroup>
-          <optgroup label="Climate · Atmosphere / ocean (WG-5)">
-            <option value="wind-speed">Annual mean wind speed</option>
-            <option value="surface-pressure">Surface atmospheric pressure</option>
-            <option value="current-speed">Annual mean current speed</option>
-            <option value="ocean-heat">Ocean heat transport</option>
-          </optgroup>
-          <optgroup label="Climate · Moisture / cryosphere (WG-5)">
-            <option value="humidity">Atmospheric specific humidity</option>
-            <option value="precipitation">Annual precipitation</option>
-            <option value="seasonal-precipitation">Seasonal precipitation</option>
-            <option value="precip-seasonality">Annual precipitation seasonality</option>
-            <option value="potential-evaporation">Potential evaporation</option>
-            <option value="moisture-balance">Moisture balance</option>
-            <option value="aridity">Aridity index</option>
-            <option value="snowfall">Snowfall fraction</option>
-            <option value="persistent-snow">Persistent snow potential</option>
-            <option value="sea-ice">Sea-ice potential</option>
-          </optgroup>
-          <optgroup label="Physical surface (WG-4)">
-            <option value="physical-elevation" selected>Physical elevation / bathymetry</option>
-            <option value="relative-elevation">Elevation above sea level</option>
-            <option value="solid-elevation">Solid elevation / datum</option>
-            <option value="land-water">Land / water</option>
-            <option value="water-depth">Bathymetry / water depth</option>
-          </optgroup>
-          <optgroup label="Topographic forcing (WG-4)">
-            <option value="isostatic">Isostatic support</option>
-            <option value="thermal">Oceanic thermal subsidence</option>
-            <option value="orogenic-relief">Orogenic / collision uplift</option>
-            <option value="ridge-relief">Ridge relief</option>
-            <option value="rift-basin">Rift / basin subsidence</option>
-            <option value="trench-relief">Trench relief</option>
-            <option value="arc-relief">Volcanic arc relief</option>
-            <option value="mantle-relief">Mantle dynamic support (relief)</option>
-          </optgroup>
-          <optgroup label="Inheritance (WG-3.75)">
-            <option value="inherited-mask">Inherited coarse samples</option>
-            <option value="provenance">Nearest coarse provenance</option>
-            <option value="boundary-provenance">Boundary provenance</option>
-          </optgroup>
-          <optgroup label="Historical material / tectonic synthesis">
-            <option value="historical-origin">Ancestral origin plates</option>
-            <option value="historical-fragments">Persistent crust fragments</option>
-            <option value="historical-current">Current plate ownership</option>
-            <option value="historical-provenance">WG-3 crust provenance</option>
-            <option value="historical-crust-birth-age">Crust formation / birth age</option>
-            <option value="historical-event">Latest historical event type</option>
-            <option value="historical-event-age">Latest historical event age</option>
-            <option value="historical-rift">Historical rift intensity</option>
-            <option value="historical-rift-age">Historical rift age</option>
-            <option value="historical-shear">Historical shear intensity</option>
-            <option value="historical-suture">Historical suture intensity</option>
-            <option value="historical-suture-age">Historical suture age</option>
-            <option value="historical-passive-margin">Passive margin potential</option>
-            <option value="historical-active-orogen">Active orogen intensity</option>
-            <option value="historical-fossil-orogen">Fossil orogen intensity</option>
-          </optgroup>
-          <optgroup label="WG-4.5 lithology / substrate">
-            <option value="bedrock-class">Bedrock class</option>
-            <option value="rock-strength">Rock strength</option>
-            <option value="lithology-erodibility">Lithology erodibility</option>
-            <option value="permeability">Permeability</option>
-            <option value="weathering-susceptibility">Weathering susceptibility</option>
-            <option value="fines-fraction">Fines fraction</option>
-            <option value="carbonate-fraction">Carbonate fraction</option>
-          </optgroup>
-          <optgroup label="Tectonics">
-            <option value="plates">Macro plate ownership</option>
-            <option value="kinematic-domains">Refined kinematic domains</option>
-          </optgroup>
-          <optgroup label="Crust / history">
-            <option value="crust-type">Crust type</option>
-            <option value="crust-age">Crust age</option>
-            <option value="crust-thickness">Crust thickness</option>
-            <option value="orogeny-history">Orogenic history</option>
-            <option value="ridge-history">Ridge history</option>
-            <option value="trench-history">Trench history</option>
-          </optgroup>
-          <optgroup label="Lithosphere">
-            <option value="strength">Lithospheric strength</option>
-            <option value="weakness">Lithospheric weakness</option>
-            <option value="dynamic-support">Mantle dynamic support (index)</option>
-            <option value="structural-zones">Structural zone type</option>
-            <option value="fragmentation">Fragmentation propensity</option>
-          </optgroup>
-          <optgroup label="Topology">
-            <option value="mesh">Fine topology mesh</option>
-          </optgroup>
-        </select>
+              <optgroup label="World" data-diagnostic-category="world">
+                <option value="physical-world">Final physical world</option>
+                <option value="physical-elevation" selected>Physical elevation / bathymetry</option>
+                <option value="relative-elevation">Elevation above sea level</option>
+                <option value="solid-elevation">Solid elevation / datum</option>
+                <option value="land-water">Land / water</option>
+                <option value="water-depth">Bathymetry / water depth</option>
+              </optgroup>
+              <optgroup label="Tectonics &amp; history" data-diagnostic-category="tectonics-history">
+                <option value="plates">Macro plate ownership</option>
+                <option value="kinematic-domains">Refined kinematic domains</option>
+                <option value="historical-origin">Ancestral origin plates</option>
+                <option value="historical-fragments">Persistent crust fragments</option>
+                <option value="historical-current">Current plate ownership</option>
+                <option value="historical-provenance">WG-3 crust provenance</option>
+                <option value="historical-crust-birth-age">Crust formation / birth age</option>
+                <option value="historical-event">Latest historical event type</option>
+                <option value="historical-event-age">Latest historical event age</option>
+                <option value="historical-rift">Historical rift intensity</option>
+                <option value="historical-rift-age">Historical rift age</option>
+                <option value="historical-shear">Historical shear intensity</option>
+                <option value="historical-suture">Historical suture intensity</option>
+                <option value="historical-suture-age">Historical suture age</option>
+                <option value="historical-passive-margin">Passive margin potential</option>
+                <option value="historical-active-orogen">Active orogen intensity</option>
+                <option value="historical-fossil-orogen">Fossil orogen intensity</option>
+              </optgroup>
+              <optgroup label="Crust &amp; lithosphere" data-diagnostic-category="crust-lithosphere">
+                <option value="crust-type">Crust type</option>
+                <option value="crust-age">Crust age</option>
+                <option value="crust-thickness">Crust thickness</option>
+                <option value="orogeny-history">Orogenic history</option>
+                <option value="ridge-history">Ridge history</option>
+                <option value="trench-history">Trench history</option>
+                <option value="strength">Lithospheric strength</option>
+                <option value="weakness">Lithospheric weakness</option>
+                <option value="dynamic-support">Mantle dynamic support (index)</option>
+                <option value="structural-zones">Structural zone type</option>
+                <option value="fragmentation">Fragmentation propensity</option>
+              </optgroup>
+              <optgroup label="Lithology &amp; substrate" data-diagnostic-category="lithology-substrate">
+                <option value="bedrock-class">Bedrock class</option>
+                <option value="rock-strength">Rock strength</option>
+                <option value="lithology-erodibility">Lithology erodibility</option>
+                <option value="permeability">Permeability</option>
+                <option value="weathering-susceptibility">Weathering susceptibility</option>
+                <option value="fines-fraction">Fines fraction</option>
+                <option value="carbonate-fraction">Carbonate fraction</option>
+              </optgroup>
+              <optgroup label="Topography &amp; forcing" data-diagnostic-category="topography-forcing">
+                <option value="isostatic">Isostatic support</option>
+                <option value="thermal">Oceanic thermal subsidence</option>
+                <option value="orogenic-relief">Orogenic / collision uplift</option>
+                <option value="ridge-relief">Ridge relief</option>
+                <option value="rift-basin">Rift / basin subsidence</option>
+                <option value="trench-relief">Trench relief</option>
+                <option value="arc-relief">Volcanic arc relief</option>
+                <option value="mantle-relief">Mantle dynamic support (relief)</option>
+              </optgroup>
+              <optgroup label="Climate" data-diagnostic-category="climate">
+                <option value="temperature">Annual mean temperature</option>
+                <option value="seasonal-temperature">Seasonal temperature</option>
+                <option value="temperature-range">Annual temperature range</option>
+                <option value="annual-insolation">Annual mean insolation</option>
+                <option value="seasonal-insolation">Seasonal insolation amplitude</option>
+                <option value="sst">Annual mean sea-surface temperature</option>
+                <option value="seasonal-sst">Seasonal sea-surface temperature</option>
+                <option value="wind-speed">Annual mean wind speed</option>
+                <option value="surface-pressure">Surface atmospheric pressure</option>
+                <option value="current-speed">Annual mean current speed</option>
+                <option value="ocean-heat">Ocean heat transport</option>
+                <option value="humidity">Atmospheric specific humidity</option>
+                <option value="precipitation">Annual precipitation</option>
+                <option value="seasonal-precipitation">Seasonal precipitation</option>
+                <option value="precip-seasonality">Annual precipitation seasonality</option>
+                <option value="potential-evaporation">Potential evaporation</option>
+                <option value="moisture-balance">Moisture balance</option>
+                <option value="aridity">Aridity index</option>
+                <option value="snowfall">Snowfall fraction</option>
+                <option value="persistent-snow">Persistent snow potential</option>
+                <option value="sea-ice">Sea-ice potential</option>
+              </optgroup>
+              <optgroup label="Hydrology" data-diagnostic-category="hydrology">
+                <option value="contributing-area">Contributing drainage area</option>
+                <option value="basins">Drainage basins / outlets</option>
+                <option value="flow-direction">Flow receivers</option>
+                <option value="depression-depth">Depression depth</option>
+                <option value="depressions">Depression regions</option>
+                <option value="escape-elevation">Hydrologic escape elevation</option>
+                <option value="potential-discharge">Potential annual discharge</option>
+                <option value="annual-runoff">Annual runoff depth</option>
+                <option value="runoff-fraction">Runoff fraction</option>
+                <option value="actual-et">Actual evapotranspiration</option>
+                <option value="realized-discharge">Realized annual discharge</option>
+                <option value="lake-depth">Equilibrium lake depth</option>
+                <option value="lake-state">Lake state</option>
+                <option value="lake-fraction">Lake surface fraction</option>
+                <option value="seasonal-realized-discharge">Seasonal realized discharge</option>
+                <option value="seasonal-flow-presence">Realized-flow presence fraction</option>
+                <option value="seasonal-flow-regime">Intermittent / perennial flow regime</option>
+                <option value="seasonal-snow-storage">Seasonal snow storage</option>
+                <option value="reconciliation-lake-depth-delta">Lake depth change after erosion</option>
+                <option value="reconciliation-lake-change">Lake state changed</option>
+                <option value="reconciliation-realized-discharge-delta">Annual realized-discharge change</option>
+                <option value="reconciliation-flow-presence-delta">Flow-presence change</option>
+                <option value="reconciliation-flow-regime-change">Flow regime changed</option>
+              </optgroup>
+              <optgroup label="Geomorphology" data-diagnostic-category="geomorphology">
+                <option value="erosion-effective-discharge">Effective erosive discharge</option>
+                <option value="erosion-channel-slope">Channel slope</option>
+                <option value="erosion-channel-width">Hydraulic channel width</option>
+                <option value="erosion-erodibility">Inherited erodibility</option>
+                <option value="erosion-incision-potential">Incision potential</option>
+                <option value="erosion-sediment-supply">Local sediment supply</option>
+                <option value="erosion-sediment-load">Routed sediment load</option>
+                <option value="erosion-sediment-deposition">Sediment deposition</option>
+                <option value="evolution-solid-elevation">Evolved solid elevation</option>
+                <option value="evolution-terrain-delta">Terrain elevation delta</option>
+                <option value="evolution-applied-erosion">Applied erosion depth</option>
+                <option value="evolution-applied-deposition">Applied land deposition depth</option>
+                <option value="evolution-receiver-change">Changed drainage receivers</option>
+                <option value="evolution-contributing-area">Post-erosion contributing area</option>
+                <option value="evolution-potential-discharge">Post-erosion potential discharge</option>
+                <option value="infill-solid-elevation">Final post-infill solid elevation</option>
+                <option value="infill-fill-depth">Lake sediment fill depth</option>
+              </optgroup>
+              <optgroup label="Technical / provenance" data-diagnostic-category="technical">
+                <option value="inherited-mask">Inherited coarse samples</option>
+                <option value="provenance">Nearest coarse provenance</option>
+                <option value="boundary-provenance">Boundary provenance</option>
+                <option value="mesh">Fine topology mesh</option>
+              </optgroup>
+            </select>
           </label>
+          <div id="worldgen-diagnostic-legend" class="worldgen-diagnostic-legend" aria-live="polite"></div>
           <details id="worldgen-overlays" class="worldgen-overlay-menu">
             <summary>Overlays <strong id="worldgen-overlay-summary">None</strong></summary>
             <div class="worldgen-overlay-options">
