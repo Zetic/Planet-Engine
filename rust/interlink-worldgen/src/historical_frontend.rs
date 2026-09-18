@@ -547,7 +547,6 @@ fn smooth_continental_basement_age<T: PlanetTopology>(
     topology: &T,
     historical: &HistoricalLithosphereModel,
 ) -> Vec<f32> {
-    let count = topology.sample_count() as usize;
     let mut current = historical
         .crust_birth_age_myr
         .iter()
@@ -1312,7 +1311,7 @@ pub fn project_historical_crust<T: PlanetTopology>(
         crust_age_myr: material.composite_age_myr,
         oceanic_age_myr: material.oceanic_age_myr,
         continental_basement_age_myr: material.continental_basement_age_myr,
-        last_tectonic_reworking_age_myr,
+        last_tectonic_reworking_age_myr: last_reworking_age_myr,
         continental_stability_index,
         crust_thickness_km: material.thickness_km,
         crust_density_kg_per_m3: material.density_kg_per_m3,
