@@ -162,7 +162,7 @@ fn validate_inputs(
     let count = topology.metrics().sample_count as usize;
     let lengths = [
         inherited.crust_kind.len(),
-        inherited.crust_age_myr.len(),
+        inherited.oceanic_age_myr.len(),
         inherited.crust_province_id.len(),
         inherited.plate_ids.len(),
         inherited.province_kind.len(),
@@ -194,7 +194,7 @@ fn validate_inputs(
         ));
     }
     if inherited
-        .crust_age_myr
+        .oceanic_age_myr
         .iter()
         .any(|value| !value.is_finite() || *value < 0.0)
         || terrain
@@ -390,8 +390,8 @@ fn ocean_age_depth_profile(
         let mut area_m2 = 0.0_f64;
         let mut solid_sum = 0.0_f64;
         let mut depth_sum = 0.0_f64;
-        for index in 0..inherited.crust_age_myr.len() {
-            let age = inherited.crust_age_myr[index] as f64;
+        for index in 0..inherited.oceanic_age_myr.len() {
+            let age = inherited.oceanic_age_myr[index] as f64;
             if inherited.crust_kind[index] != CRUST_OCEANIC
                 || terrain.submerged_mask[index] == 0
                 || age < minimum_age_myr
