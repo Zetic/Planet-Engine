@@ -226,7 +226,10 @@ fn build_mechanical_state<T: PlanetTopology>(
 
     for sample in 0..count {
         let crust = geology.crust_kind[sample];
-        let age_myr = f64::from(geology.crust_age_myr[sample]);
+        let oceanic_age_myr = f64::from(geology.oceanic_age_myr[sample]);
+        let reworking_age_myr = f64::from(geology.last_tectonic_reworking_age_myr[sample]);
+        let continental_stability = f64::from(geology.continental_stability_index[sample])
+            .clamp(0.0, 1.0);
         let thickness_km = f64::from(geology.crust_thickness_km[sample]);
         let orogeny = f64::from(geology.orogenic_history[sample]);
         let rift = f64::from(geology.rift_history[sample]);
@@ -239,9 +242,13 @@ fn build_mechanical_state<T: PlanetTopology>(
         let mantle = mantle_texture[sample];
 
         let age_factor = match crust {
-            value if value == CrustKind::Continental as u8 => clamp01(age_myr / 3000.0),
-            value if value == CrustKind::Transitional as u8 => clamp01(age_myr / 1800.0),
-            _ => clamp01(age_myr / 180.0),
+            // Continental rheology follows recovery since tectonothermal reworking, not basement
+            // formation age. Ancient basement can therefore be weak after recent reworking.
+            value if value == CrustKind::Continental as u8 => continental_stability,
+            value if value == CrustKind::Transitional as u8 => {
+                clamp01(reworking_age_myr / 900.0) * 0.65
+            }
+            _ => clamp01(oceanic_age_myr / 180.0),
         };
         let base_strength = match crust {
             value if value == CrustKind::Continental as u8 => 0.58,
