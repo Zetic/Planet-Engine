@@ -687,6 +687,41 @@ mod tests {
     }
 
     #[test]
+    fn connected_ocean_access_mask_blocks_unsupported_marine_corridors() {
+        let topology = build_icosphere(1).unwrap();
+        let count = topology.metrics().sample_count as usize;
+        let seed = 0usize;
+        let blocked = topology.neighbors(seed as u32)[0] as usize;
+        let mut surface = vec![2_000.0_f32; count];
+        surface[seed] = -1_000.0;
+        surface[blocked] = -1_100.0;
+        let mut ocean_seed_mask = vec![0_u8; count];
+        ocean_seed_mask[seed] = 1;
+        let mut ocean_access_mask = vec![0_u8; count];
+        ocean_access_mask[seed] = 1;
+
+        let mut planet = PlanetPhysicalParameters::earthlike_reference();
+        let physical_cell_area_m2 =
+            topology.dual_area_steradians()[seed] * planet.radius_m * planet.radius_m;
+        let target_volume_m3 = 100.0 * physical_cell_area_m2;
+        planet.surface_water_mass_kg = target_volume_m3 * planet.ocean_water_density_kg_per_m3;
+
+        let state = solve_hydrostatic_surface_water_connected_with_access(
+            &topology,
+            &surface,
+            planet,
+            &ocean_seed_mask,
+            &ocean_access_mask,
+        )
+        .unwrap();
+        assert_eq!(state.submerged_mask[seed], 1);
+        assert_eq!(state.submerged_mask[blocked], 0);
+        assert_eq!(state.water_depth_m[blocked], 0.0);
+        assert!(state.elevation_above_sea_level_m[blocked] < 0.0);
+        assert!(state.metrics.water_volume_relative_error < 1.0e-10);
+    }
+
+    #[test]
     fn connected_ocean_does_not_teleport_into_closed_lowland() {
         let topology = build_icosphere(1).unwrap();
         let count = topology.metrics().sample_count as usize;
