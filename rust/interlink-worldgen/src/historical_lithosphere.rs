@@ -90,6 +90,9 @@ pub struct HistoricalLithosphereMetrics {
     pub transitional_area_fraction: f64,
     pub oceanic_area_fraction: f64,
     pub mean_oceanic_age_myr: f64,
+    pub natural_extinction_count: u16,
+    pub forced_extinction_count: u16,
+    pub rift_birth_count: u16,
     pub history_hash: u64,
 }
 
@@ -924,6 +927,9 @@ pub fn generate_historical_lithosphere<T: PlanetTopology>(
             } else {
                 0.0
             },
+            natural_extinction_count: 0,
+            forced_extinction_count: 0,
+            rift_birth_count: 0,
             history_hash: 0,
         },
     };
