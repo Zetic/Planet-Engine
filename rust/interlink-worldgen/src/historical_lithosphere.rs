@@ -12,8 +12,6 @@ const ANCESTRAL_TECTONICS_NAMESPACE: &str = "worldgen:geology:historical-lithosp
 const FRAGMENT_NAMESPACE: &str = "worldgen:geology:historical-lithosphere:fragments:v1";
 const CRUST_NAMESPACE: &str = "worldgen:geology:historical-lithosphere:crust:v2";
 const OCEANIC_SPREADING_KM_PER_MYR: f64 = 25.0;
-const MODERN_GROUPING_NAMESPACE: &str = "worldgen:geology:historical-lithosphere:modern:v2";
-const EVENT_NAMESPACE: &str = "worldgen:geology:historical-lithosphere:events:v1";
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 
@@ -132,13 +130,6 @@ fn arc_radians(a: [f64; 3], b: [f64; 3]) -> f64 {
     dot(a, b).clamp(-1.0, 1.0).acos()
 }
 
-fn vector_distance(a: [f64; 3], b: [f64; 3]) -> f64 {
-    let x = a[0] - b[0];
-    let y = a[1] - b[1];
-    let z = a[2] - b[2];
-    (x * x + y * y + z * z).sqrt()
-}
-
 fn ancestral_plate_count(modern_plate_count: u16, sample_count: u32) -> Result<u16, WorldgenError> {
     if !(MIN_TECTONIC_PLATES..=MAX_TECTONIC_PLATES).contains(&modern_plate_count) {
         return Err(WorldgenError::InvalidLithosphere(
@@ -150,7 +141,9 @@ fn ancestral_plate_count(modern_plate_count: u16, sample_count: u32) -> Result<u
             "historical lithosphere requires at least one topology sample per modern plate",
         ));
     }
-    let target = modern_plate_count.saturating_mul(3).max(modern_plate_count);
+    let target = modern_plate_count
+        .saturating_add((modern_plate_count / 2).max(4))
+        .max(modern_plate_count);
     let sample_limit = u16::try_from(sample_count.min(u32::from(u16::MAX))).unwrap_or(u16::MAX);
     Ok(target
         .min(MAX_TECTONIC_PLATES)
@@ -714,283 +707,6 @@ fn build_plate_owned_crust<T: PlanetTopology>(
     (crust_kind, birth_age)
 }
 
-fn group_ancestral_plates(
-    ancestral: &TectonicModel,
-    modern_plate_count: u16,
-    seed: u64,
-) -> Vec<u16> {
-    let count = ancestral.plates.len();
-    let mut groups = (0..count as u16).collect::<Vec<_>>();
-    let mut active = count;
-    let total_area = ancestral
-        .plates
-        .iter()
-        .map(|plate| plate.area_steradians)
-        .sum::<f64>()
-        .max(1.0e-12);
-
-    while active > modern_plate_count as usize {
-        let mut area = BTreeMap::<u16, f64>::new();
-        let mut velocity_sum = BTreeMap::<u16, [f64; 3]>::new();
-        let mut members = BTreeMap::<u16, u32>::new();
-        for (plate_index, plate) in ancestral.plates.iter().enumerate() {
-            let group = groups[plate_index];
-            *area.entry(group).or_insert(0.0) += plate.area_steradians;
-            *members.entry(group).or_insert(0) += 1;
-            let sum = velocity_sum.entry(group).or_insert([0.0; 3]);
-            for axis in 0..3 {
-                sum[axis] += plate.angular_velocity_rad_per_myr[axis] * plate.area_steradians;
-            }
-        }
-
-        let mut contacts = BTreeMap::<(u16, u16), u32>::new();
-        let mut perimeter = BTreeMap::<u16, u32>::new();
-        for boundary in &ancestral.boundaries {
-            let group_a = groups[boundary.plate_a as usize];
-            let group_b = groups[boundary.plate_b as usize];
-            if group_a == group_b {
-                continue;
-            }
-            let pair = if group_a < group_b {
-                (group_a, group_b)
-            } else {
-                (group_b, group_a)
-            };
-            *contacts.entry(pair).or_insert(0) += 1;
-            *perimeter.entry(group_a).or_insert(0) += 1;
-            *perimeter.entry(group_b).or_insert(0) += 1;
-        }
-
-        let enclosed_after_merge = |merge_a: u16, merge_b: u16| -> usize {
-            let keep = merge_a.min(merge_b);
-            let remove = merge_a.max(merge_b);
-            let mut neighbors = BTreeMap::<u16, BTreeSet<u16>>::new();
-            for &(left, right) in contacts.keys() {
-                let mapped_left = if left == remove { keep } else { left };
-                let mapped_right = if right == remove { keep } else { right };
-                if mapped_left == mapped_right {
-                    continue;
-                }
-                neighbors
-                    .entry(mapped_left)
-                    .or_default()
-                    .insert(mapped_right);
-                neighbors
-                    .entry(mapped_right)
-                    .or_default()
-                    .insert(mapped_left);
-            }
-            neighbors
-                .iter()
-                .filter(|(group, adjacent)| {
-                    **group != keep && adjacent.len() == 1 && adjacent.contains(&keep)
-                })
-                .count()
-        };
-
-        let mut best: Option<(f64, u16, u16)> = None;
-        for (&(group_a, group_b), &shared_contact) in &contacts {
-            let area_a = area[&group_a];
-            let area_b = area[&group_b];
-            let velocity_a_sum = velocity_sum[&group_a];
-            let velocity_b_sum = velocity_sum[&group_b];
-            let velocity_a = [
-                velocity_a_sum[0] / area_a.max(1.0e-12),
-                velocity_a_sum[1] / area_a.max(1.0e-12),
-                velocity_a_sum[2] / area_a.max(1.0e-12),
-            ];
-            let velocity_b = [
-                velocity_b_sum[0] / area_b.max(1.0e-12),
-                velocity_b_sum[1] / area_b.max(1.0e-12),
-                velocity_b_sum[2] / area_b.max(1.0e-12),
-            ];
-            let velocity_cost = vector_distance(velocity_a, velocity_b);
-            let merged_area = area_a + area_b;
-            let merged_fraction = merged_area / total_area;
-            let balance_cost = (area_a - area_b).abs() / merged_area.max(1.0e-12);
-            let contact_fraction = f64::from(shared_contact)
-                / f64::from(perimeter[&group_a].min(perimeter[&group_b]).max(1));
-            let compactness_cost = 1.0 - contact_fraction.clamp(0.0, 1.0);
-            let dominance_cost = ((merged_fraction - 0.30).max(0.0) / 0.20).powi(2);
-            let enclosure_cost = enclosed_after_merge(group_a, group_b) as f64;
-            let member_total = f64::from(members[&group_a] + members[&group_b]);
-            let member_imbalance =
-                f64::from(members[&group_a].max(members[&group_b])) / member_total.max(1.0);
-            let tie = unit_random(
-                seed ^ u64::from(group_a).wrapping_mul(0x9e37_79b9_7f4a_7c15)
-                    ^ u64::from(group_b).wrapping_mul(0xbf58_476d_1ce4_e5b9),
-            ) * 1.0e-6;
-            let score = velocity_cost * 32.0
-                + compactness_cost * 0.30
-                + balance_cost * 0.05
-                + dominance_cost * 1.80
-                + enclosure_cost * 4.0
-                + member_imbalance * 0.04
-                + tie;
-            let candidate = (score, group_a.min(group_b), group_a.max(group_b));
-            if best.map(|current| candidate < current).unwrap_or(true) {
-                best = Some(candidate);
-            }
-        }
-        let Some((_, keep, remove)) = best else {
-            break;
-        };
-        for group in &mut groups {
-            if *group == remove {
-                *group = keep;
-            }
-        }
-        active -= 1;
-    }
-
-    let mut compact = BTreeMap::<u16, u16>::new();
-    for group in &groups {
-        if !compact.contains_key(group) {
-            let next = compact.len() as u16;
-            compact.insert(*group, next);
-        }
-    }
-    groups.into_iter().map(|group| compact[&group]).collect()
-}
-
-fn event_kind_for_boundary(
-    kind: PlateBoundaryKind,
-    crust_a: u8,
-    crust_b: u8,
-) -> HistoricalEventKind {
-    match kind {
-        PlateBoundaryKind::Divergent => {
-            if crust_a == CrustKind::Oceanic as u8 && crust_b == CrustKind::Oceanic as u8 {
-                HistoricalEventKind::Spreading
-            } else {
-                HistoricalEventKind::Rift
-            }
-        }
-        PlateBoundaryKind::Transform => HistoricalEventKind::Transform,
-        PlateBoundaryKind::Convergent => {
-            if crust_a != CrustKind::Oceanic as u8 && crust_b != CrustKind::Oceanic as u8 {
-                HistoricalEventKind::Collision
-            } else if crust_a == CrustKind::Oceanic as u8 && crust_b == CrustKind::Oceanic as u8 {
-                HistoricalEventKind::Subduction
-            } else {
-                HistoricalEventKind::Accretion
-            }
-        }
-    }
-}
-
-fn build_events(
-    ancestral: &TectonicModel,
-    fragment_ids: &[u16],
-    crust_kind: &[u8],
-    groups: &[u16],
-    seed: u64,
-) -> Vec<HistoricalTectonicEvent> {
-    let mut pair_representatives = BTreeMap::<(u16, u16), usize>::new();
-    for (index, boundary) in ancestral.boundaries.iter().enumerate() {
-        let pair = if boundary.plate_a < boundary.plate_b {
-            (boundary.plate_a, boundary.plate_b)
-        } else {
-            (boundary.plate_b, boundary.plate_a)
-        };
-        pair_representatives.entry(pair).or_insert(index);
-    }
-
-    let mut events = Vec::new();
-    for ((plate_a, plate_b), boundary_index) in pair_representatives {
-        let boundary = &ancestral.boundaries[boundary_index];
-        let stream = seed
-            ^ u64::from(plate_a).wrapping_mul(0x9e37_79b9_7f4a_7c15)
-            ^ u64::from(plate_b).wrapping_mul(0xbf58_476d_1ce4_e5b9);
-        let epoch = (random::mix64(stream) % 8) as u8;
-        let age_myr = 18.0
-            + f32::from(epoch) * 42.0
-            + (unit_random(stream ^ 0x94d0_49bb_1331_11eb) * 28.0) as f32;
-        let rate = boundary
-            .normal_rate_m_per_year
-            .abs()
-            .max(boundary.shear_rate_m_per_year.abs());
-        let displacement_km = (rate * f64::from(age_myr) * 1000.0).clamp(0.0, 5000.0) as f32;
-        let kind = event_kind_for_boundary(
-            boundary.kind,
-            crust_kind[boundary.sample_a as usize],
-            crust_kind[boundary.sample_b as usize],
-        );
-        events.push(HistoricalTectonicEvent {
-            id: events.len() as u32,
-            kind,
-            epoch,
-            age_myr,
-            plate_a,
-            plate_b,
-            fragment_a: fragment_ids[boundary.sample_a as usize],
-            fragment_b: fragment_ids[boundary.sample_b as usize],
-            displacement_km,
-            strength: (0.25 + (rate / 0.08).clamp(0.0, 1.0) * 0.75) as f32,
-            geometry_sample_a: boundary.sample_a,
-            geometry_sample_b: boundary.sample_b,
-        });
-    }
-
-    let mut members_by_group = BTreeMap::<u16, Vec<u16>>::new();
-    for (origin, group) in groups.iter().copied().enumerate() {
-        members_by_group
-            .entry(group)
-            .or_default()
-            .push(origin as u16);
-    }
-    for members in members_by_group.values() {
-        if members.len() <= 1 {
-            continue;
-        }
-        let anchor = members[0];
-        for &captured in &members[1..] {
-            let stream = seed
-                ^ u64::from(anchor).wrapping_mul(0xd6e8_feb8_6659_fd93)
-                ^ u64::from(captured).wrapping_mul(0xa5a3_56d9_2d85_85ad);
-            let age_myr = (12.0 + unit_random(stream) * 120.0) as f32;
-            let fragment_a = fragment_ids
-                .iter()
-                .position(|fragment| {
-                    ancestral
-                        .plate_ids
-                        .get(
-                            fragment_ids
-                                .iter()
-                                .position(|candidate| candidate == fragment)
-                                .unwrap_or(0),
-                        )
-                        .copied()
-                        == Some(anchor)
-                })
-                .map(|sample| fragment_ids[sample])
-                .unwrap_or(0);
-            let fragment_b = ancestral
-                .plate_ids
-                .iter()
-                .position(|plate| *plate == captured)
-                .map(|sample| fragment_ids[sample])
-                .unwrap_or(fragment_a);
-            events.push(HistoricalTectonicEvent {
-                id: events.len() as u32,
-                kind: HistoricalEventKind::Capture,
-                epoch: 0,
-                age_myr,
-                plate_a: anchor,
-                plate_b: captured,
-                fragment_a,
-                fragment_b,
-                displacement_km: 0.0,
-                strength: 0.5,
-                geometry_sample_a: ancestral.plates[anchor as usize].seed_sample,
-                geometry_sample_b: ancestral.plates[captured as usize].seed_sample,
-            });
-        }
-    }
-
-    events
-}
-
 fn history_hash(model: &HistoricalLithosphereModel) -> u64 {
     let mut hash = FNV_OFFSET_BASIS;
     hash = fnv_update(hash, HISTORICAL_LITHOSPHERE_STAGE_ID.as_bytes());
@@ -1038,9 +754,6 @@ pub fn generate_historical_lithosphere<T: PlanetTopology>(
     let ancestral_seed = random::derive_stage_seed(&request.seed, ANCESTRAL_TECTONICS_NAMESPACE);
     let fragment_seed = random::derive_stage_seed(&request.seed, FRAGMENT_NAMESPACE);
     let crust_seed = random::derive_stage_seed(&request.seed, CRUST_NAMESPACE);
-    let grouping_seed = random::derive_stage_seed(&request.seed, MODERN_GROUPING_NAMESPACE);
-    let event_seed = random::derive_stage_seed(&request.seed, EVENT_NAMESPACE);
-
     let ancestral = generate_tectonics(
         topology,
         &TectonicsRequest::new(
@@ -1059,23 +772,15 @@ pub fn generate_historical_lithosphere<T: PlanetTopology>(
         planet,
         &ancestral,
     );
-    let groups = group_ancestral_plates(&ancestral, request.modern_plate_count, grouping_seed);
-    let current_plate_ids = origin_plate_ids
-        .iter()
-        .map(|origin| groups[*origin as usize])
-        .collect::<Vec<_>>();
+    // Start the forward solver from the actual ancestral moving bodies. There is deliberately no
+    // synthetic "modern grouping" here: present ownership must emerge from subsequent plate motion,
+    // convergence and extinction rather than being decided before the history is integrated.
+    let current_plate_ids = origin_plate_ids.clone();
     for fragment in &mut fragments {
-        fragment.current_plate_id = groups[fragment.origin_plate_id as usize];
-        if fragment.current_plate_id != fragment.origin_plate_id {
-            fragment.capture_age_myr = Some(
-                (12.0
-                    + unit_random(
-                        event_seed ^ u64::from(fragment.id).wrapping_mul(0x243f_6a88_85a3_08d3),
-                    ) * 120.0) as f32,
-            );
-        }
+        fragment.current_plate_id = fragment.origin_plate_id;
+        fragment.capture_age_myr = None;
     }
-    let events = build_events(&ancestral, &fragment_ids, &crust_kind, &groups, event_seed);
+    let events = Vec::new();
 
     let total_area = (0..topology.sample_count())
         .map(|sample| topology.area_steradians(sample))
@@ -1115,7 +820,7 @@ pub fn generate_historical_lithosphere<T: PlanetTopology>(
             sample_count: topology.sample_count(),
             ancestral_plate_count: ancestral_count,
             fragment_count: 0,
-            modern_plate_count: request.modern_plate_count,
+            modern_plate_count: ancestral_count,
             event_count: 0,
             continental_area_fraction: continental_area / total_area,
             transitional_area_fraction: transitional_area / total_area,
@@ -1143,7 +848,7 @@ pub fn generate_historical_lithosphere<T: PlanetTopology>(
         || model
             .current_plate_ids
             .iter()
-            .any(|plate| *plate >= request.modern_plate_count)
+            .any(|plate| *plate >= ancestral_count)
     {
         return Err(WorldgenError::InvalidLithosphere(
             "historical lithosphere produced invalid material ownership",
