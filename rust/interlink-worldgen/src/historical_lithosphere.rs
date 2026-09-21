@@ -94,6 +94,8 @@ pub struct HistoricalLithosphereMetrics {
     pub natural_extinction_count: u16,
     pub rift_birth_count: u16,
     pub convergent_consumed_sample_count: u32,
+    pub detached_accretion_sample_count: u32,
+    pub detached_microplate_birth_count: u16,
     pub history_hash: u64,
 }
 
@@ -937,6 +939,8 @@ pub fn generate_historical_lithosphere<T: PlanetTopology>(
             natural_extinction_count: 0,
             rift_birth_count: 0,
             convergent_consumed_sample_count: 0,
+            detached_accretion_sample_count: 0,
+            detached_microplate_birth_count: 0,
             history_hash: 0,
         },
     };
