@@ -91,7 +91,8 @@ fn verify_seed(seed: &str) -> Result<(), String> {
             }
         })
         .collect::<BTreeSet<_>>();
-    let mut plate_area = vec![0.0_f64; 16];
+    let present_plate_count = history.metrics.modern_plate_count as usize;
+    let mut plate_area = vec![0.0_f64; present_plate_count];
     let mut total_area = 0.0_f64;
     let mut migrated_boundary_edges = 0usize;
     let mut inherited_boundary_edges = 0usize;
@@ -103,8 +104,10 @@ fn verify_seed(seed: &str) -> Result<(), String> {
     for sample in 0..topology.sample_count() {
         let index = sample as usize;
         let owner = history.current_plate_ids[index] as usize;
-        if owner >= 16 {
-            return Err(format!("{seed}: invalid modern owner {owner}"));
+        if owner >= present_plate_count {
+            return Err(format!(
+                "{seed}: invalid modern owner {owner} for {present_plate_count} emergent plates"
+            ));
         }
         let area = topology.area_steradians(sample);
         plate_area[owner] += area;
@@ -146,7 +149,7 @@ fn verify_seed(seed: &str) -> Result<(), String> {
     if plate_area.iter().any(|area| *area <= 0.0) {
         return Err(format!("{seed}: forward evolution eliminated a present plate"));
     }
-    for plate in 0..16_u16 {
+    for plate in 0..history.metrics.modern_plate_count {
         let components = connected_component_count(&topology, &history.current_plate_ids, plate);
         if components != 1 {
             return Err(format!(
