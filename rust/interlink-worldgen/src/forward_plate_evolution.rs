@@ -182,6 +182,60 @@ fn nearest_owned_sample<T: PlanetTopology>(
     (current, current_alignment)
 }
 
+fn interpolate_owned_scalar<T: PlanetTopology>(
+    topology: &T,
+    target: [f64; 3],
+    source: u32,
+    owner: u16,
+    kind: u8,
+    owners: &[u16],
+    kinds: &[u8],
+    values: &[f32],
+) -> f32 {
+    let source_lengths = topology.neighbor_arc_lengths_rad(source);
+    let local_scale = if source_lengths.is_empty() {
+        0.05
+    } else {
+        source_lengths.iter().copied().sum::<f64>() / source_lengths.len() as f64
+    }
+    .max(1.0e-6);
+    let sigma = local_scale * 0.78;
+
+    let mut samples = Vec::<u32>::with_capacity(topology.neighbors(source).len() + 1);
+    samples.push(source);
+    samples.extend(
+        topology
+            .neighbors(source)
+            .iter()
+            .copied()
+            .filter(|sample| {
+                let index = *sample as usize;
+                owners[index] == owner && kinds[index] == kind
+            }),
+    );
+
+    let mut weighted = 0.0_f64;
+    let mut weight_sum = 0.0_f64;
+    for sample in samples {
+        let index = sample as usize;
+        if owners[index] != owner || kinds[index] != kind {
+            continue;
+        }
+        let distance = dot(topology.unit_position(sample), target)
+            .clamp(-1.0, 1.0)
+            .acos();
+        let normalized = distance / sigma;
+        let weight = (-0.5 * normalized * normalized).exp();
+        weighted += f64::from(values[index]) * weight;
+        weight_sum += weight;
+    }
+    if weight_sum > 1.0e-12 {
+        (weighted / weight_sum) as f32
+    } else {
+        values[source as usize]
+    }
+}
+
 fn refresh_active_fragment_summaries<T: PlanetTopology>(
     topology: &T,
     model: &mut HistoricalLithosphereModel,
@@ -517,11 +571,31 @@ fn advect_substep<T: PlanetTopology>(
         new_fragment[destination_index] = old_fragment[source];
         new_owner[destination_index] = plate;
         new_kind[destination_index] = old_kind[source];
-        new_weakness[destination_index] = old_weakness[source];
+        let interpolated_age = interpolate_owned_scalar(
+            topology,
+            preimage,
+            source as u32,
+            plate,
+            old_kind[source],
+            &old_owner,
+            &old_kind,
+            &old_age,
+        );
+        new_weakness[destination_index] = interpolate_owned_scalar(
+            topology,
+            preimage,
+            source as u32,
+            plate,
+            old_kind[source],
+            &old_owner,
+            &old_kind,
+            &old_weakness,
+        )
+        .clamp(0.0, 1.0);
         new_age[destination_index] = if old_kind[source] == CrustKind::Oceanic as u8 {
-            (old_age[source] + dt_myr as f32).clamp(0.0, 220.0)
+            (interpolated_age + dt_myr as f32).clamp(0.0, 220.0)
         } else {
-            old_age[source]
+            interpolated_age
         };
     }
 
