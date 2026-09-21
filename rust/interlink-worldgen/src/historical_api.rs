@@ -232,7 +232,7 @@ mod tests {
         assert!(model
             .events
             .iter()
-            .all(|event| { event.epoch < historical_epochs::HISTORICAL_EPOCH_COUNT }));
+            .all(|event| { event.epoch < crate::HISTORICAL_EPOCH_COUNT }));
     }
 
     #[test]
