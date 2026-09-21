@@ -110,38 +110,6 @@ fn nearest_sample<T: PlanetTopology>(
     current
 }
 
-fn initial_plate_angular_velocities<T: PlanetTopology>(
-    topology: &T,
-    model: &HistoricalLithosphereModel,
-) -> Vec<[f64; 3]> {
-    let plate_count = model.metrics.modern_plate_count as usize;
-    let ancestral_count = model.ancestral_tectonics.plates.len();
-    let mut sums = vec![[0.0_f64; 3]; plate_count];
-    let mut areas = vec![0.0_f64; plate_count];
-    for sample in 0..topology.sample_count() {
-        let index = sample as usize;
-        let owner = model.current_plate_ids[index] as usize;
-        let origin = model.origin_plate_ids[index] as usize;
-        if owner >= plate_count || origin >= ancestral_count {
-            continue;
-        }
-        let area = topology.area_steradians(sample);
-        let omega = model.ancestral_tectonics.plates[origin].angular_velocity_rad_per_myr;
-        for axis in 0..3 {
-            sums[owner][axis] += omega[axis] * area;
-        }
-        areas[owner] += area;
-    }
-    for plate in 0..plate_count {
-        if areas[plate] > 0.0 {
-            for axis in 0..3 {
-                sums[plate][axis] /= areas[plate];
-            }
-        }
-    }
-    sums
-}
-
 fn plate_core_samples<T: PlanetTopology>(
     topology: &T,
     owners: &[u16],
@@ -1334,6 +1302,11 @@ fn forward_history_hash(model: &HistoricalLithosphereModel, stage_seed: u64) -> 
             hash = fnv_update(hash, &value.to_le_bytes());
         }
     }
+    for velocity in &model.current_plate_angular_velocities_rad_per_myr {
+        for component in velocity {
+            hash = fnv_update(hash, &component.to_bits().to_le_bytes());
+        }
+    }
     hash = fnv_update(hash, &model.crust_kind);
     for age in &model.crust_birth_age_myr {
         hash = fnv_update(hash, &age.to_bits().to_le_bytes());
@@ -1360,6 +1333,13 @@ fn validate_forward_state<T: PlanetTopology>(
         || model.current_plate_ids.len() != count
         || model.crust_kind.len() != count
         || model.crust_birth_age_myr.len() != count
+        || model.current_plate_angular_velocities_rad_per_myr.len()
+            != model.metrics.modern_plate_count as usize
+        || model
+            .current_plate_angular_velocities_rad_per_myr
+            .iter()
+            .flatten()
+            .any(|value| !value.is_finite())
     {
         return Err(WorldgenError::InvalidTectonics(
             "forward plate evolution produced incomplete material rasters",
@@ -1422,7 +1402,12 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
     }
 
     let stage_seed = derive_stage_seed(seed, FORWARD_PLATE_NAMESPACE);
-    let mut velocities = initial_plate_angular_velocities(topology, &model);
+    let mut velocities = model.current_plate_angular_velocities_rad_per_myr.clone();
+    if velocities.len() != model.metrics.modern_plate_count as usize {
+        return Err(WorldgenError::InvalidTectonics(
+            "historical state is missing current plate kinematics",
+        ));
+    }
     let starting_plate_count = model.metrics.modern_plate_count;
     let merges_needed = starting_plate_count.saturating_sub(target_plate_count) as usize;
     let rift_budget = (usize::from(target_plate_count) / 8).clamp(1, 3);
@@ -1496,6 +1481,7 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
     split_fragments_at_final_boundaries(topology, &mut model)?;
     refresh_active_fragment_summaries(topology, &mut model);
     refresh_material_metrics(topology, &mut model);
+    model.current_plate_angular_velocities_rad_per_myr = velocities;
     model.metrics.fragment_count = model.fragments.len() as u16;
     model.metrics.event_count = model.events.len() as u32;
     model.metrics.history_hash = forward_history_hash(&model, stage_seed);
