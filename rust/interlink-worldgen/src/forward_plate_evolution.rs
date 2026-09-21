@@ -843,6 +843,40 @@ fn split_fragments_at_final_boundaries<T: PlanetTopology>(
     Ok(())
 }
 
+
+fn refresh_material_metrics<T: PlanetTopology>(
+    topology: &T,
+    model: &mut HistoricalLithosphereModel,
+) {
+    let mut total_area = 0.0_f64;
+    let mut continental_area = 0.0_f64;
+    let mut transitional_area = 0.0_f64;
+    let mut oceanic_area = 0.0_f64;
+    let mut oceanic_age_area = 0.0_f64;
+    for sample in 0..topology.sample_count() {
+        let index = sample as usize;
+        let area = topology.area_steradians(sample);
+        total_area += area;
+        match model.crust_kind[index] {
+            value if value == CrustKind::Continental as u8 => continental_area += area,
+            value if value == CrustKind::Transitional as u8 => transitional_area += area,
+            _ => {
+                oceanic_area += area;
+                oceanic_age_area += area * f64::from(model.crust_birth_age_myr[index]);
+            }
+        }
+    }
+    let total_area = total_area.max(1.0e-12);
+    model.metrics.continental_area_fraction = continental_area / total_area;
+    model.metrics.transitional_area_fraction = transitional_area / total_area;
+    model.metrics.oceanic_area_fraction = oceanic_area / total_area;
+    model.metrics.mean_oceanic_age_myr = if oceanic_area > 0.0 {
+        oceanic_age_area / oceanic_area
+    } else {
+        0.0
+    };
+}
+
 fn forward_history_hash(model: &HistoricalLithosphereModel, stage_seed: u64) -> u64 {
     let mut hash = FNV_OFFSET_BASIS;
     hash = fnv_update(hash, FORWARD_PLATE_NAMESPACE.as_bytes());
@@ -971,6 +1005,7 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
 
     split_fragments_at_final_boundaries(topology, &mut model)?;
     refresh_active_fragment_summaries(topology, &mut model);
+    refresh_material_metrics(topology, &mut model);
     model.metrics.fragment_count = model.fragments.len() as u16;
     model.metrics.event_count = model.events.len() as u32;
     model.metrics.history_hash = forward_history_hash(&model, stage_seed);
