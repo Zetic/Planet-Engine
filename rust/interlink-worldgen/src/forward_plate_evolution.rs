@@ -380,6 +380,39 @@ fn repair_plate_connectivity<T: PlanetTopology>(
     }
 }
 
+fn gap_is_divergent<T: PlanetTopology>(
+    topology: &T,
+    sample: u32,
+    choices: &[usize],
+    owners: &[u16],
+    velocities: &[[f64; 3]],
+) -> bool {
+    let position = topology.unit_position(sample);
+    for left in 0..choices.len() {
+        for right in (left + 1)..choices.len() {
+            let left_index = choices[left];
+            let right_index = choices[right];
+            let owner_left = owners[left_index] as usize;
+            let owner_right = owners[right_index] as usize;
+            if owner_left == owner_right
+                || owner_left >= velocities.len()
+                || owner_right >= velocities.len()
+            {
+                continue;
+            }
+            let left_position = topology.unit_position(left_index as u32);
+            let right_position = topology.unit_position(right_index as u32);
+            let normal = normalize_or(sub(right_position, left_position), position);
+            let left_velocity = cross(velocities[owner_left], position);
+            let right_velocity = cross(velocities[owner_right], position);
+            if dot(sub(right_velocity, left_velocity), normal) > 1.0e-8 {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 fn advect_substep<T: PlanetTopology>(
     topology: &T,
     model: &mut HistoricalLithosphereModel,
@@ -504,6 +537,8 @@ fn advect_substep<T: PlanetTopology>(
         let previous_origin = new_origin.clone();
         let previous_fragment = new_fragment.clone();
         let previous_kind = new_kind.clone();
+        let previous_age = new_age.clone();
+        let previous_weakness = new_weakness.clone();
         let mut changed = 0usize;
         for sample in 0..topology.sample_count() {
             let index = sample as usize;
@@ -528,26 +563,41 @@ fn advect_substep<T: PlanetTopology>(
                 )
             });
             let donor = choices[0];
-            let has_oceanic_margin = choices
-                .iter()
-                .any(|neighbor| previous_kind[*neighbor] == CrustKind::Oceanic as u8);
+            let divergent_gap =
+                gap_is_divergent(topology, sample, &choices, &previous_owner, velocities);
             new_owner[index] = previous_owner[donor];
             new_origin[index] = previous_origin[donor];
             new_fragment[index] = previous_fragment[donor];
-            new_kind[index] = if has_oceanic_margin {
-                CrustKind::Oceanic as u8
+
+            if divergent_gap {
+                let has_oceanic_margin = choices
+                    .iter()
+                    .any(|neighbor| previous_kind[*neighbor] == CrustKind::Oceanic as u8);
+                let has_transitional_margin = choices
+                    .iter()
+                    .any(|neighbor| previous_kind[*neighbor] == CrustKind::Transitional as u8);
+                new_kind[index] = if has_oceanic_margin || has_transitional_margin {
+                    CrustKind::Oceanic as u8
+                } else {
+                    CrustKind::Transitional as u8
+                };
+                // Newly opened lithosphere is mechanically weak/hot. This is physical state
+                // attached to generated material, not a property selected by its genealogy id.
+                new_weakness[index] = if new_kind[index] == CrustKind::Oceanic as u8 {
+                    0.48
+                } else {
+                    0.74
+                };
+                new_age[index] = 0.0;
+                generated[index] = true;
             } else {
-                CrustKind::Transitional as u8
-            };
-            // Newly opened lithosphere is mechanically weak/hot. This is physical state attached
-            // to the generated material, not a property selected by its new genealogy id.
-            new_weakness[index] = if new_kind[index] == CrustKind::Oceanic as u8 {
-                0.48
-            } else {
-                0.74
-            };
-            new_age[index] = 0.0;
-            generated[index] = true;
+                // A semi-Lagrangian raster can leave a one-cell sampling hole even inside a rigid
+                // or convergent domain. Close that numerical hole by extending transported
+                // material; only a kinematically divergent gap is allowed to manufacture crust.
+                new_kind[index] = previous_kind[donor];
+                new_age[index] = previous_age[donor];
+                new_weakness[index] = previous_weakness[donor];
+            }
             changed += 1;
         }
         if changed == 0 {
