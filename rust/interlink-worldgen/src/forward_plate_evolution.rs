@@ -500,6 +500,189 @@ fn compact_extinct_plates(
     removed
 }
 
+#[derive(Clone, Copy)]
+struct ConvergentConsumptionProposal {
+    strength: f64,
+    winner: u16,
+}
+
+fn convergent_consumption_priority(kind: u8, age_myr: f32, weakness: f32) -> f64 {
+    if kind == CrustKind::Oceanic as u8 {
+        3.0 + (f64::from(age_myr) / 220.0).clamp(0.0, 1.0)
+    } else if kind == CrustKind::Transitional as u8 {
+        1.4 + 0.5 * f64::from(weakness).clamp(0.0, 1.0)
+    } else {
+        0.0
+    }
+}
+
+fn consume_convergent_boundary_band<T: PlanetTopology>(
+    topology: &T,
+    model: &mut HistoricalLithosphereModel,
+    velocities: &mut Vec<[f64; 3]>,
+    generation_fragments: &mut BTreeMap<(u8, u16, u8, u16), u16>,
+    planet: PlanetPhysicalParameters,
+    dt_myr: f64,
+) {
+    let plate_count = model.metrics.modern_plate_count as usize;
+    if plate_count <= 1 || velocities.len() != plate_count {
+        return;
+    }
+
+    let count = topology.sample_count() as usize;
+    let mut plate_samples = vec![0usize; plate_count];
+    for owner in &model.current_plate_ids {
+        let index = *owner as usize;
+        if index < plate_count {
+            plate_samples[index] += 1;
+        }
+    }
+
+    let mut proposals = vec![None::<ConvergentConsumptionProposal>; count];
+    for sample_a in 0..topology.sample_count() {
+        let a = sample_a as usize;
+        for sample_b in topology.neighbors(sample_a) {
+            if *sample_b <= sample_a {
+                continue;
+            }
+            let b = *sample_b as usize;
+            let owner_a = model.current_plate_ids[a];
+            let owner_b = model.current_plate_ids[b];
+            if owner_a == owner_b {
+                continue;
+            }
+
+            let position_a = topology.unit_position(sample_a);
+            let position_b = topology.unit_position(*sample_b);
+            let midpoint = normalize_or(add(position_a, position_b), position_a);
+            let normal = normalize_or(sub(position_b, position_a), position_a);
+            let velocity_a = scale(
+                cross(velocities[owner_a as usize], midpoint),
+                planet.radius_m / 1_000_000.0,
+            );
+            let velocity_b = scale(
+                cross(velocities[owner_b as usize], midpoint),
+                planet.radius_m / 1_000_000.0,
+            );
+            let normal_rate = dot(sub(velocity_b, velocity_a), normal);
+            if normal_rate >= -1.0e-9 {
+                continue;
+            }
+
+            let arc_rad = dot(position_a, position_b).clamp(-1.0, 1.0).acos();
+            let edge_km = (arc_rad * planet.radius_m / 1000.0).max(1.0);
+            let convergence_km = -normal_rate * dt_myr * 1000.0;
+            let convergence_fraction = convergence_km / edge_km;
+            if convergence_fraction < 0.16 {
+                continue;
+            }
+
+            let priority_a = convergent_consumption_priority(
+                model.crust_kind[a],
+                model.crust_birth_age_myr[a],
+                model.lithospheric_weakness_index[a],
+            );
+            let priority_b = convergent_consumption_priority(
+                model.crust_kind[b],
+                model.crust_birth_age_myr[b],
+                model.lithospheric_weakness_index[b],
+            );
+            if priority_a <= 0.0 && priority_b <= 0.0 {
+                // Continental collision shortens/welds rather than subducting a surface band.
+                continue;
+            }
+
+            let (victim, winner, material_priority) = if priority_a > priority_b + 1.0e-9 {
+                (a, owner_b, priority_a)
+            } else if priority_b > priority_a + 1.0e-9 {
+                (b, owner_a, priority_b)
+            } else if model.crust_birth_age_myr[a] > model.crust_birth_age_myr[b] + 1.0e-6 {
+                (a, owner_b, priority_a)
+            } else if model.crust_birth_age_myr[b] > model.crust_birth_age_myr[a] + 1.0e-6 {
+                (b, owner_a, priority_b)
+            } else if owner_a > owner_b {
+                (a, owner_b, priority_a)
+            } else {
+                (b, owner_a, priority_b)
+            };
+
+            let strength = convergence_fraction.min(2.5) * material_priority;
+            let candidate = ConvergentConsumptionProposal { strength, winner };
+            let replace = proposals[victim]
+                .map(|current| {
+                    candidate.strength > current.strength + 1.0e-12
+                        || ((candidate.strength - current.strength).abs() <= 1.0e-12
+                            && candidate.winner < current.winner)
+                })
+                .unwrap_or(true);
+            if replace {
+                proposals[victim] = Some(candidate);
+            }
+        }
+    }
+
+    let mut by_plate = vec![Vec::<(usize, ConvergentConsumptionProposal)>::new(); plate_count];
+    for (sample, proposal) in proposals.into_iter().enumerate() {
+        let Some(proposal) = proposal else { continue };
+        let victim_plate = model.current_plate_ids[sample] as usize;
+        if victim_plate < plate_count && proposal.winner as usize != victim_plate {
+            by_plate[victim_plate].push((sample, proposal));
+        }
+    }
+
+    let mut consumed = 0usize;
+    for plate in 0..plate_count {
+        if by_plate[plate].is_empty() {
+            continue;
+        }
+        by_plate[plate].sort_by(|left, right| {
+            right
+                .1
+                .strength
+                .total_cmp(&left.1.strength)
+                .then_with(|| left.0.cmp(&right.0))
+        });
+        // Consume a finite boundary band per integration step. This lets persistent convergence
+        // remove oceanic plates over geological time without instant whole-plate deletion.
+        let limit = ((plate_samples[plate] as f64 * 0.045).ceil() as usize)
+            .clamp(1, plate_samples[plate].saturating_sub(1).max(1));
+        for (sample, proposal) in by_plate[plate].iter().take(limit) {
+            if model.current_plate_ids[*sample] as usize != plate {
+                continue;
+            }
+            model.current_plate_ids[*sample] = proposal.winner;
+            consumed += 1;
+        }
+    }
+
+    if consumed == 0 {
+        return;
+    }
+
+    repair_plate_connectivity(
+        topology,
+        &mut model.current_plate_ids,
+        plate_count,
+    );
+    let extinct = compact_extinct_plates(
+        &mut model.current_plate_ids,
+        velocities,
+        plate_count,
+    );
+    model.metrics.modern_plate_count = velocities.len() as u16;
+    model.metrics.convergent_consumed_sample_count = model
+        .metrics
+        .convergent_consumed_sample_count
+        .saturating_add(consumed as u32);
+    if extinct > 0 {
+        generation_fragments.clear();
+        model.metrics.natural_extinction_count = model
+            .metrics
+            .natural_extinction_count
+            .saturating_add(extinct as u16);
+    }
+}
+
 fn advect_substep<T: PlanetTopology>(
     topology: &T,
     model: &mut HistoricalLithosphereModel,
@@ -1777,6 +1960,14 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
                 &mut generation_fragments,
                 SUBSTEP_MYR,
             )?;
+            consume_convergent_boundary_band(
+                topology,
+                &mut model,
+                &mut velocities,
+                &mut generation_fragments,
+                planet,
+                SUBSTEP_MYR,
+            );
         }
 
         if splits_completed < rift_budget
