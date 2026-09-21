@@ -260,6 +260,8 @@ fn refresh_active_fragment_summaries<T: PlanetTopology>(
 fn materialize_generated_crust<T: PlanetTopology>(
     topology: &T,
     model: &mut HistoricalLithosphereModel,
+    epoch: u8,
+    generation_fragments: &mut BTreeMap<(u8, u16, u8, u16), u16>,
     generated: &[bool],
     origin_plate_ids: &[u16],
     fragment_ids: &mut [u16],
@@ -298,38 +300,45 @@ fn materialize_generated_crust<T: PlanetTopology>(
                 }
             }
         }
-        if model.fragments.len() >= usize::from(u16::MAX) {
-            return Err(WorldgenError::InvalidLithosphere(
-                "forward spreading exhausted fragment id capacity",
-            ));
-        }
-        let id = model.fragments.len() as u16;
-        let area = component
-            .iter()
-            .map(|sample| topology.area_steradians(*sample))
-            .sum::<f64>();
-        let (thickness_km, density_kg_per_m3) =
-            if kind == CrustKind::Oceanic as u8 {
-                (7.0, 2935.0)
-            } else {
-                (19.0, 2875.0)
-            };
-        model.fragments.push(CrustFragment {
-            id,
-            parent_fragment_id: None,
-            origin_plate_id: origin,
-            current_plate_id: owner,
-            seed_sample: component[0],
-            birth_age_myr: 0.0,
-            capture_age_myr: None,
-            accretion_age_myr: None,
-            dominant_crust_kind: kind,
-            sample_count: component.len() as u32,
-            area_steradians: area,
-            mean_thickness_km: thickness_km,
-            mean_density_kg_per_m3: density_kg_per_m3,
-            inherited_fabric: 0.15,
-        });
+        let key = (epoch, owner, kind, origin);
+        let id = if let Some(existing) = generation_fragments.get(&key).copied() {
+            existing
+        } else {
+            if model.fragments.len() >= usize::from(u16::MAX) {
+                return Err(WorldgenError::InvalidLithosphere(
+                    "forward spreading exhausted fragment id capacity",
+                ));
+            }
+            let id = model.fragments.len() as u16;
+            let area = component
+                .iter()
+                .map(|sample| topology.area_steradians(*sample))
+                .sum::<f64>();
+            let (thickness_km, density_kg_per_m3) =
+                if kind == CrustKind::Oceanic as u8 {
+                    (7.0, 2935.0)
+                } else {
+                    (19.0, 2875.0)
+                };
+            model.fragments.push(CrustFragment {
+                id,
+                parent_fragment_id: None,
+                origin_plate_id: origin,
+                current_plate_id: owner,
+                seed_sample: component[0],
+                birth_age_myr: 0.0,
+                capture_age_myr: None,
+                accretion_age_myr: None,
+                dominant_crust_kind: kind,
+                sample_count: component.len() as u32,
+                area_steradians: area,
+                mean_thickness_km: thickness_km,
+                mean_density_kg_per_m3: density_kg_per_m3,
+                inherited_fabric: 0.15,
+            });
+            generation_fragments.insert(key, id);
+            id
+        };
         for sample in component {
             fragment_ids[sample as usize] = id;
         }
@@ -407,6 +416,8 @@ fn advect_substep<T: PlanetTopology>(
     topology: &T,
     model: &mut HistoricalLithosphereModel,
     velocities: &[[f64; 3]],
+    epoch: u8,
+    generation_fragments: &mut BTreeMap<(u8, u16, u8, u16), u16>,
     dt_myr: f64,
 ) -> Result<(), WorldgenError> {
     let count = topology.sample_count() as usize;
@@ -624,6 +635,8 @@ fn advect_substep<T: PlanetTopology>(
     materialize_generated_crust(
         topology,
         model,
+        epoch,
+        generation_fragments,
         &generated,
         &new_origin,
         &mut new_fragment,
@@ -1416,9 +1429,17 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
     let mut splits_completed = 0usize;
     let mut merges_completed = 0usize;
     for epoch in 0..FORWARD_EPOCHS {
+        let mut generation_fragments = BTreeMap::<(u8, u16, u8, u16), u16>::new();
         record_epoch_events(topology, &mut model, &velocities, epoch, planet);
         for _ in 0..SUBSTEPS_PER_EPOCH {
-            advect_substep(topology, &mut model, &velocities, SUBSTEP_MYR)?;
+            advect_substep(
+                topology,
+                &mut model,
+                &velocities,
+                epoch as u8,
+                &mut generation_fragments,
+                SUBSTEP_MYR,
+            )?;
         }
 
         if splits_completed < rift_budget
