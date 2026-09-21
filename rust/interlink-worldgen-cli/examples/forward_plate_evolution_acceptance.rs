@@ -239,13 +239,15 @@ fn verify_seed(seed: &str) -> Result<(), String> {
     }
 
     println!(
-        "forward-plate-evolution seed={seed} migrated={:.1}% created={} generated-fragments={} rift-births={} natural-extinctions={} consumed={} present-plates={} material(c/t/o)={:.1}/{:.1}/{:.1}% ocean-age={:.1}..{:.1}Myr events={} history={}",
+        "forward-plate-evolution seed={seed} migrated={:.1}% created={} generated-fragments={} rift-births={} natural-extinctions={} consumed={} detached-accreted={} microplate-births={} present-plates={} material(c/t/o)={:.1}/{:.1}/{:.1}% ocean-age={:.1}..{:.1}Myr events={} history={}",
         moved_fraction * 100.0,
         young_created_crust,
         generated_material_fragments,
         rift_birth_events,
         history.metrics.natural_extinction_count,
         history.metrics.convergent_consumed_sample_count,
+        history.metrics.detached_accretion_sample_count,
+        history.metrics.detached_microplate_birth_count,
         history.metrics.modern_plate_count,
         history.metrics.continental_area_fraction * 100.0,
         history.metrics.transitional_area_fraction * 100.0,
