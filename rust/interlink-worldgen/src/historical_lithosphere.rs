@@ -809,6 +809,12 @@ pub fn generate_historical_lithosphere<T: PlanetTopology>(
         }
     }
 
+    let current_plate_angular_velocities_rad_per_myr = ancestral
+        .plates
+        .iter()
+        .map(|plate| plate.angular_velocity_rad_per_myr)
+        .collect::<Vec<_>>();
+
     let mut model = HistoricalLithosphereModel {
         stage: StageIdentity {
             id: HISTORICAL_LITHOSPHERE_STAGE_ID,
@@ -819,11 +825,7 @@ pub fn generate_historical_lithosphere<T: PlanetTopology>(
         origin_plate_ids,
         fragment_ids,
         current_plate_ids,
-        current_plate_angular_velocities_rad_per_myr: ancestral
-            .plates
-            .iter()
-            .map(|plate| plate.angular_velocity_rad_per_myr)
-            .collect(),
+        current_plate_angular_velocities_rad_per_myr,
         crust_kind,
         crust_birth_age_myr,
         fragments,
