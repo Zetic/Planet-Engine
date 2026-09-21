@@ -509,6 +509,7 @@ pub fn project_historical_modern_tectonics<T: PlanetTopology>(
         boundaries,
         metrics: TectonicMetrics {
             sample_count: topology.sample_count(),
+            requested_plate_count: historical.metrics.requested_plate_count,
             plate_count: historical.metrics.modern_plate_count,
             boundary_edge_count: convergent + divergent + transform,
             convergent_edge_count: convergent,
