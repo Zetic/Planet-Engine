@@ -228,50 +228,63 @@ fn repair_plate_connectivity<T: PlanetTopology>(
     owners: &mut [u16],
     plate_count: usize,
 ) {
-    for plate in 0..plate_count {
-        let plate_id = plate as u16;
-        let mut seen = vec![false; owners.len()];
-        let mut components = Vec::<Vec<u32>>::new();
-        for start in 0..topology.sample_count() {
-            let start_index = start as usize;
-            if seen[start_index] || owners[start_index] != plate_id {
+    // Reassign an entire detached component as one tectonic fragment. Cell-by-cell repair can
+    // manufacture new disconnected islands on the receiving plate and was one of the pathologies
+    // of the superseded final-state ownership synthesizer.
+    for _ in 0..8 {
+        let mut changed = false;
+        for plate in 0..plate_count {
+            let plate_id = plate as u16;
+            let mut seen = vec![false; owners.len()];
+            let mut components = Vec::<Vec<u32>>::new();
+            for start in 0..topology.sample_count() {
+                let start_index = start as usize;
+                if seen[start_index] || owners[start_index] != plate_id {
+                    continue;
+                }
+                seen[start_index] = true;
+                let mut queue = VecDeque::from([start]);
+                let mut component = Vec::new();
+                while let Some(sample) = queue.pop_front() {
+                    component.push(sample);
+                    for neighbor in topology.neighbors(sample) {
+                        let ni = *neighbor as usize;
+                        if !seen[ni] && owners[ni] == plate_id {
+                            seen[ni] = true;
+                            queue.push_back(*neighbor);
+                        }
+                    }
+                }
+                components.push(component);
+            }
+            if components.len() <= 1 {
                 continue;
             }
-            seen[start_index] = true;
-            let mut queue = VecDeque::from([start]);
-            let mut component = Vec::new();
-            while let Some(sample) = queue.pop_front() {
-                component.push(sample);
-                for neighbor in topology.neighbors(sample) {
-                    let ni = *neighbor as usize;
-                    if !seen[ni] && owners[ni] == plate_id {
-                        seen[ni] = true;
-                        queue.push_back(*neighbor);
-                    }
-                }
-            }
-            components.push(component);
-        }
-        if components.len() <= 1 {
-            continue;
-        }
-        components.sort_by(|left, right| right.len().cmp(&left.len()));
-        for component in components.into_iter().skip(1) {
-            for sample in component {
+            components.sort_by(|left, right| right.len().cmp(&left.len()));
+            for component in components.into_iter().skip(1) {
                 let mut candidates = BTreeMap::<u16, usize>::new();
-                for neighbor in topology.neighbors(sample) {
-                    let candidate = owners[*neighbor as usize];
-                    if candidate != plate_id {
-                        *candidates.entry(candidate).or_insert(0) += 1;
+                for sample in &component {
+                    for neighbor in topology.neighbors(*sample) {
+                        let candidate = owners[*neighbor as usize];
+                        if candidate != plate_id {
+                            *candidates.entry(candidate).or_insert(0) += 1;
+                        }
                     }
                 }
-                if let Some((winner, _)) = candidates
+                let Some((winner, _)) = candidates
                     .into_iter()
                     .max_by(|left, right| left.1.cmp(&right.1).then_with(|| right.0.cmp(&left.0)))
-                {
+                else {
+                    continue;
+                };
+                for sample in component {
                     owners[sample as usize] = winner;
                 }
+                changed = true;
             }
+        }
+        if !changed {
+            break;
         }
     }
 }
