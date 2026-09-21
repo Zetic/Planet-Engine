@@ -713,7 +713,7 @@ fn merge_one_converging_plate_pair<T: PlanetTopology>(
         }
     }
 
-    let Some((_score, keep, remove, summary)) = best else {
+    let Some((_score, keep, remove, _summary)) = best else {
         return false;
     };
     // The convergent boundary event was already recorded before extinction. Do not emit a
