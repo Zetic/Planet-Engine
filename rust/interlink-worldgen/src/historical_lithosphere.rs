@@ -82,6 +82,7 @@ pub struct HistoricalTectonicEvent {
 #[derive(Clone, Debug, PartialEq)]
 pub struct HistoricalLithosphereMetrics {
     pub sample_count: u32,
+    pub requested_plate_count: u16,
     pub ancestral_plate_count: u16,
     pub fragment_count: u16,
     pub modern_plate_count: u16,
@@ -793,6 +794,7 @@ fn history_hash(model: &HistoricalLithosphereModel) -> u64 {
     let mut hash = FNV_OFFSET_BASIS;
     hash = fnv_update(hash, HISTORICAL_LITHOSPHERE_STAGE_ID.as_bytes());
     hash = fnv_update(hash, &model.stage.derived_seed.to_le_bytes());
+    hash = fnv_update(hash, &model.metrics.requested_plate_count.to_le_bytes());
     for values in [
         &model.origin_plate_ids,
         &model.fragment_ids,
@@ -919,6 +921,7 @@ pub fn generate_historical_lithosphere<T: PlanetTopology>(
         events,
         metrics: HistoricalLithosphereMetrics {
             sample_count: topology.sample_count(),
+            requested_plate_count: request.modern_plate_count,
             ancestral_plate_count: ancestral_count,
             fragment_count: 0,
             modern_plate_count: ancestral_count,
