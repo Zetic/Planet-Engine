@@ -597,4 +597,44 @@ mod tests {
         assert!(a.metrics.fossil_orogen_sample_count > 0);
         assert!(a.metrics.internal_fossil_orogen_sample_count > 0);
     }
+
+    #[test]
+    fn genealogy_partition_geometry_is_inert_to_historical_morphology() {
+        let topology = build_icosphere(4).unwrap();
+        let planet = PlanetPhysicalParameters::earthlike_reference();
+        let frontend = generate_historical_frontend(
+            &topology,
+            &HistoricalLithosphereRequest::new("historical-morphology-genealogy-inert", 16),
+            planet,
+        )
+        .unwrap();
+        let reference = build_historical_tectonic_morphology(
+            &topology,
+            &frontend.historical,
+            &frontend.tectonics,
+            "historical-morphology-genealogy-inert",
+        )
+        .unwrap();
+
+        let mut repartitioned = frontend.historical.clone();
+        let fragment_count = repartitioned.fragments.len().max(1);
+        for (sample, fragment) in repartitioned.fragment_ids.iter_mut().enumerate() {
+            *fragment = ((sample.wrapping_mul(251).wrapping_add(97)) % fragment_count) as u16;
+        }
+        assert_ne!(
+            frontend.historical.fragment_ids, repartitioned.fragment_ids,
+            "regression did not actually destroy genealogy partition geometry"
+        );
+        let intervened = build_historical_tectonic_morphology(
+            &topology,
+            &repartitioned,
+            &frontend.tectonics,
+            "historical-morphology-genealogy-inert",
+        )
+        .unwrap();
+        assert_eq!(
+            reference, intervened,
+            "genealogical fragment partition geometry leaked into physical tectonic morphology"
+        );
+    }
 }
