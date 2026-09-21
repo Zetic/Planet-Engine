@@ -980,7 +980,7 @@ fn merge_one_converging_plate_pair<T: PlanetTopology>(
     topology: &T,
     model: &mut HistoricalLithosphereModel,
     velocities: &mut Vec<[f64; 3]>,
-    epoch: usize,
+    _epoch: usize,
     planet: PlanetPhysicalParameters,
 ) -> bool {
     let plate_count = model.metrics.modern_plate_count as usize;
