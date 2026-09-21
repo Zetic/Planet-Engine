@@ -663,6 +663,244 @@ fn record_epoch_events<T: PlanetTopology>(
 }
 
 
+
+#[derive(Clone, Copy)]
+struct RiftCandidate {
+    plate: u16,
+    sample_a: u32,
+    sample_b: u32,
+    plane_normal: [f64; 3],
+    weakness: f64,
+    score: f64,
+}
+
+fn split_one_rifting_plate<T: PlanetTopology>(
+    topology: &T,
+    model: &mut HistoricalLithosphereModel,
+    velocities: &mut Vec<[f64; 3]>,
+    epoch: usize,
+    stage_seed: u64,
+) -> bool {
+    let plate_count = model.metrics.modern_plate_count as usize;
+    if velocities.len() != plate_count || plate_count >= usize::from(u16::MAX) {
+        return false;
+    }
+
+    let mut samples_by_plate = vec![Vec::<u32>::new(); plate_count];
+    let mut non_oceanic_by_plate = vec![0usize; plate_count];
+    for sample in 0..topology.sample_count() {
+        let index = sample as usize;
+        let owner = model.current_plate_ids[index] as usize;
+        if owner >= plate_count {
+            continue;
+        }
+        samples_by_plate[owner].push(sample);
+        if model.crust_kind[index] != CrustKind::Oceanic as u8 {
+            non_oceanic_by_plate[owner] += 1;
+        }
+    }
+
+    // Rift nucleation is constrained to inherited internal material contacts. The fragment ids do
+    // not prescribe relief; here their contact geometry identifies a pre-existing weakness along
+    // which a coherent moving plate may physically separate.
+    let mut best_edge_by_plate = vec![None::<RiftCandidate>; plate_count];
+    for sample_a in 0..topology.sample_count() {
+        let a = sample_a as usize;
+        let owner = model.current_plate_ids[a] as usize;
+        if owner >= plate_count
+            || samples_by_plate[owner].len() < 48
+            || non_oceanic_by_plate[owner] * 100 < samples_by_plate[owner].len() * 30
+        {
+            continue;
+        }
+        for sample_b in topology.neighbors(sample_a) {
+            if *sample_b <= sample_a {
+                continue;
+            }
+            let b = *sample_b as usize;
+            if model.current_plate_ids[b] as usize != owner
+                || model.fragment_ids[a] == model.fragment_ids[b]
+            {
+                continue;
+            }
+            if model.crust_kind[a] == CrustKind::Oceanic as u8
+                && model.crust_kind[b] == CrustKind::Oceanic as u8
+            {
+                continue;
+            }
+
+            let fragment_a = model.fragment_ids[a] as usize;
+            let fragment_b = model.fragment_ids[b] as usize;
+            if fragment_a >= model.fragments.len() || fragment_b >= model.fragments.len() {
+                continue;
+            }
+            let weakness = (f64::from(model.fragments[fragment_a].inherited_fabric)
+                + f64::from(model.fragments[fragment_b].inherited_fabric))
+                * 0.5;
+            let material_bonus = if model.crust_kind[a] != CrustKind::Oceanic as u8
+                && model.crust_kind[b] != CrustKind::Oceanic as u8
+            {
+                0.30
+            } else {
+                0.08
+            };
+            let tie = ((stage_seed
+                ^ u64::from(sample_a).wrapping_mul(0x9e37_79b9_7f4a_7c15)
+                ^ u64::from(*sample_b).wrapping_mul(0xbf58_476d_1ce4_e5b9)
+                ^ (epoch as u64).wrapping_mul(0x94d0_49bb_1331_11eb))
+                .rotate_left(17) as f64
+                / u64::MAX as f64)
+                * 1.0e-6;
+            let plane_normal = normalize_or(
+                sub(topology.unit_position(*sample_b), topology.unit_position(sample_a)),
+                [1.0, 0.0, 0.0],
+            );
+            let score = weakness + material_bonus + tie;
+            let candidate = RiftCandidate {
+                plate: owner as u16,
+                sample_a,
+                sample_b: *sample_b,
+                plane_normal,
+                weakness,
+                score,
+            };
+            if best_edge_by_plate[owner]
+                .map(|current| {
+                    candidate.score > current.score + 1.0e-12
+                        || ((candidate.score - current.score).abs() <= 1.0e-12
+                            && (candidate.sample_a, candidate.sample_b)
+                                < (current.sample_a, current.sample_b))
+                })
+                .unwrap_or(true)
+            {
+                best_edge_by_plate[owner] = Some(candidate);
+            }
+        }
+    }
+
+    let mut best: Option<(f64, RiftCandidate)> = None;
+    for candidate in best_edge_by_plate.into_iter().flatten() {
+        let plate = candidate.plate as usize;
+        let samples = &samples_by_plate[plate];
+        let mut negative = 0usize;
+        let mut positive = 0usize;
+        for sample in samples {
+            let side = dot(topology.unit_position(*sample), candidate.plane_normal);
+            if side >= 0.0 {
+                positive += 1;
+            } else {
+                negative += 1;
+            }
+        }
+        let minimum_side = negative.min(positive);
+        if minimum_side < 16 || minimum_side * 5 < samples.len() {
+            continue;
+        }
+
+        // Both child bodies must already be connected under the proposed rift. Reject a split that
+        // would require the old ownership-repair machinery to manufacture connectivity afterward.
+        let mut connected = true;
+        for positive_side in [false, true] {
+            let expected = if positive_side { positive } else { negative };
+            let Some(start) = samples.iter().copied().find(|sample| {
+                (dot(topology.unit_position(*sample), candidate.plane_normal) >= 0.0)
+                    == positive_side
+            }) else {
+                connected = false;
+                break;
+            };
+            let mut seen = BTreeSet::<u32>::new();
+            let mut queue = VecDeque::from([start]);
+            seen.insert(start);
+            while let Some(sample) = queue.pop_front() {
+                for neighbor in topology.neighbors(sample) {
+                    let ni = *neighbor as usize;
+                    if model.current_plate_ids[ni] != candidate.plate {
+                        continue;
+                    }
+                    let neighbor_side =
+                        dot(topology.unit_position(*neighbor), candidate.plane_normal) >= 0.0;
+                    if neighbor_side == positive_side && seen.insert(*neighbor) {
+                        queue.push_back(*neighbor);
+                    }
+                }
+            }
+            if seen.len() != expected {
+                connected = false;
+                break;
+            }
+        }
+        if !connected {
+            continue;
+        }
+
+        let balance = minimum_side as f64 / negative.max(positive) as f64;
+        let size_weight = (samples.len() as f64 / 64.0).sqrt().min(3.0);
+        let score = candidate.score * (0.55 + 0.45 * balance) * size_weight;
+        if best
+            .as_ref()
+            .map(|current| {
+                score > current.0 + 1.0e-12
+                    || ((score - current.0).abs() <= 1.0e-12
+                        && candidate.plate < current.1.plate)
+            })
+            .unwrap_or(true)
+        {
+            best = Some((score, candidate));
+        }
+    }
+
+    let Some((_score, candidate)) = best else {
+        return false;
+    };
+    let parent = candidate.plate as usize;
+    let child = plate_count as u16;
+    for sample in &samples_by_plate[parent] {
+        if dot(topology.unit_position(*sample), candidate.plane_normal) >= 0.0 {
+            model.current_plate_ids[*sample as usize] = child;
+        }
+    }
+
+    // Give the two new rigid bodies a divergent velocity component normal to the inherited weak
+    // contact. This creates an actual opening boundary that can generate new lithosphere during
+    // subsequent advection instead of recording a rift label on a static partition.
+    let midpoint = normalize_or(
+        add(
+            topology.unit_position(candidate.sample_a),
+            topology.unit_position(candidate.sample_b),
+        ),
+        topology.unit_position(candidate.sample_a),
+    );
+    let angular_offset =
+        (0.07 + 0.11 * candidate.weakness.clamp(0.0, 1.0)).to_radians();
+    let delta = scale(
+        cross(midpoint, candidate.plane_normal),
+        angular_offset,
+    );
+    let base_velocity = velocities[parent];
+    velocities[parent] = sub(base_velocity, delta);
+    velocities.push(add(base_velocity, delta));
+    model.metrics.modern_plate_count = child + 1;
+
+    let a = candidate.sample_a as usize;
+    let b = candidate.sample_b as usize;
+    model.events.push(HistoricalTectonicEvent {
+        id: model.events.len() as u32,
+        kind: HistoricalEventKind::Rift,
+        epoch: epoch.min(usize::from(crate::HISTORICAL_EPOCH_COUNT - 1)) as u8,
+        age_myr: ((FORWARD_EPOCHS - epoch) as f64 * EPOCH_DURATION_MYR) as f32,
+        plate_a: model.origin_plate_ids[a],
+        plate_b: model.origin_plate_ids[b],
+        fragment_a: model.fragment_ids[a],
+        fragment_b: model.fragment_ids[b],
+        displacement_km: 0.0,
+        strength: (0.45 + 0.50 * candidate.weakness.clamp(0.0, 1.0)) as f32,
+        geometry_sample_a: candidate.sample_a,
+        geometry_sample_b: candidate.sample_b,
+    });
+    true
+}
+
 fn merge_one_converging_plate_pair<T: PlanetTopology>(
     topology: &T,
     model: &mut HistoricalLithosphereModel,
@@ -1080,12 +1318,30 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
     let mut velocities = initial_plate_angular_velocities(topology, &model);
     let starting_plate_count = model.metrics.modern_plate_count;
     let merges_needed = starting_plate_count.saturating_sub(target_plate_count) as usize;
+    let rift_budget = (usize::from(target_plate_count) / 8).clamp(1, 3);
+    let mut splits_completed = 0usize;
     let mut merges_completed = 0usize;
     for epoch in 0..FORWARD_EPOCHS {
         record_epoch_events(topology, &mut model, &velocities, epoch, planet);
         for _ in 0..SUBSTEPS_PER_EPOCH {
             advect_substep(topology, &mut model, &velocities, SUBSTEP_MYR);
         }
+
+        if splits_completed < rift_budget
+            && epoch >= 1
+            && epoch <= FORWARD_EPOCHS.saturating_sub(3)
+            && epoch % 2 == 1
+            && split_one_rifting_plate(
+                topology,
+                &mut model,
+                &mut velocities,
+                epoch,
+                stage_seed,
+            )
+        {
+            splits_completed += 1;
+        }
+
         let expected_merges = ((epoch + 1) * merges_needed) / FORWARD_EPOCHS;
         while merges_completed < expected_merges
             && model.metrics.modern_plate_count > target_plate_count
@@ -1100,6 +1356,20 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
                 break;
             }
             merges_completed += 1;
+        }
+    }
+
+    // Plate births are allowed to survive for multiple epochs. Any remaining excess bodies must
+    // disappear through actual convergent extinction, not by relabeling them to hit a count.
+    while model.metrics.modern_plate_count > target_plate_count {
+        if !merge_one_converging_plate_pair(
+            topology,
+            &mut model,
+            &mut velocities,
+            FORWARD_EPOCHS - 1,
+            planet,
+        ) {
+            break;
         }
     }
     if model.metrics.modern_plate_count != target_plate_count {
