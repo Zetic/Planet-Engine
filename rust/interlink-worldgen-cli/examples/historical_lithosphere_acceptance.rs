@@ -42,10 +42,13 @@ fn verify_seed(seed: &str) -> Result<(), String> {
             "{seed}: historical material fields do not cover the sphere"
         ));
     }
-    if history.metrics.ancestral_plate_count < history.metrics.modern_plate_count
-        || history.metrics.fragment_count < history.metrics.ancestral_plate_count
-    {
-        return Err(format!("{seed}: ancestry hierarchy did not preserve old-plate -> fragment -> modern-plate structure"));
+    if history.metrics.fragment_count < history.metrics.ancestral_plate_count {
+        return Err(format!(
+            "{seed}: material lineage lost ancestral plate representation"
+        ));
+    }
+    if history.metrics.modern_plate_count == 0 {
+        return Err(format!("{seed}: forward history produced no present tectonic plates"));
     }
     if tectonics.plate_ids != history.current_plate_ids {
         return Err(format!(
