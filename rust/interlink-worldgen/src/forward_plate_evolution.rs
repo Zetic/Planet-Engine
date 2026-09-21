@@ -1763,11 +1763,8 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
             "historical state is missing current plate kinematics",
         ));
     }
-    let starting_plate_count = model.metrics.modern_plate_count;
-    let merges_needed = starting_plate_count.saturating_sub(target_plate_count) as usize;
     let rift_budget = (usize::from(target_plate_count) / 8).clamp(1, 3);
     let mut splits_completed = 0usize;
-    let mut merges_completed = 0usize;
     for epoch in 0..FORWARD_EPOCHS {
         let mut generation_fragments = BTreeMap::<(u8, u16, u8, u16), u16>::new();
         record_epoch_events(topology, &mut model, &velocities, epoch, planet);
@@ -1797,21 +1794,10 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
             splits_completed += 1;
         }
 
-        let expected_merges = ((epoch + 1) * merges_needed) / FORWARD_EPOCHS;
-        while merges_completed < expected_merges
-            && model.metrics.modern_plate_count > target_plate_count
-        {
-            if !merge_one_converging_plate_pair(
-                topology,
-                &mut model,
-                &mut velocities,
-                epoch,
-                planet,
-            ) {
-                break;
-            }
-            merges_completed += 1;
-        }
+        // Do not force the requested present count during history. Convergent overlap is allowed
+        // to erase surface plates naturally over the full integration interval. Any residual count
+        // mismatch is handled only after the physical history has had the opportunity to resolve it,
+        // and is reported separately as fallback extinction.
     }
 
     // Plate births are allowed to survive for multiple epochs. Any remaining excess bodies must
