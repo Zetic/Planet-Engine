@@ -1,7 +1,7 @@
 use crate::{
     derive_stage_seed, CrustFragment, CrustKind, HistoricalEventKind,
     HistoricalLithosphereModel, HistoricalTectonicEvent, PlanetPhysicalParameters, PlanetTopology,
-    WorldgenError,
+    WorldgenError, MAX_TECTONIC_PLATES,
 };
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
@@ -368,72 +368,149 @@ fn materialize_generated_crust<T: PlanetTopology>(
     Ok(())
 }
 
-fn repair_plate_connectivity<T: PlanetTopology>(
-    topology: &T,
-    owners: &mut [u16],
-    plate_count: usize,
-) {
-    // Reassign an entire detached component as one tectonic fragment. Cell-by-cell repair can
-    // manufacture new disconnected islands on the receiving plate and was one of the pathologies
-    // of the superseded final-state ownership synthesizer.
-    for _ in 0..8 {
-        let mut changed = false;
-        for plate in 0..plate_count {
-            let plate_id = plate as u16;
-            let mut seen = vec![false; owners.len()];
-            let mut components = Vec::<Vec<u32>>::new();
-            for start in 0..topology.sample_count() {
-                let start_index = start as usize;
-                if seen[start_index] || owners[start_index] != plate_id {
-                    continue;
-                }
-                seen[start_index] = true;
-                let mut queue = VecDeque::from([start]);
-                let mut component = Vec::new();
-                while let Some(sample) = queue.pop_front() {
-                    component.push(sample);
-                    for neighbor in topology.neighbors(sample) {
-                        let ni = *neighbor as usize;
-                        if !seen[ni] && owners[ni] == plate_id {
-                            seen[ni] = true;
-                            queue.push_back(*neighbor);
-                        }
-                    }
-                }
-                components.push(component);
-            }
-            if components.len() <= 1 {
-                continue;
-            }
-            components.sort_by(|left, right| right.len().cmp(&left.len()));
-            for component in components.into_iter().skip(1) {
-                let mut candidates = BTreeMap::<u16, usize>::new();
-                for sample in &component {
-                    for neighbor in topology.neighbors(*sample) {
-                        let candidate = owners[*neighbor as usize];
-                        if candidate != plate_id {
-                            *candidates.entry(candidate).or_insert(0) += 1;
-                        }
-                    }
-                }
-                let Some((winner, _)) = candidates
-                    .into_iter()
-                    .max_by(|left, right| left.1.cmp(&right.1).then_with(|| right.0.cmp(&left.0)))
-                else {
-                    continue;
-                };
-                for sample in component {
-                    owners[sample as usize] = winner;
-                }
-                changed = true;
-            }
-        }
-        if !changed {
-            break;
-        }
-    }
+#[derive(Clone, Copy, Default)]
+struct ConnectivityResolution {
+    accreted_samples: usize,
+    microplate_births: usize,
 }
 
+fn resolve_plate_connectivity<T: PlanetTopology>(
+    topology: &T,
+    owners: &mut [u16],
+    velocities: &mut Vec<[f64; 3]>,
+    planet: PlanetPhysicalParameters,
+) -> ConnectivityResolution {
+    let initial_plate_count = velocities.len();
+    let mut resolution = ConnectivityResolution::default();
+
+    // A rigid plate should occupy one connected surface domain. If advection/subduction cuts a
+    // plate into disconnected pieces, do not silently repaint every detached component onto the
+    // largest neighboring owner. Small scraps may physically accrete, but a substantial detached
+    // remnant becomes its own microplate and keeps the parent's instantaneous Euler motion.
+    for plate in 0..initial_plate_count {
+        let plate_id = plate as u16;
+        let mut seen = vec![false; owners.len()];
+        let mut components = Vec::<Vec<u32>>::new();
+        for start in 0..topology.sample_count() {
+            let start_index = start as usize;
+            if seen[start_index] || owners[start_index] != plate_id {
+                continue;
+            }
+            seen[start_index] = true;
+            let mut queue = VecDeque::from([start]);
+            let mut component = Vec::new();
+            while let Some(sample) = queue.pop_front() {
+                component.push(sample);
+                for neighbor in topology.neighbors(sample) {
+                    let ni = *neighbor as usize;
+                    if !seen[ni] && owners[ni] == plate_id {
+                        seen[ni] = true;
+                        queue.push_back(*neighbor);
+                    }
+                }
+            }
+            components.push(component);
+        }
+        if components.len() <= 1 {
+            continue;
+        }
+
+        components.sort_by(|left, right| {
+            right
+                .len()
+                .cmp(&left.len())
+                .then_with(|| left[0].cmp(&right[0]))
+        });
+        let primary_size = components[0].len().max(1);
+
+        for component in components.into_iter().skip(1) {
+            let mut contacts = BTreeMap::<u16, (usize, f64)>::new();
+            for sample in &component {
+                let sample_position = topology.unit_position(*sample);
+                for neighbor in topology.neighbors(*sample) {
+                    let ni = *neighbor as usize;
+                    let candidate = owners[ni];
+                    if candidate == plate_id || candidate as usize >= velocities.len() {
+                        continue;
+                    }
+                    let neighbor_position = topology.unit_position(*neighbor);
+                    let midpoint = normalize_or(add(sample_position, neighbor_position), sample_position);
+                    let normal = normalize_or(sub(neighbor_position, sample_position), sample_position);
+                    let source_velocity = scale(
+                        cross(velocities[plate], midpoint),
+                        planet.radius_m / 1_000_000.0,
+                    );
+                    let candidate_velocity = scale(
+                        cross(velocities[candidate as usize], midpoint),
+                        planet.radius_m / 1_000_000.0,
+                    );
+                    let normal_rate = dot(sub(candidate_velocity, source_velocity), normal);
+                    let entry = contacts.entry(candidate).or_insert((0, 0.0));
+                    entry.0 += 1;
+                    if normal_rate < 0.0 {
+                        entry.1 += -normal_rate;
+                    }
+                }
+            }
+
+            let best_convergent = contacts
+                .iter()
+                .filter(|(_, (_, convergence))| *convergence > 1.0e-9)
+                .max_by(|left, right| {
+                    left.1
+                        .1
+                        .total_cmp(&right.1.1)
+                        .then_with(|| left.1.0.cmp(&right.1.0))
+                        .then_with(|| right.0.cmp(left.0))
+                })
+                .map(|(owner, _)| *owner);
+            let best_contact = contacts
+                .iter()
+                .max_by(|left, right| {
+                    left.1
+                        .0
+                        .cmp(&right.1.0)
+                        .then_with(|| left.1.1.total_cmp(&right.1.1))
+                        .then_with(|| right.0.cmp(left.0))
+                })
+                .map(|(owner, _)| *owner);
+
+            let substantial_remnant =
+                component.len() >= 8 && component.len().saturating_mul(8) >= primary_size;
+            let recipient = if let Some(owner) = best_convergent {
+                Some(owner)
+            } else if !substantial_remnant {
+                best_contact
+            } else {
+                None
+            };
+
+            if let Some(recipient) = recipient {
+                for sample in component {
+                    owners[sample as usize] = recipient;
+                    resolution.accreted_samples += 1;
+                }
+                continue;
+            }
+
+            if velocities.len() < usize::from(MAX_TECTONIC_PLATES) {
+                let child = velocities.len() as u16;
+                velocities.push(velocities[plate]);
+                for sample in component {
+                    owners[sample as usize] = child;
+                }
+                resolution.microplate_births += 1;
+            } else if let Some(recipient) = best_contact {
+                for sample in component {
+                    owners[sample as usize] = recipient;
+                    resolution.accreted_samples += 1;
+                }
+            }
+        }
+    }
+
+    resolution
+}
 fn gap_is_divergent<T: PlanetTopology>(
     topology: &T,
     sample: u32,
@@ -659,11 +736,15 @@ fn consume_convergent_boundary_band<T: PlanetTopology>(
         return;
     }
 
-    repair_plate_connectivity(
+    let connectivity = resolve_plate_connectivity(
         topology,
         &mut model.current_plate_ids,
-        plate_count,
+        velocities,
+        planet,
     );
+    if connectivity.microplate_births > 0 {
+        generation_fragments.clear();
+    }
     let extinct = compact_extinct_plates(
         &mut model.current_plate_ids,
         velocities,
@@ -892,7 +973,11 @@ fn advect_substep<T: PlanetTopology>(
         remaining = remaining.saturating_sub(changed);
     }
 
-    repair_plate_connectivity(topology, &mut new_owner, plate_count);
+    let connectivity =
+        resolve_plate_connectivity(topology, &mut new_owner, velocities, planet);
+    if connectivity.microplate_births > 0 {
+        generation_fragments.clear();
+    }
     if new_owner.iter().any(|owner| *owner == u16::MAX) {
         return Err(WorldgenError::InvalidTectonics(
             "forward transport left an unresolved surface ownership hole",
