@@ -723,6 +723,10 @@ fn advect_substep<T: PlanetTopology>(
     if extinct > 0 {
         generation_fragments.clear();
         model.metrics.modern_plate_count = velocities.len() as u16;
+        model.metrics.natural_extinction_count = model
+            .metrics
+            .natural_extinction_count
+            .saturating_add(extinct as u16);
     }
 
     materialize_generated_crust(
@@ -1335,6 +1339,7 @@ fn split_one_rifting_plate<T: PlanetTopology>(
     velocities[parent] = sub(base_velocity, delta);
     velocities.push(add(base_velocity, delta));
     model.metrics.modern_plate_count = child + 1;
+    model.metrics.rift_birth_count = model.metrics.rift_birth_count.saturating_add(1);
 
     let a = geometry_a as usize;
     let b = geometry_b as usize;
@@ -1531,6 +1536,8 @@ fn merge_one_converging_plate_pair<T: PlanetTopology>(
     }
     *velocities = compact_velocities;
     model.metrics.modern_plate_count = next;
+    model.metrics.forced_extinction_count =
+        model.metrics.forced_extinction_count.saturating_add(1);
     true
 }
 
