@@ -173,12 +173,45 @@ fn plate_core_samples<T: PlanetTopology>(
 
 fn material_survival_bias(kind: u8, age_myr: f32) -> f64 {
     if kind == CrustKind::Continental as u8 {
-        0.020
+        0.34
     } else if kind == CrustKind::Transitional as u8 {
-        0.012
+        0.16
     } else {
-        0.004 + 0.004 * (1.0 - (f64::from(age_myr) / 220.0).clamp(0.0, 1.0))
+        0.02 + 0.03 * (1.0 - (f64::from(age_myr) / 220.0).clamp(0.0, 1.0))
     }
+}
+
+fn nearest_owned_sample<T: PlanetTopology>(
+    topology: &T,
+    target: [f64; 3],
+    start: u32,
+    owners: &[u16],
+    plate: u16,
+) -> (u32, f64) {
+    let mut current = start;
+    let mut current_alignment = dot(topology.unit_position(current), target);
+    for _ in 0..64 {
+        let mut best = current;
+        let mut best_alignment = current_alignment;
+        for neighbor in topology.neighbors(current) {
+            if owners[*neighbor as usize] != plate {
+                continue;
+            }
+            let alignment = dot(topology.unit_position(*neighbor), target);
+            if alignment > best_alignment + 1.0e-14
+                || ((alignment - best_alignment).abs() <= 1.0e-14 && *neighbor < best)
+            {
+                best = *neighbor;
+                best_alignment = alignment;
+            }
+        }
+        if best == current {
+            break;
+        }
+        current = best;
+        current_alignment = best_alignment;
+    }
+    (current, current_alignment)
 }
 
 fn refresh_active_fragment_summaries<T: PlanetTopology>(
@@ -305,33 +338,16 @@ fn advect_substep<T: PlanetTopology>(
     let old_kind = model.crust_kind.clone();
     let old_age = model.crust_birth_age_myr.clone();
 
-    let mut selected_source = vec![usize::MAX; count];
-    let mut selected_score = vec![f64::NEG_INFINITY; count];
     let mut mapped_core_destination = vec![None; plate_count];
-
-    for source in 0..topology.sample_count() {
-        let source_index = source as usize;
-        let owner = old_owner[source_index] as usize;
-        if owner >= plate_count {
-            continue;
-        }
-        let target = rotate_by_angular_velocity(
-            topology.unit_position(source),
-            velocities[owner],
-            dt_myr,
-        );
-        let destination = nearest_sample(topology, target, source) as usize;
-        let alignment = dot(topology.unit_position(destination as u32), target);
-        let score = alignment + material_survival_bias(old_kind[source_index], old_age[source_index]);
-        if score > selected_score[destination] + 1.0e-14
-            || ((score - selected_score[destination]).abs() <= 1.0e-14
-                && source_index < selected_source[destination])
-        {
-            selected_score[destination] = score;
-            selected_source[destination] = source_index;
-        }
-        if cores[owner] == Some(source) {
-            mapped_core_destination[owner] = Some(destination);
+    for plate in 0..plate_count {
+        if let Some(core) = cores[plate] {
+            let target = rotate_by_angular_velocity(
+                topology.unit_position(core),
+                velocities[plate],
+                dt_myr,
+            );
+            mapped_core_destination[plate] =
+                Some(nearest_sample(topology, target, core) as usize);
         }
     }
 
@@ -341,16 +357,58 @@ fn advect_substep<T: PlanetTopology>(
     let mut new_kind = vec![CrustKind::Oceanic as u8; count];
     let mut new_age = vec![0.0_f32; count];
 
-    for destination in 0..count {
-        let source = selected_source[destination];
-        if source == usize::MAX {
-            continue;
+    // Semi-Lagrangian rigid transport: for each destination cell, back-rotate through every
+    // moving plate and ask whether the preimage lies inside that plate's previous material
+    // domain. This transports coherent plate shapes. It replaces the source-cell scatter that
+    // shredded continental blocks whenever several parcels rounded onto the same raster cell.
+    for destination in 0..topology.sample_count() {
+        let destination_index = destination as usize;
+        let destination_position = topology.unit_position(destination);
+        let mut best: Option<(f64, usize, u16)> = None;
+        for plate in 0..plate_count {
+            let Some(core) = cores[plate] else { continue };
+            let preimage = rotate_by_angular_velocity(
+                destination_position,
+                velocities[plate],
+                -dt_myr,
+            );
+            let (source, alignment) =
+                nearest_owned_sample(topology, preimage, core, &old_owner, plate as u16);
+            let source_index = source as usize;
+            let distance = alignment.clamp(-1.0, 1.0).acos();
+            let lengths = topology.neighbor_arc_lengths_rad(source);
+            let local_scale = if lengths.is_empty() {
+                0.0
+            } else {
+                lengths.iter().copied().sum::<f64>() / lengths.len() as f64
+            };
+            if local_scale <= 0.0 || distance > local_scale * 0.82 {
+                continue;
+            }
+            let normalized_distance = distance / local_scale;
+            let score = -normalized_distance
+                + material_survival_bias(old_kind[source_index], old_age[source_index]);
+            let candidate = (score, source_index, plate as u16);
+            if best
+                .as_ref()
+                .map(|current| {
+                    candidate.0 > current.0 + 1.0e-14
+                        || ((candidate.0 - current.0).abs() <= 1.0e-14
+                            && (candidate.2, candidate.1) < (current.2, current.1))
+                })
+                .unwrap_or(true)
+            {
+                best = Some(candidate);
+            }
         }
-        new_origin[destination] = old_origin[source];
-        new_fragment[destination] = old_fragment[source];
-        new_owner[destination] = old_owner[source];
-        new_kind[destination] = old_kind[source];
-        new_age[destination] = if old_kind[source] == CrustKind::Oceanic as u8 {
+        let Some((_score, source, plate)) = best else {
+            continue;
+        };
+        new_origin[destination_index] = old_origin[source];
+        new_fragment[destination_index] = old_fragment[source];
+        new_owner[destination_index] = plate;
+        new_kind[destination_index] = old_kind[source];
+        new_age[destination_index] = if old_kind[source] == CrustKind::Oceanic as u8 {
             (old_age[source] + dt_myr as f32).clamp(0.0, 220.0)
         } else {
             old_age[source]
