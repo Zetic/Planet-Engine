@@ -5,9 +5,11 @@ use interlink_worldgen::{
 };
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
-// Permanent PR-A acceptance: material identity must survive the complete historical front end,
-// bounded fragment epochs, modern-plate projection, compatibility geology projection, and
-// coarse-to-fine inheritance.
+// Permanent historical-material acceptance: material identity must survive the complete
+// historical front end, forward plate evolution, compatibility geology projection, and
+// coarse-to-fine inheritance. Spatial migration of present boundaries is gated separately by
+// forward_plate_evolution_acceptance; ancestry labels move with material and therefore are not a
+// valid fixed spatial reference frame for measuring boundary migration.
 fn verify_seed(seed: &str) -> Result<(), String> {
     let coarse_level = 4;
     let topology = build_icosphere(coarse_level).map_err(|error| error.to_string())?;
@@ -207,7 +209,6 @@ fn verify_seed(seed: &str) -> Result<(), String> {
     let mut active_fragment_area = vec![0.0_f64; history.fragments.len()];
     let mut internal_fragment_edges = 0_u32;
     let mut origin_discontinuity_edges = 0_u32;
-    let mut modern_boundary_inside_origin_edges = 0_u32;
     let mut oceanic_samples = 0_u32;
     let mut oceanic_age_min = f32::INFINITY;
     let mut oceanic_age_max = f32::NEG_INFINITY;
@@ -279,9 +280,6 @@ fn verify_seed(seed: &str) -> Result<(), String> {
             if history.current_plate_ids[ni] == current && history.origin_plate_ids[ni] != origin {
                 origin_discontinuity_edges += 1;
             }
-            if history.current_plate_ids[ni] != current && history.origin_plate_ids[ni] == origin {
-                modern_boundary_inside_origin_edges += 1;
-            }
         }
     }
 
@@ -321,11 +319,6 @@ fn verify_seed(seed: &str) -> Result<(), String> {
     if internal_fragment_edges == 0 || origin_discontinuity_edges == 0 {
         return Err(format!(
             "{seed}: no fossil material discontinuities survived inside modern plates"
-        ));
-    }
-    if modern_boundary_inside_origin_edges == 0 {
-        return Err(format!(
-            "{seed}: modern plate boundaries remained locked to ancestral plate edges"
         ));
     }
     if oceanic_samples == 0 || oceanic_age_max - oceanic_age_min < 20.0 {
