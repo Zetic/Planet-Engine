@@ -1543,187 +1543,6 @@ fn split_one_rifting_plate<T: PlanetTopology>(
     true
 }
 
-fn merge_one_converging_plate_pair<T: PlanetTopology>(
-    topology: &T,
-    model: &mut HistoricalLithosphereModel,
-    velocities: &mut Vec<[f64; 3]>,
-    _epoch: usize,
-    planet: PlanetPhysicalParameters,
-) -> bool {
-    let plate_count = model.metrics.modern_plate_count as usize;
-    if plate_count <= 1 || velocities.len() != plate_count {
-        return false;
-    }
-    let mut plate_area = vec![0.0_f64; plate_count];
-    let mut continental_area = vec![0.0_f64; plate_count];
-    for sample in 0..topology.sample_count() {
-        let index = sample as usize;
-        let owner = model.current_plate_ids[index] as usize;
-        if owner >= plate_count {
-            continue;
-        }
-        let area = topology.area_steradians(sample);
-        plate_area[owner] += area;
-        if model.crust_kind[index] == CrustKind::Continental as u8 {
-            continental_area[owner] += area;
-        }
-    }
-
-    let mut summaries = BTreeMap::<(u16, u16), BoundaryEpochSummary>::new();
-    for sample_a in 0..topology.sample_count() {
-        let a = sample_a as usize;
-        for sample_b in topology.neighbors(sample_a) {
-            if *sample_b <= sample_a {
-                continue;
-            }
-            let b = *sample_b as usize;
-            let owner_a = model.current_plate_ids[a];
-            let owner_b = model.current_plate_ids[b];
-            if owner_a == owner_b {
-                continue;
-            }
-            let pair = if owner_a < owner_b {
-                (owner_a, owner_b)
-            } else {
-                (owner_b, owner_a)
-            };
-            let position_a = topology.unit_position(sample_a);
-            let position_b = topology.unit_position(*sample_b);
-            let midpoint = normalize_or(add(position_a, position_b), position_a);
-            let normal = normalize_or(sub(position_b, position_a), position_a);
-            let tangent = normalize_or(cross(midpoint, normal), [1.0, 0.0, 0.0]);
-            let velocity = |owner: u16| {
-                scale(
-                    cross(velocities[owner as usize], midpoint),
-                    planet.radius_m / 1_000_000.0,
-                )
-            };
-            let relative = sub(velocity(owner_b), velocity(owner_a));
-            let normal_rate = dot(relative, normal);
-            let shear_rate = dot(relative, tangent);
-            let summary = summaries.entry(pair).or_default();
-            if !summary.initialized {
-                summary.sample_a = sample_a;
-                summary.sample_b = *sample_b;
-                summary.initialized = true;
-            }
-            if normal_rate < -1.0e-9 {
-                summary.convergence += -normal_rate;
-            } else if normal_rate > 1.0e-9 {
-                summary.divergence += normal_rate;
-            }
-            summary.shear += shear_rate.abs();
-            summary.speed_sum += normal_rate.hypot(shear_rate);
-            summary.edges += 1;
-        }
-    }
-
-    let mut best: Option<(f64, u16, u16, BoundaryEpochSummary)> = None;
-    for ((left, right), summary) in summaries {
-        if !summary.initialized || summary.edges == 0 {
-            continue;
-        }
-        let li = left as usize;
-        let ri = right as usize;
-        let mean_convergence = summary.convergence / f64::from(summary.edges);
-        let mean_divergence = summary.divergence / f64::from(summary.edges);
-        let net_convergence = (mean_convergence - mean_divergence * 0.65).max(0.0);
-        if net_convergence <= 1.0e-6 {
-            continue;
-        }
-        let left_cont = continental_area[li] / plate_area[li].max(1.0e-12);
-        let right_cont = continental_area[ri] / plate_area[ri].max(1.0e-12);
-        let (keep, remove, remove_cont) = if left_cont > right_cont + 0.05 {
-            (left, right, right_cont)
-        } else if right_cont > left_cont + 0.05 {
-            (right, left, left_cont)
-        } else if plate_area[li] >= plate_area[ri] {
-            (left, right, right_cont)
-        } else {
-            (right, left, left_cont)
-        };
-        // Prefer sustained convergence, long interfaces and oceanic/small plates as extinction
-        // candidates. This is a coarse plate-loss event, not an area-balancing objective.
-        let contact_weight = (f64::from(summary.edges)).sqrt();
-        let removable_fraction =
-            plate_area[remove as usize] / plate_area.iter().sum::<f64>().max(1.0e-12);
-        let score = net_convergence
-            * contact_weight
-            * (1.0 + (1.0 - remove_cont) * 0.8)
-            * (1.0 + (0.12 - removable_fraction).max(0.0) * 2.0);
-        let candidate = (score, keep, remove, summary);
-        if best
-            .as_ref()
-            .map(|current| {
-                candidate.0 > current.0 + 1.0e-12
-                    || ((candidate.0 - current.0).abs() <= 1.0e-12
-                        && (candidate.1, candidate.2) < (current.1, current.2))
-            })
-            .unwrap_or(true)
-        {
-            best = Some(candidate);
-        }
-    }
-
-    let Some((_score, keep, remove, _summary)) = best else {
-        return false;
-    };
-    // The convergent boundary event was already recorded before extinction. Do not emit a
-    // synthetic Capture here: material fragments may straddle owners until the final lineage
-    // repartition, so attaching a capture to pre-repartition fragment metadata would invent a
-    // categorical ownership event that did not actually occur as a discrete parcel transfer.
-
-    for owner in &mut model.current_plate_ids {
-        if *owner == remove {
-            *owner = keep;
-        }
-    }
-
-    // Compact ids after plate extinction so every subsequent epoch can index plate state densely.
-    let mut remap = vec![u16::MAX; plate_count];
-    let mut next = 0_u16;
-    for old in 0..plate_count as u16 {
-        if old == remove {
-            continue;
-        }
-        remap[old as usize] = next;
-        next += 1;
-    }
-    for owner in &mut model.current_plate_ids {
-        *owner = remap[*owner as usize];
-    }
-
-    let keep_index = keep as usize;
-    let remove_index = remove as usize;
-    let keep_area = plate_area[keep_index];
-    let remove_area = plate_area[remove_index];
-    let merged_area = (keep_area + remove_area).max(1.0e-12);
-    let merged_velocity = [
-        (velocities[keep_index][0] * keep_area + velocities[remove_index][0] * remove_area)
-            / merged_area,
-        (velocities[keep_index][1] * keep_area + velocities[remove_index][1] * remove_area)
-            / merged_area,
-        (velocities[keep_index][2] * keep_area + velocities[remove_index][2] * remove_area)
-            / merged_area,
-    ];
-    let mut compact_velocities = Vec::with_capacity(plate_count - 1);
-    for old in 0..plate_count {
-        if old == remove_index {
-            continue;
-        }
-        if old == keep_index {
-            compact_velocities.push(merged_velocity);
-        } else {
-            compact_velocities.push(velocities[old]);
-        }
-    }
-    *velocities = compact_velocities;
-    model.metrics.modern_plate_count = next;
-    model.metrics.forced_extinction_count =
-        model.metrics.forced_extinction_count.saturating_add(1);
-    true
-}
-
 fn split_fragments_at_final_boundaries<T: PlanetTopology>(
     topology: &T,
     model: &mut HistoricalLithosphereModel,
@@ -1991,22 +1810,22 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
         // and is reported separately as fallback extinction.
     }
 
-    // Plate births are allowed to survive for multiple epochs. Any remaining excess bodies must
-    // disappear through actual convergent extinction, not by relabeling them to hit a count.
-    while model.metrics.modern_plate_count > target_plate_count {
-        if !merge_one_converging_plate_pair(
-            topology,
-            &mut model,
-            &mut velocities,
-            FORWARD_EPOCHS - 1,
-            planet,
-        ) {
-            break;
-        }
-    }
-    if model.metrics.modern_plate_count != target_plate_count {
+    // Present plate count is an emergent result of births and physical extinction. The request
+    // supplies the desired tectonic scale, not an exact final partition cardinality. Reject only
+    // histories that drift far enough from that scale to indicate a pathological evolution.
+    let minimum_present = target_plate_count
+        .saturating_mul(3)
+        .div_ceil(4)
+        .max(1);
+    let maximum_present = target_plate_count
+        .saturating_mul(5)
+        .div_ceil(4)
+        .max(minimum_present);
+    if model.metrics.modern_plate_count < minimum_present
+        || model.metrics.modern_plate_count > maximum_present
+    {
         return Err(WorldgenError::InvalidTectonics(
-            "forward plate evolution did not reach the requested present plate count through convergence",
+            "forward plate evolution drifted outside the requested present-day plate-count scale",
         ));
     }
 
