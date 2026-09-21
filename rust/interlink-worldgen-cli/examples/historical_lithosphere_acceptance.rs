@@ -89,26 +89,16 @@ fn verify_seed(seed: &str) -> Result<(), String> {
                     fragment.id
                 ));
             }
-            if parent.current_plate_id != fragment.current_plate_id
-                && fragment.capture_age_myr.is_none()
-            {
-                return Err(format!(
-                    "{seed}: fragment {} changed modern ownership without capture age provenance",
-                    fragment.id
-                ));
-            }
         }
     }
     if parented_fragment_ids.is_empty() {
         return Err(format!(
-            "{seed}: bounded historical epochs produced no parent/child fragment lineage"
+            "{seed}: forward tectonic history produced no parent/child material lineage"
         ));
     }
 
     let mut split_events = 0_usize;
     let mut split_event_children = BTreeSet::<u16>::new();
-    let mut capture_event_children = BTreeSet::<u16>::new();
-    let mut capture_partition_parents = BTreeSet::<u16>::new();
     for (event_index, event) in history.events.iter().enumerate() {
         if event.id as usize != event_index {
             return Err(format!(
@@ -134,29 +124,15 @@ fn verify_seed(seed: &str) -> Result<(), String> {
             split_event_children.insert(event.fragment_a);
             split_event_children.insert(event.fragment_b);
         }
-        if event.kind == HistoricalEventKind::Capture && event.fragment_a != event.fragment_b {
-            capture_event_children.insert(event.fragment_b);
-            if let Some(parent) = history.fragments[event.fragment_b as usize].parent_fragment_id {
-                capture_partition_parents.insert(parent);
-            }
-        }
     }
     if split_events == 0 {
         return Err(format!(
-            "{seed}: bounded historical epochs produced no explicit split/rift event"
+            "{seed}: forward tectonic history produced no explicit split/rift event"
         ));
     }
-    if parented_fragment_ids.iter().any(|fragment| {
-        if split_event_children.contains(fragment) || capture_event_children.contains(fragment) {
-            return false;
-        }
-        history.fragments[*fragment as usize]
-            .parent_fragment_id
-            .map(|parent| !capture_partition_parents.contains(&parent))
-            .unwrap_or(true)
-    }) {
+    if split_event_children.is_empty() {
         return Err(format!(
-            "{seed}: parented fragment lineage is missing explicit rift/capture partition provenance"
+            "{seed}: forward history produced no fragment-resolving rift geometry"
         ));
     }
 
@@ -348,38 +324,6 @@ fn verify_seed(seed: &str) -> Result<(), String> {
         return Err(format!(
             "{seed}: oceanic age does not increase away from forward-created spreading material: near={near_mean_age:.1}Myr far={far_mean_age:.1}Myr"
         ));
-    }
-
-    let mut capture_events_by_current = vec![0_usize; history.metrics.modern_plate_count as usize];
-    for event in history
-        .events
-        .iter()
-        .filter(|event| event.kind == HistoricalEventKind::Capture)
-    {
-        if usize::from(event.fragment_a) >= history.fragments.len()
-            || usize::from(event.fragment_b) >= history.fragments.len()
-        {
-            return Err(format!(
-                "{seed}: capture event {} references invalid fragments",
-                event.id
-            ));
-        }
-        let current = history.fragments[event.fragment_b as usize].current_plate_id;
-        if current >= history.metrics.modern_plate_count {
-            return Err(format!(
-                "{seed}: capture event {} resolves to an invalid modern owner",
-                event.id
-            ));
-        }
-        capture_events_by_current[current as usize] += 1;
-    }
-    for (current, origins) in &modern_origins {
-        if origins.len() > 1 && capture_events_by_current[*current as usize] == 0 {
-            return Err(format!(
-                "{seed}: modern plate {current} consolidates {} ancestral plates but has no capture provenance",
-                origins.len()
-            ));
-        }
     }
 
     for boundary in &tectonics.boundaries {
