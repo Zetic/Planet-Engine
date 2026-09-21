@@ -879,6 +879,308 @@ fn record_epoch_events<T: PlanetTopology>(
 
 
 
+#[derive(Clone)]
+struct FlowEdge {
+    to: usize,
+    rev: usize,
+    capacity: u64,
+}
+
+fn add_flow_edge(graph: &mut [Vec<FlowEdge>], from: usize, to: usize, capacity: u64) {
+    let forward_rev = graph[to].len();
+    let reverse_rev = graph[from].len();
+    graph[from].push(FlowEdge {
+        to,
+        rev: forward_rev,
+        capacity,
+    });
+    graph[to].push(FlowEdge {
+        to: from,
+        rev: reverse_rev,
+        capacity: 0,
+    });
+}
+
+fn add_undirected_flow_edge(
+    graph: &mut [Vec<FlowEdge>],
+    left: usize,
+    right: usize,
+    capacity: u64,
+) {
+    add_flow_edge(graph, left, right, capacity);
+    add_flow_edge(graph, right, left, capacity);
+}
+
+fn flow_levels(graph: &[Vec<FlowEdge>], source: usize, sink: usize) -> Option<Vec<i32>> {
+    let mut level = vec![-1_i32; graph.len()];
+    let mut queue = VecDeque::from([source]);
+    level[source] = 0;
+    while let Some(node) = queue.pop_front() {
+        for edge in &graph[node] {
+            if edge.capacity > 0 && level[edge.to] < 0 {
+                level[edge.to] = level[node] + 1;
+                queue.push_back(edge.to);
+            }
+        }
+    }
+    (level[sink] >= 0).then_some(level)
+}
+
+fn flow_dfs(
+    node: usize,
+    sink: usize,
+    pushed: u64,
+    level: &[i32],
+    next_edge: &mut [usize],
+    graph: &mut [Vec<FlowEdge>],
+) -> u64 {
+    if pushed == 0 {
+        return 0;
+    }
+    if node == sink {
+        return pushed;
+    }
+    while next_edge[node] < graph[node].len() {
+        let edge_index = next_edge[node];
+        let to = graph[node][edge_index].to;
+        let reverse = graph[node][edge_index].rev;
+        let capacity = graph[node][edge_index].capacity;
+        if capacity > 0 && level[to] == level[node] + 1 {
+            let sent = flow_dfs(
+                to,
+                sink,
+                pushed.min(capacity),
+                level,
+                next_edge,
+                graph,
+            );
+            if sent > 0 {
+                graph[node][edge_index].capacity -= sent;
+                graph[to][reverse].capacity += sent;
+                return sent;
+            }
+        }
+        next_edge[node] += 1;
+    }
+    0
+}
+
+fn max_flow(graph: &mut [Vec<FlowEdge>], source: usize, sink: usize) {
+    const FLOW_INF: u64 = 1_u64 << 60;
+    while let Some(level) = flow_levels(graph, source, sink) {
+        let mut next_edge = vec![0_usize; graph.len()];
+        loop {
+            let pushed = flow_dfs(source, sink, FLOW_INF, &level, &mut next_edge, graph);
+            if pushed == 0 {
+                break;
+            }
+        }
+    }
+}
+
+fn spatial_side_connected<T: PlanetTopology>(
+    topology: &T,
+    plate: u16,
+    owners: &[u16],
+    side: &[bool],
+    expected_side: bool,
+    expected_count: usize,
+) -> bool {
+    let Some(start) = (0..topology.sample_count()).find(|sample| {
+        let index = *sample as usize;
+        owners[index] == plate && side[index] == expected_side
+    }) else {
+        return false;
+    };
+    let mut seen = BTreeSet::<u32>::new();
+    let mut queue = VecDeque::from([start]);
+    seen.insert(start);
+    while let Some(sample) = queue.pop_front() {
+        for neighbor in topology.neighbors(sample) {
+            let index = *neighbor as usize;
+            if owners[index] == plate
+                && side[index] == expected_side
+                && seen.insert(*neighbor)
+            {
+                queue.push_back(*neighbor);
+            }
+        }
+    }
+    seen.len() == expected_count
+}
+
+fn weak_corridor_partition<T: PlanetTopology>(
+    topology: &T,
+    model: &HistoricalLithosphereModel,
+    candidate: RiftCandidate,
+    samples: &[u32],
+) -> Option<(Vec<bool>, u32, u32, f64, f64)> {
+    if samples.len() < 48 {
+        return None;
+    }
+    let mut local_index = vec![usize::MAX; topology.sample_count() as usize];
+    for (local, sample) in samples.iter().copied().enumerate() {
+        local_index[sample as usize] = local;
+    }
+
+    let mut projections = samples
+        .iter()
+        .copied()
+        .map(|sample| {
+            (
+                dot(topology.unit_position(sample), candidate.plane_normal),
+                sample,
+            )
+        })
+        .collect::<Vec<_>>();
+    projections.sort_by(|left, right| {
+        left.0
+            .total_cmp(&right.0)
+            .then_with(|| left.1.cmp(&right.1))
+    });
+    let terminal_count = (samples.len() / 10).clamp(3, 24);
+    if terminal_count * 2 >= samples.len() {
+        return None;
+    }
+
+    let source = samples.len();
+    let sink = source + 1;
+    let mut graph = vec![Vec::<FlowEdge>::new(); samples.len() + 2];
+    const TERMINAL_CAPACITY: u64 = 1_u64 << 50;
+    for (_, sample) in projections.iter().take(terminal_count) {
+        add_flow_edge(
+            &mut graph,
+            local_index[*sample as usize],
+            sink,
+            TERMINAL_CAPACITY,
+        );
+    }
+    for (_, sample) in projections.iter().rev().take(terminal_count) {
+        add_flow_edge(
+            &mut graph,
+            source,
+            local_index[*sample as usize],
+            TERMINAL_CAPACITY,
+        );
+    }
+
+    for sample in samples.iter().copied() {
+        let a = sample as usize;
+        let local_a = local_index[a];
+        for neighbor in topology.neighbors(sample) {
+            if *neighbor <= sample || model.current_plate_ids[*neighbor as usize] != candidate.plate {
+                continue;
+            }
+            let b = *neighbor as usize;
+            let local_b = local_index[b];
+            if local_b == usize::MAX {
+                continue;
+            }
+            let weakness = (f64::from(model.lithospheric_weakness_index[a])
+                + f64::from(model.lithospheric_weakness_index[b]))
+                * 0.5;
+            let strength = (1.0 - weakness.clamp(0.0, 1.0)).powi(2);
+            let both_non_oceanic = model.crust_kind[a] != CrustKind::Oceanic as u8
+                && model.crust_kind[b] != CrustKind::Oceanic as u8;
+            let both_oceanic = model.crust_kind[a] == CrustKind::Oceanic as u8
+                && model.crust_kind[b] == CrustKind::Oceanic as u8;
+            let material_factor = if both_non_oceanic {
+                0.78
+            } else if both_oceanic {
+                1.22
+            } else {
+                0.92
+            };
+            let tie = ((u64::from(sample)
+                .wrapping_mul(0x9e37_79b9)
+                ^ u64::from(*neighbor).wrapping_mul(0x85eb_ca6b))
+                % 7) as f64;
+            let capacity = (80.0 + strength * material_factor * 10_000.0 + tie)
+                .round()
+                .max(1.0) as u64;
+            add_undirected_flow_edge(&mut graph, local_a, local_b, capacity);
+        }
+    }
+
+    max_flow(&mut graph, source, sink);
+    let mut reachable_local = vec![false; graph.len()];
+    let mut queue = VecDeque::from([source]);
+    reachable_local[source] = true;
+    while let Some(node) = queue.pop_front() {
+        for edge in &graph[node] {
+            if edge.capacity > 0 && !reachable_local[edge.to] {
+                reachable_local[edge.to] = true;
+                queue.push_back(edge.to);
+            }
+        }
+    }
+
+    let mut side = vec![false; topology.sample_count() as usize];
+    let mut child_count = 0usize;
+    for sample in samples.iter().copied() {
+        let child_side = reachable_local[local_index[sample as usize]];
+        side[sample as usize] = child_side;
+        child_count += usize::from(child_side);
+    }
+    let parent_count = samples.len().saturating_sub(child_count);
+    let minimum_side = child_count.min(parent_count);
+    if minimum_side < 16 || minimum_side * 5 < samples.len() {
+        return None;
+    }
+    if !spatial_side_connected(
+        topology,
+        candidate.plate,
+        &model.current_plate_ids,
+        &side,
+        true,
+        child_count,
+    ) || !spatial_side_connected(
+        topology,
+        candidate.plate,
+        &model.current_plate_ids,
+        &side,
+        false,
+        parent_count,
+    ) {
+        return None;
+    }
+
+    let mut cut_weakness_sum = 0.0_f64;
+    let mut cut_edges = 0usize;
+    let mut geometry = None::<(f64, u32, u32)>;
+    for sample in samples.iter().copied() {
+        let a = sample as usize;
+        for neighbor in topology.neighbors(sample) {
+            if *neighbor <= sample || model.current_plate_ids[*neighbor as usize] != candidate.plate {
+                continue;
+            }
+            let b = *neighbor as usize;
+            if side[a] == side[b] {
+                continue;
+            }
+            let weakness = (f64::from(model.lithospheric_weakness_index[a])
+                + f64::from(model.lithospheric_weakness_index[b]))
+                * 0.5;
+            cut_weakness_sum += weakness;
+            cut_edges += 1;
+            if geometry
+                .map(|current| {
+                    weakness > current.0 + 1.0e-12
+                        || ((weakness - current.0).abs() <= 1.0e-12
+                            && (sample, *neighbor) < (current.1, current.2))
+                })
+                .unwrap_or(true)
+            {
+                geometry = Some((weakness, sample, *neighbor));
+            }
+        }
+    }
+    let (_, geometry_a, geometry_b) = geometry?;
+    let mean_cut_weakness = cut_weakness_sum / cut_edges.max(1) as f64;
+    let balance = minimum_side as f64 / child_count.max(parent_count) as f64;
+    Some((side, geometry_a, geometry_b, mean_cut_weakness, balance))
+}
+
 #[derive(Clone, Copy)]
 struct RiftCandidate {
     plate: u16,
@@ -918,7 +1220,7 @@ fn split_one_rifting_plate<T: PlanetTopology>(
     // Rift nucleation follows the advected physical weakness field. Genealogical fragment
     // boundaries are deliberately absent from candidate selection: ancestry may describe the
     // material later, but it may not decide where a plate physically breaks.
-    let mut best_edge_by_plate = vec![None::<RiftCandidate>; plate_count];
+    let mut candidate_edges_by_plate = vec![Vec::<RiftCandidate>::new(); plate_count];
     for sample_a in 0..topology.sample_count() {
         let a = sample_a as usize;
         let owner = model.current_plate_ids[a] as usize;
@@ -975,99 +1277,53 @@ fn split_one_rifting_plate<T: PlanetTopology>(
                 weakness,
                 score,
             };
-            if best_edge_by_plate[owner]
+            candidate_edges_by_plate[owner].push(candidate);
+        }
+    }
+
+    let mut best: Option<(f64, RiftCandidate, Vec<bool>, u32, u32)> = None;
+    for (plate, candidates) in candidate_edges_by_plate.iter_mut().enumerate() {
+        candidates.sort_by(|left, right| {
+            right
+                .score
+                .total_cmp(&left.score)
+                .then_with(|| left.sample_a.cmp(&right.sample_a))
+                .then_with(|| left.sample_b.cmp(&right.sample_b))
+        });
+        candidates.truncate(8);
+        let samples = &samples_by_plate[plate];
+        for candidate in candidates.iter().copied() {
+            let Some((side, geometry_a, geometry_b, cut_weakness, balance)) =
+                weak_corridor_partition(topology, model, candidate, samples)
+            else {
+                continue;
+            };
+            let size_weight = (samples.len() as f64 / 64.0).sqrt().min(3.0);
+            let score = candidate.score
+                * (0.55 + 0.45 * balance)
+                * (0.65 + 0.35 * cut_weakness.clamp(0.0, 1.0))
+                * size_weight;
+            if best
+                .as_ref()
                 .map(|current| {
-                    candidate.score > current.score + 1.0e-12
-                        || ((candidate.score - current.score).abs() <= 1.0e-12
-                            && (candidate.sample_a, candidate.sample_b)
-                                < (current.sample_a, current.sample_b))
+                    score > current.0 + 1.0e-12
+                        || ((score - current.0).abs() <= 1.0e-12
+                            && candidate.plate < current.1.plate)
                 })
                 .unwrap_or(true)
             {
-                best_edge_by_plate[owner] = Some(candidate);
+                best = Some((score, candidate, side, geometry_a, geometry_b));
             }
         }
     }
 
-    let mut best: Option<(f64, RiftCandidate)> = None;
-    for candidate in best_edge_by_plate.into_iter().flatten() {
-        let plate = candidate.plate as usize;
-        let samples = &samples_by_plate[plate];
-        let mut negative = 0usize;
-        let mut positive = 0usize;
-        for sample in samples {
-            let side = dot(topology.unit_position(*sample), candidate.plane_normal);
-            if side >= 0.0 {
-                positive += 1;
-            } else {
-                negative += 1;
-            }
-        }
-        let minimum_side = negative.min(positive);
-        if minimum_side < 16 || minimum_side * 5 < samples.len() {
-            continue;
-        }
-
-        // Both child bodies must already be connected under the proposed rift. Reject a split that
-        // would require the old ownership-repair machinery to manufacture connectivity afterward.
-        let mut connected = true;
-        for positive_side in [false, true] {
-            let expected = if positive_side { positive } else { negative };
-            let Some(start) = samples.iter().copied().find(|sample| {
-                (dot(topology.unit_position(*sample), candidate.plane_normal) >= 0.0)
-                    == positive_side
-            }) else {
-                connected = false;
-                break;
-            };
-            let mut seen = BTreeSet::<u32>::new();
-            let mut queue = VecDeque::from([start]);
-            seen.insert(start);
-            while let Some(sample) = queue.pop_front() {
-                for neighbor in topology.neighbors(sample) {
-                    let ni = *neighbor as usize;
-                    if model.current_plate_ids[ni] != candidate.plate {
-                        continue;
-                    }
-                    let neighbor_side =
-                        dot(topology.unit_position(*neighbor), candidate.plane_normal) >= 0.0;
-                    if neighbor_side == positive_side && seen.insert(*neighbor) {
-                        queue.push_back(*neighbor);
-                    }
-                }
-            }
-            if seen.len() != expected {
-                connected = false;
-                break;
-            }
-        }
-        if !connected {
-            continue;
-        }
-
-        let balance = minimum_side as f64 / negative.max(positive) as f64;
-        let size_weight = (samples.len() as f64 / 64.0).sqrt().min(3.0);
-        let score = candidate.score * (0.55 + 0.45 * balance) * size_weight;
-        if best
-            .as_ref()
-            .map(|current| {
-                score > current.0 + 1.0e-12
-                    || ((score - current.0).abs() <= 1.0e-12
-                        && candidate.plate < current.1.plate)
-            })
-            .unwrap_or(true)
-        {
-            best = Some((score, candidate));
-        }
-    }
-
-    let Some((_score, candidate)) = best else {
+    let Some((_score, candidate, child_side, geometry_a, geometry_b)) = best else {
         return false;
     };
     let parent = candidate.plate as usize;
     let child = plate_count as u16;
     for sample in &samples_by_plate[parent] {
-        if dot(topology.unit_position(*sample), candidate.plane_normal) >= 0.0 {
+        if child_side[*sample as usize] {
             model.current_plate_ids[*sample as usize] = child;
         }
     }
@@ -1075,26 +1331,26 @@ fn split_one_rifting_plate<T: PlanetTopology>(
     // Give the two new rigid bodies a divergent velocity component normal to the inherited weak
     // contact. This creates an actual opening boundary that can generate new lithosphere during
     // subsequent advection instead of recording a rift label on a static partition.
+    let geometry_a_position = topology.unit_position(geometry_a);
+    let geometry_b_position = topology.unit_position(geometry_b);
     let midpoint = normalize_or(
-        add(
-            topology.unit_position(candidate.sample_a),
-            topology.unit_position(candidate.sample_b),
-        ),
-        topology.unit_position(candidate.sample_a),
+        add(geometry_a_position, geometry_b_position),
+        geometry_a_position,
+    );
+    let opening_normal = normalize_or(
+        sub(geometry_b_position, geometry_a_position),
+        candidate.plane_normal,
     );
     let angular_offset =
         (0.07 + 0.11 * candidate.weakness.clamp(0.0, 1.0)).to_radians();
-    let delta = scale(
-        cross(midpoint, candidate.plane_normal),
-        angular_offset,
-    );
+    let delta = scale(cross(midpoint, opening_normal), angular_offset);
     let base_velocity = velocities[parent];
     velocities[parent] = sub(base_velocity, delta);
     velocities.push(add(base_velocity, delta));
     model.metrics.modern_plate_count = child + 1;
 
-    let a = candidate.sample_a as usize;
-    let b = candidate.sample_b as usize;
+    let a = geometry_a as usize;
+    let b = geometry_b as usize;
     model.events.push(HistoricalTectonicEvent {
         id: model.events.len() as u32,
         kind: HistoricalEventKind::Rift,
@@ -1106,8 +1362,8 @@ fn split_one_rifting_plate<T: PlanetTopology>(
         fragment_b: model.fragment_ids[b],
         displacement_km: 0.0,
         strength: (0.45 + 0.50 * candidate.weakness.clamp(0.0, 1.0)) as f32,
-        geometry_sample_a: candidate.sample_a,
-        geometry_sample_b: candidate.sample_b,
+        geometry_sample_a: geometry_a,
+        geometry_sample_b: geometry_b,
     });
     true
 }
