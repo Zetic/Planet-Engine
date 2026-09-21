@@ -524,7 +524,6 @@ fn advect_substep<T: PlanetTopology>(
                 (
                     previous_owner[*neighbor],
                     previous_origin[*neighbor],
-                    previous_fragment[*neighbor],
                     *neighbor,
                 )
             });
