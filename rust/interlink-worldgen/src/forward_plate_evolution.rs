@@ -547,8 +547,8 @@ fn gap_is_divergent<T: PlanetTopology>(
 fn compact_extinct_plates(
     owners: &mut [u16],
     velocities: &mut Vec<[f64; 3]>,
-    plate_count: usize,
 ) -> usize {
+    let plate_count = velocities.len();
     let mut active = vec![false; plate_count];
     for owner in owners.iter().copied() {
         let index = owner as usize;
@@ -748,7 +748,6 @@ fn consume_convergent_boundary_band<T: PlanetTopology>(
     let extinct = compact_extinct_plates(
         &mut model.current_plate_ids,
         velocities,
-        plate_count,
     );
     model.metrics.modern_plate_count = velocities.len() as u16;
     model.metrics.convergent_consumed_sample_count = model
@@ -988,7 +987,7 @@ fn advect_substep<T: PlanetTopology>(
     // A plate that has no remaining surface samples after overlap resolution is genuinely extinct.
     // Compact it out of the evolving kinematic state instead of resurrecting a one-cell core or
     // waiting for a later whole-plate relabel operation.
-    let extinct = compact_extinct_plates(&mut new_owner, velocities, plate_count);
+    let extinct = compact_extinct_plates(&mut new_owner, velocities);
     if extinct > 0 {
         generation_fragments.clear();
         model.metrics.modern_plate_count = velocities.len() as u16;
