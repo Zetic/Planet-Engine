@@ -55,6 +55,30 @@ fn verify_seed(seed: &str) -> Result<(), String> {
         ));
     }
 
+    if history.current_plate_angular_velocities_rad_per_myr.len() != first.tectonics.plates.len() {
+        return Err(format!(
+            "{seed}: evolved plate kinematics were not preserved into the present tectonic model"
+        ));
+    }
+    for (plate, velocity) in first
+        .tectonics
+        .plates
+        .iter()
+        .zip(history.current_plate_angular_velocities_rad_per_myr.iter())
+    {
+        if plate
+            .angular_velocity_rad_per_myr
+            .iter()
+            .zip(velocity.iter())
+            .any(|(projected, evolved)| (projected - evolved).abs() > 1.0e-14)
+        {
+            return Err(format!(
+                "{seed}: present plate {} rebuilt motion from ancestry instead of forward history",
+                plate.id
+            ));
+        }
+    }
+
     let ancestral_boundary_edges = history
         .ancestral_tectonics
         .boundaries
