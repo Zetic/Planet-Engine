@@ -12,6 +12,8 @@ const HISTORICAL_LITHOSPHERE_NAMESPACE: &str = "worldgen:geology:historical-lith
 const ANCESTRAL_TECTONICS_NAMESPACE: &str = "worldgen:geology:historical-lithosphere:ancestral:v1";
 const FRAGMENT_NAMESPACE: &str = "worldgen:geology:historical-lithosphere:fragments:v1";
 const CRUST_NAMESPACE: &str = "worldgen:geology:historical-lithosphere:crust:v2";
+const INITIAL_WEAKNESS_NAMESPACE: &str =
+    "worldgen:geology:historical-lithosphere:weakness:v1";
 const OCEANIC_SPREADING_KM_PER_MYR: f64 = 25.0;
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
@@ -105,6 +107,7 @@ pub struct HistoricalLithosphereModel {
     pub fragment_ids: Vec<u16>,
     pub current_plate_ids: Vec<u16>,
     pub current_plate_angular_velocities_rad_per_myr: Vec<[f64; 3]>,
+    pub lithospheric_weakness_index: Vec<f32>,
     pub crust_kind: Vec<u8>,
     pub crust_birth_age_myr: Vec<f32>,
     pub fragments: Vec<CrustFragment>,
@@ -130,6 +133,76 @@ fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
 
 fn arc_radians(a: [f64; 3], b: [f64; 3]) -> f64 {
     dot(a, b).clamp(-1.0, 1.0).acos()
+}
+
+fn seeded_unit_axis(seed: u64, stream: u64) -> [f64; 3] {
+    let z = unit_random(seed ^ stream.wrapping_mul(0x9e37_79b9_7f4a_7c15)) * 2.0 - 1.0;
+    let azimuth = unit_random(
+        seed ^ stream.wrapping_mul(0xbf58_476d_1ce4_e5b9) ^ 0x94d0_49bb_1331_11eb,
+    ) * std::f64::consts::TAU;
+    let radial = (1.0 - z * z).max(0.0).sqrt();
+    [radial * azimuth.cos(), radial * azimuth.sin(), z]
+}
+
+fn build_initial_lithospheric_weakness<T: PlanetTopology>(
+    topology: &T,
+    crust_kind: &[u8],
+    seed: u64,
+) -> Vec<f32> {
+    let mut axes = Vec::<([f64; 3], f64, f64, f64)>::new();
+    for octave in 0..5_u64 {
+        let axis = seeded_unit_axis(seed, octave + 1);
+        let phase = unit_random(
+            seed ^ octave.wrapping_mul(0xd6e8_feb8_6659_fd93) ^ 0xa076_1d64_78bd_642f,
+        ) * std::f64::consts::TAU;
+        let frequency = 1.35 + octave as f64 * 0.72;
+        let weight = 1.0 / (1.0 + octave as f64 * 0.58);
+        axes.push((axis, phase, frequency, weight));
+    }
+
+    let mut current = Vec::with_capacity(topology.sample_count() as usize);
+    for sample in 0..topology.sample_count() {
+        let position = topology.unit_position(sample);
+        let mut ridged = 0.0_f64;
+        let mut weight_sum = 0.0_f64;
+        for (axis, phase, frequency, weight) in &axes {
+            let coordinate = dot(position, *axis).clamp(-1.0, 1.0);
+            let wave = (coordinate * std::f64::consts::PI * *frequency + *phase).sin();
+            ridged += (1.0 - wave.abs()) * *weight;
+            weight_sum += *weight;
+        }
+        let field = (ridged / weight_sum.max(1.0e-12)).clamp(0.0, 1.0);
+        let material = match crust_kind[sample as usize] {
+            value if value == CrustKind::Continental as u8 => 0.16 + field * 0.72,
+            value if value == CrustKind::Transitional as u8 => 0.30 + field * 0.62,
+            _ => 0.12 + field * 0.42,
+        };
+        current.push(material.clamp(0.0, 1.0) as f32);
+    }
+
+    // Smooth the field spatially without consulting plates, fragments, provenance, or genealogy.
+    // This produces broad inherited weak corridors that are attached to material and later advect
+    // with it instead of reproducing categorical Voronoi seams.
+    let mut next = current.clone();
+    for _ in 0..3 {
+        for sample in 0..topology.sample_count() {
+            let index = sample as usize;
+            let neighbors = topology.neighbors(sample);
+            let mean = if neighbors.is_empty() {
+                f64::from(current[index])
+            } else {
+                neighbors
+                    .iter()
+                    .map(|neighbor| f64::from(current[*neighbor as usize]))
+                    .sum::<f64>()
+                    / neighbors.len() as f64
+            };
+            next[index] =
+                (0.58 * f64::from(current[index]) + 0.42 * mean).clamp(0.0, 1.0) as f32;
+        }
+        std::mem::swap(&mut current, &mut next);
+    }
+    current
 }
 
 fn ancestral_plate_count(modern_plate_count: u16, sample_count: u32) -> Result<u16, WorldgenError> {
@@ -727,6 +800,9 @@ fn history_hash(model: &HistoricalLithosphereModel) -> u64 {
             hash = fnv_update(hash, &component.to_bits().to_le_bytes());
         }
     }
+    for weakness in &model.lithospheric_weakness_index {
+        hash = fnv_update(hash, &weakness.to_bits().to_le_bytes());
+    }
     hash = fnv_update(hash, &model.crust_kind);
     for age in &model.crust_birth_age_myr {
         hash = fnv_update(hash, &age.to_bits().to_le_bytes());
@@ -761,6 +837,7 @@ pub fn generate_historical_lithosphere<T: PlanetTopology>(
     let ancestral_seed = random::derive_stage_seed(&request.seed, ANCESTRAL_TECTONICS_NAMESPACE);
     let fragment_seed = random::derive_stage_seed(&request.seed, FRAGMENT_NAMESPACE);
     let crust_seed = random::derive_stage_seed(&request.seed, CRUST_NAMESPACE);
+    let weakness_seed = random::derive_stage_seed(&request.seed, INITIAL_WEAKNESS_NAMESPACE);
     let ancestral = generate_tectonics(
         topology,
         &TectonicsRequest::new(
@@ -779,6 +856,8 @@ pub fn generate_historical_lithosphere<T: PlanetTopology>(
         planet,
         &ancestral,
     );
+    let lithospheric_weakness_index =
+        build_initial_lithospheric_weakness(topology, &crust_kind, weakness_seed);
     // Start the forward solver from the actual ancestral moving bodies. There is deliberately no
     // synthetic "modern grouping" here: present ownership must emerge from subsequent plate motion,
     // convergence and extinction rather than being decided before the history is integrated.
@@ -826,6 +905,7 @@ pub fn generate_historical_lithosphere<T: PlanetTopology>(
         fragment_ids,
         current_plate_ids,
         current_plate_angular_velocities_rad_per_myr,
+        lithospheric_weakness_index,
         crust_kind,
         crust_birth_age_myr,
         fragments,
@@ -865,6 +945,11 @@ pub fn generate_historical_lithosphere<T: PlanetTopology>(
             .any(|plate| *plate >= ancestral_count)
         || model.current_plate_angular_velocities_rad_per_myr.len()
             != usize::from(model.metrics.modern_plate_count)
+        || model.lithospheric_weakness_index.len() != topology.sample_count() as usize
+        || model
+            .lithospheric_weakness_index
+            .iter()
+            .any(|value| !value.is_finite() || !(0.0..=1.0).contains(value))
         || model
             .current_plate_angular_velocities_rad_per_myr
             .iter()
