@@ -236,11 +236,13 @@ fn verify_seed(seed: &str) -> Result<(), String> {
     }
 
     println!(
-        "forward-plate-evolution seed={seed} migrated={:.1}% created={} generated-fragments={} rift-births={} material(c/t/o)={:.1}/{:.1}/{:.1}% ocean-age={:.1}..{:.1}Myr events={} history={}",
+        "forward-plate-evolution seed={seed} migrated={:.1}% created={} generated-fragments={} rift-births={} natural-extinctions={} fallback-extinctions={} material(c/t/o)={:.1}/{:.1}/{:.1}% ocean-age={:.1}..{:.1}Myr events={} history={}",
         moved_fraction * 100.0,
         young_created_crust,
         generated_material_fragments,
         rift_birth_events,
+        history.metrics.natural_extinction_count,
+        history.metrics.forced_extinction_count,
         history.metrics.continental_area_fraction * 100.0,
         history.metrics.transitional_area_fraction * 100.0,
         history.metrics.oceanic_area_fraction * 100.0,
