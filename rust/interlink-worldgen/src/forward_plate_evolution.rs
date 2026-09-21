@@ -1765,7 +1765,7 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
             "historical state is missing current plate kinematics",
         ));
     }
-    let rift_budget = (usize::from(target_plate_count) / 8).clamp(1, 3);
+    let rift_budget = (usize::from(target_plate_count) / 12).clamp(1, 3);
     let mut splits_completed = 0usize;
     for epoch in 0..FORWARD_EPOCHS {
         let mut generation_fragments = BTreeMap::<(u8, u16, u8, u16), u16>::new();
@@ -1814,12 +1814,12 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
     // supplies the desired tectonic scale, not an exact final partition cardinality. Reject only
     // histories that drift far enough from that scale to indicate a pathological evolution.
     let minimum_present = target_plate_count
-        .saturating_mul(3)
-        .div_ceil(4)
+        .saturating_mul(2)
+        .div_ceil(3)
         .max(1);
     let maximum_present = target_plate_count
-        .saturating_mul(5)
-        .div_ceil(4)
+        .saturating_mul(4)
+        .div_ceil(3)
         .max(minimum_present);
     if model.metrics.modern_plate_count < minimum_present
         || model.metrics.modern_plate_count > maximum_present
