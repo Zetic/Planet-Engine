@@ -161,6 +161,34 @@ fn verify_seed(seed: &str) -> Result<(), String> {
         ));
     }
 
+    let generated_material_fragments = history
+        .fragments
+        .iter()
+        .filter(|fragment| {
+            fragment.birth_age_myr <= 0.001
+                && fragment.dominant_crust_kind != CrustKind::Continental as u8
+        })
+        .count();
+    if generated_material_fragments == 0 {
+        return Err(format!(
+            "{seed}: newly opened crust has no explicit material lineage"
+        ));
+    }
+    let rift_birth_events = history
+        .events
+        .iter()
+        .filter(|event| {
+            event.kind == HistoricalEventKind::Rift
+                && event.displacement_km.abs() <= 0.001
+                && event.fragment_a != event.fragment_b
+        })
+        .count();
+    if rift_birth_events == 0 {
+        return Err(format!(
+            "{seed}: no plate birth was nucleated along an inherited weak contact"
+        ));
+    }
+
     let mut kinds = BTreeSet::new();
     for event in &history.events {
         kinds.insert(event.kind as u8);
@@ -182,9 +210,11 @@ fn verify_seed(seed: &str) -> Result<(), String> {
     }
 
     println!(
-        "forward-plate-evolution seed={seed} migrated={:.1}% created={} material(c/t/o)={:.1}/{:.1}/{:.1}% ocean-age={:.1}..{:.1}Myr events={} history={}",
+        "forward-plate-evolution seed={seed} migrated={:.1}% created={} generated-fragments={} rift-births={} material(c/t/o)={:.1}/{:.1}/{:.1}% ocean-age={:.1}..{:.1}Myr events={} history={}",
         moved_fraction * 100.0,
         young_created_crust,
+        generated_material_fragments,
+        rift_birth_events,
         history.metrics.continental_area_fraction * 100.0,
         history.metrics.transitional_area_fraction * 100.0,
         history.metrics.oceanic_area_fraction * 100.0,
