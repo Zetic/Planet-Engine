@@ -575,7 +575,7 @@ fn record_epoch_events<T: PlanetTopology>(
         model.events.push(HistoricalTectonicEvent {
             id: model.events.len() as u32,
             kind,
-            epoch: epoch.min(usize::from(crate::historical_epochs::HISTORICAL_EPOCH_COUNT - 1)) as u8,
+            epoch: epoch.min(usize::from(crate::HISTORICAL_EPOCH_COUNT - 1)) as u8,
             age_myr,
             plate_a: model.origin_plate_ids[a],
             plate_b: model.origin_plate_ids[b],
@@ -722,7 +722,7 @@ fn merge_one_converging_plate_pair<T: PlanetTopology>(
     model.events.push(HistoricalTectonicEvent {
         id: model.events.len() as u32,
         kind: HistoricalEventKind::Capture,
-        epoch: epoch.min(usize::from(crate::historical_epochs::HISTORICAL_EPOCH_COUNT - 1)) as u8,
+        epoch: epoch.min(usize::from(crate::HISTORICAL_EPOCH_COUNT - 1)) as u8,
         age_myr,
         plate_a: model.origin_plate_ids[a],
         plate_b: model.origin_plate_ids[b],
@@ -786,7 +786,7 @@ fn split_fragments_at_final_boundaries<T: PlanetTopology>(
                 model.events.push(HistoricalTectonicEvent {
                     id: model.events.len() as u32,
                     kind: HistoricalEventKind::Capture,
-                    epoch: crate::historical_epochs::HISTORICAL_EPOCH_COUNT - 1,
+                    epoch: crate::HISTORICAL_EPOCH_COUNT - 1,
                     age_myr: 0.0,
                     plate_a: parent.origin_plate_id,
                     plate_b: parent.origin_plate_id,
@@ -839,7 +839,7 @@ fn split_fragments_at_final_boundaries<T: PlanetTopology>(
                 model.events.push(HistoricalTectonicEvent {
                     id: model.events.len() as u32,
                     kind: HistoricalEventKind::Capture,
-                    epoch: crate::historical_epochs::HISTORICAL_EPOCH_COUNT - 1,
+                    epoch: crate::HISTORICAL_EPOCH_COUNT - 1,
                     age_myr: 0.0,
                     plate_a: parent.origin_plate_id,
                     plate_b: parent.origin_plate_id,
