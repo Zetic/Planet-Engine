@@ -567,6 +567,11 @@ fn advect_substep<T: PlanetTopology>(
         let Some((_score, source, plate)) = best else {
             continue;
         };
+        let preimage = rotate_by_angular_velocity(
+            destination_position,
+            velocities[plate as usize],
+            -dt_myr,
+        );
         new_origin[destination_index] = old_origin[source];
         new_fragment[destination_index] = old_fragment[source];
         new_owner[destination_index] = plate;
