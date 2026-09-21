@@ -742,6 +742,14 @@ fn consume_convergent_boundary_band<T: PlanetTopology>(
         velocities,
         planet,
     );
+    model.metrics.detached_accretion_sample_count = model
+        .metrics
+        .detached_accretion_sample_count
+        .saturating_add(connectivity.accreted_samples as u32);
+    model.metrics.detached_microplate_birth_count = model
+        .metrics
+        .detached_microplate_birth_count
+        .saturating_add(connectivity.microplate_births as u16);
     if connectivity.microplate_births > 0 {
         generation_fragments.clear();
     }
@@ -975,6 +983,14 @@ fn advect_substep<T: PlanetTopology>(
 
     let connectivity =
         resolve_plate_connectivity(topology, &mut new_owner, velocities, planet);
+    model.metrics.detached_accretion_sample_count = model
+        .metrics
+        .detached_accretion_sample_count
+        .saturating_add(connectivity.accreted_samples as u32);
+    model.metrics.detached_microplate_birth_count = model
+        .metrics
+        .detached_microplate_birth_count
+        .saturating_add(connectivity.microplate_births as u16);
     if connectivity.microplate_births > 0 {
         generation_fragments.clear();
     }
