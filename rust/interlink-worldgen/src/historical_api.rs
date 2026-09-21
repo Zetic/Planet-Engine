@@ -109,7 +109,7 @@ pub fn generate_crust_and_history<T: PlanetTopology>(
         topology,
         &HistoricalLithosphereRequest::new(
             request.seed.as_str(),
-            tectonics_model.metrics.plate_count,
+            tectonics_model.metrics.requested_plate_count,
         ),
         parameters,
     )?;
@@ -158,7 +158,7 @@ pub fn generate_lithosphere<T: PlanetTopology>(
         topology,
         &HistoricalLithosphereRequest::new(
             request.seed.as_str(),
-            tectonics_model.metrics.plate_count,
+            tectonics_model.metrics.requested_plate_count,
         ),
         planet,
     )?;
