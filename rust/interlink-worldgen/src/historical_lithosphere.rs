@@ -220,8 +220,12 @@ fn ancestral_plate_count(modern_plate_count: u16, sample_count: u32) -> Result<u
             "historical lithosphere requires at least one topology sample per modern plate",
         ));
     }
+    // The requested present-day count is a scale target, not a partition to pre-bake. Start with
+    // a modest surplus of ancestral moving bodies so forward rifting and convergent extinction can
+    // exchange plates without requiring large end-of-history deletion. A 16-plate target begins
+    // with 20 ancestral bodies rather than the former 24.
     let target = modern_plate_count
-        .saturating_add((modern_plate_count / 2).max(4))
+        .saturating_add((modern_plate_count / 4).max(2))
         .max(modern_plate_count);
     let sample_limit = u16::try_from(sample_count.min(u32::from(u16::MAX))).unwrap_or(u16::MAX);
     Ok(target
