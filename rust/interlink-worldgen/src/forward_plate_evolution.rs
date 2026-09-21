@@ -716,23 +716,10 @@ fn merge_one_converging_plate_pair<T: PlanetTopology>(
     let Some((_score, keep, remove, summary)) = best else {
         return false;
     };
-    let a = summary.sample_a as usize;
-    let b = summary.sample_b as usize;
-    let age_myr = ((FORWARD_EPOCHS - epoch) as f64 * EPOCH_DURATION_MYR) as f32;
-    model.events.push(HistoricalTectonicEvent {
-        id: model.events.len() as u32,
-        kind: HistoricalEventKind::Capture,
-        epoch: epoch.min(usize::from(crate::HISTORICAL_EPOCH_COUNT - 1)) as u8,
-        age_myr,
-        plate_a: model.origin_plate_ids[a],
-        plate_b: model.origin_plate_ids[b],
-        fragment_a: model.fragment_ids[a],
-        fragment_b: model.fragment_ids[b],
-        displacement_km: 0.0,
-        strength: 0.65,
-        geometry_sample_a: summary.sample_a,
-        geometry_sample_b: summary.sample_b,
-    });
+    // The convergent boundary event was already recorded before extinction. Do not emit a
+    // synthetic Capture here: material fragments may straddle owners until the final lineage
+    // repartition, so attaching a capture to pre-repartition fragment metadata would invent a
+    // categorical ownership event that did not actually occur as a discrete parcel transfer.
 
     for owner in &mut model.current_plate_ids {
         if *owner == remove {
