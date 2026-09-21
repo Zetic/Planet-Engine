@@ -398,6 +398,7 @@ fn advect_substep<T: PlanetTopology>(
     let old_owner = model.current_plate_ids.clone();
     let old_kind = model.crust_kind.clone();
     let old_age = model.crust_birth_age_myr.clone();
+    let old_weakness = model.lithospheric_weakness_index.clone();
 
     let mut mapped_core_destination = vec![None; plate_count];
     for plate in 0..plate_count {
@@ -417,6 +418,7 @@ fn advect_substep<T: PlanetTopology>(
     let mut new_owner = vec![u16::MAX; count];
     let mut new_kind = vec![CrustKind::Oceanic as u8; count];
     let mut new_age = vec![0.0_f32; count];
+    let mut new_weakness = vec![0.0_f32; count];
     let mut generated = vec![false; count];
 
     // Semi-Lagrangian rigid transport: for each destination cell, back-rotate through every
@@ -482,6 +484,7 @@ fn advect_substep<T: PlanetTopology>(
         new_fragment[destination_index] = old_fragment[source];
         new_owner[destination_index] = plate;
         new_kind[destination_index] = old_kind[source];
+        new_weakness[destination_index] = old_weakness[source];
         new_age[destination_index] = if old_kind[source] == CrustKind::Oceanic as u8 {
             (old_age[source] + dt_myr as f32).clamp(0.0, 220.0)
         } else {
@@ -536,6 +539,13 @@ fn advect_substep<T: PlanetTopology>(
                 CrustKind::Oceanic as u8
             } else {
                 CrustKind::Transitional as u8
+            };
+            // Newly opened lithosphere is mechanically weak/hot. This is physical state attached
+            // to the generated material, not a property selected by its new genealogy id.
+            new_weakness[index] = if new_kind[index] == CrustKind::Oceanic as u8 {
+                0.48
+            } else {
+                0.74
             };
             new_age[index] = 0.0;
             generated[index] = true;
@@ -595,6 +605,7 @@ fn advect_substep<T: PlanetTopology>(
         new_owner[destination] = plate as u16;
         new_kind[destination] = old_kind[source_index];
         new_age[destination] = old_age[source_index];
+        new_weakness[destination] = old_weakness[source_index];
         counts[plate] += 1;
     }
 
@@ -615,6 +626,7 @@ fn advect_substep<T: PlanetTopology>(
     model.origin_plate_ids = new_origin;
     model.fragment_ids = new_fragment;
     model.current_plate_ids = new_owner;
+    model.lithospheric_weakness_index = new_weakness;
     model.crust_kind = new_kind;
     model.crust_birth_age_myr = new_age;
     Ok(())
@@ -775,9 +787,9 @@ fn split_one_rifting_plate<T: PlanetTopology>(
         }
     }
 
-    // Rift nucleation is constrained to inherited internal material contacts. The fragment ids do
-    // not prescribe relief; here their contact geometry identifies a pre-existing weakness along
-    // which a coherent moving plate may physically separate.
+    // Rift nucleation follows the advected physical weakness field. Genealogical fragment
+    // boundaries are deliberately absent from candidate selection: ancestry may describe the
+    // material later, but it may not decide where a plate physically breaks.
     let mut best_edge_by_plate = vec![None::<RiftCandidate>; plate_count];
     for sample_a in 0..topology.sample_count() {
         let a = sample_a as usize;
@@ -793,9 +805,7 @@ fn split_one_rifting_plate<T: PlanetTopology>(
                 continue;
             }
             let b = *sample_b as usize;
-            if model.current_plate_ids[b] as usize != owner
-                || model.fragment_ids[a] == model.fragment_ids[b]
-            {
+            if model.current_plate_ids[b] as usize != owner {
                 continue;
             }
             if model.crust_kind[a] == CrustKind::Oceanic as u8
@@ -804,14 +814,12 @@ fn split_one_rifting_plate<T: PlanetTopology>(
                 continue;
             }
 
-            let fragment_a = model.fragment_ids[a] as usize;
-            let fragment_b = model.fragment_ids[b] as usize;
-            if fragment_a >= model.fragments.len() || fragment_b >= model.fragments.len() {
+            let weakness = (f64::from(model.lithospheric_weakness_index[a])
+                + f64::from(model.lithospheric_weakness_index[b]))
+                * 0.5;
+            if weakness < 0.30 {
                 continue;
             }
-            let weakness = (f64::from(model.fragments[fragment_a].inherited_fabric)
-                + f64::from(model.fragments[fragment_b].inherited_fabric))
-                * 0.5;
             let material_bonus = if model.crust_kind[a] != CrustKind::Oceanic as u8
                 && model.crust_kind[b] != CrustKind::Oceanic as u8
             {
@@ -1268,6 +1276,9 @@ fn forward_history_hash(model: &HistoricalLithosphereModel, stage_seed: u64) -> 
             hash = fnv_update(hash, &component.to_bits().to_le_bytes());
         }
     }
+    for weakness in &model.lithospheric_weakness_index {
+        hash = fnv_update(hash, &weakness.to_bits().to_le_bytes());
+    }
     hash = fnv_update(hash, &model.crust_kind);
     for age in &model.crust_birth_age_myr {
         hash = fnv_update(hash, &age.to_bits().to_le_bytes());
@@ -1294,6 +1305,11 @@ fn validate_forward_state<T: PlanetTopology>(
         || model.current_plate_ids.len() != count
         || model.crust_kind.len() != count
         || model.crust_birth_age_myr.len() != count
+        || model.lithospheric_weakness_index.len() != count
+        || model
+            .lithospheric_weakness_index
+            .iter()
+            .any(|value| !value.is_finite() || !(0.0..=1.0).contains(value))
         || model.current_plate_angular_velocities_rad_per_myr.len()
             != model.metrics.modern_plate_count as usize
         || model
