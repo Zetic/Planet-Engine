@@ -104,6 +104,7 @@ pub struct HistoricalLithosphereModel {
     pub origin_plate_ids: Vec<u16>,
     pub fragment_ids: Vec<u16>,
     pub current_plate_ids: Vec<u16>,
+    pub current_plate_angular_velocities_rad_per_myr: Vec<[f64; 3]>,
     pub crust_kind: Vec<u8>,
     pub crust_birth_age_myr: Vec<f32>,
     pub fragments: Vec<CrustFragment>,
@@ -721,6 +722,11 @@ fn history_hash(model: &HistoricalLithosphereModel) -> u64 {
             hash = fnv_update(hash, &value.to_le_bytes());
         }
     }
+    for velocity in &model.current_plate_angular_velocities_rad_per_myr {
+        for component in velocity {
+            hash = fnv_update(hash, &component.to_bits().to_le_bytes());
+        }
+    }
     hash = fnv_update(hash, &model.crust_kind);
     for age in &model.crust_birth_age_myr {
         hash = fnv_update(hash, &age.to_bits().to_le_bytes());
@@ -813,6 +819,11 @@ pub fn generate_historical_lithosphere<T: PlanetTopology>(
         origin_plate_ids,
         fragment_ids,
         current_plate_ids,
+        current_plate_angular_velocities_rad_per_myr: ancestral
+            .plates
+            .iter()
+            .map(|plate| plate.angular_velocity_rad_per_myr)
+            .collect(),
         crust_kind,
         crust_birth_age_myr,
         fragments,
@@ -850,6 +861,13 @@ pub fn generate_historical_lithosphere<T: PlanetTopology>(
             .current_plate_ids
             .iter()
             .any(|plate| *plate >= ancestral_count)
+        || model.current_plate_angular_velocities_rad_per_myr.len()
+            != usize::from(model.metrics.modern_plate_count)
+        || model
+            .current_plate_angular_velocities_rad_per_myr
+            .iter()
+            .flatten()
+            .any(|value| !value.is_finite())
     {
         return Err(WorldgenError::InvalidLithosphere(
             "historical lithosphere produced invalid material ownership",
