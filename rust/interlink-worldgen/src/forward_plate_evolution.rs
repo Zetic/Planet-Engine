@@ -1471,6 +1471,64 @@ mod tests {
     use crate::{build_icosphere, HistoricalLithosphereRequest};
 
     #[test]
+    fn genealogy_partitions_are_inert_to_forward_plate_physics() {
+        let topology = build_icosphere(4).unwrap();
+        let planet = PlanetPhysicalParameters::earthlike_reference();
+        let request = HistoricalLithosphereRequest::new("forward-genealogy-inert", 16);
+        let base = crate::historical_lithosphere::generate_historical_lithosphere(
+            &topology,
+            &request,
+            planet,
+        )
+        .unwrap();
+
+        let mut collapsed = base.clone();
+        let mut representative = BTreeMap::<u16, u16>::new();
+        for fragment in &collapsed.fragments {
+            representative
+                .entry(fragment.origin_plate_id)
+                .or_insert(fragment.id);
+        }
+        for sample in 0..topology.sample_count() as usize {
+            collapsed.fragment_ids[sample] =
+                representative[&collapsed.origin_plate_ids[sample]];
+        }
+        assert_ne!(
+            base.fragment_ids, collapsed.fragment_ids,
+            "regression did not alter genealogy partition geometry"
+        );
+
+        let reference = evolve_modern_plate_geometry(
+            &topology,
+            base,
+            &request.seed,
+            request.modern_plate_count,
+            planet,
+        )
+        .unwrap();
+        let relabeled = evolve_modern_plate_geometry(
+            &topology,
+            collapsed,
+            &request.seed,
+            request.modern_plate_count,
+            planet,
+        )
+        .unwrap();
+
+        assert_eq!(reference.current_plate_ids, relabeled.current_plate_ids);
+        assert_eq!(reference.crust_kind, relabeled.crust_kind);
+        assert_eq!(reference.crust_birth_age_myr, relabeled.crust_birth_age_myr);
+        assert_eq!(
+            reference.lithospheric_weakness_index,
+            relabeled.lithospheric_weakness_index
+        );
+        assert_eq!(
+            reference.current_plate_angular_velocities_rad_per_myr,
+            relabeled.current_plate_angular_velocities_rad_per_myr
+        );
+    }
+
+    #[test]
     fn forward_evolution_moves_material_and_creates_new_spreading_crust() {
         let topology = build_icosphere(4).unwrap();
         let planet = PlanetPhysicalParameters::earthlike_reference();
