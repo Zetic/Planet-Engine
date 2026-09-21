@@ -634,23 +634,16 @@ fn advect_substep<T: PlanetTopology>(
             if choices.is_empty() {
                 continue;
             }
-            let sample_position = topology.unit_position(sample);
-            choices.sort_by(|left, right| {
-                let left_distance = dot(
-                    sample_position,
-                    topology.unit_position(*left as u32),
+            // Gap ownership must remain deterministic while the raster remapper is still
+            // non-conservative. Prefer a stable neighboring owner here; material creation itself
+            // is still gated by kinematic divergence below. A later conservative remapper can
+            // replace this without feeding ancestry into physical state.
+            choices.sort_by_key(|neighbor| {
+                (
+                    previous_owner[*neighbor],
+                    previous_origin[*neighbor],
+                    *neighbor,
                 )
-                .clamp(-1.0, 1.0)
-                .acos();
-                let right_distance = dot(
-                    sample_position,
-                    topology.unit_position(*right as u32),
-                )
-                .clamp(-1.0, 1.0)
-                .acos();
-                left_distance
-                    .total_cmp(&right_distance)
-                    .then_with(|| left.cmp(right))
             });
             let donor = choices[0];
             let divergent_gap =
