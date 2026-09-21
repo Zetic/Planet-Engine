@@ -202,14 +202,16 @@ fn verify_seed(seed: &str) -> Result<(), String> {
         .events
         .iter()
         .filter(|event| {
+            // Zero-displacement rifts are emitted only by the plate-birth operation. Ordinary
+            // boundary rifting records integrated displacement. Genealogy is intentionally not
+            // part of this predicate: physical weakness, not fragment contact, selects birth.
             event.kind == HistoricalEventKind::Rift
                 && event.displacement_km.abs() <= 0.001
-                && event.fragment_a != event.fragment_b
         })
         .count();
     if rift_birth_events == 0 {
         return Err(format!(
-            "{seed}: no plate birth was nucleated along an inherited weak contact"
+            "{seed}: no plate birth was nucleated from the physical weakness field"
         ));
     }
 
