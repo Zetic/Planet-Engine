@@ -55,6 +55,18 @@ fn verify_seed(seed: &str) -> Result<(), String> {
         ));
     }
 
+    let ancestral_boundary_edges = history
+        .ancestral_tectonics
+        .boundaries
+        .iter()
+        .map(|edge| {
+            if edge.sample_a < edge.sample_b {
+                (edge.sample_a, edge.sample_b)
+            } else {
+                (edge.sample_b, edge.sample_a)
+            }
+        })
+        .collect::<BTreeSet<_>>();
     let mut plate_area = vec![0.0_f64; 16];
     let mut total_area = 0.0_f64;
     let mut migrated_boundary_edges = 0usize;
@@ -94,10 +106,15 @@ fn verify_seed(seed: &str) -> Result<(), String> {
             if history.current_plate_ids[index] == history.current_plate_ids[ni] {
                 continue;
             }
-            if history.origin_plate_ids[index] == history.origin_plate_ids[ni] {
-                migrated_boundary_edges += 1;
+            let edge = if sample < *neighbor {
+                (sample, *neighbor)
             } else {
+                (*neighbor, sample)
+            };
+            if ancestral_boundary_edges.contains(&edge) {
                 inherited_boundary_edges += 1;
+            } else {
+                migrated_boundary_edges += 1;
             }
         }
     }
