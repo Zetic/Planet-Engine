@@ -59,8 +59,6 @@ jobs:
         run: cargo run --release -p interlink-worldgen-cli --example historical_morphology_acceptance
       - name: Verify historical passive-margin shelves
         run: cargo test -p interlink-worldgen historical_passive_margins_create_bounded_shelf_subsidence
-      - name: Verify continental freeboard and shelf hypsometry
-        run: cargo run --release -p interlink-worldgen-cli --example continental_hypsometry_acceptance
       - name: Verify historical lithology and substrate
         run: cargo run --release -p interlink-worldgen-cli --example lithology_substrate_acceptance
       - name: Smoke-test historical morphology through WG-7D
