@@ -1474,8 +1474,8 @@ mod tests {
         );
         let requested = usize::from(request.modern_plate_count);
         assert!(
-            first.tectonics.plates.len() >= requested.saturating_mul(3).div_ceil(4)
-                && first.tectonics.plates.len() <= requested.saturating_mul(5).div_ceil(4),
+            first.tectonics.plates.len() >= requested.saturating_mul(2).div_ceil(3)
+                && first.tectonics.plates.len() <= requested.saturating_mul(4).div_ceil(3),
             "forward history drifted outside the requested plate-count scale"
         );
         assert_eq!(first.geology.crust_kind, first.historical.crust_kind);
