@@ -581,6 +581,7 @@ fn compact_extinct_plates(
 struct ConvergentConsumptionProposal {
     strength: f64,
     winner: u16,
+    donor: usize,
 }
 
 fn convergent_consumption_priority(kind: u8, age_myr: f32, weakness: f32) -> f64 {
@@ -669,22 +670,27 @@ fn consume_convergent_boundary_band<T: PlanetTopology>(
                 continue;
             }
 
-            let (victim, winner, material_priority) = if priority_a > priority_b + 1.0e-9 {
-                (a, owner_b, priority_a)
-            } else if priority_b > priority_a + 1.0e-9 {
-                (b, owner_a, priority_b)
-            } else if model.crust_birth_age_myr[a] > model.crust_birth_age_myr[b] + 1.0e-6 {
-                (a, owner_b, priority_a)
-            } else if model.crust_birth_age_myr[b] > model.crust_birth_age_myr[a] + 1.0e-6 {
-                (b, owner_a, priority_b)
-            } else if owner_a > owner_b {
-                (a, owner_b, priority_a)
-            } else {
-                (b, owner_a, priority_b)
-            };
+            let (victim, donor, winner, material_priority) =
+                if priority_a > priority_b + 1.0e-9 {
+                    (a, b, owner_b, priority_a)
+                } else if priority_b > priority_a + 1.0e-9 {
+                    (b, a, owner_a, priority_b)
+                } else if model.crust_birth_age_myr[a] > model.crust_birth_age_myr[b] + 1.0e-6 {
+                    (a, b, owner_b, priority_a)
+                } else if model.crust_birth_age_myr[b] > model.crust_birth_age_myr[a] + 1.0e-6 {
+                    (b, a, owner_a, priority_b)
+                } else if owner_a > owner_b {
+                    (a, b, owner_b, priority_a)
+                } else {
+                    (b, a, owner_a, priority_b)
+                };
 
             let strength = convergence_fraction.min(2.5) * material_priority;
-            let candidate = ConvergentConsumptionProposal { strength, winner };
+            let candidate = ConvergentConsumptionProposal {
+                strength,
+                winner,
+                donor,
+            };
             let replace = proposals[victim]
                 .map(|current| {
                     candidate.strength > current.strength + 1.0e-12
@@ -707,6 +713,15 @@ fn consume_convergent_boundary_band<T: PlanetTopology>(
         }
     }
 
+    // Surface subduction removes the victim parcel from the exposed lithosphere. Preserve a
+    // snapshot so simultaneous boundary-band consumption can advance the overriding material into
+    // the vacated surface cell without reading fields already modified earlier in this substep.
+    let previous_origin = model.origin_plate_ids.clone();
+    let previous_fragment = model.fragment_ids.clone();
+    let previous_kind = model.crust_kind.clone();
+    let previous_age = model.crust_birth_age_myr.clone();
+    let previous_weakness = model.lithospheric_weakness_index.clone();
+
     let mut consumed = 0usize;
     for plate in 0..plate_count {
         if by_plate[plate].is_empty() {
@@ -728,6 +743,11 @@ fn consume_convergent_boundary_band<T: PlanetTopology>(
                 continue;
             }
             model.current_plate_ids[*sample] = proposal.winner;
+            model.origin_plate_ids[*sample] = previous_origin[proposal.donor];
+            model.fragment_ids[*sample] = previous_fragment[proposal.donor];
+            model.crust_kind[*sample] = previous_kind[proposal.donor];
+            model.crust_birth_age_myr[*sample] = previous_age[proposal.donor];
+            model.lithospheric_weakness_index[*sample] = previous_weakness[proposal.donor];
             consumed += 1;
         }
     }
