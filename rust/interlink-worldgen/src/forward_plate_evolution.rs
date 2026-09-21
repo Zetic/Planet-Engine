@@ -770,6 +770,7 @@ fn advect_substep<T: PlanetTopology>(
     velocities: &mut Vec<[f64; 3]>,
     epoch: u8,
     generation_fragments: &mut BTreeMap<(u8, u16, u8, u16), u16>,
+    planet: PlanetPhysicalParameters,
     dt_myr: f64,
 ) -> Result<(), WorldgenError> {
     let count = topology.sample_count() as usize;
@@ -1862,6 +1863,7 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
                 &mut velocities,
                 epoch as u8,
                 &mut generation_fragments,
+                planet,
                 SUBSTEP_MYR,
             )?;
             consume_convergent_boundary_band(
