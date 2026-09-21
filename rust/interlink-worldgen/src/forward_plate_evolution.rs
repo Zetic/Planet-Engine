@@ -414,13 +414,42 @@ fn advect_substep<T: PlanetTopology>(
             continue;
         }
         let Some(source) = cores[plate] else { continue };
-        let destination = mapped_core_destination[plate].unwrap_or(source as usize);
+        let preferred = mapped_core_destination[plate].unwrap_or(source as usize);
+        let mut destination = preferred;
+        let donor = new_owner[destination];
+        if (donor as usize) < plate_count && counts[donor as usize] <= 1 {
+            // Do not preserve one plate by deleting another. Walk outward from the advected
+            // core target until a donor with more than one raster sample is found.
+            let mut seen = vec![false; count];
+            let mut queue = VecDeque::from([preferred as u32]);
+            seen[preferred] = true;
+            while let Some(sample) = queue.pop_front() {
+                let index = sample as usize;
+                let owner = new_owner[index] as usize;
+                if owner < plate_count && counts[owner] > 1 {
+                    destination = index;
+                    break;
+                }
+                for neighbor in topology.neighbors(sample) {
+                    let ni = *neighbor as usize;
+                    if !seen[ni] {
+                        seen[ni] = true;
+                        queue.push_back(*neighbor);
+                    }
+                }
+            }
+        }
+        let previous = new_owner[destination] as usize;
+        if previous < plate_count {
+            counts[previous] = counts[previous].saturating_sub(1);
+        }
         let source_index = source as usize;
         new_origin[destination] = old_origin[source_index];
         new_fragment[destination] = old_fragment[source_index];
         new_owner[destination] = plate as u16;
         new_kind[destination] = old_kind[source_index];
         new_age[destination] = old_age[source_index];
+        counts[plate] += 1;
     }
 
     repair_plate_connectivity(topology, &mut new_owner, plate_count);
