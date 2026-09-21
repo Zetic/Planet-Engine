@@ -467,10 +467,43 @@ fn gap_is_divergent<T: PlanetTopology>(
     false
 }
 
+fn compact_extinct_plates(
+    owners: &mut [u16],
+    velocities: &mut Vec<[f64; 3]>,
+    plate_count: usize,
+) -> usize {
+    let mut active = vec![false; plate_count];
+    for owner in owners.iter().copied() {
+        let index = owner as usize;
+        if index < plate_count {
+            active[index] = true;
+        }
+    }
+    if active.iter().all(|value| *value) {
+        return 0;
+    }
+
+    let mut remap = vec![u16::MAX; plate_count];
+    let mut compact_velocities = Vec::with_capacity(plate_count);
+    for old in 0..plate_count {
+        if !active[old] {
+            continue;
+        }
+        remap[old] = compact_velocities.len() as u16;
+        compact_velocities.push(velocities[old]);
+    }
+    for owner in owners {
+        *owner = remap[*owner as usize];
+    }
+    let removed = plate_count.saturating_sub(compact_velocities.len());
+    *velocities = compact_velocities;
+    removed
+}
+
 fn advect_substep<T: PlanetTopology>(
     topology: &T,
     model: &mut HistoricalLithosphereModel,
-    velocities: &[[f64; 3]],
+    velocities: &mut Vec<[f64; 3]>,
     epoch: u8,
     generation_fragments: &mut BTreeMap<(u8, u16, u8, u16), u16>,
     dt_myr: f64,
@@ -486,19 +519,6 @@ fn advect_substep<T: PlanetTopology>(
     let old_kind = model.crust_kind.clone();
     let old_age = model.crust_birth_age_myr.clone();
     let old_weakness = model.lithospheric_weakness_index.clone();
-
-    let mut mapped_core_destination = vec![None; plate_count];
-    for plate in 0..plate_count {
-        if let Some(core) = cores[plate] {
-            let target = rotate_by_angular_velocity(
-                topology.unit_position(core),
-                velocities[plate],
-                dt_myr,
-            );
-            mapped_core_destination[plate] =
-                Some(nearest_sample(topology, target, core) as usize);
-        }
-    }
 
     let mut new_origin = vec![u16::MAX; count];
     let mut new_fragment = vec![u16::MAX; count];
@@ -689,59 +709,21 @@ fn advect_substep<T: PlanetTopology>(
         remaining = remaining.saturating_sub(changed);
     }
 
-    // Preserve one advected material core per requested plate. This is only a raster-degeneracy
-    // guard; ordinary geometry comes from rigid forward transport and collision/gap resolution.
-    let mut counts = vec![0usize; plate_count];
-    for owner in &new_owner {
-        if (*owner as usize) < plate_count {
-            counts[*owner as usize] += 1;
-        }
-    }
-    for plate in 0..plate_count {
-        if counts[plate] > 0 {
-            continue;
-        }
-        let Some(source) = cores[plate] else { continue };
-        let preferred = mapped_core_destination[plate].unwrap_or(source as usize);
-        let mut destination = preferred;
-        let donor = new_owner[destination];
-        if (donor as usize) < plate_count && counts[donor as usize] <= 1 {
-            // Do not preserve one plate by deleting another. Walk outward from the advected
-            // core target until a donor with more than one raster sample is found.
-            let mut seen = vec![false; count];
-            let mut queue = VecDeque::from([preferred as u32]);
-            seen[preferred] = true;
-            while let Some(sample) = queue.pop_front() {
-                let index = sample as usize;
-                let owner = new_owner[index] as usize;
-                if owner < plate_count && counts[owner] > 1 {
-                    destination = index;
-                    break;
-                }
-                for neighbor in topology.neighbors(sample) {
-                    let ni = *neighbor as usize;
-                    if !seen[ni] {
-                        seen[ni] = true;
-                        queue.push_back(*neighbor);
-                    }
-                }
-            }
-        }
-        let previous = new_owner[destination] as usize;
-        if previous < plate_count {
-            counts[previous] = counts[previous].saturating_sub(1);
-        }
-        let source_index = source as usize;
-        new_origin[destination] = old_origin[source_index];
-        new_fragment[destination] = old_fragment[source_index];
-        new_owner[destination] = plate as u16;
-        new_kind[destination] = old_kind[source_index];
-        new_age[destination] = old_age[source_index];
-        new_weakness[destination] = old_weakness[source_index];
-        counts[plate] += 1;
+    repair_plate_connectivity(topology, &mut new_owner, plate_count);
+    if new_owner.iter().any(|owner| *owner == u16::MAX) {
+        return Err(WorldgenError::InvalidTectonics(
+            "forward transport left an unresolved surface ownership hole",
+        ));
     }
 
-    repair_plate_connectivity(topology, &mut new_owner, plate_count);
+    // A plate that has no remaining surface samples after overlap resolution is genuinely extinct.
+    // Compact it out of the evolving kinematic state instead of resurrecting a one-cell core or
+    // waiting for a later whole-plate relabel operation.
+    let extinct = compact_extinct_plates(&mut new_owner, velocities, plate_count);
+    if extinct > 0 {
+        generation_fragments.clear();
+        model.metrics.modern_plate_count = velocities.len() as u16;
+    }
 
     materialize_generated_crust(
         topology,
@@ -758,6 +740,7 @@ fn advect_substep<T: PlanetTopology>(
     model.origin_plate_ids = new_origin;
     model.fragment_ids = new_fragment;
     model.current_plate_ids = new_owner;
+    model.metrics.modern_plate_count = velocities.len() as u16;
     model.lithospheric_weakness_index = new_weakness;
     model.crust_kind = new_kind;
     model.crust_birth_age_myr = new_age;
@@ -1785,7 +1768,7 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
             advect_substep(
                 topology,
                 &mut model,
-                &velocities,
+                &mut velocities,
                 epoch as u8,
                 &mut generation_fragments,
                 SUBSTEP_MYR,
