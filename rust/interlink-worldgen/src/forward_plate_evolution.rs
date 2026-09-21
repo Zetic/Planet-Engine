@@ -1176,26 +1176,7 @@ fn split_fragments_at_final_boundaries<T: PlanetTopology>(
         }
         if by_owner.len() == 1 {
             let owner = *by_owner.keys().next().unwrap();
-            let previous_owner = model.fragments[fragment_id as usize].current_plate_id;
             model.fragments[fragment_id as usize].current_plate_id = owner;
-            if owner != previous_owner {
-                let geometry = model.fragments[fragment_id as usize].seed_sample;
-                model.fragments[fragment_id as usize].capture_age_myr = Some(0.0);
-                model.events.push(HistoricalTectonicEvent {
-                    id: model.events.len() as u32,
-                    kind: HistoricalEventKind::Capture,
-                    epoch: crate::HISTORICAL_EPOCH_COUNT - 1,
-                    age_myr: 0.0,
-                    plate_a: parent.origin_plate_id,
-                    plate_b: parent.origin_plate_id,
-                    fragment_a: fragment_id,
-                    fragment_b: fragment_id,
-                    displacement_km: 0.0,
-                    strength: 0.20,
-                    geometry_sample_a: geometry,
-                    geometry_sample_b: geometry,
-                });
-            }
             continue;
         }
         if model.fragments.len() + by_owner.len() >= usize::from(u16::MAX) {
@@ -1217,11 +1198,7 @@ fn split_fragments_at_final_boundaries<T: PlanetTopology>(
                 current_plate_id: owner,
                 seed_sample,
                 birth_age_myr: parent.birth_age_myr,
-                capture_age_myr: if owner != parent.current_plate_id {
-                    Some(0.0)
-                } else {
-                    parent.capture_age_myr
-                },
+                capture_age_myr: parent.capture_age_myr,
                 accretion_age_myr: parent.accretion_age_myr,
                 dominant_crust_kind: parent.dominant_crust_kind,
                 sample_count: samples.len() as u32,
@@ -1232,22 +1209,6 @@ fn split_fragments_at_final_boundaries<T: PlanetTopology>(
             });
             for sample in &samples {
                 model.fragment_ids[*sample as usize] = child_id;
-            }
-            if owner != parent.current_plate_id {
-                model.events.push(HistoricalTectonicEvent {
-                    id: model.events.len() as u32,
-                    kind: HistoricalEventKind::Capture,
-                    epoch: crate::HISTORICAL_EPOCH_COUNT - 1,
-                    age_myr: 0.0,
-                    plate_a: parent.origin_plate_id,
-                    plate_b: parent.origin_plate_id,
-                    fragment_a: parent.id,
-                    fragment_b: child_id,
-                    displacement_km: 0.0,
-                    strength: 0.24,
-                    geometry_sample_a: parent.seed_sample,
-                    geometry_sample_b: seed_sample,
-                });
             }
         }
     }
