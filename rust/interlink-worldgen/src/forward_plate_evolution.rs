@@ -256,6 +256,87 @@ fn refresh_active_fragment_summaries<T: PlanetTopology>(
     }
 }
 
+
+fn materialize_generated_crust<T: PlanetTopology>(
+    topology: &T,
+    model: &mut HistoricalLithosphereModel,
+    generated: &[bool],
+    origin_plate_ids: &[u16],
+    fragment_ids: &mut [u16],
+    owners: &[u16],
+    crust_kind: &[u8],
+) -> Result<(), WorldgenError> {
+    if generated.len() != topology.sample_count() as usize {
+        return Err(WorldgenError::InvalidLithosphere(
+            "generated-crust mask does not match topology",
+        ));
+    }
+    let mut seen = vec![false; generated.len()];
+    for start in 0..topology.sample_count() {
+        let si = start as usize;
+        if seen[si] || !generated[si] {
+            continue;
+        }
+        let owner = owners[si];
+        let kind = crust_kind[si];
+        let origin = origin_plate_ids[si];
+        let mut queue = VecDeque::from([start]);
+        let mut component = Vec::<u32>::new();
+        seen[si] = true;
+        while let Some(sample) = queue.pop_front() {
+            component.push(sample);
+            for neighbor in topology.neighbors(sample) {
+                let ni = *neighbor as usize;
+                if !seen[ni]
+                    && generated[ni]
+                    && owners[ni] == owner
+                    && crust_kind[ni] == kind
+                    && origin_plate_ids[ni] == origin
+                {
+                    seen[ni] = true;
+                    queue.push_back(*neighbor);
+                }
+            }
+        }
+        if model.fragments.len() >= usize::from(u16::MAX) {
+            return Err(WorldgenError::InvalidLithosphere(
+                "forward spreading exhausted fragment id capacity",
+            ));
+        }
+        let id = model.fragments.len() as u16;
+        let area = component
+            .iter()
+            .map(|sample| topology.area_steradians(*sample))
+            .sum::<f64>();
+        let (thickness_km, density_kg_per_m3) =
+            if kind == CrustKind::Oceanic as u8 {
+                (7.0, 2935.0)
+            } else {
+                (19.0, 2875.0)
+            };
+        model.fragments.push(CrustFragment {
+            id,
+            parent_fragment_id: None,
+            origin_plate_id: origin,
+            current_plate_id: owner,
+            seed_sample: component[0],
+            birth_age_myr: 0.0,
+            capture_age_myr: None,
+            accretion_age_myr: None,
+            dominant_crust_kind: kind,
+            sample_count: component.len() as u32,
+            area_steradians: area,
+            mean_thickness_km: thickness_km,
+            mean_density_kg_per_m3: density_kg_per_m3,
+            inherited_fabric: 0.15,
+        });
+        for sample in component {
+            fragment_ids[sample as usize] = id;
+        }
+    }
+    Ok(())
+}
+
 fn repair_plate_connectivity<T: PlanetTopology>(
     topology: &T,
     owners: &mut [u16],
@@ -327,7 +408,7 @@ fn advect_substep<T: PlanetTopology>(
     model: &mut HistoricalLithosphereModel,
     velocities: &[[f64; 3]],
     dt_myr: f64,
-) {
+) -> Result<(), WorldgenError> {
     let count = topology.sample_count() as usize;
     let plate_count = model.metrics.modern_plate_count as usize;
     debug_assert_eq!(velocities.len(), plate_count);
@@ -357,6 +438,7 @@ fn advect_substep<T: PlanetTopology>(
     let mut new_owner = vec![u16::MAX; count];
     let mut new_kind = vec![CrustKind::Oceanic as u8; count];
     let mut new_age = vec![0.0_f32; count];
+    let mut generated = vec![false; count];
 
     // Semi-Lagrangian rigid transport: for each destination cell, back-rotate through every
     // moving plate and ask whether the preimage lies inside that plate's previous material
@@ -477,6 +559,7 @@ fn advect_substep<T: PlanetTopology>(
                 CrustKind::Transitional as u8
             };
             new_age[index] = 0.0;
+            generated[index] = true;
             changed += 1;
         }
         if changed == 0 {
@@ -538,11 +621,22 @@ fn advect_substep<T: PlanetTopology>(
 
     repair_plate_connectivity(topology, &mut new_owner, plate_count);
 
+    materialize_generated_crust(
+        topology,
+        model,
+        &generated,
+        &new_origin,
+        &mut new_fragment,
+        &new_owner,
+        &new_kind,
+    )?;
+
     model.origin_plate_ids = new_origin;
     model.fragment_ids = new_fragment;
     model.current_plate_ids = new_owner;
     model.crust_kind = new_kind;
     model.crust_birth_age_myr = new_age;
+    Ok(())
 }
 
 #[derive(Clone, Copy, Default)]
@@ -1324,7 +1418,7 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
     for epoch in 0..FORWARD_EPOCHS {
         record_epoch_events(topology, &mut model, &velocities, epoch, planet);
         for _ in 0..SUBSTEPS_PER_EPOCH {
-            advect_substep(topology, &mut model, &velocities, SUBSTEP_MYR);
+            advect_substep(topology, &mut model, &velocities, SUBSTEP_MYR)?;
         }
 
         if splits_completed < rift_budget
