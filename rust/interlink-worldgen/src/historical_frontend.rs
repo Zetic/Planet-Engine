@@ -364,8 +364,19 @@ pub fn project_historical_modern_tectonics<T: PlanetTopology>(
         ));
     }
 
+    if historical.current_plate_angular_velocities_rad_per_myr.len() != modern_count
+        || historical
+            .current_plate_angular_velocities_rad_per_myr
+            .iter()
+            .flatten()
+            .any(|value| !value.is_finite())
+    {
+        return Err(WorldgenError::InvalidTectonics(
+            "historical frontend is missing evolved modern plate kinematics",
+        ));
+    }
+
     let ancestral_count = historical.ancestral_tectonics.plates.len();
-    let mut velocity_sum = vec![[0.0_f64; 3]; modern_count];
     let mut ancestry_area = vec![0.0_f64; modern_count];
     let mut contribution_area = vec![vec![0.0_f64; ancestral_count]; modern_count];
     for sample in 0..topology.sample_count() {
@@ -378,11 +389,6 @@ pub fn project_historical_modern_tectonics<T: PlanetTopology>(
             ));
         }
         let area = topology.area_steradians(sample);
-        let ancestral = &historical.ancestral_tectonics.plates[origin];
-        for component in 0..3 {
-            velocity_sum[current][component] +=
-                ancestral.angular_velocity_rad_per_myr[component] * area;
-        }
         ancestry_area[current] += area;
         contribution_area[current][origin] += area;
     }
@@ -426,7 +432,7 @@ pub fn project_historical_modern_tectonics<T: PlanetTopology>(
                 "historical modern projection created an empty plate",
             ));
         }
-        let angular_velocity = scale(velocity_sum[current], 1.0 / ancestry_area[current]);
+        let angular_velocity = historical.current_plate_angular_velocities_rad_per_myr[current];
         let euler_pole = normalize_or(angular_velocity, representative_pole[current]);
         plates.push(TectonicPlate {
             id: current as u16,
