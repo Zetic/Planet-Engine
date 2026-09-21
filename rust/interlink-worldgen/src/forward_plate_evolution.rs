@@ -110,7 +110,7 @@ fn nearest_sample<T: PlanetTopology>(
     current
 }
 
-fn owner_angular_velocities<T: PlanetTopology>(
+fn initial_plate_angular_velocities<T: PlanetTopology>(
     topology: &T,
     model: &HistoricalLithosphereModel,
 ) -> Vec<[f64; 3]> {
@@ -325,11 +325,12 @@ fn repair_plate_connectivity<T: PlanetTopology>(
 fn advect_substep<T: PlanetTopology>(
     topology: &T,
     model: &mut HistoricalLithosphereModel,
+    velocities: &[[f64; 3]],
     dt_myr: f64,
 ) {
     let count = topology.sample_count() as usize;
     let plate_count = model.metrics.modern_plate_count as usize;
-    let velocities = owner_angular_velocities(topology, model);
+    debug_assert_eq!(velocities.len(), plate_count);
     let cores = plate_core_samples(topology, &model.current_plate_ids, plate_count);
 
     let old_origin = model.origin_plate_ids.clone();
@@ -559,10 +560,11 @@ struct BoundaryEpochSummary {
 fn record_epoch_events<T: PlanetTopology>(
     topology: &T,
     model: &mut HistoricalLithosphereModel,
+    velocities: &[[f64; 3]],
     epoch: usize,
     planet: PlanetPhysicalParameters,
 ) {
-    let velocities = owner_angular_velocities(topology, model);
+    debug_assert_eq!(velocities.len(), model.metrics.modern_plate_count as usize);
     let mut summaries = BTreeMap::<(u16, u16), BoundaryEpochSummary>::new();
     for sample_a in 0..topology.sample_count() {
         let index_a = sample_a as usize;
@@ -664,14 +666,14 @@ fn record_epoch_events<T: PlanetTopology>(
 fn merge_one_converging_plate_pair<T: PlanetTopology>(
     topology: &T,
     model: &mut HistoricalLithosphereModel,
+    velocities: &mut Vec<[f64; 3]>,
     epoch: usize,
     planet: PlanetPhysicalParameters,
 ) -> bool {
     let plate_count = model.metrics.modern_plate_count as usize;
-    if plate_count <= 1 {
+    if plate_count <= 1 || velocities.len() != plate_count {
         return false;
     }
-    let velocities = owner_angular_velocities(topology, model);
     let mut plate_area = vec![0.0_f64; plate_count];
     let mut continental_area = vec![0.0_f64; plate_count];
     for sample in 0..topology.sample_count() {
@@ -810,6 +812,32 @@ fn merge_one_converging_plate_pair<T: PlanetTopology>(
     for owner in &mut model.current_plate_ids {
         *owner = remap[*owner as usize];
     }
+
+    let keep_index = keep as usize;
+    let remove_index = remove as usize;
+    let keep_area = plate_area[keep_index];
+    let remove_area = plate_area[remove_index];
+    let merged_area = (keep_area + remove_area).max(1.0e-12);
+    let merged_velocity = [
+        (velocities[keep_index][0] * keep_area + velocities[remove_index][0] * remove_area)
+            / merged_area,
+        (velocities[keep_index][1] * keep_area + velocities[remove_index][1] * remove_area)
+            / merged_area,
+        (velocities[keep_index][2] * keep_area + velocities[remove_index][2] * remove_area)
+            / merged_area,
+    ];
+    let mut compact_velocities = Vec::with_capacity(plate_count - 1);
+    for old in 0..plate_count {
+        if old == remove_index {
+            continue;
+        }
+        if old == keep_index {
+            compact_velocities.push(merged_velocity);
+        } else {
+            compact_velocities.push(velocities[old]);
+        }
+    }
+    *velocities = compact_velocities;
     model.metrics.modern_plate_count = next;
     true
 }
@@ -1049,19 +1077,26 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
     }
 
     let stage_seed = derive_stage_seed(seed, FORWARD_PLATE_NAMESPACE);
+    let mut velocities = initial_plate_angular_velocities(topology, &model);
     let starting_plate_count = model.metrics.modern_plate_count;
     let merges_needed = starting_plate_count.saturating_sub(target_plate_count) as usize;
     let mut merges_completed = 0usize;
     for epoch in 0..FORWARD_EPOCHS {
-        record_epoch_events(topology, &mut model, epoch, planet);
+        record_epoch_events(topology, &mut model, &velocities, epoch, planet);
         for _ in 0..SUBSTEPS_PER_EPOCH {
-            advect_substep(topology, &mut model, SUBSTEP_MYR);
+            advect_substep(topology, &mut model, &velocities, SUBSTEP_MYR);
         }
         let expected_merges = ((epoch + 1) * merges_needed) / FORWARD_EPOCHS;
         while merges_completed < expected_merges
             && model.metrics.modern_plate_count > target_plate_count
         {
-            if !merge_one_converging_plate_pair(topology, &mut model, epoch, planet) {
+            if !merge_one_converging_plate_pair(
+                topology,
+                &mut model,
+                &mut velocities,
+                epoch,
+                planet,
+            ) {
                 break;
             }
             merges_completed += 1;
