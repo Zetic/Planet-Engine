@@ -1,5 +1,5 @@
 use crate::{
-    derive_stage_seed, forward_plate_evolution, historical_causal, historical_epochs,
+    derive_stage_seed, forward_plate_evolution, historical_causal,
     historical_frontend, historical_lithosphere, tectonics, CrustalModel, GeologyRequest,
     HistoricalLithosphereModel, HistoricalLithosphereRequest, LithosphereRequest,
     LithosphericModel, PlanetPhysicalParameters, PlanetTopology, TectonicModel, TectonicsRequest,
@@ -56,11 +56,12 @@ pub fn generate_historical_lithosphere<T: PlanetTopology>(
     let base = with_raw_tectonics_scope(|| {
         historical_lithosphere::generate_historical_lithosphere(topology, request, parameters)
     })?;
-    let lineage =
-        historical_epochs::evolve_historical_lithosphere(topology, base, request.seed.as_str())?;
+    // The bounded random fragment-splitting epoch pass was an intermediate history scaffold.
+    // Forward tectonic evolution now owns material transport and topological change. Feeding the
+    // synthetic split schedule into the solver would pre-bake rifts before any plate motion occurs.
     forward_plate_evolution::evolve_modern_plate_geometry(
         topology,
-        lineage,
+        base,
         request.seed.as_str(),
         parameters,
     )
