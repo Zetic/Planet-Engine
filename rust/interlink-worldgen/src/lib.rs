@@ -1,4 +1,3 @@
-mod boundary_plate_geometry;
 mod boundary_refinement;
 mod causal_pipeline;
 mod climate;
@@ -8,7 +7,7 @@ mod continental_morphology;
 mod coordinates;
 mod diagnostics;
 mod drainage;
-mod dynamic_plate_evolution;
+mod forward_plate_evolution;
 mod erosion;
 mod evolution;
 mod fields;
