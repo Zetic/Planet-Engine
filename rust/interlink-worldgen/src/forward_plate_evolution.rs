@@ -364,8 +364,20 @@ fn advect_substep<T: PlanetTopology>(
     for destination in 0..topology.sample_count() {
         let destination_index = destination as usize;
         let destination_position = topology.unit_position(destination);
+        let mut candidate_plates = BTreeSet::<u16>::new();
+        candidate_plates.insert(old_owner[destination_index]);
+        for neighbor in topology.neighbors(destination) {
+            candidate_plates.insert(old_owner[*neighbor as usize]);
+            for second in topology.neighbors(*neighbor) {
+                candidate_plates.insert(old_owner[*second as usize]);
+            }
+        }
         let mut best: Option<(f64, usize, u16)> = None;
-        for plate in 0..plate_count {
+        for plate_id in candidate_plates {
+            let plate = plate_id as usize;
+            if plate >= plate_count {
+                continue;
+            }
             let Some(core) = cores[plate] else { continue };
             let preimage = rotate_by_angular_velocity(
                 destination_position,
