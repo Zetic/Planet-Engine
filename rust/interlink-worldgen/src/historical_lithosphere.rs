@@ -885,27 +885,6 @@ mod tests {
         assert_ne!(a.metrics.history_hash, changed.metrics.history_hash);
     }
 
-    fn single_neighbor_plate_count<T: PlanetTopology>(
-        topology: &T,
-        plate_ids: &[u16],
-        plate_count: u16,
-    ) -> usize {
-        let mut neighbors = vec![BTreeSet::<u16>::new(); plate_count as usize];
-        for sample in 0..topology.sample_count() {
-            let plate = plate_ids[sample as usize];
-            for neighbor in topology.neighbors(sample) {
-                let other = plate_ids[*neighbor as usize];
-                if other != plate {
-                    neighbors[plate as usize].insert(other);
-                }
-            }
-        }
-        neighbors
-            .iter()
-            .filter(|adjacent| adjacent.len() == 1)
-            .count()
-    }
-
     fn continental_components<T: PlanetTopology>(topology: &T, crust_kind: &[u8]) -> (usize, f64) {
         let mut visited = vec![false; topology.sample_count() as usize];
         let mut components = 0usize;
@@ -939,7 +918,7 @@ mod tests {
     }
 
     #[test]
-    fn modern_plate_synthesis_avoids_enclosed_single_neighbor_plates() {
+    fn ancestral_initializer_does_not_prebake_present_plate_ownership() {
         let topology = build_icosphere(4).unwrap();
         let planet = PlanetPhysicalParameters::earthlike_reference();
         for seed in [
@@ -954,11 +933,20 @@ mod tests {
                 planet,
             )
             .unwrap();
+            assert_eq!(model.current_plate_ids, model.origin_plate_ids);
             assert_eq!(
-                single_neighbor_plate_count(&topology, &model.current_plate_ids, 16),
-                0,
-                "seed {seed} produced a modern plate enclosed by one neighbor"
+                model.metrics.modern_plate_count,
+                model.metrics.ancestral_plate_count,
+                "the ancestral initializer must not synthesize a future present-day partition"
             );
+            assert!(
+                model.events.is_empty(),
+                "the ancestral initializer must not fabricate future tectonic events"
+            );
+            for fragment in &model.fragments {
+                assert_eq!(fragment.current_plate_id, fragment.origin_plate_id);
+                assert!(fragment.capture_age_myr.is_none());
+            }
         }
     }
 
@@ -1006,7 +994,7 @@ mod tests {
     }
 
     #[test]
-    fn historical_lithosphere_preserves_three_identity_levels() {
+    fn historical_lithosphere_initializes_material_identity_before_forward_history() {
         let topology = build_icosphere(3).unwrap();
         let model = generate_historical_lithosphere(
             &topology,
@@ -1014,7 +1002,7 @@ mod tests {
             PlanetPhysicalParameters::earthlike_reference(),
         )
         .unwrap();
-        assert!(model.metrics.ancestral_plate_count >= model.metrics.modern_plate_count);
+        assert_eq!(model.metrics.ancestral_plate_count, model.metrics.modern_plate_count);
         assert!(model.metrics.fragment_count >= model.metrics.ancestral_plate_count);
         assert_eq!(
             model.origin_plate_ids.len(),
@@ -1025,7 +1013,8 @@ mod tests {
             model.current_plate_ids.len(),
             topology.sample_count() as usize
         );
-        assert!(model.metrics.event_count > 0);
+        assert_eq!(model.metrics.event_count, 0);
+        assert_eq!(model.current_plate_ids, model.origin_plate_ids);
         assert!(model.metrics.oceanic_area_fraction > 0.0);
         assert!(model.metrics.continental_area_fraction > 0.0);
         assert!(model.metrics.mean_oceanic_age_myr.is_finite());
