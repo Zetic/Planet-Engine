@@ -148,6 +148,19 @@ fn verify_seed(seed: &str) -> Result<(), String> {
         return Err(format!("{seed}: oceanic chronology collapsed during forward evolution"));
     }
 
+    if !(0.30..=0.58).contains(&history.metrics.continental_area_fraction) {
+        return Err(format!(
+            "{seed}: forward transport destroyed or overgrew continental material: {:.1}% continental",
+            history.metrics.continental_area_fraction * 100.0
+        ));
+    }
+    if history.metrics.transitional_area_fraction > 0.22 {
+        return Err(format!(
+            "{seed}: forward transport converted too much surface into unresolved transitional gaps: {:.1}%",
+            history.metrics.transitional_area_fraction * 100.0
+        ));
+    }
+
     let mut kinds = BTreeSet::new();
     for event in &history.events {
         kinds.insert(event.kind as u8);
@@ -169,9 +182,12 @@ fn verify_seed(seed: &str) -> Result<(), String> {
     }
 
     println!(
-        "forward-plate-evolution seed={seed} migrated={:.1}% created={} ocean-age={:.1}..{:.1}Myr events={} history={}",
+        "forward-plate-evolution seed={seed} migrated={:.1}% created={} material(c/t/o)={:.1}/{:.1}/{:.1}% ocean-age={:.1}..{:.1}Myr events={} history={}",
         moved_fraction * 100.0,
         young_created_crust,
+        history.metrics.continental_area_fraction * 100.0,
+        history.metrics.transitional_area_fraction * 100.0,
+        history.metrics.oceanic_area_fraction * 100.0,
         oceanic_age_min,
         oceanic_age_max,
         history.metrics.event_count,
