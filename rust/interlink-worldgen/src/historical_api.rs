@@ -63,6 +63,7 @@ pub fn generate_historical_lithosphere<T: PlanetTopology>(
         topology,
         base,
         request.seed.as_str(),
+        request.modern_plate_count,
         parameters,
     )
 }
