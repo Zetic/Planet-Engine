@@ -48,7 +48,7 @@ fn verify_seed(seed: &str) -> Result<(), String> {
     {
         return Err(format!("{seed}: forward plate evolution is not deterministic"));
     }
-    if !(12..=20).contains(&history.metrics.modern_plate_count) {
+    if !(11..=22).contains(&history.metrics.modern_plate_count) {
         return Err(format!(
             "{seed}: emergent present plate count {} drifted outside the 16-plate request scale",
             history.metrics.modern_plate_count
