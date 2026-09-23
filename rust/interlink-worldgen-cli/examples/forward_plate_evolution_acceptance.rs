@@ -321,6 +321,46 @@ fn verify_seed(seed: &str) -> Result<usize, String> {
     plate_fractions.sort_by(|left, right| left.total_cmp(right));
     let tiny_plate_count = plate_fractions.iter().filter(|fraction| **fraction < 0.005).count();
     let median_plate_fraction = plate_fractions[plate_fractions.len() / 2];
+
+    // A rigid body represented by only a handful of coarse samples cannot support meaningful
+    // boundary geometry. Such a remnant may survive when extension/transform motion supports it,
+    // but a convergence-dominated one should have completed accretion instead of persisting as a
+    // raster-sized present plate.
+    let mut plate_sample_counts = vec![0usize; present_plate_count];
+    for owner in history.current_plate_ids.iter().copied() {
+        plate_sample_counts[usize::from(owner)] += 1;
+    }
+    let mut unresolved_convergent_remnants = Vec::new();
+    for plate in 0..present_plate_count {
+        if plate_sample_counts[plate] > 12 {
+            continue;
+        }
+        let mut convergent = 0usize;
+        let mut divergent = 0usize;
+        for edge in &first.tectonics.boundaries {
+            if usize::from(edge.plate_a) != plate && usize::from(edge.plate_b) != plate {
+                continue;
+            }
+            match edge.kind {
+                PlateBoundaryKind::Convergent => convergent += 1,
+                PlateBoundaryKind::Divergent => divergent += 1,
+                PlateBoundaryKind::Transform => {}
+            }
+        }
+        if convergent > divergent {
+            unresolved_convergent_remnants.push(format!(
+                "p{plate}:samples={}:C/D={convergent}/{divergent}",
+                plate_sample_counts[plate]
+            ));
+        }
+    }
+    if !unresolved_convergent_remnants.is_empty() {
+        return Err(format!(
+            "{seed}: convergence-dominated subresolution plates survived terminal accretion: {}",
+            unresolved_convergent_remnants.join(", ")
+        ));
+    }
+
     let mut tiny_plate_details = Vec::new();
     for (plate, fraction) in plate_area_fractions.iter().copied().enumerate() {
         if fraction >= 0.005 {
