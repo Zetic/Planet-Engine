@@ -1877,7 +1877,7 @@ fn validate_forward_state<T: PlanetTopology>(
     }
     if samples.iter().any(|count| *count == 0) {
         return Err(WorldgenError::InvalidTectonics(
-            "forward plate evolution eliminated a requested modern plate",
+            "forward plate evolution retained an empty plate id after compaction",
         ));
     }
     Ok(())
@@ -1887,7 +1887,7 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
     topology: &T,
     mut model: HistoricalLithosphereModel,
     seed: &str,
-    target_plate_count: u16,
+    requested_plate_scale: u16,
     planet: PlanetPhysicalParameters,
 ) -> Result<HistoricalLithosphereModel, WorldgenError> {
     planet
@@ -1902,9 +1902,9 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
         ));
     }
 
-    if target_plate_count == 0 || target_plate_count > model.metrics.modern_plate_count {
+    if requested_plate_scale == 0 || requested_plate_scale > model.metrics.modern_plate_count {
         return Err(WorldgenError::InvalidTectonics(
-            "forward plate evolution target must be within the ancestral plate count",
+            "forward plate evolution requested scale must be within the ancestral plate count",
         ));
     }
 
@@ -1915,7 +1915,7 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
             "historical state is missing current plate kinematics",
         ));
     }
-    let rift_budget = (usize::from(target_plate_count) / 12).clamp(1, 3);
+    let rift_budget = (usize::from(requested_plate_scale) / 12).clamp(1, 3);
     let mut splits_completed = 0usize;
     for epoch in 0..FORWARD_EPOCHS {
         let mut generation_fragments = BTreeMap::<(u8, u16, u8, u16), u16>::new();
@@ -1955,10 +1955,8 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
             splits_completed += 1;
         }
 
-        // Do not force the requested present count during history. Convergent overlap is allowed
-        // to erase surface plates naturally over the full integration interval. Any residual count
-        // mismatch is handled only after the physical history has had the opportunity to resolve it,
-        // and is reported separately as fallback extinction.
+        // The requested scale does not schedule births or deaths. The epoch ends with whatever
+        // topology the physical rifting, advection, convergence, accretion, and extinction produced.
     }
 
     // Present plate cardinality is an output of physical births and extinctions. The request sets
