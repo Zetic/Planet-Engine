@@ -1695,7 +1695,7 @@ fn split_one_rifting_plate<T: PlanetTopology>(
     extensional_strain_myr: &mut [f32],
 ) -> bool {
     let plate_count = model.metrics.modern_plate_count as usize;
-    if velocities.len() != plate_count || plate_count >= usize::from(u16::MAX) {
+    if velocities.len() != plate_count || plate_count >= usize::from(MAX_TECTONIC_PLATES) {
         return false;
     }
 
