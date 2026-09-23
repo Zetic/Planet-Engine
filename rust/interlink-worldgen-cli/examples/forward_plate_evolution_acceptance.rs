@@ -177,6 +177,19 @@ fn verify_seed(seed: &str) -> Result<usize, String> {
         return Err(format!("{seed}: oceanic chronology collapsed during forward evolution"));
     }
 
+    println!(
+        "forward-mechanisms seed={seed} rift-births={} microplate-births={} natural-extinctions={} consumed={} detached-accreted={} present-plates={} material(c/t/o)={:.1}/{:.1}/{:.1}%",
+        history.metrics.rift_birth_count,
+        history.metrics.detached_microplate_birth_count,
+        history.metrics.natural_extinction_count,
+        history.metrics.convergent_consumed_sample_count,
+        history.metrics.detached_accretion_sample_count,
+        history.metrics.modern_plate_count,
+        history.metrics.continental_area_fraction * 100.0,
+        history.metrics.transitional_area_fraction * 100.0,
+        history.metrics.oceanic_area_fraction * 100.0,
+    );
+
     if !(0.30..=0.58).contains(&history.metrics.continental_area_fraction) {
         return Err(format!(
             "{seed}: forward transport destroyed or overgrew continental material: {:.1}% continental",
