@@ -1951,22 +1951,13 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
         // and is reported separately as fallback extinction.
     }
 
-    // Present plate count is an emergent result of births and physical extinction. The request
-    // supplies the desired tectonic scale, not an exact final partition cardinality. Reject only
-    // histories that drift far enough from that scale to indicate a pathological evolution.
-    let minimum_present = target_plate_count
-        .saturating_mul(2)
-        .div_ceil(3)
-        .max(1);
-    let maximum_present = target_plate_count
-        .saturating_mul(4)
-        .div_ceil(3)
-        .max(minimum_present);
-    if model.metrics.modern_plate_count < minimum_present
-        || model.metrics.modern_plate_count > maximum_present
+    // Present plate cardinality is an output of physical births and extinctions. The request sets
+    // the initial tectonic scale; it must not become a hidden final-state objective.
+    if model.metrics.modern_plate_count == 0
+        || model.metrics.modern_plate_count > MAX_TECTONIC_PLATES
     {
         return Err(WorldgenError::InvalidTectonics(
-            "forward plate evolution drifted outside the requested present-day plate-count scale",
+            "forward plate evolution produced an unsupported emergent plate count",
         ));
     }
 
