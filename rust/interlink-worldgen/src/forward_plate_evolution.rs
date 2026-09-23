@@ -607,6 +607,7 @@ fn consume_convergent_boundary_band<T: PlanetTopology>(
     velocities: &mut Vec<[f64; 3]>,
     generation_fragments: &mut BTreeMap<(u8, u16, u8, u16), u16>,
     extensional_strain_myr: &mut [f32],
+    forward_generated_material: &mut [bool],
     planet: PlanetPhysicalParameters,
     dt_myr: f64,
 ) {
@@ -730,6 +731,7 @@ fn consume_convergent_boundary_band<T: PlanetTopology>(
     let previous_age = model.crust_birth_age_myr.clone();
     let previous_weakness = model.lithospheric_weakness_index.clone();
     let previous_strain = extensional_strain_myr.to_vec();
+    let previous_generated_material = forward_generated_material.to_vec();
 
     let mut consumed = 0usize;
     for plate in 0..plate_count {
@@ -771,6 +773,7 @@ fn consume_convergent_boundary_band<T: PlanetTopology>(
                 model.lithospheric_weakness_index[*sample] =
                     previous_weakness[*sample].max(0.48);
                 extensional_strain_myr[*sample] = previous_strain[*sample] * 0.70;
+                forward_generated_material[*sample] = previous_generated_material[*sample];
             } else {
                 model.origin_plate_ids[*sample] = previous_origin[proposal.donor];
                 model.fragment_ids[*sample] = previous_fragment[proposal.donor];
@@ -779,6 +782,8 @@ fn consume_convergent_boundary_band<T: PlanetTopology>(
                 model.lithospheric_weakness_index[*sample] =
                     previous_weakness[proposal.donor];
                 extensional_strain_myr[*sample] = previous_strain[proposal.donor] * 0.65;
+                forward_generated_material[*sample] =
+                    previous_generated_material[proposal.donor];
             }
             consumed += 1;
         }
@@ -1730,16 +1735,16 @@ fn accumulate_extensional_strain<T: PlanetTopology>(
 fn mature_forward_transitional_crust(
     model: &mut HistoricalLithosphereModel,
     extensional_strain_myr: &mut [f32],
+    forward_generated_material: &[bool],
 ) {
     for sample in 0..model.crust_kind.len() {
         if model.crust_kind[sample] != CrustKind::Transitional as u8 {
             continue;
         }
         let age = model.crust_birth_age_myr[sample];
-        // Initial passive-margin transitional crust is old (>100 Myr in the initializer). Only
-        // young material created by this forward solver can cross the breakup threshold here;
-        // inherited continental margins remain transitional unless a new physical opening forms.
-        if age < 100.0
+        // Only material actually created by forward opening may mature through breakup. Inherited
+        // passive-margin transitional lithosphere is never inferred from an arbitrary age cutoff.
+        if forward_generated_material[sample]
             && age >= FORWARD_TRANSITION_MATURATION_MYR
             && extensional_strain_myr[sample] >= 18.0
         {
@@ -2181,6 +2186,7 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
     let stage_seed = derive_stage_seed(seed, FORWARD_PLATE_NAMESPACE);
     let mut velocities = model.current_plate_angular_velocities_rad_per_myr.clone();
     let mut extensional_strain_myr = vec![0.0_f32; topology.sample_count() as usize];
+    let mut forward_generated_material = vec![false; topology.sample_count() as usize];
     if velocities.len() != model.metrics.modern_plate_count as usize {
         return Err(WorldgenError::InvalidTectonics(
             "historical state is missing current plate kinematics",
@@ -2197,6 +2203,7 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
                 epoch as u8,
                 &mut generation_fragments,
                 &mut extensional_strain_myr,
+                &mut forward_generated_material,
                 planet,
                 SUBSTEP_MYR,
             )?;
@@ -2206,6 +2213,7 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
                 &mut velocities,
                 &mut generation_fragments,
                 &mut extensional_strain_myr,
+                &mut forward_generated_material,
                 planet,
                 SUBSTEP_MYR,
             );
@@ -2220,6 +2228,7 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
             mature_forward_transitional_crust(
                 &mut model,
                 &mut extensional_strain_myr,
+                &forward_generated_material,
             );
         }
 
@@ -2282,6 +2291,7 @@ mod tests {
         let mut velocities = model.current_plate_angular_velocities_rad_per_myr.clone();
         let mut generation_fragments = BTreeMap::<(u8, u16, u8, u16), u16>::new();
         let mut strain = vec![0.0_f32; topology.sample_count() as usize];
+        let mut generated_material = vec![false; topology.sample_count() as usize];
 
         advect_substep(
             &topology,
@@ -2290,6 +2300,7 @@ mod tests {
             0,
             &mut generation_fragments,
             &mut strain,
+            &mut generated_material,
             planet,
             SUBSTEP_MYR,
         )
