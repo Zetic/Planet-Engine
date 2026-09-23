@@ -745,9 +745,25 @@ fn consume_convergent_boundary_band<T: PlanetTopology>(
             model.current_plate_ids[*sample] = proposal.winner;
             model.origin_plate_ids[*sample] = previous_origin[proposal.donor];
             model.fragment_ids[*sample] = previous_fragment[proposal.donor];
-            model.crust_kind[*sample] = previous_kind[proposal.donor];
-            model.crust_birth_age_myr[*sample] = previous_age[proposal.donor];
-            model.lithospheric_weakness_index[*sample] = previous_weakness[proposal.donor];
+
+            let victim_kind = previous_kind[*sample];
+            let donor_kind = previous_kind[proposal.donor];
+            if victim_kind != CrustKind::Continental as u8
+                && donor_kind == CrustKind::Continental as u8
+            {
+                // Closing an ocean against a continent must not clone continental basement
+                // one raster cell at a time. The slab leaves the exposed surface, while the
+                // overriding margin advances as young accretionary/forearc lithosphere.
+                // This keeps plate ownership migration physical without manufacturing continent.
+                model.crust_kind[*sample] = CrustKind::Transitional as u8;
+                model.crust_birth_age_myr[*sample] = 0.0;
+                model.lithospheric_weakness_index[*sample] = 0.72;
+            } else {
+                model.crust_kind[*sample] = donor_kind;
+                model.crust_birth_age_myr[*sample] = previous_age[proposal.donor];
+                model.lithospheric_weakness_index[*sample] =
+                    previous_weakness[proposal.donor];
+            }
             consumed += 1;
         }
     }
