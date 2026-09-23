@@ -831,6 +831,7 @@ fn advect_substep<T: PlanetTopology>(
     epoch: u8,
     generation_fragments: &mut BTreeMap<(u8, u16, u8, u16), u16>,
     extensional_strain_myr: &mut Vec<f32>,
+    forward_generated_material: &mut Vec<bool>,
     planet: PlanetPhysicalParameters,
     dt_myr: f64,
 ) -> Result<(), WorldgenError> {
@@ -846,7 +847,9 @@ fn advect_substep<T: PlanetTopology>(
     let old_age = model.crust_birth_age_myr.clone();
     let old_weakness = model.lithospheric_weakness_index.clone();
     let old_strain = extensional_strain_myr.clone();
+    let old_generated_material = forward_generated_material.clone();
     debug_assert_eq!(old_strain.len(), count);
+    debug_assert_eq!(old_generated_material.len(), count);
 
     let mut new_origin = vec![u16::MAX; count];
     let mut new_fragment = vec![u16::MAX; count];
@@ -855,6 +858,7 @@ fn advect_substep<T: PlanetTopology>(
     let mut new_age = vec![0.0_f32; count];
     let mut new_weakness = vec![0.0_f32; count];
     let mut new_strain = vec![0.0_f32; count];
+    let mut new_generated_material = vec![false; count];
     let mut generated = vec![false; count];
 
     // Semi-Lagrangian rigid transport: for each destination cell, back-rotate through every
@@ -925,6 +929,7 @@ fn advect_substep<T: PlanetTopology>(
         new_fragment[destination_index] = old_fragment[source];
         new_owner[destination_index] = plate;
         new_kind[destination_index] = old_kind[source];
+        new_generated_material[destination_index] = old_generated_material[source];
         let interpolated_age = interpolate_owned_scalar(
             topology,
             preimage,
@@ -959,7 +964,7 @@ fn advect_substep<T: PlanetTopology>(
         .clamp(0.0, 160.0);
         new_age[destination_index] = if old_kind[source] == CrustKind::Oceanic as u8
             || (old_kind[source] == CrustKind::Transitional as u8
-                && interpolated_age < 100.0)
+                && old_generated_material[source])
         {
             (interpolated_age + dt_myr as f32).clamp(0.0, 220.0)
         } else {
@@ -982,6 +987,7 @@ fn advect_substep<T: PlanetTopology>(
         let previous_age = new_age.clone();
         let previous_weakness = new_weakness.clone();
         let previous_strain = new_strain.clone();
+        let previous_generated_material = new_generated_material.clone();
         let mut changed = 0usize;
         for sample in 0..topology.sample_count() {
             let index = sample as usize;
@@ -1047,6 +1053,7 @@ fn advect_substep<T: PlanetTopology>(
                 };
                 new_strain[index] = 0.0;
                 new_age[index] = 0.0;
+                new_generated_material[index] = true;
                 generated[index] = true;
             } else {
                 // A semi-Lagrangian raster can leave a one-cell sampling hole even inside a rigid
@@ -1056,6 +1063,7 @@ fn advect_substep<T: PlanetTopology>(
                 new_age[index] = previous_age[donor];
                 new_weakness[index] = previous_weakness[donor];
                 new_strain[index] = previous_strain[donor];
+                new_generated_material[index] = previous_generated_material[donor];
             }
             changed += 1;
         }
@@ -1115,6 +1123,7 @@ fn advect_substep<T: PlanetTopology>(
     model.metrics.modern_plate_count = velocities.len() as u16;
     model.lithospheric_weakness_index = new_weakness;
     *extensional_strain_myr = new_strain;
+    *forward_generated_material = new_generated_material;
     model.crust_kind = new_kind;
     model.crust_birth_age_myr = new_age;
     Ok(())
