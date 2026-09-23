@@ -382,6 +382,7 @@ fn resolve_plate_connectivity<T: PlanetTopology>(
     owners: &mut [u16],
     velocities: &mut Vec<[f64; 3]>,
     planet: PlanetPhysicalParameters,
+    allow_microplate_birth: bool,
 ) -> ConnectivityResolution {
     let initial_plate_count = velocities.len();
     let mut resolution = ConnectivityResolution::default();
@@ -480,10 +481,10 @@ fn resolve_plate_connectivity<T: PlanetTopology>(
 
             let substantial_remnant =
                 component.len() >= 16 && component.len().saturating_mul(4) >= primary_size;
-            let recipient = if substantial_remnant {
-                // A sizeable detached lithospheric body is not erased just because one edge is
-                // convergent. Preserve it as a microplate; only genuinely small scraps accrete
-                // onto a neighboring plate.
+            let recipient = if substantial_remnant && allow_microplate_birth {
+                // Only a physical fragmentation step may promote a detached lithospheric remnant
+                // into an independent plate. Pure semi-Lagrangian remapping is not allowed to mint
+                // tectonic bodies from raster disconnects.
                 None
             } else if let Some(owner) = best_convergent {
                 Some(owner)
@@ -792,6 +793,7 @@ fn consume_convergent_boundary_band<T: PlanetTopology>(
         &mut model.current_plate_ids,
         velocities,
         planet,
+        true,
     );
     model.metrics.detached_accretion_sample_count = model
         .metrics
@@ -1064,7 +1066,7 @@ fn advect_substep<T: PlanetTopology>(
     }
 
     let connectivity =
-        resolve_plate_connectivity(topology, &mut new_owner, velocities, planet);
+        resolve_plate_connectivity(topology, &mut new_owner, velocities, planet, false);
     model.metrics.detached_accretion_sample_count = model
         .metrics
         .detached_accretion_sample_count
