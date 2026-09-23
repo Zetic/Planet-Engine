@@ -222,10 +222,11 @@ fn verify_seed(seed: &str) -> Result<usize, String> {
             history.metrics.continental_area_fraction * 100.0
         ));
     }
-    if history.metrics.transitional_area_fraction > 0.22 {
+    let young_transitional_fraction = young_transitional_area / total_area;
+    if young_transitional_fraction > 0.06 {
         return Err(format!(
-            "{seed}: forward transport converted too much surface into unresolved transitional gaps: {:.1}%",
-            history.metrics.transitional_area_fraction * 100.0
+            "{seed}: forward evolution left {:.1}% of the surface as young unresolved transitional opening material",
+            young_transitional_fraction * 100.0
         ));
     }
 
@@ -272,6 +273,22 @@ fn verify_seed(seed: &str) -> Result<usize, String> {
     if (closure - 1.0).abs() > 1.0e-12 {
         return Err(format!("{seed}: present plate area does not close"));
     }
+
+    let mut plate_fractions = plate_area
+        .iter()
+        .map(|area| *area / total_area)
+        .collect::<Vec<_>>();
+    plate_fractions.sort_by(|left, right| left.total_cmp(right));
+    let tiny_plate_count = plate_fractions.iter().filter(|fraction| **fraction < 0.005).count();
+    let median_plate_fraction = plate_fractions[plate_fractions.len() / 2];
+    println!(
+        "forward-plate-areas seed={seed} min={:.2}% median={:.2}% max={:.2}% tiny(<0.5%)={}/{}",
+        plate_fractions[0] * 100.0,
+        median_plate_fraction * 100.0,
+        plate_fractions[plate_fractions.len() - 1] * 100.0,
+        tiny_plate_count,
+        plate_fractions.len(),
+    );
 
     println!(
         "forward-plate-evolution seed={seed} migrated={:.1}% created={} generated-fragments={} rift-births={} natural-extinctions={} consumed={} detached-accreted={} microplate-births={} present-plates={} material(c/t/o)={:.1}/{:.1}/{:.1}% ocean-age={:.1}..{:.1}Myr events={} history={}",
