@@ -177,6 +177,32 @@ fn verify_seed(seed: &str) -> Result<usize, String> {
         return Err(format!("{seed}: oceanic chronology collapsed during forward evolution"));
     }
 
+    let total_area = (0..topology.sample_count())
+        .map(|sample| topology.area_steradians(sample))
+        .sum::<f64>()
+        .max(1.0e-12);
+    let young_transitional_area = (0..topology.sample_count())
+        .filter(|sample| {
+            let index = *sample as usize;
+            history.crust_kind[index] == CrustKind::Transitional as u8
+                && history.crust_birth_age_myr[index] < 100.0
+        })
+        .map(|sample| topology.area_steradians(sample))
+        .sum::<f64>();
+    let inherited_transitional_area = (0..topology.sample_count())
+        .filter(|sample| {
+            let index = *sample as usize;
+            history.crust_kind[index] == CrustKind::Transitional as u8
+                && history.crust_birth_age_myr[index] >= 100.0
+        })
+        .map(|sample| topology.area_steradians(sample))
+        .sum::<f64>();
+    println!(
+        "forward-transition-diagnostic seed={seed} young={:.1}% inherited={:.1}%",
+        young_transitional_area / total_area * 100.0,
+        inherited_transitional_area / total_area * 100.0,
+    );
+
     println!(
         "forward-mechanisms seed={seed} rift-births={} microplate-births={} natural-extinctions={} consumed={} detached-accreted={} present-plates={} material(c/t/o)={:.1}/{:.1}/{:.1}%",
         history.metrics.rift_birth_count,
