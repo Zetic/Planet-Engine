@@ -4,7 +4,6 @@ set -euo pipefail
 OUT_DIR="${1:-src/wasm-worldgen}"
 WASM_BINDGEN_VERSION="0.2.127"
 
-# PR83 package refresh trigger; remove after the committed artifact is regenerated.
 if ! command -v wasm-bindgen >/dev/null 2>&1; then
   echo "wasm-bindgen CLI ${WASM_BINDGEN_VERSION} is required." >&2
   echo "Install with: cargo install wasm-bindgen-cli --version ${WASM_BINDGEN_VERSION} --locked" >&2
