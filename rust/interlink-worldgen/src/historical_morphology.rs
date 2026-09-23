@@ -317,6 +317,17 @@ pub fn build_historical_tectonic_morphology<T: PlanetTopology>(
             HistoricalEventKind::Capture => {
                 seed_pair(&mut accretion_seed, a, b, event_signal * 0.48);
             }
+            HistoricalEventKind::MicroplateFormation => {
+                seed_pair_with_age(
+                    &mut shear_seed,
+                    &mut shear_age_seed,
+                    a,
+                    b,
+                    event_signal * 0.82,
+                    age,
+                );
+                seed_pair(&mut accretion_seed, a, b, event_signal * 0.34);
+            }
         }
     }
 
