@@ -965,16 +965,26 @@ fn advect_substep<T: PlanetTopology>(
             if choices.is_empty() {
                 continue;
             }
-            // Gap ownership must remain deterministic while the raster remapper is still
-            // non-conservative. Prefer a stable neighboring owner here; material creation itself
-            // is still gated by kinematic divergence below. A later conservative remapper can
-            // replace this without feeding ancestry into physical state.
-            choices.sort_by_key(|neighbor| {
-                (
-                    previous_owner[*neighbor],
-                    previous_origin[*neighbor],
-                    *neighbor,
-                )
+            // Assign the uncovered cell to the neighboring plate whose inverse-advected
+            // preimage best lands on that margin. This is a geometric/kinematic decision only:
+            // provenance and genealogy are not allowed to decide physical ownership.
+            let sample_position = topology.unit_position(sample);
+            choices.sort_by(|left, right| {
+                let score = |neighbor: usize| {
+                    let owner = previous_owner[neighbor] as usize;
+                    if owner >= velocities.len() {
+                        return f64::INFINITY;
+                    }
+                    let preimage =
+                        rotate_by_angular_velocity(sample_position, velocities[owner], -dt_myr);
+                    dot(preimage, topology.unit_position(neighbor as u32))
+                        .clamp(-1.0, 1.0)
+                        .acos()
+                };
+                score(*left)
+                    .total_cmp(&score(*right))
+                    .then_with(|| previous_owner[*left].cmp(&previous_owner[*right]))
+                    .then_with(|| left.cmp(right))
             });
             let donor = choices[0];
             let divergent_gap =
