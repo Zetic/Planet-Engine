@@ -1660,7 +1660,8 @@ fn mature_forward_transitional_crust(
         }
         let age = model.crust_birth_age_myr[sample];
         // Initial passive-margin transitional crust is old (>100 Myr in the initializer). Only
-        // young material created by this forward solver can cross the breakup threshold here.
+        // young material created by this forward solver can cross the breakup threshold here;
+        // inherited continental margins remain transitional unless a new physical opening forms.
         if age < 100.0
             && age >= FORWARD_TRANSITION_MATURATION_MYR
             && extensional_strain_myr[sample] >= 18.0
