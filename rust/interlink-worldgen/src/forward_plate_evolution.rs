@@ -2501,6 +2501,26 @@ mod tests {
             reference.current_plate_angular_velocities_rad_per_myr,
             provenance_intervened.current_plate_angular_velocities_rad_per_myr
         );
+        assert_eq!(
+            reference.current_plate_history_ids,
+            provenance_intervened.current_plate_history_ids,
+            "stable tectonic-body identities leaked ancestral provenance labels"
+        );
+        let reference_event_plates = reference
+            .events
+            .iter()
+            .map(|event| (event.plate_a, event.plate_b))
+            .collect::<Vec<_>>();
+        let intervened_event_plates = provenance_intervened
+            .events
+            .iter()
+            .map(|event| (event.plate_a, event.plate_b))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            reference_event_plates,
+            intervened_event_plates,
+            "physical event plate identities leaked ancestral provenance labels"
+        );
     }
 
     #[test]
