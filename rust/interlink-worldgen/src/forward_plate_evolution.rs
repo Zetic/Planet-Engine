@@ -640,6 +640,115 @@ fn compact_extinct_plates(
     removed
 }
 
+const MIN_RESOLVABLE_PLATE_SAMPLES: usize = 12;
+
+fn accrete_underresolved_convergent_plates<T: PlanetTopology>(
+    topology: &T,
+    owners: &mut [u16],
+    velocities: &[[f64; 3]],
+    planet: PlanetPhysicalParameters,
+) -> usize {
+    let plate_count = velocities.len();
+    if plate_count <= 1 {
+        return 0;
+    }
+
+    let mut sample_counts = vec![0usize; plate_count];
+    for owner in owners.iter().copied() {
+        let plate = owner as usize;
+        if plate < plate_count {
+            sample_counts[plate] += 1;
+        }
+    }
+
+    let mut replacements = vec![None::<u16>; plate_count];
+    for plate in 0..plate_count {
+        if sample_counts[plate] == 0 || sample_counts[plate] > MIN_RESOLVABLE_PLATE_SAMPLES {
+            continue;
+        }
+
+        let mut contacts = BTreeMap::<u16, (usize, usize, usize, f64)>::new();
+        for sample in 0..topology.sample_count() {
+            let index = sample as usize;
+            if owners[index] as usize != plate {
+                continue;
+            }
+            let position = topology.unit_position(sample);
+            for neighbor in topology.neighbors(sample) {
+                let ni = *neighbor as usize;
+                let candidate = owners[ni];
+                let candidate_index = candidate as usize;
+                if candidate_index == plate
+                    || candidate_index >= plate_count
+                    || sample_counts[candidate_index] <= MIN_RESOLVABLE_PLATE_SAMPLES
+                {
+                    continue;
+                }
+
+                let neighbor_position = topology.unit_position(*neighbor);
+                let midpoint = normalize_or(add(position, neighbor_position), position);
+                let normal = normalize_or(sub(neighbor_position, position), position);
+                let tangent = normalize_or(cross(midpoint, normal), [1.0, 0.0, 0.0]);
+                let plate_velocity = scale(
+                    cross(velocities[plate], midpoint),
+                    planet.radius_m / 1_000_000.0,
+                );
+                let candidate_velocity = scale(
+                    cross(velocities[candidate_index], midpoint),
+                    planet.radius_m / 1_000_000.0,
+                );
+                let relative = sub(candidate_velocity, plate_velocity);
+                let normal_rate = dot(relative, normal);
+                let shear_rate = dot(relative, tangent);
+                let speed = normal_rate.hypot(shear_rate);
+                let entry = contacts.entry(candidate).or_insert((0, 0, 0, 0.0));
+                entry.0 += 1;
+                if speed > 1.0e-12 && normal_rate.abs() >= speed * 0.35 {
+                    if normal_rate < 0.0 {
+                        entry.1 += 1;
+                        entry.3 += -normal_rate;
+                    } else {
+                        entry.2 += 1;
+                    }
+                }
+            }
+        }
+
+        let convergent_edges = contacts.values().map(|entry| entry.1).sum::<usize>();
+        let divergent_edges = contacts.values().map(|entry| entry.2).sum::<usize>();
+        if convergent_edges == 0 || convergent_edges <= divergent_edges {
+            continue;
+        }
+
+        let recipient = contacts
+            .iter()
+            .filter(|(_, entry)| entry.1 > 0)
+            .max_by(|left, right| {
+                left.1
+                    .3
+                    .total_cmp(&right.1.3)
+                    .then_with(|| left.1.1.cmp(&right.1.1))
+                    .then_with(|| left.1.0.cmp(&right.1.0))
+                    .then_with(|| right.0.cmp(left.0))
+            })
+            .map(|(owner, _)| *owner);
+        replacements[plate] = recipient;
+    }
+
+    let mut accreted = 0usize;
+    for owner in owners.iter_mut() {
+        let plate = *owner as usize;
+        if plate >= replacements.len() {
+            continue;
+        }
+        if let Some(recipient) = replacements[plate] {
+            *owner = recipient;
+            accreted += 1;
+        }
+    }
+    accreted
+}
+
 #[derive(Clone, Copy)]
 struct ConvergentConsumptionProposal {
     strength: f64,
@@ -848,19 +957,19 @@ fn consume_convergent_boundary_band<T: PlanetTopology>(
         }
     }
 
-    if consumed == 0 {
-        return;
-    }
-
-    let connectivity = resolve_plate_connectivity(
-        topology,
-        &mut model.current_plate_ids,
-        velocities,
-        plate_history_ids,
-        next_plate_history_id,
-        planet,
-        true,
-    );
+    let connectivity = if consumed > 0 {
+        resolve_plate_connectivity(
+            topology,
+            &mut model.current_plate_ids,
+            velocities,
+            plate_history_ids,
+            next_plate_history_id,
+            planet,
+            true,
+        )
+    } else {
+        ConnectivityResolution::default()
+    };
     model.metrics.detached_accretion_sample_count = model
         .metrics
         .detached_accretion_sample_count
@@ -890,6 +999,25 @@ fn consume_convergent_boundary_band<T: PlanetTopology>(
     if connectivity.microplate_births > 0 {
         generation_fragments.clear();
     }
+
+    // A plate that has been reduced below the mesh's minimum useful rigid-body support and is
+    // still convergence-dominated is a terminal accretion remnant, not a durable microplate.
+    // Resolve that disappearance through current kinematics only. Extensional/transform-dominated
+    // small plates remain intact, and no requested-count target participates in this decision.
+    let terminal_accreted = accrete_underresolved_convergent_plates(
+        topology,
+        &mut model.current_plate_ids,
+        velocities,
+        planet,
+    );
+    if terminal_accreted > 0 {
+        generation_fragments.clear();
+        consumed = consumed.saturating_add(terminal_accreted);
+    }
+    if consumed == 0 && connectivity.microplate_births == 0 {
+        return;
+    }
+
     let extinct = compact_extinct_plates(
         &mut model.current_plate_ids,
         velocities,
