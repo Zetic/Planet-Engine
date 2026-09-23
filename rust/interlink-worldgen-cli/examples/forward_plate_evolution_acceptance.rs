@@ -57,6 +57,19 @@ fn verify_seed(seed: &str) -> Result<usize, String> {
         ));
     }
 
+    if history.current_plate_history_ids.len() != first.tectonics.plates.len() {
+        return Err(format!(
+            "{seed}: stable historical plate identity map does not match emergent plate count"
+        ));
+    }
+    let unique_history_ids = history
+        .current_plate_history_ids
+        .iter()
+        .copied()
+        .collect::<BTreeSet<_>>();
+    if unique_history_ids.len() != history.current_plate_history_ids.len() {
+        return Err(format!("{seed}: present plates do not have unique stable historical identities"));
+    }
     if history.current_plate_angular_velocities_rad_per_myr.len() != first.tectonics.plates.len() {
         return Err(format!(
             "{seed}: evolved plate kinematics were not preserved into the present tectonic model"
@@ -254,6 +267,23 @@ fn verify_seed(seed: &str) -> Result<usize, String> {
                 && event.displacement_km.abs() <= 0.001
         })
         .count();
+    if rift_birth_events != usize::from(history.metrics.rift_birth_count) {
+        return Err(format!(
+            "{seed}: rift-birth metric/event mismatch {} != {}",
+            history.metrics.rift_birth_count, rift_birth_events
+        ));
+    }
+    let microplate_events = history
+        .events
+        .iter()
+        .filter(|event| event.kind == HistoricalEventKind::MicroplateFormation)
+        .count();
+    if microplate_events != usize::from(history.metrics.detached_microplate_birth_count) {
+        return Err(format!(
+            "{seed}: microplate-birth metric/event mismatch {} != {}",
+            history.metrics.detached_microplate_birth_count, microplate_events
+        ));
+    }
     let rift_birth_ages = history
         .events
         .iter()
