@@ -666,6 +666,7 @@ fn consume_convergent_boundary_band<T: PlanetTopology>(
     generation_fragments: &mut BTreeMap<(u8, u16, u8, u16), u16>,
     extensional_strain_myr: &mut [f32],
     forward_generated_material: &mut [bool],
+    epoch: u8,
     planet: PlanetPhysicalParameters,
     dt_myr: f64,
 ) {
@@ -868,6 +869,24 @@ fn consume_convergent_boundary_band<T: PlanetTopology>(
         .metrics
         .detached_microplate_birth_count
         .saturating_add(connectivity.microplate_births as u16);
+    for birth in &connectivity.microplate_events {
+        let a = birth.sample_a as usize;
+        let b = birth.sample_b as usize;
+        model.events.push(HistoricalTectonicEvent {
+            id: model.events.len() as u32,
+            kind: HistoricalEventKind::MicroplateFormation,
+            epoch: epoch.min(crate::HISTORICAL_EPOCH_COUNT - 1),
+            age_myr: ((FORWARD_EPOCHS - usize::from(epoch)) as f64 * EPOCH_DURATION_MYR) as f32,
+            plate_a: birth.parent_history_id,
+            plate_b: birth.child_history_id,
+            fragment_a: model.fragment_ids[a],
+            fragment_b: model.fragment_ids[b],
+            displacement_km: 0.0,
+            strength: 0.52,
+            geometry_sample_a: birth.sample_a,
+            geometry_sample_b: birth.sample_b,
+        });
+    }
     if connectivity.microplate_births > 0 {
         generation_fragments.clear();
     }
@@ -2325,6 +2344,7 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
                 &mut generation_fragments,
                 &mut extensional_strain_myr,
                 &mut forward_generated_material,
+                epoch as u8,
                 planet,
                 SUBSTEP_MYR,
             );
