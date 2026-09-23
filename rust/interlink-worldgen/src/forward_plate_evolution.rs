@@ -10,6 +10,9 @@ const FORWARD_EPOCHS: usize = 8;
 const SUBSTEPS_PER_EPOCH: usize = 4;
 const EPOCH_DURATION_MYR: f64 = 20.0;
 const SUBSTEP_MYR: f64 = EPOCH_DURATION_MYR / SUBSTEPS_PER_EPOCH as f64;
+const RIFT_STRAIN_NUCLEATION_MYR: f32 = 26.0;
+const RIFT_STRAIN_RELIEF_FACTOR: f32 = 0.22;
+const FORWARD_TRANSITION_MATURATION_MYR: f32 = 30.0;
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 
@@ -821,6 +824,7 @@ fn advect_substep<T: PlanetTopology>(
     velocities: &mut Vec<[f64; 3]>,
     epoch: u8,
     generation_fragments: &mut BTreeMap<(u8, u16, u8, u16), u16>,
+    extensional_strain_myr: &mut Vec<f32>,
     planet: PlanetPhysicalParameters,
     dt_myr: f64,
 ) -> Result<(), WorldgenError> {
@@ -835,6 +839,8 @@ fn advect_substep<T: PlanetTopology>(
     let old_kind = model.crust_kind.clone();
     let old_age = model.crust_birth_age_myr.clone();
     let old_weakness = model.lithospheric_weakness_index.clone();
+    let old_strain = extensional_strain_myr.clone();
+    debug_assert_eq!(old_strain.len(), count);
 
     let mut new_origin = vec![u16::MAX; count];
     let mut new_fragment = vec![u16::MAX; count];
@@ -842,6 +848,7 @@ fn advect_substep<T: PlanetTopology>(
     let mut new_kind = vec![CrustKind::Oceanic as u8; count];
     let mut new_age = vec![0.0_f32; count];
     let mut new_weakness = vec![0.0_f32; count];
+    let mut new_strain = vec![0.0_f32; count];
     let mut generated = vec![false; count];
 
     // Semi-Lagrangian rigid transport: for each destination cell, back-rotate through every
@@ -933,7 +940,21 @@ fn advect_substep<T: PlanetTopology>(
             &old_weakness,
         )
         .clamp(0.0, 1.0);
-        new_age[destination_index] = if old_kind[source] == CrustKind::Oceanic as u8 {
+        new_strain[destination_index] = interpolate_owned_scalar(
+            topology,
+            preimage,
+            source as u32,
+            plate,
+            old_kind[source],
+            &old_owner,
+            &old_kind,
+            &old_strain,
+        )
+        .clamp(0.0, 160.0);
+        new_age[destination_index] = if old_kind[source] == CrustKind::Oceanic as u8
+            || (old_kind[source] == CrustKind::Transitional as u8
+                && interpolated_age < 100.0)
+        {
             (interpolated_age + dt_myr as f32).clamp(0.0, 220.0)
         } else {
             interpolated_age
@@ -954,6 +975,7 @@ fn advect_substep<T: PlanetTopology>(
         let previous_kind = new_kind.clone();
         let previous_age = new_age.clone();
         let previous_weakness = new_weakness.clone();
+        let previous_strain = new_strain.clone();
         let mut changed = 0usize;
         for sample in 0..topology.sample_count() {
             let index = sample as usize;
@@ -1017,6 +1039,7 @@ fn advect_substep<T: PlanetTopology>(
                 } else {
                     0.74
                 };
+                new_strain[index] = 0.0;
                 new_age[index] = 0.0;
                 generated[index] = true;
             } else {
@@ -1026,6 +1049,7 @@ fn advect_substep<T: PlanetTopology>(
                 new_kind[index] = previous_kind[donor];
                 new_age[index] = previous_age[donor];
                 new_weakness[index] = previous_weakness[donor];
+                new_strain[index] = previous_strain[donor];
             }
             changed += 1;
         }
@@ -1084,6 +1108,7 @@ fn advect_substep<T: PlanetTopology>(
     model.current_plate_ids = new_owner;
     model.metrics.modern_plate_count = velocities.len() as u16;
     model.lithospheric_weakness_index = new_weakness;
+    *extensional_strain_myr = new_strain;
     model.crust_kind = new_kind;
     model.crust_birth_age_myr = new_age;
     Ok(())
