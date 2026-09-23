@@ -924,6 +924,10 @@ fn build_history_fields<T: PlanetTopology>(
                     register(&mut arc_seed, sample, strength * 0.48);
                 }
                 HistoricalEventKind::Capture => register(&mut orogen_seed, sample, strength * 0.18),
+                HistoricalEventKind::MicroplateFormation => {
+                    register(&mut transform_seed, sample, strength * 0.82);
+                    register(&mut orogen_seed, sample, strength * 0.12);
+                }
             }
         }
     }
