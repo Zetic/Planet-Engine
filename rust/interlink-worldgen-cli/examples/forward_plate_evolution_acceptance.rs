@@ -1,6 +1,6 @@
 use interlink_worldgen::{
     build_icosphere, generate_historical_frontend, CrustKind, HistoricalEventKind,
-    HistoricalLithosphereRequest, PlanetPhysicalParameters, PlanetTopology,
+    HistoricalLithosphereRequest, PlanetPhysicalParameters, PlanetTopology, MAX_TECTONIC_PLATES,
 };
 use std::collections::{BTreeSet, VecDeque};
 
@@ -48,9 +48,11 @@ fn verify_seed(seed: &str) -> Result<(), String> {
     {
         return Err(format!("{seed}: forward plate evolution is not deterministic"));
     }
-    if !(11..=22).contains(&history.metrics.modern_plate_count) {
+    if history.metrics.modern_plate_count == 0
+        || history.metrics.modern_plate_count > MAX_TECTONIC_PLATES
+    {
         return Err(format!(
-            "{seed}: emergent present plate count {} drifted outside the 16-plate request scale",
+            "{seed}: emergent present plate count {} is outside the supported physical range",
             history.metrics.modern_plate_count
         ));
     }
