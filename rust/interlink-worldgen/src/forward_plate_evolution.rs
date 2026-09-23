@@ -1528,9 +1528,9 @@ impl PlateRiftForcing {
     fn can_nucleate_rift(self) -> bool {
         let extension = self.mean_extension();
         let compression = self.mean_compression();
-        extension >= 0.002
-            && self.net_tension() >= 0.001
-            && extension >= compression * 0.35
+        extension >= 0.006
+            && self.net_tension() >= 0.0035
+            && extension >= compression * 0.65
     }
 }
 
@@ -1659,7 +1659,7 @@ fn split_one_rifting_plate<T: PlanetTopology>(
             let weakness = (f64::from(model.lithospheric_weakness_index[a])
                 + f64::from(model.lithospheric_weakness_index[b]))
                 * 0.5;
-            if weakness < 0.30 {
+            if weakness < 0.42 {
                 continue;
             }
             let material_bonus = if model.crust_kind[a] != CrustKind::Oceanic as u8
@@ -1712,6 +1712,9 @@ fn split_one_rifting_plate<T: PlanetTopology>(
             else {
                 continue;
             };
+            if cut_weakness < 0.46 {
+                continue;
+            }
             let size_weight = (samples.len() as f64 / 64.0).sqrt().min(3.0);
             let score = candidate.score
                 * (0.55 + 0.45 * balance)
