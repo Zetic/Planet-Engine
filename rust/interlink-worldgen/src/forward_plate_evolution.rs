@@ -2260,6 +2260,39 @@ mod tests {
     use crate::{build_icosphere, HistoricalLithosphereRequest};
 
     #[test]
+    fn pure_advection_does_not_mint_microplates_from_raster_disconnects() {
+        let topology = build_icosphere(4).unwrap();
+        let planet = PlanetPhysicalParameters::earthlike_reference();
+        let request = HistoricalLithosphereRequest::new("forward-advection-no-microplates", 16);
+        let mut model = crate::historical_lithosphere::generate_historical_lithosphere(
+            &topology,
+            &request,
+            planet,
+        )
+        .unwrap();
+        let mut velocities = model.current_plate_angular_velocities_rad_per_myr.clone();
+        let mut generation_fragments = BTreeMap::<(u8, u16, u8, u16), u16>::new();
+        let mut strain = vec![0.0_f32; topology.sample_count() as usize];
+
+        advect_substep(
+            &topology,
+            &mut model,
+            &mut velocities,
+            0,
+            &mut generation_fragments,
+            &mut strain,
+            planet,
+            SUBSTEP_MYR,
+        )
+        .unwrap();
+
+        assert_eq!(
+            model.metrics.detached_microplate_birth_count, 0,
+            "semi-Lagrangian remapping must not create tectonic plates by itself"
+        );
+    }
+
+    #[test]
     fn genealogy_partitions_are_inert_to_forward_plate_physics() {
         let topology = build_icosphere(4).unwrap();
         let planet = PlanetPhysicalParameters::earthlike_reference();
