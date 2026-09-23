@@ -128,6 +128,37 @@ fn main() -> Result<(), String> {
         terrain.metrics.topography_hash_hex(),
     );
 
+    if morphology.quiet_ocean.mean_gradient_m_per_km > 1.3 {
+        let components = [
+            ("isostatic", &terrain.isostatic_elevation_m),
+            ("thermal", &terrain.thermal_elevation_m),
+            ("orogenic", &terrain.orogenic_elevation_m),
+            ("ridge", &terrain.ridge_elevation_m),
+            ("rift", &terrain.rift_basin_elevation_m),
+            ("trench", &terrain.trench_elevation_m),
+            ("arc", &terrain.arc_elevation_m),
+            ("mantle", &terrain.mantle_dynamic_elevation_m),
+        ];
+        let mut parts = Vec::new();
+        for (label, values) in components {
+            let mut isolated = terrain.clone();
+            isolated.solid_elevation_m = values.clone();
+            let report = analyze_topography_morphology(
+                &fine,
+                &inherited,
+                &boundaries,
+                planet,
+                &isolated,
+            )
+            .map_err(|error| error.to_string())?;
+            parts.push(format!(
+                "{label}={:.3}",
+                report.quiet_ocean.mean_gradient_m_per_km
+            ));
+        }
+        println!("quiet-ocean component gradients m/km: {}", parts.join(" "));
+    }
+
     println!(
         "PR81 morphology: provenance_edges={} provenance_ratio={:.4} boundary_isolated={}/{} ({:.4}) boundary_agreement={:.4} ocean_age_monotonic={:.4} inversions={} inland_non_oceanic_km2={:.0} unsupported_km2={:.0} unsupported_fraction={:.4} max_unsupported_distance_km={:.0} quiet_ocean_gradient={:.4}",
         morphology.quiet_provenance_contacts.contact_edge_count,

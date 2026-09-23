@@ -1,5 +1,5 @@
 use crate::{
-    derive_stage_seed, dynamic_plate_evolution, historical_causal, historical_epochs,
+    derive_stage_seed, forward_plate_evolution, historical_causal,
     historical_frontend, historical_lithosphere, tectonics, CrustalModel, GeologyRequest,
     HistoricalLithosphereModel, HistoricalLithosphereRequest, LithosphereRequest,
     LithosphericModel, PlanetPhysicalParameters, PlanetTopology, TectonicModel, TectonicsRequest,
@@ -56,12 +56,14 @@ pub fn generate_historical_lithosphere<T: PlanetTopology>(
     let base = with_raw_tectonics_scope(|| {
         historical_lithosphere::generate_historical_lithosphere(topology, request, parameters)
     })?;
-    let lineage =
-        historical_epochs::evolve_historical_lithosphere(topology, base, request.seed.as_str())?;
-    dynamic_plate_evolution::evolve_modern_plate_geometry(
+    // The bounded random fragment-splitting epoch pass was an intermediate history scaffold.
+    // Forward tectonic evolution now owns material transport and topological change. Feeding the
+    // synthetic split schedule into the solver would pre-bake rifts before any plate motion occurs.
+    forward_plate_evolution::evolve_modern_plate_geometry(
         topology,
-        lineage,
+        base,
         request.seed.as_str(),
+        request.modern_plate_count,
         parameters,
     )
 }
@@ -107,7 +109,7 @@ pub fn generate_crust_and_history<T: PlanetTopology>(
         topology,
         &HistoricalLithosphereRequest::new(
             request.seed.as_str(),
-            tectonics_model.metrics.plate_count,
+            tectonics_model.metrics.requested_plate_count,
         ),
         parameters,
     )?;
@@ -156,7 +158,7 @@ pub fn generate_lithosphere<T: PlanetTopology>(
         topology,
         &HistoricalLithosphereRequest::new(
             request.seed.as_str(),
-            tectonics_model.metrics.plate_count,
+            tectonics_model.metrics.requested_plate_count,
         ),
         planet,
     )?;
@@ -230,7 +232,7 @@ mod tests {
         assert!(model
             .events
             .iter()
-            .all(|event| { event.epoch < historical_epochs::HISTORICAL_EPOCH_COUNT }));
+            .all(|event| { event.epoch < crate::HISTORICAL_EPOCH_COUNT }));
     }
 
     #[test]

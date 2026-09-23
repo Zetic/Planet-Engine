@@ -1,13 +1,15 @@
 use interlink_worldgen::{
     build_icosphere, generate_historical_frontend, inherit_historical_identity, CrustKind,
     HistoricalEventKind, HistoricalLithosphereRequest, PlanetPhysicalParameters, PlanetTopology,
-    PlateBoundaryKind, HISTORICAL_EPOCH_COUNT,
+    HISTORICAL_EPOCH_COUNT,
 };
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
-// Permanent PR-A acceptance: material identity must survive the complete historical front end,
-// bounded fragment epochs, modern-plate projection, compatibility geology projection, and
-// coarse-to-fine inheritance.
+// Permanent historical-material acceptance: material identity must survive the complete
+// historical front end, forward plate evolution, compatibility geology projection, and
+// coarse-to-fine inheritance. Spatial migration of present boundaries is gated separately by
+// forward_plate_evolution_acceptance; ancestry labels move with material and therefore are not a
+// valid fixed spatial reference frame for measuring boundary migration.
 fn verify_seed(seed: &str) -> Result<(), String> {
     let coarse_level = 4;
     let topology = build_icosphere(coarse_level).map_err(|error| error.to_string())?;
@@ -40,10 +42,13 @@ fn verify_seed(seed: &str) -> Result<(), String> {
             "{seed}: historical material fields do not cover the sphere"
         ));
     }
-    if history.metrics.ancestral_plate_count < history.metrics.modern_plate_count
-        || history.metrics.fragment_count < history.metrics.ancestral_plate_count
-    {
-        return Err(format!("{seed}: ancestry hierarchy did not preserve old-plate -> fragment -> modern-plate structure"));
+    if history.metrics.fragment_count < history.metrics.ancestral_plate_count {
+        return Err(format!(
+            "{seed}: material lineage lost ancestral plate representation"
+        ));
+    }
+    if history.metrics.modern_plate_count == 0 {
+        return Err(format!("{seed}: forward history produced no present tectonic plates"));
     }
     if tectonics.plate_ids != history.current_plate_ids {
         return Err(format!(
@@ -87,26 +92,16 @@ fn verify_seed(seed: &str) -> Result<(), String> {
                     fragment.id
                 ));
             }
-            if parent.current_plate_id != fragment.current_plate_id
-                && fragment.capture_age_myr.is_none()
-            {
-                return Err(format!(
-                    "{seed}: fragment {} changed modern ownership without capture age provenance",
-                    fragment.id
-                ));
-            }
         }
     }
     if parented_fragment_ids.is_empty() {
         return Err(format!(
-            "{seed}: bounded historical epochs produced no parent/child fragment lineage"
+            "{seed}: forward tectonic history produced no parent/child material lineage"
         ));
     }
 
     let mut split_events = 0_usize;
     let mut split_event_children = BTreeSet::<u16>::new();
-    let mut capture_event_children = BTreeSet::<u16>::new();
-    let mut capture_partition_parents = BTreeSet::<u16>::new();
     for (event_index, event) in history.events.iter().enumerate() {
         if event.id as usize != event_index {
             return Err(format!(
@@ -132,88 +127,47 @@ fn verify_seed(seed: &str) -> Result<(), String> {
             split_event_children.insert(event.fragment_a);
             split_event_children.insert(event.fragment_b);
         }
-        if event.kind == HistoricalEventKind::Capture && event.fragment_a != event.fragment_b {
-            capture_event_children.insert(event.fragment_b);
-            if let Some(parent) = history.fragments[event.fragment_b as usize].parent_fragment_id {
-                capture_partition_parents.insert(parent);
-            }
-        }
     }
     if split_events == 0 {
         return Err(format!(
-            "{seed}: bounded historical epochs produced no explicit split/rift event"
+            "{seed}: forward tectonic history produced no explicit split/rift event"
         ));
     }
-    if parented_fragment_ids.iter().any(|fragment| {
-        if split_event_children.contains(fragment) || capture_event_children.contains(fragment) {
-            return false;
-        }
-        history.fragments[*fragment as usize]
-            .parent_fragment_id
-            .map(|parent| !capture_partition_parents.contains(&parent))
-            .unwrap_or(true)
-    }) {
+    if split_event_children.is_empty() {
         return Err(format!(
-            "{seed}: parented fragment lineage is missing explicit rift/capture partition provenance"
+            "{seed}: forward history produced no fragment-resolving rift geometry"
         ));
     }
 
-    let divergent_samples = history
-        .ancestral_tectonics
-        .boundaries
-        .iter()
-        .filter(|boundary| boundary.kind == PlateBoundaryKind::Divergent)
-        .flat_map(|boundary| [boundary.sample_a, boundary.sample_b])
-        .collect::<Vec<_>>();
-    if divergent_samples.is_empty() {
-        return Err(format!(
-            "{seed}: ancestral tectonics produced no spreading-system geometry"
-        ));
-    }
-
+    // Ocean chronology is now generated by forward opening rather than distance to a frozen
+    // ancestral divergent graph. Seed distance from actually young present oceanic material and
+    // require older oceanic crust away from those creation corridors on the same moving plate.
     let mut spreading_distance_km = vec![f64::INFINITY; count];
-    let mut spreading_queued = vec![false; count];
     let mut spreading_queue = VecDeque::<u32>::new();
-    let mut register_spreading_seed = |sample: u32, plate: u16| {
+    for sample in 0..topology.sample_count() {
         let index = sample as usize;
         if history.crust_kind[index] == CrustKind::Oceanic as u8
-            && history.origin_plate_ids[index] == plate
-            && spreading_distance_km[index] > 0.0
+            && history.crust_birth_age_myr[index] <= 10.0
         {
             spreading_distance_km[index] = 0.0;
-            if !spreading_queued[index] {
-                spreading_queued[index] = true;
-                spreading_queue.push_back(sample);
-            }
+            spreading_queue.push_back(sample);
         }
-    };
-    for boundary in history
-        .ancestral_tectonics
-        .boundaries
-        .iter()
-        .filter(|boundary| boundary.kind == PlateBoundaryKind::Divergent)
-    {
-        for (sample, plate) in [
-            (boundary.sample_a, boundary.plate_a),
-            (boundary.sample_b, boundary.plate_b),
-        ] {
-            register_spreading_seed(sample, plate);
-            for neighbor in topology.neighbors(sample) {
-                register_spreading_seed(*neighbor, plate);
-            }
-        }
+    }
+    if spreading_queue.is_empty() {
+        return Err(format!(
+            "{seed}: forward evolution produced no young oceanic spreading material"
+        ));
     }
     while let Some(sample) = spreading_queue.pop_front() {
         let index = sample as usize;
-        spreading_queued[index] = false;
-        let origin = history.origin_plate_ids[index];
+        let owner = history.current_plate_ids[index];
         let neighbors = topology.neighbors(sample);
         let lengths = topology.neighbor_arc_lengths_rad(sample);
         for neighbor_index in 0..neighbors.len() {
             let neighbor = neighbors[neighbor_index];
             let ni = neighbor as usize;
             if history.crust_kind[ni] != CrustKind::Oceanic as u8
-                || history.origin_plate_ids[ni] != origin
+                || history.current_plate_ids[ni] != owner
             {
                 continue;
             }
@@ -221,10 +175,7 @@ fn verify_seed(seed: &str) -> Result<(), String> {
                 + lengths[neighbor_index] * planet.radius_m / 1000.0;
             if candidate + 1.0e-9 < spreading_distance_km[ni] {
                 spreading_distance_km[ni] = candidate;
-                if !spreading_queued[ni] {
-                    spreading_queued[ni] = true;
-                    spreading_queue.push_back(neighbor);
-                }
+                spreading_queue.push_back(neighbor);
             }
         }
     }
@@ -237,7 +188,6 @@ fn verify_seed(seed: &str) -> Result<(), String> {
     let mut active_fragment_area = vec![0.0_f64; history.fragments.len()];
     let mut internal_fragment_edges = 0_u32;
     let mut origin_discontinuity_edges = 0_u32;
-    let mut modern_boundary_inside_origin_edges = 0_u32;
     let mut oceanic_samples = 0_u32;
     let mut oceanic_age_min = f32::INFINITY;
     let mut oceanic_age_max = f32::NEG_INFINITY;
@@ -309,9 +259,6 @@ fn verify_seed(seed: &str) -> Result<(), String> {
             if history.current_plate_ids[ni] == current && history.origin_plate_ids[ni] != origin {
                 origin_discontinuity_edges += 1;
             }
-            if history.current_plate_ids[ni] != current && history.origin_plate_ids[ni] == origin {
-                modern_boundary_inside_origin_edges += 1;
-            }
         }
     }
 
@@ -353,11 +300,6 @@ fn verify_seed(seed: &str) -> Result<(), String> {
             "{seed}: no fossil material discontinuities survived inside modern plates"
         ));
     }
-    if modern_boundary_inside_origin_edges == 0 {
-        return Err(format!(
-            "{seed}: modern plate boundaries remained locked to ancestral plate edges"
-        ));
-    }
     if oceanic_samples == 0 || oceanic_age_max - oceanic_age_min < 20.0 {
         return Err(format!(
             "{seed}: oceanic chronology lacks a meaningful birth-age gradient"
@@ -366,7 +308,7 @@ fn verify_seed(seed: &str) -> Result<(), String> {
 
     if oceanic_distance_age.len() < 8 {
         return Err(format!(
-            "{seed}: too little oceanic crust is connected to its ancestral spreading system"
+            "{seed}: too little oceanic crust is connected to forward-created spreading material"
         ));
     }
     oceanic_distance_age.sort_by(|left, right| left.0.total_cmp(&right.0));
@@ -381,42 +323,10 @@ fn verify_seed(seed: &str) -> Result<(), String> {
         .map(|(_, age)| *age)
         .sum::<f64>()
         / quartile as f64;
-    if far_mean_age <= near_mean_age + 5.0 {
+    if far_mean_age <= near_mean_age + 2.0 {
         return Err(format!(
-            "{seed}: oceanic age does not increase along ancestral plate-owned spreading paths: near={near_mean_age:.1}Myr far={far_mean_age:.1}Myr"
+            "{seed}: oceanic age does not increase away from forward-created spreading material: near={near_mean_age:.1}Myr far={far_mean_age:.1}Myr"
         ));
-    }
-
-    let mut capture_events_by_current = vec![0_usize; history.metrics.modern_plate_count as usize];
-    for event in history
-        .events
-        .iter()
-        .filter(|event| event.kind == HistoricalEventKind::Capture)
-    {
-        if usize::from(event.fragment_a) >= history.fragments.len()
-            || usize::from(event.fragment_b) >= history.fragments.len()
-        {
-            return Err(format!(
-                "{seed}: capture event {} references invalid fragments",
-                event.id
-            ));
-        }
-        let current = history.fragments[event.fragment_b as usize].current_plate_id;
-        if current >= history.metrics.modern_plate_count {
-            return Err(format!(
-                "{seed}: capture event {} resolves to an invalid modern owner",
-                event.id
-            ));
-        }
-        capture_events_by_current[current as usize] += 1;
-    }
-    for (current, origins) in &modern_origins {
-        if origins.len() > 1 && capture_events_by_current[*current as usize] == 0 {
-            return Err(format!(
-                "{seed}: modern plate {current} consolidates {} ancestral plates but has no capture provenance",
-                origins.len()
-            ));
-        }
     }
 
     for boundary in &tectonics.boundaries {

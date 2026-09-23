@@ -1,4 +1,3 @@
-mod boundary_plate_geometry;
 mod boundary_refinement;
 mod causal_pipeline;
 mod climate;
@@ -8,14 +7,13 @@ mod continental_morphology;
 mod coordinates;
 mod diagnostics;
 mod drainage;
-mod dynamic_plate_evolution;
+mod forward_plate_evolution;
 mod erosion;
 mod evolution;
 mod fields;
 mod geology;
 mod historical_api;
 mod historical_causal;
-mod historical_epochs;
 mod historical_frontend;
 mod historical_lithosphere;
 mod historical_morphology;
@@ -97,7 +95,6 @@ pub use historical_api::{
     generate_tectonics,
 };
 pub use historical_causal::generate_lithosphere_from_history;
-pub use historical_epochs::HISTORICAL_EPOCH_COUNT;
 pub use historical_frontend::{
     generate_historical_frontend, inherit_historical_identity, project_historical_crust,
     project_historical_modern_tectonics, HistoricalFrontend, InheritedHistoricalIdentity,
@@ -105,8 +102,8 @@ pub use historical_frontend::{
 };
 pub use historical_lithosphere::{
     CrustFragment, HistoricalEventKind, HistoricalLithosphereMetrics, HistoricalLithosphereModel,
-    HistoricalLithosphereRequest, HistoricalTectonicEvent, HISTORICAL_LITHOSPHERE_STAGE_ID,
-    HISTORICAL_LITHOSPHERE_STAGE_VERSION,
+    HistoricalLithosphereRequest, HistoricalTectonicEvent, HISTORICAL_EPOCH_COUNT,
+    HISTORICAL_LITHOSPHERE_STAGE_ID, HISTORICAL_LITHOSPHERE_STAGE_VERSION,
 };
 pub use historical_morphology::{
     build_historical_tectonic_morphology, HistoricalMorphologyMetrics, HistoricalMorphologyModel,

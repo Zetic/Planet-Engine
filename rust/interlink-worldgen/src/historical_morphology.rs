@@ -226,6 +226,16 @@ pub fn build_historical_tectonic_morphology<T: PlanetTopology>(
     let count = topology.sample_count() as usize;
     let stage_seed = derive_stage_seed(seed, HISTORICAL_MORPHOLOGY_NAMESPACE);
 
+    // Historical event fields propagate through physical material classes, not genealogical
+    // fragment partitions. Fragment identity records ancestry only; newly generated spreading
+    // fragments must not introduce invisible walls into rift, suture, basin, or fossil-orogen
+    // physics.
+    let material_domains = historical
+        .crust_kind
+        .iter()
+        .map(|kind| u16::from(*kind))
+        .collect::<Vec<_>>();
+
     let mut latest_event_kind = vec![0_u8; count];
     let mut latest_event_age_myr = vec![-1.0_f32; count];
     let mut rift_seed = vec![0.0_f32; count];
@@ -307,6 +317,17 @@ pub fn build_historical_tectonic_morphology<T: PlanetTopology>(
             HistoricalEventKind::Capture => {
                 seed_pair(&mut accretion_seed, a, b, event_signal * 0.48);
             }
+            HistoricalEventKind::MicroplateFormation => {
+                seed_pair_with_age(
+                    &mut shear_seed,
+                    &mut shear_age_seed,
+                    a,
+                    b,
+                    event_signal * 0.82,
+                    age,
+                );
+                seed_pair(&mut accretion_seed, a, b, event_signal * 0.34);
+            }
         }
     }
 
@@ -314,7 +335,7 @@ pub fn build_historical_tectonic_morphology<T: PlanetTopology>(
         topology,
         &rift_seed,
         &rift_age_seed,
-        &historical.fragment_ids,
+        &material_domains,
         5,
         0.80,
         0.34,
@@ -323,7 +344,7 @@ pub fn build_historical_tectonic_morphology<T: PlanetTopology>(
         topology,
         &shear_seed,
         &shear_age_seed,
-        &historical.fragment_ids,
+        &material_domains,
         4,
         0.78,
         0.52,
@@ -332,7 +353,7 @@ pub fn build_historical_tectonic_morphology<T: PlanetTopology>(
         topology,
         &suture_seed,
         &suture_age_seed,
-        &historical.fragment_ids,
+        &material_domains,
         6,
         0.84,
         0.88,
@@ -340,7 +361,7 @@ pub fn build_historical_tectonic_morphology<T: PlanetTopology>(
     let accretion_intensity = diffuse_signal(
         topology,
         &accretion_seed,
-        &historical.fragment_ids,
+        &material_domains,
         4,
         0.80,
         0.72,
@@ -348,7 +369,7 @@ pub fn build_historical_tectonic_morphology<T: PlanetTopology>(
     let fossil_orogen_intensity = diffuse_signal(
         topology,
         &fossil_orogen_seed,
-        &historical.fragment_ids,
+        &material_domains,
         7,
         0.87,
         0.76,
@@ -398,7 +419,7 @@ pub fn build_historical_tectonic_morphology<T: PlanetTopology>(
     let passive_margin_index = diffuse_signal(
         topology,
         &passive_margin_seed,
-        &historical.fragment_ids,
+        &material_domains,
         3,
         0.80,
         0.18,
@@ -410,7 +431,7 @@ pub fn build_historical_tectonic_morphology<T: PlanetTopology>(
             .iter()
             .map(|value| (f64::from(*value) / 1200.0).clamp(0.0, 1.0) as f32)
             .collect::<Vec<_>>(),
-        &historical.fragment_ids,
+        &material_domains,
         4,
         0.80,
         0.70,
@@ -424,7 +445,7 @@ pub fn build_historical_tectonic_morphology<T: PlanetTopology>(
             .iter()
             .map(|value| (f64::from(*value) / 1000.0).clamp(0.0, 1.0) as f32)
             .collect::<Vec<_>>(),
-        &historical.fragment_ids,
+        &material_domains,
         4,
         0.80,
         0.38,
@@ -438,7 +459,7 @@ pub fn build_historical_tectonic_morphology<T: PlanetTopology>(
             .iter()
             .map(|value| (f64::from(*value) / 1200.0).clamp(0.0, 1.0) as f32)
             .collect::<Vec<_>>(),
-        &historical.fragment_ids,
+        &material_domains,
         4,
         0.80,
         0.52,
@@ -586,5 +607,45 @@ mod tests {
         assert!(a.metrics.active_orogen_sample_count > 0);
         assert!(a.metrics.fossil_orogen_sample_count > 0);
         assert!(a.metrics.internal_fossil_orogen_sample_count > 0);
+    }
+
+    #[test]
+    fn genealogy_partition_geometry_is_inert_to_historical_morphology() {
+        let topology = build_icosphere(4).unwrap();
+        let planet = PlanetPhysicalParameters::earthlike_reference();
+        let frontend = generate_historical_frontend(
+            &topology,
+            &HistoricalLithosphereRequest::new("historical-morphology-genealogy-inert", 16),
+            planet,
+        )
+        .unwrap();
+        let reference = build_historical_tectonic_morphology(
+            &topology,
+            &frontend.historical,
+            &frontend.tectonics,
+            "historical-morphology-genealogy-inert",
+        )
+        .unwrap();
+
+        let mut repartitioned = frontend.historical.clone();
+        let fragment_count = repartitioned.fragments.len().max(1);
+        for (sample, fragment) in repartitioned.fragment_ids.iter_mut().enumerate() {
+            *fragment = ((sample.wrapping_mul(251).wrapping_add(97)) % fragment_count) as u16;
+        }
+        assert_ne!(
+            frontend.historical.fragment_ids, repartitioned.fragment_ids,
+            "regression did not actually destroy genealogy partition geometry"
+        );
+        let intervened = build_historical_tectonic_morphology(
+            &topology,
+            &repartitioned,
+            &frontend.tectonics,
+            "historical-morphology-genealogy-inert",
+        )
+        .unwrap();
+        assert_eq!(
+            reference, intervened,
+            "genealogical fragment partition geometry leaked into physical tectonic morphology"
+        );
     }
 }

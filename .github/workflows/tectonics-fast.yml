@@ -1,0 +1,41 @@
+name: Tectonics Fast Loop
+
+on:
+  pull_request:
+    paths:
+      - "rust/interlink-worldgen/**"
+      - "rust/interlink-worldgen-cli/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/tectonics-fast.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: tectonics-fast-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  forward-tectonics:
+    name: Forward tectonics fast gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust stable
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - name: Restore Rust build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-tectonics-fast-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-tectonics-fast-
+      - name: Unit-test forward plate evolution
+        run: cargo test -p interlink-worldgen forward_plate_evolution
+      - name: Verify forward plate evolution
+        run: cargo run -p interlink-worldgen-cli --example forward_plate_evolution_acceptance

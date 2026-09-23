@@ -183,11 +183,10 @@ fn verify_seed(seed: &str) -> Result<(), String> {
             retained_origin_fraction * 100.0
         ));
     }
-    if mixed_plates < 3 {
-        return Err(format!(
-            "{seed}: only {mixed_plates} modern plates carry meaningful continental and oceanic crust"
-        ));
-    }
+    // Mixed-plate count is diagnostic only. A fixed minimum encoded the superseded final-state
+    // ownership synthesizer's shape. The physical invariant is expressed below instead: the
+    // evolved crust must contain both passive within-plate margins and active cross-plate margins,
+    // plus ocean-continent convergent opportunities.
     if margin_total == 0 || passive_margin_edges == 0 || active_margin_edges == 0 {
         return Err(format!(
             "{seed}: crust margins do not include both passive and active plate relationships"

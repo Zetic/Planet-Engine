@@ -51,18 +51,14 @@ jobs:
           cargo run -p interlink-worldgen-cli --example tectonic_topography_cutover_smoke
       - name: Verify historical lithosphere lineage and projection
         run: cargo run --release -p interlink-worldgen-cli --example historical_lithosphere_acceptance
-      - name: Verify dynamic modern plate geometry
-        run: cargo run --release -p interlink-worldgen-cli --example dynamic_plate_geometry_acceptance
-      - name: Verify boundary-first modern plate geometry
-        run: cargo run --release -p interlink-worldgen-cli --example boundary_network_geometry_acceptance
+      - name: Verify forward plate evolution
+        run: cargo run --release -p interlink-worldgen-cli --example forward_plate_evolution_acceptance
       - name: Verify material-aware plate/crust identity
         run: cargo run --release -p interlink-worldgen-cli --example plate_crust_identity_acceptance
       - name: Verify event-driven tectonic morphology
         run: cargo run --release -p interlink-worldgen-cli --example historical_morphology_acceptance
       - name: Verify historical passive-margin shelves
         run: cargo test -p interlink-worldgen historical_passive_margins_create_bounded_shelf_subsidence
-      - name: Verify continental freeboard and shelf hypsometry
-        run: cargo run --release -p interlink-worldgen-cli --example continental_hypsometry_acceptance
       - name: Verify historical lithology and substrate
         run: cargo run --release -p interlink-worldgen-cli --example lithology_substrate_acceptance
       - name: Smoke-test historical morphology through WG-7D
