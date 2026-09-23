@@ -254,6 +254,16 @@ fn verify_seed(seed: &str) -> Result<usize, String> {
                 && event.displacement_km.abs() <= 0.001
         })
         .count();
+    let rift_birth_ages = history
+        .events
+        .iter()
+        .filter(|event| {
+            event.kind == HistoricalEventKind::Rift
+                && event.displacement_km.abs() <= 0.001
+        })
+        .map(|event| event.age_myr)
+        .collect::<Vec<_>>();
+    println!("forward-rift-birth-ages seed={seed} ages={rift_birth_ages:?}");
     let mut kinds = BTreeSet::new();
     for event in &history.events {
         kinds.insert(event.kind as u8);
