@@ -112,6 +112,7 @@ pub struct HistoricalLithosphereModel {
     pub origin_plate_ids: Vec<u16>,
     pub fragment_ids: Vec<u16>,
     pub current_plate_ids: Vec<u16>,
+    pub current_plate_history_ids: Vec<u16>,
     pub current_plate_angular_velocities_rad_per_myr: Vec<[f64; 3]>,
     pub lithospheric_weakness_index: Vec<f32>,
     pub crust_kind: Vec<u8>,
@@ -806,6 +807,9 @@ fn history_hash(model: &HistoricalLithosphereModel) -> u64 {
             hash = fnv_update(hash, &value.to_le_bytes());
         }
     }
+    for plate_history_id in &model.current_plate_history_ids {
+        hash = fnv_update(hash, &plate_history_id.to_le_bytes());
+    }
     for velocity in &model.current_plate_angular_velocities_rad_per_myr {
         for component in velocity {
             hash = fnv_update(hash, &component.to_bits().to_le_bytes());
@@ -905,6 +909,8 @@ pub fn generate_historical_lithosphere<T: PlanetTopology>(
         .map(|plate| plate.angular_velocity_rad_per_myr)
         .collect::<Vec<_>>();
 
+    let current_plate_history_ids = (0..ancestral_count).collect::<Vec<_>>();
+
     let mut model = HistoricalLithosphereModel {
         stage: StageIdentity {
             id: HISTORICAL_LITHOSPHERE_STAGE_ID,
@@ -915,6 +921,7 @@ pub fn generate_historical_lithosphere<T: PlanetTopology>(
         origin_plate_ids,
         fragment_ids,
         current_plate_ids,
+        current_plate_history_ids,
         current_plate_angular_velocities_rad_per_myr,
         lithospheric_weakness_index,
         crust_kind,
@@ -960,6 +967,15 @@ pub fn generate_historical_lithosphere<T: PlanetTopology>(
             .current_plate_ids
             .iter()
             .any(|plate| *plate >= ancestral_count)
+        || model.current_plate_history_ids.len()
+            != usize::from(model.metrics.modern_plate_count)
+        || model
+            .current_plate_history_ids
+            .iter()
+            .copied()
+            .collect::<BTreeSet<_>>()
+            .len()
+            != model.current_plate_history_ids.len()
         || model.current_plate_angular_velocities_rad_per_myr.len()
             != usize::from(model.metrics.modern_plate_count)
         || model.lithospheric_weakness_index.len() != topology.sample_count() as usize
