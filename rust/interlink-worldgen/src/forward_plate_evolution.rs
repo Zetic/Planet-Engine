@@ -605,6 +605,7 @@ fn consume_convergent_boundary_band<T: PlanetTopology>(
     model: &mut HistoricalLithosphereModel,
     velocities: &mut Vec<[f64; 3]>,
     generation_fragments: &mut BTreeMap<(u8, u16, u8, u16), u16>,
+    extensional_strain_myr: &mut [f32],
     planet: PlanetPhysicalParameters,
     dt_myr: f64,
 ) {
@@ -727,6 +728,7 @@ fn consume_convergent_boundary_band<T: PlanetTopology>(
     let previous_kind = model.crust_kind.clone();
     let previous_age = model.crust_birth_age_myr.clone();
     let previous_weakness = model.lithospheric_weakness_index.clone();
+    let previous_strain = extensional_strain_myr.to_vec();
 
     let mut consumed = 0usize;
     for plate in 0..plate_count {
@@ -767,6 +769,7 @@ fn consume_convergent_boundary_band<T: PlanetTopology>(
                 model.crust_birth_age_myr[*sample] = previous_age[*sample];
                 model.lithospheric_weakness_index[*sample] =
                     previous_weakness[*sample].max(0.48);
+                extensional_strain_myr[*sample] = previous_strain[*sample] * 0.70;
             } else {
                 model.origin_plate_ids[*sample] = previous_origin[proposal.donor];
                 model.fragment_ids[*sample] = previous_fragment[proposal.donor];
@@ -774,6 +777,7 @@ fn consume_convergent_boundary_band<T: PlanetTopology>(
                 model.crust_birth_age_myr[*sample] = previous_age[proposal.donor];
                 model.lithospheric_weakness_index[*sample] =
                     previous_weakness[proposal.donor];
+                extensional_strain_myr[*sample] = previous_strain[proposal.donor] * 0.65;
             }
             consumed += 1;
         }
