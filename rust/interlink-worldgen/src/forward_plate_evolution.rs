@@ -380,10 +380,19 @@ fn allocate_plate_history_id(next_plate_history_id: &mut u32) -> Option<u16> {
     Some(id)
 }
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy)]
+struct MicroplateBirthRecord {
+    parent_history_id: u16,
+    child_history_id: u16,
+    sample_a: u32,
+    sample_b: u32,
+}
+
+#[derive(Default)]
 struct ConnectivityResolution {
     accreted_samples: usize,
     microplate_births: usize,
+    microplate_events: Vec<MicroplateBirthRecord>,
 }
 
 fn resolve_plate_connectivity<T: PlanetTopology>(
@@ -441,6 +450,7 @@ fn resolve_plate_connectivity<T: PlanetTopology>(
 
         for component in components.into_iter().skip(1) {
             let mut contacts = BTreeMap::<u16, (usize, f64)>::new();
+            let mut birth_geometry = None::<(f64, u32, u32)>;
             for sample in &component {
                 let sample_position = topology.unit_position(*sample);
                 for neighbor in topology.neighbors(*sample) {
@@ -461,6 +471,21 @@ fn resolve_plate_connectivity<T: PlanetTopology>(
                         planet.radius_m / 1_000_000.0,
                     );
                     let normal_rate = dot(sub(candidate_velocity, source_velocity), normal);
+                    let geometry_score = if normal_rate < 0.0 {
+                        1.0 + (-normal_rate)
+                    } else {
+                        1.0e-6
+                    };
+                    if birth_geometry
+                        .map(|current| {
+                            geometry_score > current.0 + 1.0e-12
+                                || ((geometry_score - current.0).abs() <= 1.0e-12
+                                    && (*sample, *neighbor) < (current.1, current.2))
+                        })
+                        .unwrap_or(true)
+                    {
+                        birth_geometry = Some((geometry_score, *sample, *neighbor));
+                    }
                     let entry = contacts.entry(candidate).or_insert((0, 0.0));
                     entry.0 += 1;
                     if normal_rate < 0.0 {
@@ -517,6 +542,15 @@ fn resolve_plate_connectivity<T: PlanetTopology>(
                     let child = velocities.len() as u16;
                     velocities.push(velocities[plate]);
                     plate_history_ids.push(history_id);
+                    let parent_history_id = plate_history_ids[plate];
+                    if let Some((_score, sample_a, sample_b)) = birth_geometry {
+                        resolution.microplate_events.push(MicroplateBirthRecord {
+                            parent_history_id,
+                            child_history_id: history_id,
+                            sample_a,
+                            sample_b,
+                        });
+                    }
                     for sample in component {
                         owners[sample as usize] = child;
                     }
