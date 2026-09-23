@@ -476,7 +476,7 @@ fn resolve_plate_connectivity<T: PlanetTopology>(
                 .map(|(owner, _)| *owner);
 
             let substantial_remnant =
-                component.len() >= 8 && component.len().saturating_mul(8) >= primary_size;
+                component.len() >= 16 && component.len().saturating_mul(4) >= primary_size;
             let recipient = if substantial_remnant {
                 // A sizeable detached lithospheric body is not erased just because one edge is
                 // convergent. Preserve it as a microplate; only genuinely small scraps accrete
