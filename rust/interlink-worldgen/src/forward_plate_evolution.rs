@@ -1628,22 +1628,88 @@ fn accumulate_extensional_strain<T: PlanetTopology>(
     extensional_strain_myr: &mut [f32],
     dt_myr: f64,
 ) {
-    let forcing = plate_rift_forcing(topology, model, velocities, planet);
-    for sample in 0..topology.sample_count() as usize {
-        let owner = model.current_plate_ids[sample] as usize;
-        if owner >= forcing.len() {
-            continue;
+    let count = topology.sample_count() as usize;
+    let mut loading = vec![0.0_f64; count];
+    let mut compression = vec![0.0_f64; count];
+
+    // Seed the stress field from the actual moving boundary network. The previous implementation
+    // assigned one mean tension value to every sample on a plate, allowing unrelated weak
+    // corridors on a globally extensional plate to rupture together. Here extension originates at
+    // divergent interfaces and propagates inward through the same physical lithosphere.
+    for sample_a in 0..topology.sample_count() {
+        let a = sample_a as usize;
+        for sample_b in topology.neighbors(sample_a) {
+            if *sample_b <= sample_a {
+                continue;
+            }
+            let b = *sample_b as usize;
+            let owner_a = model.current_plate_ids[a] as usize;
+            let owner_b = model.current_plate_ids[b] as usize;
+            if owner_a == owner_b
+                || owner_a >= velocities.len()
+                || owner_b >= velocities.len()
+            {
+                continue;
+            }
+
+            let position_a = topology.unit_position(sample_a);
+            let position_b = topology.unit_position(*sample_b);
+            let midpoint = normalize_or(add(position_a, position_b), position_a);
+            let normal = normalize_or(sub(position_b, position_a), position_a);
+            let velocity_a = scale(
+                cross(velocities[owner_a], midpoint),
+                planet.radius_m / 1_000_000.0,
+            );
+            let velocity_b = scale(
+                cross(velocities[owner_b], midpoint),
+                planet.radius_m / 1_000_000.0,
+            );
+            let normal_rate = dot(sub(velocity_b, velocity_a), normal);
+            if normal_rate > 0.0 {
+                let source = ((normal_rate - 0.0015) / 0.010).clamp(0.0, 1.5);
+                loading[a] = loading[a].max(source);
+                loading[b] = loading[b].max(source);
+            } else if normal_rate < 0.0 {
+                let source = ((-normal_rate - 0.0015) / 0.010).clamp(0.0, 1.5);
+                compression[a] = compression[a].max(source);
+                compression[b] = compression[b].max(source);
+            }
         }
-        let tension = forcing[owner].net_tension();
-        if tension > 0.002 {
-            let loading = ((tension - 0.002) / 0.008).clamp(0.0, 1.5);
+    }
+
+    // Carry boundary forcing into plate interiors, preferentially along mechanically weak
+    // lithosphere. This is deliberately finite-range: remote parts of a large plate do not inherit
+    // the same rupture readiness merely because another side of that plate is divergent.
+    let mut current = loading;
+    let mut next = current.clone();
+    for _ in 0..8 {
+        for sample in 0..topology.sample_count() {
+            let index = sample as usize;
+            let owner = model.current_plate_ids[index];
+            let mut propagated = current[index];
+            for neighbor in topology.neighbors(sample) {
+                let ni = *neighbor as usize;
+                if model.current_plate_ids[ni] != owner {
+                    continue;
+                }
+                let weakness = (f64::from(model.lithospheric_weakness_index[index])
+                    + f64::from(model.lithospheric_weakness_index[ni]))
+                    * 0.5;
+                let transfer = 0.74 * (0.58 + 0.42 * weakness.clamp(0.0, 1.0));
+                propagated = propagated.max(current[ni] * transfer);
+            }
+            next[index] = propagated;
+        }
+        std::mem::swap(&mut current, &mut next);
+    }
+
+    for sample in 0..count {
+        let local_loading = (current[sample] - compression[sample] * 0.70).max(0.0);
+        if local_loading > 0.06 {
             extensional_strain_myr[sample] =
-                (extensional_strain_myr[sample] + (dt_myr * loading) as f32)
+                (extensional_strain_myr[sample] + (dt_myr * local_loading) as f32)
                     .clamp(0.0, 160.0);
         } else {
-            // Extension memory is material state, but it relaxes when the regional stress field
-            // is no longer tensile. This prevents a once-stretched plate from spawning repeated
-            // ruptures indefinitely after its boundary conditions have changed.
             let decay = (-dt_myr / 28.0).exp() as f32;
             extensional_strain_myr[sample] *= decay;
         }
