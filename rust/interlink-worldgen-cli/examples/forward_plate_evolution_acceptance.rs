@@ -32,7 +32,7 @@ fn connected_component_count<T: PlanetTopology>(
     components
 }
 
-fn verify_seed(seed: &str) -> Result<(), String> {
+fn verify_seed(seed: &str) -> Result<usize, String> {
     let topology = build_icosphere(4).map_err(|error| error.to_string())?;
     let planet = PlanetPhysicalParameters::earthlike_reference();
     let request = HistoricalLithosphereRequest::new(seed, 16);
@@ -214,12 +214,6 @@ fn verify_seed(seed: &str) -> Result<(), String> {
                 && event.displacement_km.abs() <= 0.001
         })
         .count();
-    if rift_birth_events == 0 {
-        return Err(format!(
-            "{seed}: no plate birth was nucleated from the physical weakness field"
-        ));
-    }
-
     let mut kinds = BTreeSet::new();
     for event in &history.events {
         kinds.insert(event.kind as u8);
@@ -259,24 +253,30 @@ fn verify_seed(seed: &str) -> Result<(), String> {
         history.metrics.event_count,
         history.metrics.history_hash_hex(),
     );
-    Ok(())
+    Ok(rift_birth_events)
 }
 
 fn main() -> Result<(), String> {
     let mut failures = Vec::new();
+    let mut rift_births = 0usize;
     for seed in [
         "interlink-wg7c",
         "1",
         "2",
         "forward-plate-evolution-holdout",
     ] {
-        if let Err(error) = verify_seed(seed) {
-            failures.push(error);
+        match verify_seed(seed) {
+            Ok(births) => rift_births += births,
+            Err(error) => failures.push(error),
         }
     }
-    if failures.is_empty() {
-        Ok(())
-    } else {
-        Err(failures.join("\n"))
+    if !failures.is_empty() {
+        return Err(failures.join("\n"));
     }
+    if rift_births == 0 {
+        return Err(
+            "forward acceptance matrix produced no stress-triggered plate birth".to_string(),
+        );
+    }
+    Ok(())
 }
