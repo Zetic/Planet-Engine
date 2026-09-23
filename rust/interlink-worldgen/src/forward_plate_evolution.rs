@@ -371,6 +371,15 @@ fn materialize_generated_crust<T: PlanetTopology>(
     Ok(())
 }
 
+fn allocate_plate_history_id(next_plate_history_id: &mut u32) -> Option<u16> {
+    if *next_plate_history_id > u32::from(u16::MAX) {
+        return None;
+    }
+    let id = *next_plate_history_id as u16;
+    *next_plate_history_id += 1;
+    Some(id)
+}
+
 #[derive(Clone, Copy, Default)]
 struct ConnectivityResolution {
     accreted_samples: usize,
@@ -381,10 +390,13 @@ fn resolve_plate_connectivity<T: PlanetTopology>(
     topology: &T,
     owners: &mut [u16],
     velocities: &mut Vec<[f64; 3]>,
+    plate_history_ids: &mut Vec<u16>,
+    next_plate_history_id: &mut u32,
     planet: PlanetPhysicalParameters,
     allow_microplate_birth: bool,
 ) -> ConnectivityResolution {
     let initial_plate_count = velocities.len();
+    debug_assert_eq!(plate_history_ids.len(), initial_plate_count);
     let mut resolution = ConnectivityResolution::default();
 
     // A rigid plate should occupy one connected surface domain. If advection/subduction cuts a
@@ -501,13 +513,18 @@ fn resolve_plate_connectivity<T: PlanetTopology>(
             }
 
             if velocities.len() < usize::from(MAX_TECTONIC_PLATES) {
-                let child = velocities.len() as u16;
-                velocities.push(velocities[plate]);
-                for sample in component {
-                    owners[sample as usize] = child;
+                if let Some(history_id) = allocate_plate_history_id(next_plate_history_id) {
+                    let child = velocities.len() as u16;
+                    velocities.push(velocities[plate]);
+                    plate_history_ids.push(history_id);
+                    for sample in component {
+                        owners[sample as usize] = child;
+                    }
+                    resolution.microplate_births += 1;
+                    continue;
                 }
-                resolution.microplate_births += 1;
-            } else if let Some(recipient) = best_contact {
+            }
+            if let Some(recipient) = best_contact {
                 for sample in component {
                     owners[sample as usize] = recipient;
                     resolution.accreted_samples += 1;
@@ -554,8 +571,10 @@ fn gap_is_divergent<T: PlanetTopology>(
 fn compact_extinct_plates(
     owners: &mut [u16],
     velocities: &mut Vec<[f64; 3]>,
+    plate_history_ids: &mut Vec<u16>,
 ) -> usize {
     let plate_count = velocities.len();
+    debug_assert_eq!(plate_history_ids.len(), plate_count);
     let mut active = vec![false; plate_count];
     for owner in owners.iter().copied() {
         let index = owner as usize;
@@ -569,18 +588,21 @@ fn compact_extinct_plates(
 
     let mut remap = vec![u16::MAX; plate_count];
     let mut compact_velocities = Vec::with_capacity(plate_count);
+    let mut compact_history_ids = Vec::with_capacity(plate_count);
     for old in 0..plate_count {
         if !active[old] {
             continue;
         }
         remap[old] = compact_velocities.len() as u16;
         compact_velocities.push(velocities[old]);
+        compact_history_ids.push(plate_history_ids[old]);
     }
     for owner in owners {
         *owner = remap[*owner as usize];
     }
     let removed = plate_count.saturating_sub(compact_velocities.len());
     *velocities = compact_velocities;
+    *plate_history_ids = compact_history_ids;
     removed
 }
 
@@ -605,6 +627,8 @@ fn consume_convergent_boundary_band<T: PlanetTopology>(
     topology: &T,
     model: &mut HistoricalLithosphereModel,
     velocities: &mut Vec<[f64; 3]>,
+    plate_history_ids: &mut Vec<u16>,
+    next_plate_history_id: &mut u32,
     generation_fragments: &mut BTreeMap<(u8, u16, u8, u16), u16>,
     extensional_strain_myr: &mut [f32],
     forward_generated_material: &mut [bool],
@@ -797,6 +821,8 @@ fn consume_convergent_boundary_band<T: PlanetTopology>(
         topology,
         &mut model.current_plate_ids,
         velocities,
+        plate_history_ids,
+        next_plate_history_id,
         planet,
         true,
     );
@@ -814,6 +840,7 @@ fn consume_convergent_boundary_band<T: PlanetTopology>(
     let extinct = compact_extinct_plates(
         &mut model.current_plate_ids,
         velocities,
+        plate_history_ids,
     );
     model.metrics.modern_plate_count = velocities.len() as u16;
     model.metrics.convergent_consumed_sample_count = model
@@ -833,6 +860,8 @@ fn advect_substep<T: PlanetTopology>(
     topology: &T,
     model: &mut HistoricalLithosphereModel,
     velocities: &mut Vec<[f64; 3]>,
+    plate_history_ids: &mut Vec<u16>,
+    next_plate_history_id: &mut u32,
     epoch: u8,
     generation_fragments: &mut BTreeMap<(u8, u16, u8, u16), u16>,
     extensional_strain_myr: &mut Vec<f32>,
@@ -1079,7 +1108,15 @@ fn advect_substep<T: PlanetTopology>(
     }
 
     let connectivity =
-        resolve_plate_connectivity(topology, &mut new_owner, velocities, planet, false);
+        resolve_plate_connectivity(
+            topology,
+            &mut new_owner,
+            velocities,
+            plate_history_ids,
+            next_plate_history_id,
+            planet,
+            false,
+        );
     model.metrics.detached_accretion_sample_count = model
         .metrics
         .detached_accretion_sample_count
@@ -1100,7 +1137,7 @@ fn advect_substep<T: PlanetTopology>(
     // A plate that has no remaining surface samples after overlap resolution is genuinely extinct.
     // Compact it out of the evolving kinematic state instead of resurrecting a one-cell core or
     // waiting for a later whole-plate relabel operation.
-    let extinct = compact_extinct_plates(&mut new_owner, velocities);
+    let extinct = compact_extinct_plates(&mut new_owner, velocities, plate_history_ids);
     if extinct > 0 {
         generation_fragments.clear();
         model.metrics.modern_plate_count = velocities.len() as u16;
@@ -1150,10 +1187,12 @@ fn record_epoch_events<T: PlanetTopology>(
     topology: &T,
     model: &mut HistoricalLithosphereModel,
     velocities: &[[f64; 3]],
+    plate_history_ids: &[u16],
     epoch: usize,
     planet: PlanetPhysicalParameters,
 ) {
     debug_assert_eq!(velocities.len(), model.metrics.modern_plate_count as usize);
+    debug_assert_eq!(plate_history_ids.len(), velocities.len());
     let mut summaries = BTreeMap::<(u16, u16), BoundaryEpochSummary>::new();
     for sample_a in 0..topology.sample_count() {
         let index_a = sample_a as usize;
@@ -1238,8 +1277,8 @@ fn record_epoch_events<T: PlanetTopology>(
             kind,
             epoch: epoch.min(usize::from(crate::HISTORICAL_EPOCH_COUNT - 1)) as u8,
             age_myr,
-            plate_a: model.origin_plate_ids[a],
-            plate_b: model.origin_plate_ids[b],
+            plate_a: plate_history_ids[model.current_plate_ids[a] as usize],
+            plate_b: plate_history_ids[model.current_plate_ids[b] as usize],
             fragment_a: model.fragment_ids[a],
             fragment_b: model.fragment_ids[b],
             displacement_km: (mean_speed * EPOCH_DURATION_MYR * 1000.0)
@@ -1771,6 +1810,8 @@ fn split_one_rifting_plate<T: PlanetTopology>(
     topology: &T,
     model: &mut HistoricalLithosphereModel,
     velocities: &mut Vec<[f64; 3]>,
+    plate_history_ids: &mut Vec<u16>,
+    next_plate_history_id: &mut u32,
     epoch: usize,
     stage_seed: u64,
     planet: PlanetPhysicalParameters,
@@ -1943,9 +1984,14 @@ fn split_one_rifting_plate<T: PlanetTopology>(
     let angular_offset =
         (0.07 + 0.11 * candidate.weakness.clamp(0.0, 1.0)).to_radians();
     let delta = scale(cross(midpoint, opening_normal), angular_offset);
+    let Some(child_history_id) = allocate_plate_history_id(next_plate_history_id) else {
+        return false;
+    };
+    let parent_history_id = plate_history_ids[parent];
     let base_velocity = velocities[parent];
     velocities[parent] = sub(base_velocity, delta);
     velocities.push(add(base_velocity, delta));
+    plate_history_ids.push(child_history_id);
     model.metrics.modern_plate_count = child + 1;
     model.metrics.rift_birth_count = model.metrics.rift_birth_count.saturating_add(1);
 
@@ -1956,8 +2002,8 @@ fn split_one_rifting_plate<T: PlanetTopology>(
         kind: HistoricalEventKind::Rift,
         epoch: epoch.min(usize::from(crate::HISTORICAL_EPOCH_COUNT - 1)) as u8,
         age_myr: ((FORWARD_EPOCHS - epoch) as f64 * EPOCH_DURATION_MYR) as f32,
-        plate_a: model.origin_plate_ids[a],
-        plate_b: model.origin_plate_ids[b],
+        plate_a: parent_history_id,
+        plate_b: child_history_id,
         fragment_a: model.fragment_ids[a],
         fragment_b: model.fragment_ids[b],
         displacement_km: 0.0,
@@ -2076,6 +2122,9 @@ fn forward_history_hash(model: &HistoricalLithosphereModel, stage_seed: u64) -> 
             hash = fnv_update(hash, &value.to_le_bytes());
         }
     }
+    for plate_history_id in &model.current_plate_history_ids {
+        hash = fnv_update(hash, &plate_history_id.to_le_bytes());
+    }
     for velocity in &model.current_plate_angular_velocities_rad_per_myr {
         for component in velocity {
             hash = fnv_update(hash, &component.to_bits().to_le_bytes());
@@ -2092,6 +2141,8 @@ fn forward_history_hash(model: &HistoricalLithosphereModel, stage_seed: u64) -> 
         hash = fnv_update(hash, &event.id.to_le_bytes());
         hash = fnv_update(hash, &[event.kind as u8, event.epoch]);
         hash = fnv_update(hash, &event.age_myr.to_bits().to_le_bytes());
+        hash = fnv_update(hash, &event.plate_a.to_le_bytes());
+        hash = fnv_update(hash, &event.plate_b.to_le_bytes());
         hash = fnv_update(hash, &event.fragment_a.to_le_bytes());
         hash = fnv_update(hash, &event.fragment_b.to_le_bytes());
         hash = fnv_update(hash, &event.geometry_sample_a.to_le_bytes());
@@ -2115,6 +2166,14 @@ fn validate_forward_state<T: PlanetTopology>(
             .lithospheric_weakness_index
             .iter()
             .any(|value| !value.is_finite() || !(0.0..=1.0).contains(value))
+        || model.current_plate_history_ids.len() != model.metrics.modern_plate_count as usize
+        || model
+            .current_plate_history_ids
+            .iter()
+            .copied()
+            .collect::<BTreeSet<_>>()
+            .len()
+            != model.current_plate_history_ids.len()
         || model.current_plate_angular_velocities_rad_per_myr.len()
             != model.metrics.modern_plate_count as usize
         || model
@@ -2185,6 +2244,13 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
 
     let stage_seed = derive_stage_seed(seed, FORWARD_PLATE_NAMESPACE);
     let mut velocities = model.current_plate_angular_velocities_rad_per_myr.clone();
+    let mut plate_history_ids = model.current_plate_history_ids.clone();
+    let mut next_plate_history_id = plate_history_ids
+        .iter()
+        .copied()
+        .max()
+        .map(|id| u32::from(id) + 1)
+        .unwrap_or(0);
     let mut extensional_strain_myr = vec![0.0_f32; topology.sample_count() as usize];
     let mut forward_generated_material = vec![false; topology.sample_count() as usize];
     if velocities.len() != model.metrics.modern_plate_count as usize {
@@ -2194,12 +2260,21 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
     }
     for epoch in 0..FORWARD_EPOCHS {
         let mut generation_fragments = BTreeMap::<(u8, u16, u8, u16), u16>::new();
-        record_epoch_events(topology, &mut model, &velocities, epoch, planet);
+        record_epoch_events(
+            topology,
+            &mut model,
+            &velocities,
+            &plate_history_ids,
+            epoch,
+            planet,
+        );
         for _ in 0..SUBSTEPS_PER_EPOCH {
             advect_substep(
                 topology,
                 &mut model,
                 &mut velocities,
+                &mut plate_history_ids,
+                &mut next_plate_history_id,
                 epoch as u8,
                 &mut generation_fragments,
                 &mut extensional_strain_myr,
@@ -2211,6 +2286,8 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
                 topology,
                 &mut model,
                 &mut velocities,
+                &mut plate_history_ids,
+                &mut next_plate_history_id,
                 &mut generation_fragments,
                 &mut extensional_strain_myr,
                 &mut forward_generated_material,
@@ -2240,6 +2317,8 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
                 topology,
                 &mut model,
                 &mut velocities,
+                &mut plate_history_ids,
+                &mut next_plate_history_id,
                 epoch,
                 stage_seed,
                 planet,
@@ -2264,6 +2343,7 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
     split_fragments_at_final_boundaries(topology, &mut model)?;
     refresh_active_fragment_summaries(topology, &mut model);
     refresh_material_metrics(topology, &mut model);
+    model.current_plate_history_ids = plate_history_ids;
     model.current_plate_angular_velocities_rad_per_myr = velocities;
     model.metrics.fragment_count = model.fragments.len() as u16;
     model.metrics.event_count = model.events.len() as u32;
@@ -2289,6 +2369,13 @@ mod tests {
         )
         .unwrap();
         let mut velocities = model.current_plate_angular_velocities_rad_per_myr.clone();
+        let mut plate_history_ids = model.current_plate_history_ids.clone();
+        let mut next_plate_history_id = plate_history_ids
+            .iter()
+            .copied()
+            .max()
+            .map(|id| u32::from(id) + 1)
+            .unwrap_or(0);
         let mut generation_fragments = BTreeMap::<(u8, u16, u8, u16), u16>::new();
         let mut strain = vec![0.0_f32; topology.sample_count() as usize];
         let mut generated_material = vec![false; topology.sample_count() as usize];
@@ -2297,6 +2384,8 @@ mod tests {
             &topology,
             &mut model,
             &mut velocities,
+            &mut plate_history_ids,
+            &mut next_plate_history_id,
             0,
             &mut generation_fragments,
             &mut strain,
