@@ -477,12 +477,15 @@ fn resolve_plate_connectivity<T: PlanetTopology>(
 
             let substantial_remnant =
                 component.len() >= 8 && component.len().saturating_mul(8) >= primary_size;
-            let recipient = if let Some(owner) = best_convergent {
-                Some(owner)
-            } else if !substantial_remnant {
-                best_contact
-            } else {
+            let recipient = if substantial_remnant {
+                // A sizeable detached lithospheric body is not erased just because one edge is
+                // convergent. Preserve it as a microplate; only genuinely small scraps accrete
+                // onto a neighboring plate.
                 None
+            } else if let Some(owner) = best_convergent {
+                Some(owner)
+            } else {
+                best_contact
             };
 
             if let Some(recipient) = recipient {
