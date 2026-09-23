@@ -746,22 +746,27 @@ fn consume_convergent_boundary_band<T: PlanetTopology>(
                 continue;
             }
             model.current_plate_ids[*sample] = proposal.winner;
-            model.origin_plate_ids[*sample] = previous_origin[proposal.donor];
-            model.fragment_ids[*sample] = previous_fragment[proposal.donor];
 
             let victim_kind = previous_kind[*sample];
             let donor_kind = previous_kind[proposal.donor];
             if victim_kind != CrustKind::Continental as u8
                 && donor_kind == CrustKind::Continental as u8
             {
-                // Closing an ocean against a continent must not clone continental basement
-                // one raster cell at a time. The slab leaves the exposed surface, while the
-                // overriding margin advances as young accretionary/forearc lithosphere.
-                // This keeps plate ownership migration physical without manufacturing continent.
-                model.crust_kind[*sample] = CrustKind::Transitional as u8;
-                model.crust_birth_age_myr[*sample] = 0.0;
-                model.lithospheric_weakness_index[*sample] = 0.72;
+                // A 2-D surface raster cannot represent the descending slab and the overriding
+                // forearc as two stacked lithospheres. Do not solve that limitation by cloning
+                // continental basement or by turning every consumed trench cell into new
+                // transitional crust. Transfer plate ownership while retaining the exposed
+                // non-continental veneer and its age/provenance; a future 3-D slab reservoir can
+                // remove the buried parcel explicitly without corrupting surface hypsometry.
+                model.origin_plate_ids[*sample] = previous_origin[*sample];
+                model.fragment_ids[*sample] = previous_fragment[*sample];
+                model.crust_kind[*sample] = victim_kind;
+                model.crust_birth_age_myr[*sample] = previous_age[*sample];
+                model.lithospheric_weakness_index[*sample] =
+                    previous_weakness[*sample].max(0.48);
             } else {
+                model.origin_plate_ids[*sample] = previous_origin[proposal.donor];
+                model.fragment_ids[*sample] = previous_fragment[proposal.donor];
                 model.crust_kind[*sample] = donor_kind;
                 model.crust_birth_age_myr[*sample] = previous_age[proposal.donor];
                 model.lithospheric_weakness_index[*sample] =
