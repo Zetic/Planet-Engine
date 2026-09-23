@@ -1681,7 +1681,6 @@ struct RiftCandidate {
     sample_b: u32,
     plane_normal: [f64; 3],
     weakness: f64,
-    strain_myr: f64,
     score: f64,
 }
 
@@ -1786,7 +1785,6 @@ fn split_one_rifting_plate<T: PlanetTopology>(
                 sample_b: *sample_b,
                 plane_normal,
                 weakness,
-                strain_myr,
                 score,
             };
             candidate_edges_by_plate[owner].push(candidate);
@@ -2104,6 +2102,7 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
 
     let stage_seed = derive_stage_seed(seed, FORWARD_PLATE_NAMESPACE);
     let mut velocities = model.current_plate_angular_velocities_rad_per_myr.clone();
+    let mut extensional_strain_myr = vec![0.0_f32; topology.sample_count() as usize];
     if velocities.len() != model.metrics.modern_plate_count as usize {
         return Err(WorldgenError::InvalidTectonics(
             "historical state is missing current plate kinematics",
@@ -2119,6 +2118,7 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
                 &mut velocities,
                 epoch as u8,
                 &mut generation_fragments,
+                &mut extensional_strain_myr,
                 planet,
                 SUBSTEP_MYR,
             )?;
@@ -2127,8 +2127,21 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
                 &mut model,
                 &mut velocities,
                 &mut generation_fragments,
+                &mut extensional_strain_myr,
                 planet,
                 SUBSTEP_MYR,
+            );
+            accumulate_extensional_strain(
+                topology,
+                &model,
+                &velocities,
+                planet,
+                &mut extensional_strain_myr,
+                SUBSTEP_MYR,
+            );
+            mature_forward_transitional_crust(
+                &mut model,
+                &mut extensional_strain_myr,
             );
         }
 
@@ -2143,6 +2156,7 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
                 epoch,
                 stage_seed,
                 planet,
+                &mut extensional_strain_myr,
             );
         }
 
