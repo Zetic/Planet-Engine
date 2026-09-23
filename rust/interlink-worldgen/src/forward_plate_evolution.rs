@@ -1505,6 +1505,87 @@ fn weak_corridor_partition<T: PlanetTopology>(
     Some((side, geometry_a, geometry_b, mean_cut_weakness, balance))
 }
 
+#[derive(Clone, Copy, Default)]
+struct PlateRiftForcing {
+    divergent_rate_length: f64,
+    convergent_rate_length: f64,
+    boundary_length: f64,
+}
+
+impl PlateRiftForcing {
+    fn mean_extension(self) -> f64 {
+        self.divergent_rate_length / self.boundary_length.max(1.0e-12)
+    }
+
+    fn mean_compression(self) -> f64 {
+        self.convergent_rate_length / self.boundary_length.max(1.0e-12)
+    }
+
+    fn net_tension(self) -> f64 {
+        self.mean_extension() - 0.45 * self.mean_compression()
+    }
+
+    fn can_nucleate_rift(self) -> bool {
+        let extension = self.mean_extension();
+        let compression = self.mean_compression();
+        extension >= 0.002
+            && self.net_tension() >= 0.001
+            && extension >= compression * 0.35
+    }
+}
+
+fn plate_rift_forcing<T: PlanetTopology>(
+    topology: &T,
+    model: &HistoricalLithosphereModel,
+    velocities: &[[f64; 3]],
+    planet: PlanetPhysicalParameters,
+) -> Vec<PlateRiftForcing> {
+    let plate_count = model.metrics.modern_plate_count as usize;
+    let mut forcing = vec![PlateRiftForcing::default(); plate_count];
+    for sample_a in 0..topology.sample_count() {
+        let a = sample_a as usize;
+        for sample_b in topology.neighbors(sample_a) {
+            if *sample_b <= sample_a {
+                continue;
+            }
+            let b = *sample_b as usize;
+            let owner_a = model.current_plate_ids[a] as usize;
+            let owner_b = model.current_plate_ids[b] as usize;
+            if owner_a == owner_b || owner_a >= plate_count || owner_b >= plate_count {
+                continue;
+            }
+
+            let position_a = topology.unit_position(sample_a);
+            let position_b = topology.unit_position(*sample_b);
+            let midpoint = normalize_or(add(position_a, position_b), position_a);
+            let normal = normalize_or(sub(position_b, position_a), position_a);
+            let velocity_a = scale(
+                cross(velocities[owner_a], midpoint),
+                planet.radius_m / 1_000_000.0,
+            );
+            let velocity_b = scale(
+                cross(velocities[owner_b], midpoint),
+                planet.radius_m / 1_000_000.0,
+            );
+            let normal_rate = dot(sub(velocity_b, velocity_a), normal);
+            let edge_length = dot(position_a, position_b)
+                .clamp(-1.0, 1.0)
+                .acos()
+                .max(1.0e-9);
+
+            for owner in [owner_a, owner_b] {
+                forcing[owner].boundary_length += edge_length;
+                if normal_rate > 0.0 {
+                    forcing[owner].divergent_rate_length += normal_rate * edge_length;
+                } else {
+                    forcing[owner].convergent_rate_length += -normal_rate * edge_length;
+                }
+            }
+        }
+    }
+    forcing
+}
+
 #[derive(Clone, Copy)]
 struct RiftCandidate {
     plate: u16,
@@ -1521,9 +1602,15 @@ fn split_one_rifting_plate<T: PlanetTopology>(
     velocities: &mut Vec<[f64; 3]>,
     epoch: usize,
     stage_seed: u64,
+    planet: PlanetPhysicalParameters,
 ) -> bool {
     let plate_count = model.metrics.modern_plate_count as usize;
     if velocities.len() != plate_count || plate_count >= usize::from(u16::MAX) {
+        return false;
+    }
+
+    let rift_forcing = plate_rift_forcing(topology, model, velocities, planet);
+    if !rift_forcing.iter().any(|forcing| forcing.can_nucleate_rift()) {
         return false;
     }
 
@@ -1549,6 +1636,7 @@ fn split_one_rifting_plate<T: PlanetTopology>(
         let a = sample_a as usize;
         let owner = model.current_plate_ids[a] as usize;
         if owner >= plate_count
+            || !rift_forcing[owner].can_nucleate_rift()
             || samples_by_plate[owner].len() < 48
             || non_oceanic_by_plate[owner] * 100 < samples_by_plate[owner].len() * 30
         {
@@ -1592,7 +1680,9 @@ fn split_one_rifting_plate<T: PlanetTopology>(
                 sub(topology.unit_position(*sample_b), topology.unit_position(sample_a)),
                 [1.0, 0.0, 0.0],
             );
-            let score = weakness + material_bonus + tie;
+            let tension = rift_forcing[owner].net_tension();
+            let stress_gain = 1.0 + (tension / 0.02).clamp(0.0, 2.0);
+            let score = (weakness + material_bonus) * stress_gain + tie;
             let candidate = RiftCandidate {
                 plate: owner as u16,
                 sample_a,
@@ -1915,8 +2005,6 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
             "historical state is missing current plate kinematics",
         ));
     }
-    let rift_budget = (usize::from(requested_plate_scale) / 12).clamp(1, 3);
-    let mut splits_completed = 0usize;
     for epoch in 0..FORWARD_EPOCHS {
         let mut generation_fragments = BTreeMap::<(u8, u16, u8, u16), u16>::new();
         record_epoch_events(topology, &mut model, &velocities, epoch, planet);
@@ -1940,19 +2028,18 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
             );
         }
 
-        if splits_completed < rift_budget
-            && epoch >= 1
-            && epoch <= FORWARD_EPOCHS.saturating_sub(3)
-            && epoch % 2 == 1
-            && split_one_rifting_plate(
+        // Plate birth is stress-triggered rather than scheduled from the requested plate count.
+        // At most one rupture is resolved per coarse epoch so the new boundary can evolve before
+        // another internal rupture is considered.
+        if epoch >= 1 && epoch <= FORWARD_EPOCHS.saturating_sub(2) {
+            let _ = split_one_rifting_plate(
                 topology,
                 &mut model,
                 &mut velocities,
                 epoch,
                 stage_seed,
-            )
-        {
-            splits_completed += 1;
+                planet,
+            );
         }
 
         // The requested scale does not schedule births or deaths. The epoch ends with whatever
