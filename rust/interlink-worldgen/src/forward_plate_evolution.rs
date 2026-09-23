@@ -1620,6 +1620,60 @@ fn plate_rift_forcing<T: PlanetTopology>(
     forcing
 }
 
+fn accumulate_extensional_strain<T: PlanetTopology>(
+    topology: &T,
+    model: &HistoricalLithosphereModel,
+    velocities: &[[f64; 3]],
+    planet: PlanetPhysicalParameters,
+    extensional_strain_myr: &mut [f32],
+    dt_myr: f64,
+) {
+    let forcing = plate_rift_forcing(topology, model, velocities, planet);
+    for sample in 0..topology.sample_count() as usize {
+        let owner = model.current_plate_ids[sample] as usize;
+        if owner >= forcing.len() {
+            continue;
+        }
+        let tension = forcing[owner].net_tension();
+        if tension > 0.002 {
+            let loading = ((tension - 0.002) / 0.008).clamp(0.0, 1.5);
+            extensional_strain_myr[sample] =
+                (extensional_strain_myr[sample] + (dt_myr * loading) as f32)
+                    .clamp(0.0, 160.0);
+        } else {
+            // Extension memory is material state, but it relaxes when the regional stress field
+            // is no longer tensile. This prevents a once-stretched plate from spawning repeated
+            // rifts indefinitely after its boundary conditions have changed.
+            let decay = (-dt_myr / 28.0).exp() as f32;
+            extensional_strain_myr[sample] *= decay;
+        }
+    }
+}
+
+fn mature_forward_transitional_crust(
+    model: &mut HistoricalLithosphereModel,
+    extensional_strain_myr: &mut [f32],
+) {
+    for sample in 0..model.crust_kind.len() {
+        if model.crust_kind[sample] != CrustKind::Transitional as u8 {
+            continue;
+        }
+        let age = model.crust_birth_age_myr[sample];
+        // Initial passive-margin transitional crust is old (>100 Myr in the initializer). Only
+        // young material created by this forward solver can cross the breakup threshold here.
+        if age < 100.0
+            && age >= FORWARD_TRANSITION_MATURATION_MYR
+            && extensional_strain_myr[sample] >= 18.0
+        {
+            model.crust_kind[sample] = CrustKind::Oceanic as u8;
+            model.crust_birth_age_myr[sample] = 0.0;
+            model.lithospheric_weakness_index[sample] =
+                model.lithospheric_weakness_index[sample].min(0.55);
+            extensional_strain_myr[sample] *= 0.35;
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 struct RiftCandidate {
     plate: u16,
@@ -1627,6 +1681,7 @@ struct RiftCandidate {
     sample_b: u32,
     plane_normal: [f64; 3],
     weakness: f64,
+    strain_myr: f64,
     score: f64,
 }
 
@@ -1637,6 +1692,7 @@ fn split_one_rifting_plate<T: PlanetTopology>(
     epoch: usize,
     stage_seed: u64,
     planet: PlanetPhysicalParameters,
+    extensional_strain_myr: &mut [f32],
 ) -> bool {
     let plate_count = model.metrics.modern_plate_count as usize;
     if velocities.len() != plate_count || plate_count >= usize::from(u16::MAX) {
@@ -1693,7 +1749,10 @@ fn split_one_rifting_plate<T: PlanetTopology>(
             let weakness = (f64::from(model.lithospheric_weakness_index[a])
                 + f64::from(model.lithospheric_weakness_index[b]))
                 * 0.5;
-            if weakness < 0.42 {
+            let strain_myr = (f64::from(extensional_strain_myr[a])
+                + f64::from(extensional_strain_myr[b]))
+                * 0.5;
+            if weakness < 0.42 || strain_myr < f64::from(RIFT_STRAIN_NUCLEATION_MYR) {
                 continue;
             }
             let material_bonus = if model.crust_kind[a] != CrustKind::Oceanic as u8
@@ -1716,13 +1775,18 @@ fn split_one_rifting_plate<T: PlanetTopology>(
             );
             let tension = rift_forcing[owner].net_tension();
             let stress_gain = 1.0 + (tension / 0.02).clamp(0.0, 2.0);
-            let score = (weakness + material_bonus) * stress_gain + tie;
+            let strain_gain =
+                1.0 + (strain_myr / f64::from(RIFT_STRAIN_NUCLEATION_MYR) - 1.0)
+                    .clamp(0.0, 1.5)
+                    * 0.35;
+            let score = (weakness + material_bonus) * stress_gain * strain_gain + tie;
             let candidate = RiftCandidate {
                 plate: owner as u16,
                 sample_a,
                 sample_b: *sample_b,
                 plane_normal,
                 weakness,
+                strain_myr,
                 score,
             };
             candidate_edges_by_plate[owner].push(candidate);
@@ -1777,6 +1841,9 @@ fn split_one_rifting_plate<T: PlanetTopology>(
         if child_side[*sample as usize] {
             model.current_plate_ids[*sample as usize] = child;
         }
+        // Rupture releases most of the accumulated plate-scale extensional strain. Continued
+        // spreading must reload the system before another internal rupture can nucleate.
+        extensional_strain_myr[*sample as usize] *= RIFT_STRAIN_RELIEF_FACTOR;
     }
 
     // Give the two new rigid bodies a divergent velocity component normal to the inherited weak
