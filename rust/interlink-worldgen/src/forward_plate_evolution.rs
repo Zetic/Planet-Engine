@@ -2043,6 +2043,50 @@ mod tests {
             reference.current_plate_angular_velocities_rad_per_myr,
             relabeled.current_plate_angular_velocities_rad_per_myr
         );
+
+        let mut provenance_relabel = crate::historical_lithosphere::generate_historical_lithosphere(
+            &topology,
+            &request,
+            planet,
+        )
+        .unwrap();
+        let origin_count = provenance_relabel.ancestral_tectonics.plates.len() as u16;
+        let relabel_origin = |origin: u16| {
+            ((u32::from(origin) * 7 + 3) % u32::from(origin_count)) as u16
+        };
+        for origin in &mut provenance_relabel.origin_plate_ids {
+            *origin = relabel_origin(*origin);
+        }
+        for fragment in &mut provenance_relabel.fragments {
+            fragment.origin_plate_id = relabel_origin(fragment.origin_plate_id);
+        }
+
+        let provenance_intervened = evolve_modern_plate_geometry(
+            &topology,
+            provenance_relabel,
+            &request.seed,
+            request.modern_plate_count,
+            planet,
+        )
+        .unwrap();
+        assert_eq!(
+            reference.current_plate_ids,
+            provenance_intervened.current_plate_ids,
+            "ancestral provenance labels changed physical present ownership"
+        );
+        assert_eq!(reference.crust_kind, provenance_intervened.crust_kind);
+        assert_eq!(
+            reference.crust_birth_age_myr,
+            provenance_intervened.crust_birth_age_myr
+        );
+        assert_eq!(
+            reference.lithospheric_weakness_index,
+            provenance_intervened.lithospheric_weakness_index
+        );
+        assert_eq!(
+            reference.current_plate_angular_velocities_rad_per_myr,
+            provenance_intervened.current_plate_angular_velocities_rad_per_myr
+        );
     }
 
     #[test]
