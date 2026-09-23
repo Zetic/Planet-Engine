@@ -28,6 +28,7 @@ pub enum HistoricalEventKind {
     Transform = 5,
     Accretion = 6,
     Capture = 7,
+    MicroplateFormation = 8,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
