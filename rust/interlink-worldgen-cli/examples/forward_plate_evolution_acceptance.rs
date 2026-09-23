@@ -108,7 +108,6 @@ fn verify_seed(seed: &str) -> Result<usize, String> {
         .collect::<BTreeSet<_>>();
     let present_plate_count = history.metrics.modern_plate_count as usize;
     let mut plate_area = vec![0.0_f64; present_plate_count];
-    let mut total_area = 0.0_f64;
     let mut migrated_boundary_edges = 0usize;
     let mut inherited_boundary_edges = 0usize;
     let mut young_created_crust = 0usize;
@@ -126,7 +125,6 @@ fn verify_seed(seed: &str) -> Result<usize, String> {
         }
         let area = topology.area_steradians(sample);
         plate_area[owner] += area;
-        total_area += area;
 
         if history.crust_kind[index] == CrustKind::Oceanic as u8 {
             oceanic_samples += 1;
@@ -314,20 +312,51 @@ fn verify_seed(seed: &str) -> Result<usize, String> {
         return Err(format!("{seed}: present plate area does not close"));
     }
 
-    let mut plate_fractions = plate_area
+    let plate_area_fractions = plate_area
         .iter()
         .map(|area| *area / total_area)
         .collect::<Vec<_>>();
+    let mut plate_fractions = plate_area_fractions.clone();
     plate_fractions.sort_by(|left, right| left.total_cmp(right));
     let tiny_plate_count = plate_fractions.iter().filter(|fraction| **fraction < 0.005).count();
     let median_plate_fraction = plate_fractions[plate_fractions.len() / 2];
+    let mut tiny_plate_details = Vec::new();
+    for (plate, fraction) in plate_area_fractions.iter().copied().enumerate() {
+        if fraction >= 0.005 {
+            continue;
+        }
+        let history_id = history.current_plate_history_ids[plate];
+        let genesis = history
+            .events
+            .iter()
+            .find_map(|event| {
+                if event.plate_b != history_id {
+                    return None;
+                }
+                if event.kind == HistoricalEventKind::MicroplateFormation {
+                    Some("microplate")
+                } else if event.kind == HistoricalEventKind::Rift
+                    && event.displacement_km.abs() <= 0.001
+                {
+                    Some("rift")
+                } else {
+                    None
+                }
+            })
+            .unwrap_or("ancestral");
+        tiny_plate_details.push(format!(
+            "p{plate}/h{history_id}={:.2}%:{genesis}",
+            fraction * 100.0
+        ));
+    }
     println!(
-        "forward-plate-areas seed={seed} min={:.2}% median={:.2}% max={:.2}% tiny(<0.5%)={}/{}",
+        "forward-plate-areas seed={seed} min={:.2}% median={:.2}% max={:.2}% tiny(<0.5%)={}/{} details=[{}]",
         plate_fractions[0] * 100.0,
         median_plate_fraction * 100.0,
         plate_fractions[plate_fractions.len() - 1] * 100.0,
         tiny_plate_count,
         plate_fractions.len(),
+        tiny_plate_details.join(", "),
     );
 
     println!(
