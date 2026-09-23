@@ -1,6 +1,7 @@
 use interlink_worldgen::{
     build_icosphere, generate_historical_frontend, CrustKind, HistoricalEventKind,
-    HistoricalLithosphereRequest, PlanetPhysicalParameters, PlanetTopology, MAX_TECTONIC_PLATES,
+    HistoricalLithosphereRequest, PlanetPhysicalParameters, PlanetTopology, PlateBoundaryKind,
+    MAX_TECTONIC_PLATES,
 };
 use std::collections::{BTreeSet, VecDeque};
 
@@ -344,9 +345,41 @@ fn verify_seed(seed: &str) -> Result<usize, String> {
                 }
             })
             .unwrap_or("ancestral");
+        let mut crust_counts = [0usize; 3];
+        for (sample, owner) in history.current_plate_ids.iter().copied().enumerate() {
+            if usize::from(owner) != plate {
+                continue;
+            }
+            let bucket = if history.crust_kind[sample] == CrustKind::Continental as u8 {
+                0
+            } else if history.crust_kind[sample] == CrustKind::Transitional as u8 {
+                1
+            } else {
+                2
+            };
+            crust_counts[bucket] += 1;
+        }
+        let mut boundary_counts = [0usize; 3];
+        for edge in &first.tectonics.boundaries {
+            if usize::from(edge.plate_a) != plate && usize::from(edge.plate_b) != plate {
+                continue;
+            }
+            let bucket = match edge.kind {
+                PlateBoundaryKind::Convergent => 0,
+                PlateBoundaryKind::Divergent => 1,
+                PlateBoundaryKind::Transform => 2,
+            };
+            boundary_counts[bucket] += 1;
+        }
         tiny_plate_details.push(format!(
-            "p{plate}/h{history_id}={:.2}%:{genesis}",
-            fraction * 100.0
+            "p{plate}/h{history_id}={:.2}%:{genesis}:crust={}/{}/{}:bdry={}/{}/{}",
+            fraction * 100.0,
+            crust_counts[0],
+            crust_counts[1],
+            crust_counts[2],
+            boundary_counts[0],
+            boundary_counts[1],
+            boundary_counts[2],
         ));
     }
     println!(
