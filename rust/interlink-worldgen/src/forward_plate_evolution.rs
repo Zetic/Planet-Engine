@@ -1643,7 +1643,7 @@ fn accumulate_extensional_strain<T: PlanetTopology>(
         } else {
             // Extension memory is material state, but it relaxes when the regional stress field
             // is no longer tensile. This prevents a once-stretched plate from spawning repeated
-            // rifts indefinitely after its boundary conditions have changed.
+            // ruptures indefinitely after its boundary conditions have changed.
             let decay = (-dt_myr / 28.0).exp() as f32;
             extensional_strain_myr[sample] *= decay;
         }
