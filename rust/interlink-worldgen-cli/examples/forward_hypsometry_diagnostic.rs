@@ -262,6 +262,8 @@ fn verify_seed(seed: &str) -> Result<(), String> {
     let mut active_collision_gt_500 = 0.0_f64;
     let mut active_collision_gt_1000 = 0.0_f64;
     let mut active_collision_gt_2000 = 0.0_f64;
+    let mut province_area = [0.0_f64; 7];
+    let mut province_relief_sum = [0.0_f64; 7];
 
     for sample in 0..terrain.solid_elevation_m.len() {
         let area = areas[sample];
@@ -273,6 +275,10 @@ fn verify_seed(seed: &str) -> Result<(), String> {
         let historical_support =
             f64::from(terrain.isostatic_elevation_m[sample]) - base_isostatic;
 
+        let province_kind = usize::from(inherited.province_kind[sample]).min(6);
+        province_area[province_kind] += area;
+        province_relief_sum[province_kind] +=
+            area * f64::from(terrain.orogenic_elevation_m[sample]);
         let is_continental = inherited.crust_kind[sample] == CrustKind::Continental as u8;
         let stable = is_continental
             && inherited.structural_zone_kind[sample]
@@ -411,6 +417,15 @@ fn verify_seed(seed: &str) -> Result<(), String> {
         active_collision_gt_1000 / continental_history_area * 100.0,
         active_collision_gt_2000 / continental_history_area * 100.0,
     );
+    for kind in 0..=6 {
+        if province_area[kind] > 0.0 {
+            println!(
+                "hypsometry-province seed={seed} kind={kind} area={:.1}% mean-relief={:.0}m",
+                province_area[kind] / total_area * 100.0,
+                province_relief_sum[kind] / province_area[kind],
+            );
+        }
+    }
     println!(
         "hypsometry-area seed={seed} continental={:.1}% stable={:.1}% modified={:.1}% water-closure={:.3e}",
         continental_budget.area / total_area * 100.0,
