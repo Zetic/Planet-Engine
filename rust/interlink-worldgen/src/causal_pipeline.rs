@@ -11,8 +11,8 @@ use std::collections::VecDeque;
 use std::ops::{Deref, DerefMut};
 
 pub const TECTONIC_TOPOGRAPHY_STAGE_ID: &str = "terrain:initial-topography";
-pub const TECTONIC_TOPOGRAPHY_STAGE_VERSION: u32 = 14;
-const TECTONIC_TOPOGRAPHY_NAMESPACE: &str = "terrain:orogen-topology-and-connected-ocean:v3";
+pub const TECTONIC_TOPOGRAPHY_STAGE_VERSION: u32 = 15;
+const TECTONIC_TOPOGRAPHY_NAMESPACE: &str = "terrain:orogen-topology-and-connected-ocean:v4";
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 const CRUST_OCEANIC: u8 = 1;
@@ -557,24 +557,27 @@ fn province_relief(inherited: &InheritedPhysicalState, index: usize) -> (f64, f6
     // moderate crustal-thickening pedestal rather than forcing every accepted orogen to depend
     // on a narrow mountain-core raster. Terrane accretion receives the stronger support because
     // its added crust is mechanically real even where the topographic core remains coastal.
+    // Forward tectonics creates more physically distinct convergent systems than the old
+    // synthetic ownership graph.  Preserve narrow mountain-core amplitude, but reduce the broad
+    // root/plateau/pedestal terms that otherwise overlap into continent-scale high plateaus.
     let continental_collision_pedestal = if kind == OrogenProvinceKind::ContinentalCollision as u8 {
-        820.0 * intensity * (0.55 + 0.45 * shortening)
+        350.0 * intensity * (0.55 + 0.45 * shortening)
     } else {
         0.0
     };
     let terrane_accretion_pedestal = if kind == OrogenProvinceKind::TerraneAccretion as u8 {
-        3_000.0 * intensity * (0.55 + 0.45 * maturity)
+        1_000.0 * intensity * (0.55 + 0.45 * maturity)
     } else {
         0.0
     };
     let collision_relief = crust_scale
         * tectonic_gain
         * (4_300.0 * mountain_core.powf(1.10)
-            + 3_050.0 * root * broad_transmission
-            + 1_350.0 * plateau * broad_transmission
-            + 1_150.0 * fold
-            + 2_000.0 * transpression
-            + 600.0 * intensity
+            + 1_800.0 * root * broad_transmission
+            + 900.0 * plateau * broad_transmission
+            + 900.0 * fold
+            + 1_200.0 * transpression
+            + 250.0 * intensity
             + continental_collision_pedestal
             + terrane_accretion_pedestal
             - foreland_deflection
