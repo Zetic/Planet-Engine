@@ -169,6 +169,14 @@ fn verify_seed(seed: &str) -> Result<(), String> {
     let mut stable_budget = ComponentBudget::default();
     let mut modified_budget = ComponentBudget::default();
     let mut continental_budget = ComponentBudget::default();
+    let mut oceanic_budget = ComponentBudget::default();
+    let mut continental_history_area = 0.0_f64;
+    let mut continental_orogen_history_sum = 0.0_f64;
+    let mut continental_thickness_sum = 0.0_f64;
+    let mut continental_density_sum = 0.0_f64;
+    let mut orogen_history_gt_025 = 0.0_f64;
+    let mut orogen_history_gt_050 = 0.0_f64;
+    let mut orogen_history_gt_075 = 0.0_f64;
 
     for sample in 0..terrain.solid_elevation_m.len() {
         let area = areas[sample];
@@ -190,6 +198,14 @@ fn verify_seed(seed: &str) -> Result<(), String> {
             && inherited.basin_potential[sample] < 0.32;
 
         if is_continental {
+            continental_history_area += area;
+            let orogen_history = f64::from(inherited.orogenic_history[sample]);
+            continental_orogen_history_sum += area * orogen_history;
+            continental_thickness_sum += area * f64::from(inherited.crust_thickness_km[sample]);
+            continental_density_sum += area * crust_density;
+            orogen_history_gt_025 += area * f64::from(orogen_history >= 0.25);
+            orogen_history_gt_050 += area * f64::from(orogen_history >= 0.50);
+            orogen_history_gt_075 += area * f64::from(orogen_history >= 0.75);
             continental_budget.add(
                 area,
                 base_isostatic,
@@ -229,6 +245,19 @@ fn verify_seed(seed: &str) -> Result<(), String> {
                     f64::from(terrain.mantle_dynamic_elevation_m[sample]),
                 );
             }
+        } else if inherited.crust_kind[sample] == CrustKind::Oceanic as u8 {
+            oceanic_budget.add(
+                area,
+                base_isostatic,
+                historical_support,
+                f64::from(terrain.thermal_elevation_m[sample]),
+                f64::from(terrain.orogenic_elevation_m[sample]),
+                f64::from(terrain.ridge_elevation_m[sample]),
+                f64::from(terrain.rift_basin_elevation_m[sample]),
+                f64::from(terrain.trench_elevation_m[sample]),
+                f64::from(terrain.arc_elevation_m[sample]),
+                f64::from(terrain.mantle_dynamic_elevation_m[sample]),
+            );
         }
 
         if terrain.submerged_mask[sample] == 0 {
@@ -272,6 +301,17 @@ fn verify_seed(seed: &str) -> Result<(), String> {
     continental_budget.print(seed, "continental");
     stable_budget.print(seed, "stable");
     modified_budget.print(seed, "modified");
+    oceanic_budget.print(seed, "oceanic");
+    let continental_history_area = continental_history_area.max(1.0e-12);
+    println!(
+        "hypsometry-history seed={seed} continental-orogen-history-mean={:.3} area>=.25/.50/.75={:.1}/{:.1}/{:.1}% thickness={:.1}km density={:.0}kg/m3",
+        continental_orogen_history_sum / continental_history_area,
+        orogen_history_gt_025 / continental_history_area * 100.0,
+        orogen_history_gt_050 / continental_history_area * 100.0,
+        orogen_history_gt_075 / continental_history_area * 100.0,
+        continental_thickness_sum / continental_history_area,
+        continental_density_sum / continental_history_area,
+    );
     println!(
         "hypsometry-area seed={seed} continental={:.1}% stable={:.1}% modified={:.1}% water-closure={:.3e}",
         continental_budget.area / total_area * 100.0,
