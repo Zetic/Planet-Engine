@@ -94,13 +94,24 @@ Continental hypsometry is independently checked across four fixed seeds. At the 
 
 A five-seed L4 Earth-like ensemble now occupies a deliberately broad **pre-erosion** envelope: land fraction `23–30%`, mean land elevation `1.28–1.82 km`, mean standing-ocean depth `3.49–3.81 km`, and p95 solid elevation `4.49–5.91 km`, with exact water-volume closure and no safety clamps. These are calibration guards, not a requirement to reproduce Earth exactly; later erosion and glaciation are still expected to reshape the distribution.
 
+## Forward-tectonic hypsometry recalibration (`@19`)
+
+The forward plate evolution cutover changed the density and spatial coverage of physically distinct collision, accretion, and fossil-orogen systems. The prior WG-4 calibration therefore over-expressed broad continental relief even though the new plate geometry was behaving causally. Post-merge profiling separated crustal isostasy, historical continental support, active/fossil orogen response, rift/basin deflection, and mantle support before retuning any amplitudes.
+
+The recalibration narrows active and fossil event-memory propagation in the historical morphology adapter and requires a stronger structural witness before diffuse fossil deformation is promoted into an explicit high-relief province. In the causal topography response, narrow mountain-core relief remains strong while broad root, plateau, intensity, and accretion pedestals are reduced so overlapping forward-evolved systems do not merge into continent-scale plateaus. The causal province relief now also honors the public WG-4 collision and arc amplitude parameters; the province cutover had previously replaced the legacy radial fields without carrying those amplitude controls through to the final surface.
+
+Broad freeboard is recalibrated separately from mountain morphology. The Earth-like default isostatic scale is reduced from `0.55` to `0.45`, active collision amplitude from `2400 m` to `2200 m`, and the additional historical continental-column support ceiling from `650 m` to `300 m`. Passive-margin deflection, oceanic thermal subsidence, ridge/rift localization, trench depth, water inventory, and connected-ocean rules remain independently causal rather than being adjusted to compensate for continental elevation.
+
+The permanent forward-hypsometry acceptance uses four L4→L6 fixed seeds plus the production-resolution `interlink-wg7c` L6→L8 reference. At the accepted calibration, the four fast worlds have mean land elevation about `0.98–1.65 km`, solid-elevation p95 about `3.99–5.02 km`, and no more than `28.3%` of emergent land above `2 km`. The L6→L8 reference reports about `20.1%` land, `1.85 km` mean land elevation, `3.35 km` mean ocean depth, `4.39 km` solid-elevation p95, `38.0%` of land above `2 km`, and `5.9%` above `3 km`, with exact hydrostatic water closure. The gate is intentionally distributional: rare high peaks remain allowed while broad multi-kilometer continental plateaus are rejected.
+
+
 ## Resolution
 
 WG-4 consumes WG-3.75 coarse-to-fine inheritance. The intended global production investigation is accepted L6 physical truth inherited onto an L7 terrain substrate; lower levels remain supported for tests and fast diagnostics. WG-4 never reruns WG-2/WG-3/WG-3.5 independently at the terrain level.
 
 ## Determinism
 
-The accepted public stage identity is `terrain:initial-topography@17` with namespace `terrain:historical-material-morphology:v3`. The internal non-orogenic baseline is `terrain:initial-topography@12` / `terrain:structure:v2`. The topography hash includes stage/version/seed, WG-4 model parameters, planetary parameters, WG-3.75 inheritance identity, fine boundary identity, ordered solid elevation, sea-level state, and ordered water depth. Upstream tectonic/geology/lithosphere/inheritance hashes are not mutated.
+The accepted public stage identity is `terrain:initial-topography@19` with namespace `terrain:historical-material-morphology:v5`. The internal non-orogenic baseline remains `terrain:initial-topography@12` / `terrain:structure:v2`; the causal orogen/connected-ocean adapter currently materializes `terrain:initial-topography@15` before the historical-material freeboard pass. The topography hash includes stage/version/seed, WG-4 model parameters, planetary parameters, WG-3.75 inheritance identity, fine boundary identity, ordered solid elevation, sea-level state, and ordered water depth. Upstream tectonic/geology/lithosphere/inheritance hashes are not mutated.
 
 ## Explicit non-goals
 

@@ -11,8 +11,8 @@ use std::collections::VecDeque;
 use std::ops::{Deref, DerefMut};
 
 pub const TECTONIC_TOPOGRAPHY_STAGE_ID: &str = "terrain:initial-topography";
-pub const TECTONIC_TOPOGRAPHY_STAGE_VERSION: u32 = 14;
-const TECTONIC_TOPOGRAPHY_NAMESPACE: &str = "terrain:orogen-topology-and-connected-ocean:v3";
+pub const TECTONIC_TOPOGRAPHY_STAGE_VERSION: u32 = 15;
+const TECTONIC_TOPOGRAPHY_NAMESPACE: &str = "terrain:orogen-topology-and-connected-ocean:v4";
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 const CRUST_OCEANIC: u8 = 1;
@@ -507,7 +507,11 @@ pub(crate) fn marine_connectivity_access_mask(
         .collect()
 }
 
-fn province_relief(inherited: &InheritedPhysicalState, index: usize) -> (f64, f64) {
+fn province_relief(
+    inherited: &InheritedPhysicalState,
+    index: usize,
+    parameters: TopographyParameters,
+) -> (f64, f64) {
     let intensity = f64::from(inherited.orogenic_history[index]).clamp(0.0, 1.0);
     let mountain_core = f64::from(inherited.mountain_core_index[index]).clamp(0.0, 1.0);
     let resistance = f64::from(inherited.interior_resistance_index[index]).clamp(0.0, 1.0);
@@ -532,11 +536,13 @@ fn province_relief(inherited: &InheritedPhysicalState, index: usize) -> (f64, f6
         // trench behind every volcanic arc.  Tie its modest deflection to the actual arc load.
         let arc_load = (0.55 * mountain_core + 0.45 * volcanic_arc).clamp(0.0, 1.0);
         let backarc_deflection = 260.0 * backarc * (0.25 + 0.75 * arc_load);
-        let arc_relief = 1_500.0 * mountain_core.powf(1.08)
-            + volcanic_arc * (2_450.0 + 800.0 * maturity)
-            + 360.0 * fold
-            + 120.0 * intensity
-            - backarc_deflection;
+        let arc_parameter_scale = parameters.arc_uplift_scale_m / 2_300.0;
+        let arc_relief = arc_parameter_scale
+            * (1_500.0 * mountain_core.powf(1.08)
+                + volcanic_arc * (2_450.0 + 800.0 * maturity)
+                + 360.0 * fold
+                + 120.0 * intensity
+                - backarc_deflection);
         return (0.0, arc_relief);
     }
 
@@ -557,24 +563,33 @@ fn province_relief(inherited: &InheritedPhysicalState, index: usize) -> (f64, f6
     // moderate crustal-thickening pedestal rather than forcing every accepted orogen to depend
     // on a narrow mountain-core raster. Terrane accretion receives the stronger support because
     // its added crust is mechanically real even where the topographic core remains coastal.
+    // Forward tectonics creates more physically distinct convergent systems than the old
+    // synthetic ownership graph.  Preserve narrow mountain-core amplitude, but reduce the broad
+    // root/plateau/pedestal terms that otherwise overlap into continent-scale high plateaus.
     let continental_collision_pedestal = if kind == OrogenProvinceKind::ContinentalCollision as u8 {
-        820.0 * intensity * (0.55 + 0.45 * shortening)
+        350.0 * intensity * (0.55 + 0.45 * shortening)
     } else {
         0.0
     };
     let terrane_accretion_pedestal = if kind == OrogenProvinceKind::TerraneAccretion as u8 {
-        3_000.0 * intensity * (0.55 + 0.45 * maturity)
+        1_000.0 * intensity * (0.55 + 0.45 * maturity)
     } else {
         0.0
     };
-    let collision_relief = crust_scale
+    // The province model replaced the legacy radial collision kernel, but the public WG-4
+    // amplitude parameter remains the caller's control over active collision relief. Preserve the
+    // accepted province geometry while scaling its mechanically expressed load around the
+    // calibration baseline (2400 m).
+    let collision_parameter_scale = parameters.collision_uplift_scale_m / 2_400.0;
+    let collision_relief = collision_parameter_scale
+        * crust_scale
         * tectonic_gain
         * (4_300.0 * mountain_core.powf(1.10)
-            + 3_050.0 * root * broad_transmission
-            + 1_350.0 * plateau * broad_transmission
-            + 1_150.0 * fold
-            + 2_000.0 * transpression
-            + 600.0 * intensity
+            + 1_800.0 * root * broad_transmission
+            + 900.0 * plateau * broad_transmission
+            + 900.0 * fold
+            + 1_200.0 * transpression
+            + 250.0 * intensity
             + continental_collision_pedestal
             + terrane_accretion_pedestal
             - foreland_deflection
@@ -615,7 +630,7 @@ pub fn generate_initial_topography(
     let mut arc = vec![0.0_f64; count];
     let mut raw = vec![0.0_f64; count];
     for i in 0..count {
-        let (collision_relief, arc_relief) = province_relief(inherited, i);
+        let (collision_relief, arc_relief) = province_relief(inherited, i, request.parameters);
         orogenic[i] = collision_relief;
         arc[i] = arc_relief;
 

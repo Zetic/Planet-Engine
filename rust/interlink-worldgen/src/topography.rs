@@ -51,10 +51,10 @@ pub struct TopographyParameters {
 impl Default for TopographyParameters {
     fn default() -> Self {
         Self {
-            isostatic_scale: 0.55,
+            isostatic_scale: 0.45,
             oceanic_subsidence_100_myr_m: 2_900.0,
             inherited_orogeny_scale_m: 1_200.0,
-            collision_uplift_scale_m: 2_400.0,
+            collision_uplift_scale_m: 2_200.0,
             collision_width_m: 400_000.0,
             ridge_uplift_scale_m: 1_200.0,
             ridge_width_m: 280_000.0,
