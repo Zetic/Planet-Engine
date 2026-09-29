@@ -191,6 +191,8 @@ fn main() -> Result<(), String> {
     for seed in ["interlink-wg7c", "1", "2", "continental-freeboard-holdout"] {
         run(seed, 4, 6)?;
     }
-    run("interlink-wg7c", 6, 8)?;
+    for seed in ["interlink-wg7c", "1", "2", "continental-freeboard-holdout"] {
+        run(seed, 6, 8)?;
+    }
     Ok(())
 }
