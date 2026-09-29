@@ -13,7 +13,8 @@ const SUBSTEP_MYR: f64 = EPOCH_DURATION_MYR / SUBSTEPS_PER_EPOCH as f64;
 const RIFT_STRAIN_NUCLEATION_MYR: f32 = 26.0;
 const RIFT_STRAIN_RELIEF_FACTOR: f32 = 0.22;
 const FORWARD_TRANSITION_MATURATION_MYR: f32 = 30.0;
-const MAX_QUIET_INHERITED_TRANSITION_WIDTH_KM: f64 = 300.0;
+const MIN_QUIET_INHERITED_TRANSITION_WIDTH_KM: f64 = 220.0;
+const MAX_QUIET_INHERITED_TRANSITION_WIDTH_KM: f64 = 360.0;
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 
@@ -2331,8 +2332,15 @@ fn bound_quiet_inherited_transitional_margins<T: PlanetTopology>(
         // Only quiet inherited material that lies implausibly far landward of oceanic crust is
         // restored to continental-margin identity. This removes continent-scale blankets without
         // deepening the adjacent ocean basin and pulling global sea level downward.
+        let strain_fraction =
+            (f64::from(extensional_strain_myr[sample]) / f64::from(RIFT_STRAIN_NUCLEATION_MYR))
+                .clamp(0.0, 1.0);
+        let allowed_width_km = MIN_QUIET_INHERITED_TRANSITION_WIDTH_KM
+            + (MAX_QUIET_INHERITED_TRANSITION_WIDTH_KM
+                - MIN_QUIET_INHERITED_TRANSITION_WIDTH_KM)
+                * strain_fraction;
         if !distance_to_ocean_km[sample].is_finite()
-            || distance_to_ocean_km[sample] > MAX_QUIET_INHERITED_TRANSITION_WIDTH_KM
+            || distance_to_ocean_km[sample] > allowed_width_km
         {
             model.crust_kind[sample] = CrustKind::Continental as u8;
             model.continental_margin_material[sample] = 1;
