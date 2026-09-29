@@ -56,6 +56,36 @@ impl WeightedStats {
     }
 }
 
+fn inherited_orogen_response(
+    inherited: &interlink_worldgen::InheritedPhysicalState,
+    index: usize,
+) -> f64 {
+    let history = f64::from(inherited.orogenic_history[index]).clamp(0.0, 1.0);
+    if history <= 0.0 {
+        return 0.0;
+    }
+    let te =
+        ((f64::from(inherited.effective_elastic_thickness_km[index]) - 4.0) / 82.0)
+            .clamp(0.0, 1.0);
+    let weakness = f64::from(inherited.weakness_index[index]).clamp(0.0, 1.0);
+    let thickness =
+        ((f64::from(inherited.crust_thickness_km[index]) - 28.0) / 28.0)
+            .clamp(0.0, 1.0);
+    let fabric = f64::from(inherited.structural_fabric_strength[index]).clamp(0.0, 1.0);
+    let suture = f64::from(
+        inherited.structural_zone_kind[index] == InheritedStructureKind::PaleoSuture as u8,
+    );
+    let exponent =
+        (1.30 + 0.22 * weakness - 0.16 * te - 0.08 * thickness + 0.08 * suture * fabric)
+            .clamp(1.10, 1.55);
+    let support =
+        (0.94 + 0.08 * te + 0.07 * thickness + 0.10 * suture * fabric
+            + 0.02 * (1.0 - suture) * fabric)
+            .clamp(0.90, 1.15);
+    let shaped = history.powf(exponent) * support;
+    history * 0.40 + shaped * 0.60
+}
+
 #[derive(Default)]
 struct ComponentBudget {
     area: f64,
@@ -177,6 +207,11 @@ fn verify_seed(seed: &str) -> Result<(), String> {
     let mut orogen_history_gt_025 = 0.0_f64;
     let mut orogen_history_gt_050 = 0.0_f64;
     let mut orogen_history_gt_075 = 0.0_f64;
+    let mut inherited_orogen_sum = 0.0_f64;
+    let mut active_collision_sum = 0.0_f64;
+    let mut active_collision_gt_500 = 0.0_f64;
+    let mut active_collision_gt_1000 = 0.0_f64;
+    let mut active_collision_gt_2000 = 0.0_f64;
 
     for sample in 0..terrain.solid_elevation_m.len() {
         let area = areas[sample];
@@ -206,6 +241,15 @@ fn verify_seed(seed: &str) -> Result<(), String> {
             orogen_history_gt_025 += area * f64::from(orogen_history >= 0.25);
             orogen_history_gt_050 += area * f64::from(orogen_history >= 0.50);
             orogen_history_gt_075 += area * f64::from(orogen_history >= 0.75);
+            let inherited_orogen =
+                parameters.inherited_orogeny_scale_m * inherited_orogen_response(&inherited, sample);
+            let active_collision =
+                (f64::from(terrain.orogenic_elevation_m[sample]) - inherited_orogen).max(0.0);
+            inherited_orogen_sum += area * inherited_orogen;
+            active_collision_sum += area * active_collision;
+            active_collision_gt_500 += area * f64::from(active_collision >= 500.0);
+            active_collision_gt_1000 += area * f64::from(active_collision >= 1_000.0);
+            active_collision_gt_2000 += area * f64::from(active_collision >= 2_000.0);
             continental_budget.add(
                 area,
                 base_isostatic,
@@ -304,13 +348,18 @@ fn verify_seed(seed: &str) -> Result<(), String> {
     oceanic_budget.print(seed, "oceanic");
     let continental_history_area = continental_history_area.max(1.0e-12);
     println!(
-        "hypsometry-history seed={seed} continental-orogen-history-mean={:.3} area>=.25/.50/.75={:.1}/{:.1}/{:.1}% thickness={:.1}km density={:.0}kg/m3",
+        "hypsometry-history seed={seed} continental-orogen-history-mean={:.3} area>=.25/.50/.75={:.1}/{:.1}/{:.1}% thickness={:.1}km density={:.0}kg/m3 inherited-orogen={:.0}m active-collision={:.0}m active>=.5/1/2km={:.1}/{:.1}/{:.1}%",
         continental_orogen_history_sum / continental_history_area,
         orogen_history_gt_025 / continental_history_area * 100.0,
         orogen_history_gt_050 / continental_history_area * 100.0,
         orogen_history_gt_075 / continental_history_area * 100.0,
         continental_thickness_sum / continental_history_area,
         continental_density_sum / continental_history_area,
+        inherited_orogen_sum / continental_history_area,
+        active_collision_sum / continental_history_area,
+        active_collision_gt_500 / continental_history_area * 100.0,
+        active_collision_gt_1000 / continental_history_area * 100.0,
+        active_collision_gt_2000 / continental_history_area * 100.0,
     );
     println!(
         "hypsometry-area seed={seed} continental={:.1}% stable={:.1}% modified={:.1}% water-closure={:.3e}",
