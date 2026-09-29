@@ -435,28 +435,24 @@ fn verify_seed(seed: &str) -> Result<(), String> {
     );
 
     let mut candidate = TopographyParameters::default();
-    candidate.collision_width_m = 300_000.0;
+    candidate.isostatic_scale = 0.50;
     candidate.collision_uplift_scale_m = 2_200.0;
-    candidate.inherited_orogeny_scale_m = 1_000.0;
-    print_variant(seed, "a", &fine, &inherited, &boundaries, planet, candidate)?;
+    print_variant(seed, "iso50-c2200", &fine, &inherited, &boundaries, planet, candidate)?;
 
     let mut candidate = TopographyParameters::default();
-    candidate.collision_width_m = 250_000.0;
+    candidate.isostatic_scale = 0.45;
     candidate.collision_uplift_scale_m = 2_200.0;
-    candidate.inherited_orogeny_scale_m = 900.0;
-    print_variant(seed, "b", &fine, &inherited, &boundaries, planet, candidate)?;
+    print_variant(seed, "iso45-c2200", &fine, &inherited, &boundaries, planet, candidate)?;
 
     let mut candidate = TopographyParameters::default();
-    candidate.collision_width_m = 250_000.0;
+    candidate.isostatic_scale = 0.45;
     candidate.collision_uplift_scale_m = 2_000.0;
-    candidate.inherited_orogeny_scale_m = 900.0;
-    print_variant(seed, "c", &fine, &inherited, &boundaries, planet, candidate)?;
+    print_variant(seed, "iso45-c2000", &fine, &inherited, &boundaries, planet, candidate)?;
 
     let mut candidate = TopographyParameters::default();
-    candidate.collision_width_m = 250_000.0;
-    candidate.collision_uplift_scale_m = 1_800.0;
-    candidate.inherited_orogeny_scale_m = 800.0;
-    print_variant(seed, "d", &fine, &inherited, &boundaries, planet, candidate)?;
+    candidate.isostatic_scale = 0.42;
+    candidate.collision_uplift_scale_m = 2_000.0;
+    print_variant(seed, "iso42-c2000", &fine, &inherited, &boundaries, planet, candidate)?;
 
     Ok(())
 }
