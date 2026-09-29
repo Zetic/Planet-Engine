@@ -44,8 +44,6 @@ fn main() -> Result<(), String> {
     )
     .map_err(|error| error.to_string())?;
     let mut parameters = TopographyParameters::default();
-    parameters.isostatic_scale = 0.48;
-    parameters.collision_uplift_scale_m = 2_200.0;
     let terrain = generate_initial_topography(
         &fine,
         &inherited,
@@ -127,7 +125,7 @@ fn main() -> Result<(), String> {
     }
 
     println!(
-        "hypsometry-highres seed={seed} variant=iso48-c2200 L{coarse_level}->L{fine_level} samples={} land={:.1}% mean-land={:.0}m ocean-depth={:.0}m solid-p05/p50/p95={:.0}/{:.0}/{:.0}m range={:.0}..{:.0}m land>1/2/3/4km={:.1}/{:.1}/{:.1}/{:.1}% closure={:.3e}",
+        "hypsometry-highres seed={seed} variant=default-forward-calibration L{coarse_level}->L{fine_level} samples={} land={:.1}% mean-land={:.0}m ocean-depth={:.0}m solid-p05/p50/p95={:.0}/{:.0}/{:.0}m range={:.0}..{:.0}m land>1/2/3/4km={:.1}/{:.1}/{:.1}/{:.1}% closure={:.3e}",
         terrain.metrics.sample_count,
         terrain.metrics.land_area_fraction * 100.0,
         terrain.metrics.mean_land_elevation_m,
