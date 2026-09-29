@@ -111,7 +111,7 @@ WG-4 consumes WG-3.75 coarse-to-fine inheritance. The intended global production
 
 ## Determinism
 
-The accepted public stage identity is `terrain:initial-topography@17` with namespace `terrain:historical-material-morphology:v3`. The internal non-orogenic baseline is `terrain:initial-topography@12` / `terrain:structure:v2`. The topography hash includes stage/version/seed, WG-4 model parameters, planetary parameters, WG-3.75 inheritance identity, fine boundary identity, ordered solid elevation, sea-level state, and ordered water depth. Upstream tectonic/geology/lithosphere/inheritance hashes are not mutated.
+The accepted public stage identity is `terrain:initial-topography@19` with namespace `terrain:historical-material-morphology:v5`. The internal non-orogenic baseline remains `terrain:initial-topography@12` / `terrain:structure:v2`; the causal orogen/connected-ocean adapter currently materializes `terrain:initial-topography@15` before the historical-material freeboard pass. The topography hash includes stage/version/seed, WG-4 model parameters, planetary parameters, WG-3.75 inheritance identity, fine boundary identity, ordered solid elevation, sea-level state, and ordered water depth. Upstream tectonic/geology/lithosphere/inheritance hashes are not mutated.
 
 ## Explicit non-goals
 
