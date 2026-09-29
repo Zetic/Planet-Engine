@@ -149,6 +149,7 @@ fn stable_support_relaxation_barrier(kind: u8) -> bool {
 fn continental_isostatic_expression(
     inherited: &InheritedPhysicalState,
     sample: usize,
+    orogenic_relief_m: f64,
 ) -> f64 {
     if inherited.crust_kind[sample] != CrustKind::Continental as u8 {
         return 1.0;
@@ -157,15 +158,12 @@ fn continental_isostatic_expression(
     // The raw Airy term represents the buoyancy of the entire continental column. Ordinary
     // unthickened continental crust should not express that whole column as surface relief:
     // denuded interiors and sedimentary platforms sit much lower than active crustal roots even
-    // when both retain thick continental lithosphere. Preserve the full response only where the
-    // inherited physical state contains a real thickened/orogenic root.
+    // when both retain thick continental lithosphere. Use the already accepted, localized WG-4
+    // orogenic load plus actual excess crustal thickness as the witness for retaining that root.
+    let relief_root = clamp01((orogenic_relief_m - 250.0) / 1_750.0);
     let thickness_root =
-        clamp01((f64::from(inherited.crust_thickness_km[sample]) - 40.0) / 10.0);
-    let root = f64::from(inherited.crustal_root_index[sample])
-        .max(f64::from(inherited.mountain_core_index[sample]) * 0.90)
-        .max(f64::from(inherited.plateau_index[sample]) * 0.78)
-        .max(thickness_root)
-        .clamp(0.0, 1.0);
+        clamp01((f64::from(inherited.crust_thickness_km[sample]) - 42.0) / 12.0);
+    let root = relief_root.max(thickness_root * 0.75);
 
     // Rift, basin, and passive-margin state releases continental freeboard instead of requiring
     // unrelated ocean/ridge kernels to lower those regions. These are persistent physical fields,
@@ -182,7 +180,7 @@ fn continental_isostatic_expression(
     };
     let release = disturbance.max(structural_release);
 
-    (0.76 + 0.24 * root - 0.10 * release).clamp(0.62, 1.0)
+    (0.64 + 0.34 * root - 0.08 * release).clamp(0.54, 0.98)
 }
 
 fn relaxed_stable_continental_support(
@@ -429,9 +427,6 @@ pub fn generate_initial_topography(
         || inherited.crust_kind.len() != count
         || inherited.continental_stability_index.len() != count
         || inherited.crust_thickness_km.len() != count
-        || inherited.crustal_root_index.len() != count
-        || inherited.mountain_core_index.len() != count
-        || inherited.plateau_index.len() != count
         || inherited.compensated_buoyancy_index.len() != count
         || inherited.rift_history.len() != count
         || inherited.subsidence_history.len() != count
@@ -466,7 +461,11 @@ pub fn generate_initial_topography(
     let mut area_weighted_adjustment = 0.0_f64;
     for sample in 0..count {
         if inherited.crust_kind[sample] == CrustKind::Continental as u8 {
-            let expression = continental_isostatic_expression(inherited, sample);
+            let expression = continental_isostatic_expression(
+                inherited,
+                sample,
+                f64::from(state.orogenic_elevation_m[sample]),
+            );
             let current = f64::from(state.isostatic_elevation_m[sample]);
             let adjustment = current * expression - current;
             if adjustment != 0.0 {
