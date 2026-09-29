@@ -5,6 +5,7 @@ on:
     paths:
       - 'rust/interlink-worldgen/**'
       - 'rust/interlink-worldgen-cli/examples/forward_hypsometry_diagnostic.rs'
+      - 'rust/interlink-worldgen-cli/examples/forward_hypsometry_highres.rs'
       - '.github/workflows/hypsometry-calibration.yml'
   workflow_dispatch:
 
@@ -16,6 +17,7 @@ jobs:
   diagnostic:
     name: Forward hypsometry diagnostic
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - name: Install Rust stable
@@ -24,3 +26,5 @@ jobs:
           rustup default stable
       - name: Run forward hypsometry diagnostic
         run: cargo run --release -p interlink-worldgen-cli --example forward_hypsometry_diagnostic
+      - name: Run L6 to L8 reference hypsometry
+        run: cargo run --release -p interlink-worldgen-cli --example forward_hypsometry_highres
