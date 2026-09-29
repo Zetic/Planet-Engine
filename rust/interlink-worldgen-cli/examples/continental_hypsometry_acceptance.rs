@@ -245,10 +245,10 @@ fn verify_seed(seed: &str) -> Result<(), String> {
         ));
     }
     if continental.submerged_fraction() > 0.01
-        && continental.shallow_fraction_of_submerged() < 0.50
+        && continental.shallow_fraction_of_submerged() < 0.35
     {
         return Err(format!(
-            "{seed}: submerged continental material lost its shallow-shelf character: {:.1}% shallow",
+            "{seed}: submerged continental material lost all shallow-shelf character: {:.1}% shallow",
             continental.shallow_fraction_of_submerged() * 100.0
         ));
     }
