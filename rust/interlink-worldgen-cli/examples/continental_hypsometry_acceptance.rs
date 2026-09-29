@@ -432,7 +432,13 @@ fn main() -> Result<(), String> {
             failures.push(error);
         }
     }
-    for seed in ["interlink-wg7c", "1", "2", "continental-freeboard-holdout"] {
+    for seed in [
+        "interlink-wg7c",
+        "1",
+        "2",
+        "continental-freeboard-holdout",
+        "444",
+    ] {
         if let Err(error) = verify_production_seed(seed) {
             failures.push(error);
         }
