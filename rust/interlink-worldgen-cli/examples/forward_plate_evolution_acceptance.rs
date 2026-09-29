@@ -462,6 +462,7 @@ fn main() -> Result<(), String> {
         "1",
         "2",
         "forward-plate-evolution-holdout",
+        "444",
     ] {
         match verify_seed(seed) {
             Ok(births) => rift_births += births,
