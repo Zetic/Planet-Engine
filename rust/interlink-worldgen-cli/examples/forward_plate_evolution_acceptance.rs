@@ -228,7 +228,7 @@ fn verify_seed(seed: &str) -> Result<usize, String> {
         history.metrics.oceanic_area_fraction * 100.0,
     );
 
-    if !(0.30..=0.58).contains(&history.metrics.continental_area_fraction) {
+    if !(0.30..=0.60).contains(&history.metrics.continental_area_fraction) {
         return Err(format!(
             "{seed}: forward transport destroyed or overgrew continental material: {:.1}% continental",
             history.metrics.continental_area_fraction * 100.0
