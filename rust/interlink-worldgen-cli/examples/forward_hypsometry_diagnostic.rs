@@ -143,6 +143,56 @@ impl ComponentBudget {
     }
 }
 
+fn print_variant(
+    seed: &str,
+    label: &str,
+    topology: &interlink_worldgen::GeodesicTopology,
+    inherited: &interlink_worldgen::InheritedPhysicalState,
+    boundaries: &interlink_worldgen::InheritedBoundarySet,
+    planet: PlanetPhysicalParameters,
+    parameters: TopographyParameters,
+) -> Result<(), String> {
+    let terrain = generate_initial_topography(
+        topology,
+        inherited,
+        boundaries,
+        planet,
+        &TopographyRequest {
+            seed: seed.to_owned(),
+            parameters,
+        },
+    )
+    .map_err(|error| error.to_string())?;
+    let mut land_area = 0.0_f64;
+    let mut above_2km = 0.0_f64;
+    let mut above_3km = 0.0_f64;
+    for sample in 0..terrain.solid_elevation_m.len() {
+        if terrain.submerged_mask[sample] != 0 {
+            continue;
+        }
+        let area = topology.dual_area_steradians()[sample];
+        let elevation = f64::from(terrain.elevation_above_sea_level_m[sample]);
+        land_area += area;
+        above_2km += area * f64::from(elevation >= 2_000.0);
+        above_3km += area * f64::from(elevation >= 3_000.0);
+    }
+    println!(
+        "hypsometry-variant seed={seed} variant={label} land={:.1}% mean-land={:.0}m ocean-depth={:.0}m solid-p95={:.0}m max={:.0}m land>2/3km={:.1}/{:.1}% collision={:.0}m/{:.0}km inherited={:.0}m iso={:.2}",
+        terrain.metrics.land_area_fraction * 100.0,
+        terrain.metrics.mean_land_elevation_m,
+        terrain.metrics.mean_water_depth_m,
+        terrain.metrics.p95_solid_elevation_m,
+        terrain.metrics.maximum_solid_elevation_m,
+        above_2km / land_area.max(1.0e-12) * 100.0,
+        above_3km / land_area.max(1.0e-12) * 100.0,
+        parameters.collision_uplift_scale_m,
+        parameters.collision_width_m / 1_000.0,
+        parameters.inherited_orogeny_scale_m,
+        parameters.isostatic_scale,
+    );
+    Ok(())
+}
+
 fn verify_seed(seed: &str) -> Result<(), String> {
     let coarse_level = 4;
     let fine_level = 6;
@@ -368,6 +418,30 @@ fn verify_seed(seed: &str) -> Result<(), String> {
         modified_budget.area / total_area * 100.0,
         terrain.metrics.water_volume_relative_error,
     );
+
+    let mut candidate = TopographyParameters::default();
+    candidate.collision_width_m = 300_000.0;
+    candidate.collision_uplift_scale_m = 2_200.0;
+    candidate.inherited_orogeny_scale_m = 1_000.0;
+    print_variant(seed, "a", &fine, &inherited, &boundaries, planet, candidate)?;
+
+    let mut candidate = TopographyParameters::default();
+    candidate.collision_width_m = 250_000.0;
+    candidate.collision_uplift_scale_m = 2_200.0;
+    candidate.inherited_orogeny_scale_m = 900.0;
+    print_variant(seed, "b", &fine, &inherited, &boundaries, planet, candidate)?;
+
+    let mut candidate = TopographyParameters::default();
+    candidate.collision_width_m = 250_000.0;
+    candidate.collision_uplift_scale_m = 2_000.0;
+    candidate.inherited_orogeny_scale_m = 900.0;
+    print_variant(seed, "c", &fine, &inherited, &boundaries, planet, candidate)?;
+
+    let mut candidate = TopographyParameters::default();
+    candidate.collision_width_m = 250_000.0;
+    candidate.collision_uplift_scale_m = 1_800.0;
+    candidate.inherited_orogeny_scale_m = 800.0;
+    print_variant(seed, "d", &fine, &inherited, &boundaries, planet, candidate)?;
 
     Ok(())
 }
