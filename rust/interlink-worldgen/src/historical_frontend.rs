@@ -642,8 +642,8 @@ fn build_material_properties<T: PlanetTopology>(
                     // column so the material map can be continental without creating a new
                     // continent-scale topographic pedestal.
                     (
-                        (34.5 + jitter * 1.5).clamp(31.5, 36.0),
-                        (2780.0 + jitter * 14.0).clamp(2748.0, 2812.0),
+                        (35.0 + jitter * 1.25).clamp(32.0, 36.0),
+                        (2775.0 + jitter * 13.0).clamp(2745.0, 2805.0),
                     )
                 } else {
                     // Preserve the accepted Earth-like mean continental column without using
