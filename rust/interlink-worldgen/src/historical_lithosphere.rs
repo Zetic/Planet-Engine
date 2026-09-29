@@ -847,6 +847,7 @@ pub fn generate_historical_lithosphere<T: PlanetTopology>(
     request: &HistoricalLithosphereRequest,
     planet: PlanetPhysicalParameters,
 ) -> Result<HistoricalLithosphereModel, WorldgenError> {
+    let count = topology.sample_count() as usize;
     planet
         .validate()
         .map_err(WorldgenError::InvalidParameters)?;
