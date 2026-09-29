@@ -13,7 +13,7 @@ const SUBSTEP_MYR: f64 = EPOCH_DURATION_MYR / SUBSTEPS_PER_EPOCH as f64;
 const RIFT_STRAIN_NUCLEATION_MYR: f32 = 26.0;
 const RIFT_STRAIN_RELIEF_FACTOR: f32 = 0.22;
 const FORWARD_TRANSITION_MATURATION_MYR: f32 = 30.0;
-const MAX_QUIET_TRANSITION_ENDMEMBER_IMBALANCE_KM: f64 = 220.0;
+const MAX_QUIET_TRANSITION_ENDMEMBER_IMBALANCE_KM: f64 = 120.0;
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 
@@ -2269,7 +2269,8 @@ fn reconcile_quiet_inherited_transitional_margins<T: PlanetTopology>(
     debug_assert_eq!(extensional_strain_myr.len(), count);
 
     // Transitional lithosphere is a bounded material phase between continental and oceanic
-    // endmembers. Measure physical distance through each final transitional component to both
+    // endmembers. At the production L6 physical mesh, the 120 km endmember-balance window
+    // retains roughly one resolved transition cell rather than a multi-cell shelf blanket. Measure physical distance through each final transitional component to both
     // endmembers. This terminal reconciliation runs after all plate motion, birth/death,
     // convergence and advection, so it cannot feed a target geometry back into tectonic motion.
     let distance_to_endmember = |endmember: CrustKind| {
