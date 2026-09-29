@@ -105,13 +105,22 @@ Broad freeboard is recalibrated separately from mountain morphology. The Earth-l
 The permanent forward-hypsometry acceptance uses four L4→L6 fixed seeds plus the production-resolution `interlink-wg7c` L6→L8 reference. At the accepted calibration, the four fast worlds have mean land elevation about `0.98–1.65 km`, solid-elevation p95 about `3.99–5.02 km`, and no more than `28.3%` of emergent land above `2 km`. The L6→L8 reference reports about `20.1%` land, `1.85 km` mean land elevation, `3.35 km` mean ocean depth, `4.39 km` solid-elevation p95, `38.0%` of land above `2 km`, and `5.9%` above `3 km`, with exact hydrostatic water closure. The gate is intentionally distributional: rare high peaks remain allowed while broad multi-kilometer continental plateaus are rejected.
 
 
+## Continental interior freeboard differentiation (`@20`)
+
+The forward-hypsometry recalibration removed the worst continent-scale orogenic overlap, but production-resolution worlds still exposed a second problem: quiet continental crust expressed nearly the same absolute Airy support everywhere. On `interlink-wg7c` L6→L8, quiet continental terrain clustered around roughly `1.9–2.1 km` above sea level even where there was no active root, rift shoulder, or plateau. The map therefore still read as one broad elevated tableland despite acceptable global mean hypsometry.
+
+WG-4 now treats the raw continental Airy term as **support potential**, not an automatic command to express the entire crustal column at the surface. Ordinary unthickened continental crust retains only a bounded fraction of that support. The retained fraction rises where the already accepted localized WG-4 orogenic relief or actual excess crustal thickness provides a physical crustal-root witness, and falls where rift, basin, or passive-margin state releases freeboard. The adjustment is driven only by physical state; plate IDs, ancestry, provenance, and genealogy remain observational.
+
+At the current production-resolution four-seed checkpoint, quiet continental means are approximately `0.41–1.23 km`, while localized orogenic terrain remains higher at approximately `1.14–2.35 km`. For `interlink-wg7c`, quiet continental mean elevation is about `0.86 km`, roughly `77%` of quiet emergent continental area is below `1 km`, and effectively none is above `2 km`; localized orogenic terrain remains about `2.35 km` on average. The permanent gate therefore checks continental **state separation** directly instead of accepting a world merely because its global mean elevation falls inside a broad range.
+
+
 ## Resolution
 
 WG-4 consumes WG-3.75 coarse-to-fine inheritance. The intended global production investigation is accepted L6 physical truth inherited onto an L7 terrain substrate; lower levels remain supported for tests and fast diagnostics. WG-4 never reruns WG-2/WG-3/WG-3.5 independently at the terrain level.
 
 ## Determinism
 
-The accepted public stage identity is `terrain:initial-topography@19` with namespace `terrain:historical-material-morphology:v5`. The internal non-orogenic baseline remains `terrain:initial-topography@12` / `terrain:structure:v2`; the causal orogen/connected-ocean adapter currently materializes `terrain:initial-topography@15` before the historical-material freeboard pass. The topography hash includes stage/version/seed, WG-4 model parameters, planetary parameters, WG-3.75 inheritance identity, fine boundary identity, ordered solid elevation, sea-level state, and ordered water depth. Upstream tectonic/geology/lithosphere/inheritance hashes are not mutated.
+The accepted public stage identity is `terrain:initial-topography@20` with namespace `terrain:historical-material-morphology:v6`. The internal non-orogenic baseline remains `terrain:initial-topography@12` / `terrain:structure:v2`; the causal orogen/connected-ocean adapter currently materializes `terrain:initial-topography@15` before the historical-material freeboard pass. The topography hash includes stage/version/seed, WG-4 model parameters, planetary parameters, WG-3.75 inheritance identity, fine boundary identity, ordered solid elevation, sea-level state, and ordered water depth. Upstream tectonic/geology/lithosphere/inheritance hashes are not mutated.
 
 ## Explicit non-goals
 
