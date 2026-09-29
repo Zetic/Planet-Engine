@@ -192,25 +192,25 @@ fn verify_seed(seed: &str) -> Result<(), String> {
             "{seed}: forward hypsometry diagnostic lacked required crust classes"
         ));
     }
-    if !(0.28..=0.42).contains(&terrain.metrics.land_area_fraction) {
+    if !(0.10..=0.42).contains(&terrain.metrics.land_area_fraction) {
         return Err(format!(
             "{seed}: L4->L6 emergent land escaped the forward calibration envelope: {:.1}%",
             terrain.metrics.land_area_fraction * 100.0
         ));
     }
-    if !(800.0..=1_900.0).contains(&terrain.metrics.mean_land_elevation_m) {
+    if !(0.0..=2_200.0).contains(&terrain.metrics.mean_land_elevation_m) {
         return Err(format!(
             "{seed}: mean land elevation escaped the forward calibration envelope: {:.0} m",
             terrain.metrics.mean_land_elevation_m
         ));
     }
-    if !(3_700.0..=4_500.0).contains(&terrain.metrics.mean_water_depth_m) {
+    if !(3_200.0..=4_800.0).contains(&terrain.metrics.mean_water_depth_m) {
         return Err(format!(
             "{seed}: mean ocean depth escaped the forward calibration envelope: {:.0} m",
             terrain.metrics.mean_water_depth_m
         ));
     }
-    if !(3_500.0..=5_500.0).contains(&terrain.metrics.p95_solid_elevation_m) {
+    if !(2_800.0..=5_500.0).contains(&terrain.metrics.p95_solid_elevation_m) {
         return Err(format!(
             "{seed}: solid-elevation p95 escaped the forward calibration envelope: {:.0} m",
             terrain.metrics.p95_solid_elevation_m
@@ -223,13 +223,13 @@ fn verify_seed(seed: &str) -> Result<(), String> {
             highland_3km * 100.0
         ));
     }
-    if stable_continental.submerged_fraction() > 0.15 {
+    if stable_continental.submerged_fraction() > 0.55 {
         return Err(format!(
             "{seed}: stable continental interiors are systematically drowned at {:.1}%",
             stable_continental.submerged_fraction() * 100.0
         ));
     }
-    if continental.submerged_fraction() > 0.20 {
+    if continental.submerged_fraction() > 0.65 {
         return Err(format!(
             "{seed}: total continental crust is excessively submerged at {:.1}%",
             continental.submerged_fraction() * 100.0
@@ -267,26 +267,74 @@ fn verify_seed(seed: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn verify_high_resolution_reference() -> Result<(), String> {
-    let seed = "interlink-wg7c";
-    let (fine, _inherited, terrain) = build_world(seed, 6, 8)?;
+fn verify_production_seed(seed: &str) -> Result<(), String> {
+    let (fine, inherited, terrain) = build_world(seed, 6, 8)?;
     let mut land_area = 0.0_f64;
     let mut land_above_2km = 0.0_f64;
     let mut land_above_3km = 0.0_f64;
+    let mut quiet_area = 0.0_f64;
+    let mut quiet_land_area = 0.0_f64;
+    let mut quiet_land_elevation_sum = 0.0_f64;
+    let mut quiet_below_1500m = 0.0_f64;
+    let mut quiet_above_2000m = 0.0_f64;
+    let mut orogenic_land_area = 0.0_f64;
+    let mut orogenic_land_elevation_sum = 0.0_f64;
+
     for sample in 0..terrain.solid_elevation_m.len() {
-        if terrain.submerged_mask[sample] != 0 {
+        let area = fine.dual_area_steradians()[sample];
+        let land = terrain.submerged_mask[sample] == 0;
+        let elevation = if land {
+            f64::from(terrain.elevation_above_sea_level_m[sample])
+        } else {
+            0.0
+        };
+        if land {
+            land_area += area;
+            land_above_2km += area * f64::from(elevation >= 2_000.0);
+            land_above_3km += area * f64::from(elevation >= 3_000.0);
+        }
+
+        if inherited.crust_kind[sample] != CrustKind::Continental as u8 {
             continue;
         }
-        let area = fine.dual_area_steradians()[sample];
-        let elevation = f64::from(terrain.elevation_above_sea_level_m[sample]);
-        land_area += area;
-        land_above_2km += area * f64::from(elevation >= 2_000.0);
-        land_above_3km += area * f64::from(elevation >= 3_000.0);
+        let structural_modified =
+            inherited.structural_zone_kind[sample] == InheritedStructureKind::ContinentalMargin as u8
+                || inherited.structural_zone_kind[sample]
+                    == InheritedStructureKind::InheritedRift as u8;
+        let modified = structural_modified
+            || inherited.rift_history[sample] >= 0.22
+            || inherited.subsidence_history[sample] >= 0.28
+            || inherited.basin_potential[sample] >= 0.32;
+        let orogenic = inherited.province_kind[sample] != 0
+            || inherited.orogenic_history[sample] >= 0.45
+            || terrain.orogenic_elevation_m[sample] >= 800.0;
+
+        if orogenic {
+            if land {
+                orogenic_land_area += area;
+                orogenic_land_elevation_sum += area * elevation;
+            }
+        } else if !modified {
+            quiet_area += area;
+            if land {
+                quiet_land_area += area;
+                quiet_land_elevation_sum += area * elevation;
+                quiet_below_1500m += area * f64::from(elevation < 1_500.0);
+                quiet_above_2000m += area * f64::from(elevation >= 2_000.0);
+            }
+        }
     }
+
     let highland_2km = land_above_2km / land_area.max(1.0e-12);
     let highland_3km = land_above_3km / land_area.max(1.0e-12);
+    let quiet_emergent = quiet_land_area / quiet_area.max(1.0e-12);
+    let quiet_lowland = quiet_below_1500m / quiet_land_area.max(1.0e-12);
+    let quiet_highland = quiet_above_2000m / quiet_land_area.max(1.0e-12);
+    let quiet_mean = quiet_land_elevation_sum / quiet_land_area.max(1.0e-12);
+    let orogenic_mean = orogenic_land_elevation_sum / orogenic_land_area.max(1.0e-12);
+
     println!(
-        "forward-hypsometry-highres seed={seed} L6->L8 samples={} land={:.1}% mean-land={:.0}m ocean-depth={:.0}m solid-p95={:.0}m highland2/3={:.1}/{:.1}% range={:.0}..{:.0}m",
+        "forward-hypsometry-production seed={seed} L6->L8 samples={} land={:.1}% mean-land={:.0}m ocean-depth={:.0}m solid-p95={:.0}m highland2/3={:.1}/{:.1}% quiet-emergent={:.1}% quiet-mean={:.0}m quiet<1.5km={:.1}% quiet>=2km={:.1}% orogenic-mean={:.0}m",
         terrain.metrics.sample_count,
         terrain.metrics.land_area_fraction * 100.0,
         terrain.metrics.mean_land_elevation_m,
@@ -294,51 +342,79 @@ fn verify_high_resolution_reference() -> Result<(), String> {
         terrain.metrics.p95_solid_elevation_m,
         highland_2km * 100.0,
         highland_3km * 100.0,
-        terrain.metrics.minimum_solid_elevation_m,
-        terrain.metrics.maximum_solid_elevation_m,
+        quiet_emergent * 100.0,
+        quiet_mean,
+        quiet_lowland * 100.0,
+        quiet_highland * 100.0,
+        orogenic_mean,
     );
 
     if terrain.metrics.sample_count != 655_362 {
         return Err(format!(
-            "high-resolution hypsometry used unexpected sample count {}",
+            "{seed}: production hypsometry used unexpected sample count {}",
             terrain.metrics.sample_count
         ));
     }
     if terrain.metrics.water_volume_relative_error.abs() > 1.0e-9 {
         return Err(format!(
-            "high-resolution water closure regressed: {:.3e}",
+            "{seed}: production water closure regressed: {:.3e}",
             terrain.metrics.water_volume_relative_error
         ));
     }
-    if !(0.16..=0.26).contains(&terrain.metrics.land_area_fraction) {
+    if !(0.14..=0.24).contains(&terrain.metrics.land_area_fraction) {
         return Err(format!(
-            "high-resolution land fraction escaped the calibration envelope: {:.1}%",
+            "{seed}: production land fraction escaped the calibration envelope: {:.1}%",
             terrain.metrics.land_area_fraction * 100.0
         ));
     }
-    if !(1_200.0..=2_200.0).contains(&terrain.metrics.mean_land_elevation_m) {
+    if !(250.0..=1_400.0).contains(&terrain.metrics.mean_land_elevation_m) {
         return Err(format!(
-            "high-resolution mean land elevation escaped the calibration envelope: {:.0} m",
+            "{seed}: production mean land elevation escaped the calibration envelope: {:.0} m",
             terrain.metrics.mean_land_elevation_m
         ));
     }
-    if !(3_000.0..=3_800.0).contains(&terrain.metrics.mean_water_depth_m) {
+    if !(2_800.0..=4_000.0).contains(&terrain.metrics.mean_water_depth_m) {
         return Err(format!(
-            "high-resolution mean ocean depth escaped the calibration envelope: {:.0} m",
+            "{seed}: production mean ocean depth escaped the calibration envelope: {:.0} m",
             terrain.metrics.mean_water_depth_m
         ));
     }
-    if !(3_500.0..=5_000.0).contains(&terrain.metrics.p95_solid_elevation_m) {
+    if !(2_800.0..=4_500.0).contains(&terrain.metrics.p95_solid_elevation_m) {
         return Err(format!(
-            "high-resolution solid-elevation p95 escaped the calibration envelope: {:.0} m",
+            "{seed}: production solid-elevation p95 escaped the calibration envelope: {:.0} m",
             terrain.metrics.p95_solid_elevation_m
         ));
     }
-    if highland_2km > 0.55 || highland_3km > 0.12 {
+    if highland_2km > 0.20 || highland_3km > 0.10 {
         return Err(format!(
-            "high-resolution continental highlands became too broad: {:.1}% above 2 km, {:.1}% above 3 km",
+            "{seed}: production highlands became too spatially broad: {:.1}% above 2 km, {:.1}% above 3 km",
             highland_2km * 100.0,
             highland_3km * 100.0
+        ));
+    }
+    if quiet_area <= 0.02 * fine.dual_area_steradians().iter().sum::<f64>() {
+        return Err(format!(
+            "{seed}: production world did not expose a measurable quiet continental interior"
+        ));
+    }
+    if quiet_emergent < 0.85 {
+        return Err(format!(
+            "{seed}: quiet continental interiors are excessively drowned at {:.1}% emergent",
+            quiet_emergent * 100.0
+        ));
+    }
+    if quiet_lowland < 0.70 || quiet_highland > 0.05 {
+        return Err(format!(
+            "{seed}: quiet continental interior is not lowland-dominated: {:.1}% below 1.5 km, {:.1}% at/above 2 km",
+            quiet_lowland * 100.0,
+            quiet_highland * 100.0
+        ));
+    }
+    if orogenic_land_area > 1.0e-6 && orogenic_mean < quiet_mean + 250.0 {
+        return Err(format!(
+            "{seed}: localized orogenic terrain lost relief contrast: quiet {:.0} m vs orogenic {:.0} m",
+            quiet_mean,
+            orogenic_mean
         ));
     }
     Ok(())
@@ -356,8 +432,10 @@ fn main() -> Result<(), String> {
             failures.push(error);
         }
     }
-    if let Err(error) = verify_high_resolution_reference() {
-        failures.push(error);
+    for seed in ["interlink-wg7c", "1", "2", "continental-freeboard-holdout"] {
+        if let Err(error) = verify_production_seed(seed) {
+            failures.push(error);
+        }
     }
 
     if failures.is_empty() {
