@@ -13,7 +13,7 @@ const SUBSTEP_MYR: f64 = EPOCH_DURATION_MYR / SUBSTEPS_PER_EPOCH as f64;
 const RIFT_STRAIN_NUCLEATION_MYR: f32 = 26.0;
 const RIFT_STRAIN_RELIEF_FACTOR: f32 = 0.22;
 const FORWARD_TRANSITION_MATURATION_MYR: f32 = 30.0;
-const MAX_QUIET_TRANSITION_ENDMEMBER_IMBALANCE_KM: f64 = 120.0;
+const MAX_QUIET_INHERITED_TRANSITION_WIDTH_KM: f64 = 360.0;
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 
@@ -2257,78 +2257,68 @@ fn split_fragments_at_final_boundaries<T: PlanetTopology>(
 }
 
 
-fn reconcile_quiet_inherited_transitional_margins<T: PlanetTopology>(
+fn bound_quiet_inherited_transitional_margins<T: PlanetTopology>(
     topology: &T,
     model: &mut HistoricalLithosphereModel,
     forward_generated_material: &[bool],
     extensional_strain_myr: &[f32],
     planet: PlanetPhysicalParameters,
-) -> (u32, u32) {
+) -> u32 {
     let count = topology.sample_count() as usize;
     debug_assert_eq!(forward_generated_material.len(), count);
     debug_assert_eq!(extensional_strain_myr.len(), count);
 
-    // Transitional lithosphere is a bounded material phase between continental and oceanic
-    // endmembers. At the production L6 physical mesh, the 120 km endmember-balance window
-    // retains roughly one resolved transition cell rather than a multi-cell shelf blanket. Measure physical distance through each final transitional component to both
-    // endmembers. This terminal reconciliation runs after all plate motion, birth/death,
-    // convergence and advection, so it cannot feed a target geometry back into tectonic motion.
-    let distance_to_endmember = |endmember: CrustKind| {
-        let mut distance_km = vec![f64::INFINITY; count];
-        let mut queued = vec![false; count];
-        let mut queue = VecDeque::<u32>::new();
-
-        for sample in 0..topology.sample_count() {
-            let index = sample as usize;
-            if model.crust_kind[index] != CrustKind::Transitional as u8 {
+    // Quiet inherited transitional lithosphere is a continental-margin phase, not an arbitrarily
+    // wide shelf mask. Measure physical distance through the final transitional material graph to
+    // the nearest oceanic endmember. This runs after plate motion, birth/death, convergence and
+    // advection, so the material cleanup cannot steer tectonic geometry.
+    let mut distance_to_ocean_km = vec![f64::INFINITY; count];
+    let mut queued = vec![false; count];
+    let mut queue = VecDeque::<u32>::new();
+    for sample in 0..topology.sample_count() {
+        let index = sample as usize;
+        if model.crust_kind[index] != CrustKind::Transitional as u8 {
+            continue;
+        }
+        let neighbors = topology.neighbors(sample);
+        let lengths = topology.neighbor_arc_lengths_rad(sample);
+        let mut nearest = f64::INFINITY;
+        for (edge_index, neighbor) in neighbors.iter().enumerate() {
+            if model.crust_kind[*neighbor as usize] != CrustKind::Oceanic as u8 {
                 continue;
             }
-            let neighbors = topology.neighbors(sample);
-            let lengths = topology.neighbor_arc_lengths_rad(sample);
-            let mut nearest = f64::INFINITY;
-            for (edge_index, neighbor) in neighbors.iter().enumerate() {
-                if model.crust_kind[*neighbor as usize] != endmember as u8 {
-                    continue;
-                }
-                nearest = nearest.min(lengths[edge_index] * planet.radius_m / 1000.0);
-            }
-            if nearest.is_finite() {
-                distance_km[index] = nearest;
-                queued[index] = true;
-                queue.push_back(sample);
-            }
+            nearest = nearest.min(lengths[edge_index] * planet.radius_m / 1000.0);
         }
+        if nearest.is_finite() {
+            distance_to_ocean_km[index] = nearest;
+            queued[index] = true;
+            queue.push_back(sample);
+        }
+    }
 
-        while let Some(sample) = queue.pop_front() {
-            let index = sample as usize;
-            queued[index] = false;
-            let neighbors = topology.neighbors(sample);
-            let lengths = topology.neighbor_arc_lengths_rad(sample);
-            for (edge_index, neighbor) in neighbors.iter().enumerate() {
-                let ni = *neighbor as usize;
-                if model.crust_kind[ni] != CrustKind::Transitional as u8 {
-                    continue;
-                }
-                let candidate =
-                    distance_km[index] + lengths[edge_index] * planet.radius_m / 1000.0;
-                if candidate + 1.0e-9 < distance_km[ni] {
-                    distance_km[ni] = candidate;
-                    if !queued[ni] {
-                        queued[ni] = true;
-                        queue.push_back(*neighbor);
-                    }
+    while let Some(sample) = queue.pop_front() {
+        let index = sample as usize;
+        queued[index] = false;
+        let neighbors = topology.neighbors(sample);
+        let lengths = topology.neighbor_arc_lengths_rad(sample);
+        for (edge_index, neighbor) in neighbors.iter().enumerate() {
+            let ni = *neighbor as usize;
+            if model.crust_kind[ni] != CrustKind::Transitional as u8 {
+                continue;
+            }
+            let candidate =
+                distance_to_ocean_km[index] + lengths[edge_index] * planet.radius_m / 1000.0;
+            if candidate + 1.0e-9 < distance_to_ocean_km[ni] {
+                distance_to_ocean_km[ni] = candidate;
+                if !queued[ni] {
+                    queued[ni] = true;
+                    queue.push_back(*neighbor);
                 }
             }
         }
+    }
 
-        distance_km
-    };
-
-    let distance_to_continent = distance_to_endmember(CrustKind::Continental);
-    let distance_to_ocean = distance_to_endmember(CrustKind::Oceanic);
     let mut restored_continental_samples = 0_u32;
-    let mut matured_oceanic_samples = 0_u32;
-
     for sample in 0..count {
         if model.crust_kind[sample] != CrustKind::Transitional as u8
             || forward_generated_material[sample]
@@ -2337,48 +2327,20 @@ fn reconcile_quiet_inherited_transitional_margins<T: PlanetTopology>(
             continue;
         }
 
-        let continental_distance = distance_to_continent[sample];
-        let oceanic_distance = distance_to_ocean[sample];
-        let target = if continental_distance.is_finite() && oceanic_distance.is_finite() {
-            if continental_distance + MAX_QUIET_TRANSITION_ENDMEMBER_IMBALANCE_KM
-                < oceanic_distance
-            {
-                Some(CrustKind::Continental)
-            } else if oceanic_distance + MAX_QUIET_TRANSITION_ENDMEMBER_IMBALANCE_KM
-                < continental_distance
-            {
-                Some(CrustKind::Oceanic)
-            } else {
-                None
-            }
-        } else if continental_distance.is_finite() {
-            Some(CrustKind::Continental)
-        } else if oceanic_distance.is_finite() {
-            Some(CrustKind::Oceanic)
-        } else {
-            None
-        };
-
-        match target {
-            Some(CrustKind::Continental) => {
-                model.crust_kind[sample] = CrustKind::Continental as u8;
-                model.continental_margin_material[sample] = 1;
-                restored_continental_samples = restored_continental_samples.saturating_add(1);
-            }
-            Some(CrustKind::Oceanic) => {
-                model.crust_kind[sample] = CrustKind::Oceanic as u8;
-                model.continental_margin_material[sample] = 0;
-                model.crust_birth_age_myr[sample] =
-                    model.crust_birth_age_myr[sample].min(220.0);
-                model.lithospheric_weakness_index[sample] =
-                    model.lithospheric_weakness_index[sample].min(0.55);
-                matured_oceanic_samples = matured_oceanic_samples.saturating_add(1);
-            }
-            _ => {}
+        // Preserve the oceanward transition and all active/forward-generated breakup material.
+        // Only quiet inherited material that lies implausibly far landward of oceanic crust is
+        // restored to continental-margin identity. This removes continent-scale blankets without
+        // deepening the adjacent ocean basin and pulling global sea level downward.
+        if !distance_to_ocean_km[sample].is_finite()
+            || distance_to_ocean_km[sample] > MAX_QUIET_INHERITED_TRANSITION_WIDTH_KM
+        {
+            model.crust_kind[sample] = CrustKind::Continental as u8;
+            model.continental_margin_material[sample] = 1;
+            restored_continental_samples = restored_continental_samples.saturating_add(1);
         }
     }
 
-    (restored_continental_samples, matured_oceanic_samples)
+    restored_continental_samples
 }
 
 fn refresh_material_metrics<T: PlanetTopology>(
@@ -2651,14 +2613,13 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
 
     // Bound inherited passive-margin transition only after tectonic evolution is complete.
     // This changes material interpretation without feeding a target geometry back into plate motion.
-    let (_restored_continental_samples, _matured_oceanic_samples) =
-        reconcile_quiet_inherited_transitional_margins(
-            topology,
-            &mut model,
-            &forward_generated_material,
-            &extensional_strain_myr,
-            planet,
-        );
+    let _restored_continental_samples = bound_quiet_inherited_transitional_margins(
+        topology,
+        &mut model,
+        &forward_generated_material,
+        &extensional_strain_myr,
+        planet,
+    );
 
     split_fragments_at_final_boundaries(topology, &mut model)?;
     refresh_active_fragment_summaries(topology, &mut model);
