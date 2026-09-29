@@ -5,8 +5,8 @@ use crate::{
 };
 
 pub const HISTORICAL_TOPOGRAPHY_STAGE_ID: &str = "terrain:initial-topography";
-pub const HISTORICAL_TOPOGRAPHY_STAGE_VERSION: u32 = 19;
-const HISTORICAL_TOPOGRAPHY_NAMESPACE: &str = "terrain:historical-material-morphology:v5";
+pub const HISTORICAL_TOPOGRAPHY_STAGE_VERSION: u32 = 20;
+const HISTORICAL_TOPOGRAPHY_NAMESPACE: &str = "terrain:historical-material-morphology:v6";
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 
@@ -144,6 +144,45 @@ fn stable_support_relaxation_barrier(kind: u8) -> bool {
         || kind == InheritedStructureKind::InheritedRift as u8
         || kind == InheritedStructureKind::ShearZone as u8
         || kind == InheritedStructureKind::ContinentalMargin as u8
+}
+
+fn continental_isostatic_expression(
+    inherited: &InheritedPhysicalState,
+    sample: usize,
+) -> f64 {
+    if inherited.crust_kind[sample] != CrustKind::Continental as u8 {
+        return 1.0;
+    }
+
+    // The raw Airy term represents the buoyancy of the entire continental column. Ordinary
+    // unthickened continental crust should not express that whole column as surface relief:
+    // denuded interiors and sedimentary platforms sit much lower than active crustal roots even
+    // when both retain thick continental lithosphere. Preserve the full response only where the
+    // inherited physical state contains a real thickened/orogenic root.
+    let thickness_root =
+        clamp01((f64::from(inherited.crust_thickness_km[sample]) - 40.0) / 10.0);
+    let root = f64::from(inherited.crustal_root_index[sample])
+        .max(f64::from(inherited.mountain_core_index[sample]) * 0.90)
+        .max(f64::from(inherited.plateau_index[sample]) * 0.78)
+        .max(thickness_root)
+        .clamp(0.0, 1.0);
+
+    // Rift, basin, and passive-margin state releases continental freeboard instead of requiring
+    // unrelated ocean/ridge kernels to lower those regions. These are persistent physical fields,
+    // not plate IDs or provenance labels.
+    let disturbance = f64::from(inherited.rift_history[sample])
+        .max(f64::from(inherited.subsidence_history[sample]))
+        .max(f64::from(inherited.basin_potential[sample]))
+        .clamp(0.0, 1.0);
+    let structural_release = match inherited.structural_zone_kind[sample] {
+        value if value == InheritedStructureKind::ContinentalMargin as u8 => 1.0,
+        value if value == InheritedStructureKind::InheritedRift as u8 => 0.92,
+        value if value == InheritedStructureKind::ShearZone as u8 => 0.30,
+        _ => 0.0,
+    };
+    let release = disturbance.max(structural_release);
+
+    (0.76 + 0.24 * root - 0.10 * release).clamp(0.62, 1.0)
 }
 
 fn relaxed_stable_continental_support(
@@ -324,7 +363,7 @@ fn refresh_water_and_metrics(
     let mut topography_hash = FNV_OFFSET_BASIS;
     topography_hash = fnv_update(
         topography_hash,
-        b"terrain:historical-continental-hypsometry:v3\0",
+        b"terrain:historical-continental-hypsometry:v4\0",
     );
     topography_hash = fnv_update(topography_hash, &prior_hash.to_le_bytes());
     for value in &state.solid_elevation_m {
@@ -390,6 +429,9 @@ pub fn generate_initial_topography(
         || inherited.crust_kind.len() != count
         || inherited.continental_stability_index.len() != count
         || inherited.crust_thickness_km.len() != count
+        || inherited.crustal_root_index.len() != count
+        || inherited.mountain_core_index.len() != count
+        || inherited.plateau_index.len() != count
         || inherited.compensated_buoyancy_index.len() != count
         || inherited.rift_history.len() != count
         || inherited.subsidence_history.len() != count
@@ -423,6 +465,17 @@ pub fn generate_initial_topography(
     let stable_support = relaxed_stable_continental_support(topology, inherited);
     let mut area_weighted_adjustment = 0.0_f64;
     for sample in 0..count {
+        if inherited.crust_kind[sample] == CrustKind::Continental as u8 {
+            let expression = continental_isostatic_expression(inherited, sample);
+            let current = f64::from(state.isostatic_elevation_m[sample]);
+            let adjustment = current * expression - current;
+            if adjustment != 0.0 {
+                state.isostatic_elevation_m[sample] += adjustment as f32;
+                state.solid_elevation_m[sample] += adjustment as f32;
+                area_weighted_adjustment += adjustment * areas[sample];
+            }
+        }
+
         let support = stable_support[sample];
         if support != 0.0 {
             state.isostatic_elevation_m[sample] += support as f32;
