@@ -4,8 +4,8 @@ use crate::{
 };
 
 pub const HISTORICAL_MORPHOLOGY_STAGE_ID: &str = "geology:historical-tectonic-morphology";
-pub const HISTORICAL_MORPHOLOGY_STAGE_VERSION: u32 = 1;
-const HISTORICAL_MORPHOLOGY_NAMESPACE: &str = "worldgen:geology:historical-tectonic-morphology:v1";
+pub const HISTORICAL_MORPHOLOGY_STAGE_VERSION: u32 = 2;
+const HISTORICAL_MORPHOLOGY_NAMESPACE: &str = "worldgen:geology:historical-tectonic-morphology:v2";
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 
@@ -366,13 +366,17 @@ pub fn build_historical_tectonic_morphology<T: PlanetTopology>(
         0.80,
         0.72,
     );
+    // Forward evolution records many more physically distinct collision/accretion episodes than
+    // the superseded synthetic history.  Keep fossil memory persistent, but do not let every
+    // event grow into a continent-scale high-relief blanket.  Five bounded coarse-cell passes
+    // retain interior fossil belts while materially reducing overlap between unrelated systems.
     let fossil_orogen_intensity = diffuse_signal(
         topology,
         &fossil_orogen_seed,
         &material_domains,
-        7,
-        0.87,
-        0.76,
+        5,
+        0.82,
+        0.45,
     );
 
     let mut active_seed = vec![0.0_f32; count];
@@ -391,13 +395,17 @@ pub fn build_historical_tectonic_morphology<T: PlanetTopology>(
             );
         }
     }
+    // Present convergence should remain a boundary-proximal driver.  The previous five-pass
+    // envelope was calibrated against a much sparser synthetic boundary graph; under forward
+    // tectonics overlapping envelopes placed a large fraction of continental area inside active
+    // orogenic support.  Seed both sides of the physical boundary, then keep propagation compact.
     let active_orogen_intensity = diffuse_signal(
         topology,
         &active_seed,
         &historical.current_plate_ids,
-        5,
-        0.84,
+        3,
         0.78,
+        0.35,
     );
 
     let mut passive_margin_seed = vec![0.0_f32; count];
@@ -501,7 +509,7 @@ pub fn build_historical_tectonic_morphology<T: PlanetTopology>(
     let mut morphology_hash = FNV_OFFSET_BASIS;
     morphology_hash = fnv_update(
         morphology_hash,
-        b"geology:historical-tectonic-morphology:v1\0",
+        b"geology:historical-tectonic-morphology:v2\0",
     );
     morphology_hash = fnv_update(morphology_hash, &stage_seed.to_le_bytes());
     morphology_hash = fnv_update(
