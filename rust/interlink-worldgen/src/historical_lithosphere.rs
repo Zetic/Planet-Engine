@@ -686,7 +686,12 @@ fn build_plate_owned_crust<T: PlanetTopology>(
     } else {
         350.0
     };
-    let transition_steps = (360.0 / mean_edge_km.max(1.0)).ceil().clamp(1.0, 3.0) as u16;
+    // Transitional lithosphere is the mechanically thinned continent-ocean transition, not the
+    // full continental shelf.  The old ~360 km multi-ring carrier rim was broad enough that
+    // high-perimeter forward worlds could devote a continent-scale area to transitional crust.
+    // Keep one continuous boundary ring and only a ragged second ring when the production mesh
+    // physically resolves a ~180 km transition.
+    let transition_steps = (180.0 / mean_edge_km.max(1.0)).ceil().clamp(1.0, 2.0) as u16;
 
     // Oceanic chronology propagates through the material domain that owns the crust instead of
     // using unrestricted great-circle distance to any ridge. This prevents unrelated spreading
@@ -714,8 +719,8 @@ fn build_plate_owned_crust<T: PlanetTopology>(
         let kind = if sample_carrier[sample_index] {
             let local_depth = depth[sample_index];
             if local_depth != u16::MAX
-                && (local_depth.saturating_add(1) < transition_steps
-                    || (local_depth < transition_steps && edge_warp >= 0.35))
+                && (local_depth == 0
+                    || (local_depth < transition_steps && edge_warp >= 0.65))
             {
                 CrustKind::Transitional
             } else {
