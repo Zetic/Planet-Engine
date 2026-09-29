@@ -1,0 +1,296 @@
+use interlink_worldgen::{
+    build_icosphere, generate_historical_frontend, generate_initial_topography,
+    generate_lithosphere_from_history, inherit_boundary_interfaces, inherit_physical_state,
+    CrustKind, HistoricalLithosphereRequest, InheritedStructureKind, LithosphereRequest,
+    PlanetPhysicalParameters, TopographyParameters, TopographyRequest,
+};
+
+#[derive(Default)]
+struct WeightedStats {
+    area: f64,
+    elevation_sum: f64,
+    above_1km: f64,
+    above_2km: f64,
+    above_3km: f64,
+    above_4km: f64,
+    samples: Vec<(f64, f64)>,
+}
+
+impl WeightedStats {
+    fn add(&mut self, area: f64, elevation_m: f64) {
+        self.area += area;
+        self.elevation_sum += area * elevation_m;
+        self.above_1km += area * f64::from(elevation_m >= 1_000.0);
+        self.above_2km += area * f64::from(elevation_m >= 2_000.0);
+        self.above_3km += area * f64::from(elevation_m >= 3_000.0);
+        self.above_4km += area * f64::from(elevation_m >= 4_000.0);
+        self.samples.push((elevation_m, area));
+    }
+
+    fn mean(&self) -> f64 {
+        self.elevation_sum / self.area.max(1.0e-12)
+    }
+
+    fn fraction_above(&self, threshold_m: f64) -> f64 {
+        let area = match threshold_m as i32 {
+            1_000 => self.above_1km,
+            2_000 => self.above_2km,
+            3_000 => self.above_3km,
+            4_000 => self.above_4km,
+            _ => 0.0,
+        };
+        area / self.area.max(1.0e-12)
+    }
+
+    fn quantile(&mut self, q: f64) -> f64 {
+        self.samples.sort_by(|left, right| left.0.total_cmp(&right.0));
+        let target = self.area.max(1.0e-12) * q;
+        let mut cumulative = 0.0;
+        for (value, area) in &self.samples {
+            cumulative += *area;
+            if cumulative >= target {
+                return *value;
+            }
+        }
+        self.samples.last().map(|sample| sample.0).unwrap_or(0.0)
+    }
+}
+
+#[derive(Default)]
+struct ComponentBudget {
+    area: f64,
+    base_isostatic: f64,
+    historical_support: f64,
+    thermal: f64,
+    orogen: f64,
+    ridge: f64,
+    rift_basin: f64,
+    trench: f64,
+    arc: f64,
+    mantle: f64,
+}
+
+impl ComponentBudget {
+    fn add(
+        &mut self,
+        area: f64,
+        base_isostatic: f64,
+        historical_support: f64,
+        thermal: f64,
+        orogen: f64,
+        ridge: f64,
+        rift_basin: f64,
+        trench: f64,
+        arc: f64,
+        mantle: f64,
+    ) {
+        self.area += area;
+        self.base_isostatic += area * base_isostatic;
+        self.historical_support += area * historical_support;
+        self.thermal += area * thermal;
+        self.orogen += area * orogen;
+        self.ridge += area * ridge;
+        self.rift_basin += area * rift_basin;
+        self.trench += area * trench;
+        self.arc += area * arc;
+        self.mantle += area * mantle;
+    }
+
+    fn print(&self, seed: &str, label: &str) {
+        let area = self.area.max(1.0e-12);
+        println!(
+            "hypsometry-budget seed={seed} class={label} base-iso={:.0} support={:.0} thermal={:.0} orogen={:.0} ridge={:.0} rift-basin={:.0} trench={:.0} arc={:.0} mantle={:.0}m",
+            self.base_isostatic / area,
+            self.historical_support / area,
+            self.thermal / area,
+            self.orogen / area,
+            self.ridge / area,
+            self.rift_basin / area,
+            self.trench / area,
+            self.arc / area,
+            self.mantle / area,
+        );
+    }
+}
+
+fn verify_seed(seed: &str) -> Result<(), String> {
+    let coarse_level = 4;
+    let fine_level = 6;
+    let planet = PlanetPhysicalParameters::earthlike_reference();
+    let parameters = TopographyParameters::default();
+    let coarse = build_icosphere(coarse_level).map_err(|error| error.to_string())?;
+    let fine = build_icosphere(fine_level).map_err(|error| error.to_string())?;
+    let frontend = generate_historical_frontend(
+        &coarse,
+        &HistoricalLithosphereRequest::new(seed, 16),
+        planet,
+    )
+    .map_err(|error| error.to_string())?;
+    let lithosphere = generate_lithosphere_from_history(
+        &coarse,
+        &frontend.historical,
+        &frontend.tectonics,
+        &frontend.geology,
+        &LithosphereRequest::new(seed),
+    )
+    .map_err(|error| error.to_string())?;
+    let inherited = inherit_physical_state(
+        &fine,
+        coarse_level,
+        &frontend.tectonics,
+        &frontend.geology,
+        &lithosphere,
+        planet,
+    )
+    .map_err(|error| error.to_string())?;
+    let boundaries = inherit_boundary_interfaces(
+        &coarse,
+        &fine,
+        &frontend.tectonics,
+        &frontend.geology,
+        &inherited.plate_ids,
+    )
+    .map_err(|error| error.to_string())?;
+    let terrain = generate_initial_topography(
+        &fine,
+        &inherited,
+        &boundaries,
+        planet,
+        &TopographyRequest::new(seed),
+    )
+    .map_err(|error| error.to_string())?;
+
+    let areas = fine.dual_area_steradians();
+    let total_area = areas.iter().sum::<f64>().max(1.0e-12);
+    let mut land = WeightedStats::default();
+    let mut stable_land = WeightedStats::default();
+    let mut modified_land = WeightedStats::default();
+    let mut continental_land = WeightedStats::default();
+    let mut stable_budget = ComponentBudget::default();
+    let mut modified_budget = ComponentBudget::default();
+    let mut continental_budget = ComponentBudget::default();
+
+    for sample in 0..terrain.solid_elevation_m.len() {
+        let area = areas[sample];
+        let mantle_density = planet.isostatic_mantle_density_kg_per_m3;
+        let thickness_m = f64::from(inherited.crust_thickness_km[sample]) * 1_000.0;
+        let crust_density = f64::from(inherited.crust_density_kg_per_m3[sample]);
+        let base_isostatic = thickness_m * (mantle_density - crust_density) / mantle_density
+            * parameters.isostatic_scale;
+        let historical_support =
+            f64::from(terrain.isostatic_elevation_m[sample]) - base_isostatic;
+
+        let is_continental = inherited.crust_kind[sample] == CrustKind::Continental as u8;
+        let stable = is_continental
+            && inherited.structural_zone_kind[sample]
+                != InheritedStructureKind::ContinentalMargin as u8
+            && inherited.structural_zone_kind[sample] != InheritedStructureKind::InheritedRift as u8
+            && inherited.rift_history[sample] < 0.22
+            && inherited.subsidence_history[sample] < 0.28
+            && inherited.basin_potential[sample] < 0.32;
+
+        if is_continental {
+            continental_budget.add(
+                area,
+                base_isostatic,
+                historical_support,
+                f64::from(terrain.thermal_elevation_m[sample]),
+                f64::from(terrain.orogenic_elevation_m[sample]),
+                f64::from(terrain.ridge_elevation_m[sample]),
+                f64::from(terrain.rift_basin_elevation_m[sample]),
+                f64::from(terrain.trench_elevation_m[sample]),
+                f64::from(terrain.arc_elevation_m[sample]),
+                f64::from(terrain.mantle_dynamic_elevation_m[sample]),
+            );
+            if stable {
+                stable_budget.add(
+                    area,
+                    base_isostatic,
+                    historical_support,
+                    f64::from(terrain.thermal_elevation_m[sample]),
+                    f64::from(terrain.orogenic_elevation_m[sample]),
+                    f64::from(terrain.ridge_elevation_m[sample]),
+                    f64::from(terrain.rift_basin_elevation_m[sample]),
+                    f64::from(terrain.trench_elevation_m[sample]),
+                    f64::from(terrain.arc_elevation_m[sample]),
+                    f64::from(terrain.mantle_dynamic_elevation_m[sample]),
+                );
+            } else {
+                modified_budget.add(
+                    area,
+                    base_isostatic,
+                    historical_support,
+                    f64::from(terrain.thermal_elevation_m[sample]),
+                    f64::from(terrain.orogenic_elevation_m[sample]),
+                    f64::from(terrain.ridge_elevation_m[sample]),
+                    f64::from(terrain.rift_basin_elevation_m[sample]),
+                    f64::from(terrain.trench_elevation_m[sample]),
+                    f64::from(terrain.arc_elevation_m[sample]),
+                    f64::from(terrain.mantle_dynamic_elevation_m[sample]),
+                );
+            }
+        }
+
+        if terrain.submerged_mask[sample] == 0 {
+            let elevation = f64::from(terrain.elevation_above_sea_level_m[sample]);
+            land.add(area, elevation);
+            if is_continental {
+                continental_land.add(area, elevation);
+                if stable {
+                    stable_land.add(area, elevation);
+                } else {
+                    modified_land.add(area, elevation);
+                }
+            }
+        }
+    }
+
+    println!(
+        "hypsometry seed={seed} land={:.1}% mean-land={:.0}m ocean-depth={:.0}m solid-p95={:.0}m max={:.0}m land>1/2/3/4km={:.1}/{:.1}/{:.1}/{:.1}%",
+        terrain.metrics.land_area_fraction * 100.0,
+        terrain.metrics.mean_land_elevation_m,
+        terrain.metrics.mean_water_depth_m,
+        terrain.metrics.p95_solid_elevation_m,
+        terrain.metrics.maximum_solid_elevation_m,
+        land.fraction_above(1_000.0) * 100.0,
+        land.fraction_above(2_000.0) * 100.0,
+        land.fraction_above(3_000.0) * 100.0,
+        land.fraction_above(4_000.0) * 100.0,
+    );
+    println!(
+        "hypsometry-land seed={seed} all p50/p90/p95={:.0}/{:.0}/{:.0}m continental mean={:.0} p50/p90/p95={:.0}/{:.0}/{:.0}m stable mean={:.0} modified mean={:.0}",
+        land.quantile(0.50),
+        land.quantile(0.90),
+        land.quantile(0.95),
+        continental_land.mean(),
+        continental_land.quantile(0.50),
+        continental_land.quantile(0.90),
+        continental_land.quantile(0.95),
+        stable_land.mean(),
+        modified_land.mean(),
+    );
+    continental_budget.print(seed, "continental");
+    stable_budget.print(seed, "stable");
+    modified_budget.print(seed, "modified");
+    println!(
+        "hypsometry-area seed={seed} continental={:.1}% stable={:.1}% modified={:.1}% water-closure={:.3e}",
+        continental_budget.area / total_area * 100.0,
+        stable_budget.area / total_area * 100.0,
+        modified_budget.area / total_area * 100.0,
+        terrain.metrics.water_volume_relative_error,
+    );
+
+    Ok(())
+}
+
+fn main() -> Result<(), String> {
+    for seed in [
+        "interlink-wg7c",
+        "1",
+        "2",
+        "continental-hypsometry-holdout",
+    ] {
+        verify_seed(seed)?;
+    }
+    Ok(())
+}
