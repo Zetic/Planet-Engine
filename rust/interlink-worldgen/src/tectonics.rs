@@ -66,6 +66,7 @@ pub struct PlateBoundaryEdge {
 #[derive(Clone, Debug, PartialEq)]
 pub struct TectonicMetrics {
     pub sample_count: u32,
+    pub requested_plate_count: u16,
     pub plate_count: u16,
     pub boundary_edge_count: u32,
     pub convergent_edge_count: u32,
@@ -612,6 +613,7 @@ pub fn generate_tectonics<T: PlanetTopology>(
     let tectonic_hash = tectonic_hash(stage_seed, &plates, &plate_ids, &boundaries);
     let metrics = TectonicMetrics {
         sample_count: topology.sample_count(),
+        requested_plate_count: request.plate_count,
         plate_count: request.plate_count,
         boundary_edge_count: boundaries.len() as u32,
         convergent_edge_count,

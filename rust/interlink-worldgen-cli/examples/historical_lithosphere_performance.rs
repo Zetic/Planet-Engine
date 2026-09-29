@@ -37,6 +37,7 @@ fn main() -> Result<(), String> {
     let coarse_dense_identity_bytes = history.origin_plate_ids.len() * size_of::<u16>()
         + history.fragment_ids.len() * size_of::<u16>()
         + history.current_plate_ids.len() * size_of::<u16>()
+        + history.lithospheric_weakness_index.len() * size_of::<f32>()
         + history.crust_kind.len() * size_of::<u8>()
         + history.crust_birth_age_myr.len() * size_of::<f32>();
     let coarse_lineage_metadata_bytes = history.fragments.len() * size_of::<CrustFragment>()
