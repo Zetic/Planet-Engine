@@ -5,7 +5,7 @@ use crate::{
 };
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
-const FORWARD_PLATE_NAMESPACE: &str = "worldgen:geology:forward-plate-evolution:v1";
+const FORWARD_PLATE_NAMESPACE: &str = "worldgen:geology:forward-plate-evolution:v2";
 const FORWARD_EPOCHS: usize = 8;
 const SUBSTEPS_PER_EPOCH: usize = 4;
 const EPOCH_DURATION_MYR: f64 = 20.0;
@@ -13,7 +13,7 @@ const SUBSTEP_MYR: f64 = EPOCH_DURATION_MYR / SUBSTEPS_PER_EPOCH as f64;
 const RIFT_STRAIN_NUCLEATION_MYR: f32 = 26.0;
 const RIFT_STRAIN_RELIEF_FACTOR: f32 = 0.22;
 const FORWARD_TRANSITION_MATURATION_MYR: f32 = 30.0;
-const INHERITED_TRANSITION_BREAKUP_STRAIN_MYR: f32 = 42.0;
+const MAX_QUIET_INHERITED_TRANSITION_WIDTH_KM: f64 = 220.0;
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 
@@ -1953,38 +1953,22 @@ fn accumulate_extensional_strain<T: PlanetTopology>(
     }
 }
 
-fn mature_forward_transitional_crust<T: PlanetTopology>(
-    topology: &T,
+fn mature_forward_transitional_crust(
     model: &mut HistoricalLithosphereModel,
     extensional_strain_myr: &mut [f32],
     forward_generated_material: &[bool],
 ) {
-    // Snapshot material kind so one conversion cannot avalanche across an entire inherited margin
-    // in a single substep. Sustained extension can still move breakup landward over later steps.
-    let previous_kind = model.crust_kind.clone();
     for sample in 0..model.crust_kind.len() {
-        if previous_kind[sample] != CrustKind::Transitional as u8 {
+        if model.crust_kind[sample] != CrustKind::Transitional as u8 {
             continue;
         }
         let age = model.crust_birth_age_myr[sample];
-        let strain = extensional_strain_myr[sample];
-        let generated_breakup = forward_generated_material[sample]
+        // Only material actually created by forward opening may mature through breakup. Inherited
+        // passive-margin transitional lithosphere is never inferred from an arbitrary age cutoff.
+        if forward_generated_material[sample]
             && age >= FORWARD_TRANSITION_MATURATION_MYR
-            && strain >= 18.0;
-
-        // Inherited passive-margin transition is not allowed to become oceanic merely because it
-        // is old. It may complete breakup only when forward kinematics have accumulated strong,
-        // sustained extension and the transition is physically attached to an existing oceanic
-        // domain. This lets reopening margins finish rifting without deleting quiet old margins.
-        let oceanic_contact = topology
-            .neighbors(sample as u32)
-            .iter()
-            .any(|neighbor| previous_kind[*neighbor as usize] == CrustKind::Oceanic as u8);
-        let inherited_breakup = !forward_generated_material[sample]
-            && oceanic_contact
-            && strain >= INHERITED_TRANSITION_BREAKUP_STRAIN_MYR;
-
-        if generated_breakup || inherited_breakup {
+            && extensional_strain_myr[sample] >= 18.0
+        {
             model.crust_kind[sample] = CrustKind::Oceanic as u8;
             model.crust_birth_age_myr[sample] = 0.0;
             model.lithospheric_weakness_index[sample] =
@@ -2273,6 +2257,90 @@ fn split_fragments_at_final_boundaries<T: PlanetTopology>(
 }
 
 
+fn bound_quiet_inherited_transitional_margins<T: PlanetTopology>(
+    topology: &T,
+    model: &mut HistoricalLithosphereModel,
+    forward_generated_material: &[bool],
+    extensional_strain_myr: &[f32],
+    planet: PlanetPhysicalParameters,
+) -> u32 {
+    let count = topology.sample_count() as usize;
+    debug_assert_eq!(forward_generated_material.len(), count);
+    debug_assert_eq!(extensional_strain_myr.len(), count);
+
+    // Measure physical distance through the final transitional material graph to the nearest
+    // oceanic domain. This runs only after forward plate evolution has finished, so it cannot
+    // steer ownership, plate birth/death, convergence, or boundary geometry.
+    let mut distance_to_ocean_km = vec![f64::INFINITY; count];
+    let mut queued = vec![false; count];
+    let mut queue = VecDeque::<u32>::new();
+    for sample in 0..topology.sample_count() {
+        let index = sample as usize;
+        if model.crust_kind[index] != CrustKind::Transitional as u8 {
+            continue;
+        }
+        let neighbors = topology.neighbors(sample);
+        let lengths = topology.neighbor_arc_lengths_rad(sample);
+        let mut nearest = f64::INFINITY;
+        for (edge_index, neighbor) in neighbors.iter().enumerate() {
+            if model.crust_kind[*neighbor as usize] != CrustKind::Oceanic as u8 {
+                continue;
+            }
+            nearest = nearest.min(lengths[edge_index] * planet.radius_m / 1000.0);
+        }
+        if nearest.is_finite() {
+            distance_to_ocean_km[index] = nearest;
+            queued[index] = true;
+            queue.push_back(sample);
+        }
+    }
+
+    while let Some(sample) = queue.pop_front() {
+        let index = sample as usize;
+        queued[index] = false;
+        let neighbors = topology.neighbors(sample);
+        let lengths = topology.neighbor_arc_lengths_rad(sample);
+        for (edge_index, neighbor) in neighbors.iter().enumerate() {
+            let ni = *neighbor as usize;
+            if model.crust_kind[ni] != CrustKind::Transitional as u8 {
+                continue;
+            }
+            let candidate =
+                distance_to_ocean_km[index] + lengths[edge_index] * planet.radius_m / 1000.0;
+            if candidate + 1.0e-9 < distance_to_ocean_km[ni] {
+                distance_to_ocean_km[ni] = candidate;
+                if !queued[ni] {
+                    queued[ni] = true;
+                    queue.push_back(*neighbor);
+                }
+            }
+        }
+    }
+
+    let mut restored_continental_samples = 0_u32;
+    for sample in 0..count {
+        if model.crust_kind[sample] != CrustKind::Transitional as u8
+            || forward_generated_material[sample]
+            || extensional_strain_myr[sample] >= RIFT_STRAIN_NUCLEATION_MYR
+        {
+            continue;
+        }
+
+        // Quiet inherited transition is a continent-ocean boundary material, not a shelf mask.
+        // If it lies farther inland than the bounded physical transition width (or has become
+        // completely detached from oceanic material), restore the underlying continental crust.
+        // Active/forward-generated breakup material is intentionally excluded.
+        if !distance_to_ocean_km[sample].is_finite()
+            || distance_to_ocean_km[sample] > MAX_QUIET_INHERITED_TRANSITION_WIDTH_KM
+        {
+            model.crust_kind[sample] = CrustKind::Continental as u8;
+            restored_continental_samples = restored_continental_samples.saturating_add(1);
+        }
+    }
+
+    restored_continental_samples
+}
+
 fn refresh_material_metrics<T: PlanetTopology>(
     topology: &T,
     model: &mut HistoricalLithosphereModel,
@@ -2502,7 +2570,6 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
                 SUBSTEP_MYR,
             );
             mature_forward_transitional_crust(
-                topology,
                 &mut model,
                 &mut extensional_strain_myr,
                 &forward_generated_material,
@@ -2539,6 +2606,16 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
             "forward plate evolution produced an unsupported emergent plate count",
         ));
     }
+
+    // Bound inherited passive-margin transition only after tectonic evolution is complete.
+    // This changes material interpretation without feeding a target geometry back into plate motion.
+    let _restored_continental_samples = bound_quiet_inherited_transitional_margins(
+        topology,
+        &mut model,
+        &forward_generated_material,
+        &extensional_strain_myr,
+        planet,
+    );
 
     split_fragments_at_final_boundaries(topology, &mut model)?;
     refresh_active_fragment_summaries(topology, &mut model);
@@ -2599,61 +2676,6 @@ mod tests {
             model.metrics.detached_microplate_birth_count, 0,
             "semi-Lagrangian remapping must not create tectonic plates by itself"
         );
-    }
-
-    #[test]
-    fn inherited_transitional_crust_requires_active_breakup_to_oceanize() {
-        let topology = build_icosphere(4).unwrap();
-        let planet = PlanetPhysicalParameters::earthlike_reference();
-        let request = HistoricalLithosphereRequest::new("inherited-transition-breakup", 16);
-        let base = crate::historical_lithosphere::generate_historical_lithosphere(
-            &topology,
-            &request,
-            planet,
-        )
-        .unwrap();
-
-        let sample = (0..topology.sample_count())
-            .find(|sample| {
-                let index = *sample as usize;
-                base.crust_kind[index] == CrustKind::Transitional as u8
-                    && topology.neighbors(*sample).iter().any(|neighbor| {
-                        base.crust_kind[*neighbor as usize] == CrustKind::Oceanic as u8
-                    })
-            })
-            .expect("test world must expose a continental transition adjacent to oceanic crust");
-        let index = sample as usize;
-        let generated = vec![false; topology.sample_count() as usize];
-
-        let mut quiet = base.clone();
-        let mut quiet_strain = vec![0.0_f32; topology.sample_count() as usize];
-        mature_forward_transitional_crust(
-            &topology,
-            &mut quiet,
-            &mut quiet_strain,
-            &generated,
-        );
-        assert_eq!(
-            quiet.crust_kind[index],
-            CrustKind::Transitional as u8,
-            "old inherited transition must not oceanize from age alone"
-        );
-
-        let mut reopening = base;
-        let mut reopening_strain = vec![0.0_f32; topology.sample_count() as usize];
-        reopening_strain[index] = INHERITED_TRANSITION_BREAKUP_STRAIN_MYR;
-        mature_forward_transitional_crust(
-            &topology,
-            &mut reopening,
-            &mut reopening_strain,
-            &generated,
-        );
-        assert_eq!(
-            reopening.crust_kind[index],
-            CrustKind::Oceanic as u8,
-            "sustained extension at an ocean-connected inherited margin must complete breakup"
-        );
-        assert_eq!(reopening.crust_birth_age_myr[index], 0.0);
     }
 
     #[test]
