@@ -2361,10 +2361,12 @@ fn reconcile_quiet_inherited_transitional_margins<T: PlanetTopology>(
         match target {
             Some(CrustKind::Continental) => {
                 model.crust_kind[sample] = CrustKind::Continental as u8;
+                model.continental_margin_material[sample] = 1;
                 restored_continental_samples = restored_continental_samples.saturating_add(1);
             }
             Some(CrustKind::Oceanic) => {
                 model.crust_kind[sample] = CrustKind::Oceanic as u8;
+                model.continental_margin_material[sample] = 0;
                 model.crust_birth_age_myr[sample] =
                     model.crust_birth_age_myr[sample].min(220.0);
                 model.lithospheric_weakness_index[sample] =
@@ -2437,6 +2439,7 @@ fn forward_history_hash(model: &HistoricalLithosphereModel, stage_seed: u64) -> 
         hash = fnv_update(hash, &weakness.to_bits().to_le_bytes());
     }
     hash = fnv_update(hash, &model.crust_kind);
+    hash = fnv_update(hash, &model.continental_margin_material);
     for age in &model.crust_birth_age_myr {
         hash = fnv_update(hash, &age.to_bits().to_le_bytes());
     }
@@ -2463,6 +2466,7 @@ fn validate_forward_state<T: PlanetTopology>(
         || model.fragment_ids.len() != count
         || model.current_plate_ids.len() != count
         || model.crust_kind.len() != count
+        || model.continental_margin_material.len() != count
         || model.crust_birth_age_myr.len() != count
         || model.lithospheric_weakness_index.len() != count
         || model
