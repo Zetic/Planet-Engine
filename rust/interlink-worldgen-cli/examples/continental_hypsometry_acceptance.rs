@@ -308,7 +308,7 @@ fn verify_production_seed(seed: &str) -> Result<(), String> {
         if !land {
             submerged_crust_area[crust_bucket] += area;
         }
-        if crust_bucket == 0 && inherited.crust_thickness_km[sample] < 34.0 {
+        if crust_bucket == 0 && inherited.crust_thickness_km[sample] < 36.0 {
             thinned_continental_area += area;
         }
 
@@ -319,7 +319,7 @@ fn verify_production_seed(seed: &str) -> Result<(), String> {
             inherited.structural_zone_kind[sample] == InheritedStructureKind::ContinentalMargin as u8
                 || inherited.structural_zone_kind[sample]
                     == InheritedStructureKind::InheritedRift as u8
-                || inherited.crust_thickness_km[sample] < 34.0;
+                || inherited.crust_thickness_km[sample] < 36.0;
         let modified = structural_modified
             || inherited.rift_history[sample] >= 0.22
             || inherited.subsidence_history[sample] >= 0.28
