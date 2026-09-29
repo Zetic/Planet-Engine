@@ -2602,6 +2602,61 @@ mod tests {
     }
 
     #[test]
+    fn inherited_transitional_crust_requires_active_breakup_to_oceanize() {
+        let topology = build_icosphere(4).unwrap();
+        let planet = PlanetPhysicalParameters::earthlike_reference();
+        let request = HistoricalLithosphereRequest::new("inherited-transition-breakup", 16);
+        let base = crate::historical_lithosphere::generate_historical_lithosphere(
+            &topology,
+            &request,
+            planet,
+        )
+        .unwrap();
+
+        let sample = (0..topology.sample_count())
+            .find(|sample| {
+                let index = *sample as usize;
+                base.crust_kind[index] == CrustKind::Transitional as u8
+                    && topology.neighbors(*sample).iter().any(|neighbor| {
+                        base.crust_kind[*neighbor as usize] == CrustKind::Oceanic as u8
+                    })
+            })
+            .expect("test world must expose a continental transition adjacent to oceanic crust");
+        let index = sample as usize;
+        let generated = vec![false; topology.sample_count() as usize];
+
+        let mut quiet = base.clone();
+        let mut quiet_strain = vec![0.0_f32; topology.sample_count() as usize];
+        mature_forward_transitional_crust(
+            &topology,
+            &mut quiet,
+            &mut quiet_strain,
+            &generated,
+        );
+        assert_eq!(
+            quiet.crust_kind[index],
+            CrustKind::Transitional as u8,
+            "old inherited transition must not oceanize from age alone"
+        );
+
+        let mut reopening = base;
+        let mut reopening_strain = vec![0.0_f32; topology.sample_count() as usize];
+        reopening_strain[index] = INHERITED_TRANSITION_BREAKUP_STRAIN_MYR;
+        mature_forward_transitional_crust(
+            &topology,
+            &mut reopening,
+            &mut reopening_strain,
+            &generated,
+        );
+        assert_eq!(
+            reopening.crust_kind[index],
+            CrustKind::Oceanic as u8,
+            "sustained extension at an ocean-connected inherited margin must complete breakup"
+        );
+        assert_eq!(reopening.crust_birth_age_myr[index], 0.0);
+    }
+
+    #[test]
     fn genealogy_partitions_are_inert_to_forward_plate_physics() {
         let topology = build_icosphere(4).unwrap();
         let planet = PlanetPhysicalParameters::earthlike_reference();
