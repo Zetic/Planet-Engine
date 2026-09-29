@@ -507,7 +507,11 @@ pub(crate) fn marine_connectivity_access_mask(
         .collect()
 }
 
-fn province_relief(inherited: &InheritedPhysicalState, index: usize) -> (f64, f64) {
+fn province_relief(
+    inherited: &InheritedPhysicalState,
+    index: usize,
+    parameters: TopographyParameters,
+) -> (f64, f64) {
     let intensity = f64::from(inherited.orogenic_history[index]).clamp(0.0, 1.0);
     let mountain_core = f64::from(inherited.mountain_core_index[index]).clamp(0.0, 1.0);
     let resistance = f64::from(inherited.interior_resistance_index[index]).clamp(0.0, 1.0);
@@ -532,11 +536,13 @@ fn province_relief(inherited: &InheritedPhysicalState, index: usize) -> (f64, f6
         // trench behind every volcanic arc.  Tie its modest deflection to the actual arc load.
         let arc_load = (0.55 * mountain_core + 0.45 * volcanic_arc).clamp(0.0, 1.0);
         let backarc_deflection = 260.0 * backarc * (0.25 + 0.75 * arc_load);
-        let arc_relief = 1_500.0 * mountain_core.powf(1.08)
-            + volcanic_arc * (2_450.0 + 800.0 * maturity)
-            + 360.0 * fold
-            + 120.0 * intensity
-            - backarc_deflection;
+        let arc_parameter_scale = parameters.arc_uplift_scale_m / 2_300.0;
+        let arc_relief = arc_parameter_scale
+            * (1_500.0 * mountain_core.powf(1.08)
+                + volcanic_arc * (2_450.0 + 800.0 * maturity)
+                + 360.0 * fold
+                + 120.0 * intensity
+                - backarc_deflection);
         return (0.0, arc_relief);
     }
 
@@ -570,7 +576,13 @@ fn province_relief(inherited: &InheritedPhysicalState, index: usize) -> (f64, f6
     } else {
         0.0
     };
-    let collision_relief = crust_scale
+    // The province model replaced the legacy radial collision kernel, but the public WG-4
+    // amplitude parameter remains the caller's control over active collision relief. Preserve the
+    // accepted province geometry while scaling its mechanically expressed load around the
+    // calibration baseline (2400 m).
+    let collision_parameter_scale = parameters.collision_uplift_scale_m / 2_400.0;
+    let collision_relief = collision_parameter_scale
+        * crust_scale
         * tectonic_gain
         * (4_300.0 * mountain_core.powf(1.10)
             + 1_800.0 * root * broad_transmission
@@ -618,7 +630,7 @@ pub fn generate_initial_topography(
     let mut arc = vec![0.0_f64; count];
     let mut raw = vec![0.0_f64; count];
     for i in 0..count {
-        let (collision_relief, arc_relief) = province_relief(inherited, i);
+        let (collision_relief, arc_relief) = province_relief(inherited, i, request.parameters);
         orogenic[i] = collision_relief;
         arc[i] = arc_relief;
 
