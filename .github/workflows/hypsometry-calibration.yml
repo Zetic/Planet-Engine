@@ -28,3 +28,5 @@ jobs:
         run: cargo run --release -p interlink-worldgen-cli --example forward_hypsometry_diagnostic
       - name: Run L6 to L8 reference hypsometry
         run: cargo run --release -p interlink-worldgen-cli --example forward_hypsometry_highres
+      - name: Run continental freeboard acceptance
+        run: cargo run --release -p interlink-worldgen-cli --example continental_hypsometry_acceptance
