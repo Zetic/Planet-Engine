@@ -13,6 +13,7 @@ const SUBSTEP_MYR: f64 = EPOCH_DURATION_MYR / SUBSTEPS_PER_EPOCH as f64;
 const RIFT_STRAIN_NUCLEATION_MYR: f32 = 26.0;
 const RIFT_STRAIN_RELIEF_FACTOR: f32 = 0.22;
 const FORWARD_TRANSITION_MATURATION_MYR: f32 = 30.0;
+const INHERITED_TRANSITION_BREAKUP_STRAIN_MYR: f32 = 42.0;
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 
@@ -1952,22 +1953,38 @@ fn accumulate_extensional_strain<T: PlanetTopology>(
     }
 }
 
-fn mature_forward_transitional_crust(
+fn mature_forward_transitional_crust<T: PlanetTopology>(
+    topology: &T,
     model: &mut HistoricalLithosphereModel,
     extensional_strain_myr: &mut [f32],
     forward_generated_material: &[bool],
 ) {
+    // Snapshot material kind so one conversion cannot avalanche across an entire inherited margin
+    // in a single substep. Sustained extension can still move breakup landward over later steps.
+    let previous_kind = model.crust_kind.clone();
     for sample in 0..model.crust_kind.len() {
-        if model.crust_kind[sample] != CrustKind::Transitional as u8 {
+        if previous_kind[sample] != CrustKind::Transitional as u8 {
             continue;
         }
         let age = model.crust_birth_age_myr[sample];
-        // Only material actually created by forward opening may mature through breakup. Inherited
-        // passive-margin transitional lithosphere is never inferred from an arbitrary age cutoff.
-        if forward_generated_material[sample]
+        let strain = extensional_strain_myr[sample];
+        let generated_breakup = forward_generated_material[sample]
             && age >= FORWARD_TRANSITION_MATURATION_MYR
-            && extensional_strain_myr[sample] >= 18.0
-        {
+            && strain >= 18.0;
+
+        // Inherited passive-margin transition is not allowed to become oceanic merely because it
+        // is old. It may complete breakup only when forward kinematics have accumulated strong,
+        // sustained extension and the transition is physically attached to an existing oceanic
+        // domain. This lets reopening margins finish rifting without deleting quiet old margins.
+        let oceanic_contact = topology
+            .neighbors(sample as u32)
+            .iter()
+            .any(|neighbor| previous_kind[*neighbor as usize] == CrustKind::Oceanic as u8);
+        let inherited_breakup = !forward_generated_material[sample]
+            && oceanic_contact
+            && strain >= INHERITED_TRANSITION_BREAKUP_STRAIN_MYR;
+
+        if generated_breakup || inherited_breakup {
             model.crust_kind[sample] = CrustKind::Oceanic as u8;
             model.crust_birth_age_myr[sample] = 0.0;
             model.lithospheric_weakness_index[sample] =
@@ -2485,6 +2502,7 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
                 SUBSTEP_MYR,
             );
             mature_forward_transitional_crust(
+                topology,
                 &mut model,
                 &mut extensional_strain_myr,
                 &forward_generated_material,
