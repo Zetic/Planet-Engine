@@ -30,7 +30,7 @@ fn hash_u8(mut hash: u64, values: &[u8]) -> u64 {
 }
 fn event_driven_hash(base_hash: u64, morphology_hash: u64, model: &OrogenProvinceModel) -> u64 {
     let mut hash = FNV_OFFSET_BASIS;
-    hash = fnv_update(hash, b"geology:event-driven-orogen-provinces:v1\0");
+    hash = fnv_update(hash, b"geology:event-driven-orogen-provinces:v2\0");
     hash = fnv_update(hash, &base_hash.to_le_bytes());
     hash = fnv_update(hash, &morphology_hash.to_le_bytes());
     hash = hash_u8(hash, &model.province_kind);
@@ -116,7 +116,7 @@ pub fn generate_event_driven_orogen_provinces<T: PlanetTopology>(
         // Keep broad fossil memory, but reserve explicit high-relief structural fields for the
         // stronger core of the old belt. This avoids turning diffuse event-memory fringes into a
         // huge low-elevation collision province while retaining interior fossil ranges.
-        if fossil >= 0.20 {
+        if fossil >= 0.24 {
             let inherited_weakness = f64::from(pre.intrinsic_weakness_index[sample]);
             let core = fossil
                 * (0.24 + 0.60 * suture + 0.22 * shear)
@@ -152,15 +152,18 @@ pub fn generate_event_driven_orogen_provinces<T: PlanetTopology>(
                 .max(65.0 + 330.0 * fossil + 130.0 * suture)
                 .min(850.0) as f32;
 
-            if fossil >= 0.28 && model.province_kind[sample] == 0 {
-                model.province_kind[sample] = if accretion >= suture.max(shear) && accretion >= 0.30
-                {
-                    OrogenProvinceKind::TerraneAccretion as u8
-                } else if shear > suture && shear >= 0.30 {
-                    OrogenProvinceKind::TranspressionalOrogen as u8
-                } else {
-                    OrogenProvinceKind::ContinentalCollision as u8
-                };
+            if fossil >= 0.34 && model.province_kind[sample] == 0 {
+                // Fossil deformation memory alone does not imply a present high-relief province.
+                // Require an explicit structural witness before promoting the sample.  This keeps
+                // diffuse forward-history fringes as low-amplitude inherited relief instead of
+                // converting almost every modified continental sample into a collision mountain.
+                if accretion >= suture.max(shear) && accretion >= 0.35 {
+                    model.province_kind[sample] = OrogenProvinceKind::TerraneAccretion as u8;
+                } else if shear > suture && shear >= 0.35 {
+                    model.province_kind[sample] = OrogenProvinceKind::TranspressionalOrogen as u8;
+                } else if suture >= 0.35 {
+                    model.province_kind[sample] = OrogenProvinceKind::ContinentalCollision as u8;
+                }
             }
         }
     }
