@@ -136,7 +136,7 @@ fn stable_continental_buoyancy_support_m(
         _ => 1.0,
     };
 
-    650.0 * state_retention * physical_support * structural_retention
+    400.0 * state_retention * physical_support * structural_retention
 }
 
 fn stable_support_relaxation_barrier(kind: u8) -> bool {
