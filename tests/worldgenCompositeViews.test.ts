@@ -59,7 +59,7 @@ test('WG-7D final physical world uses post-infill terrain and final hydrology an
   const protocol = fs.readFileSync('src/worldgen/protocol.ts', 'utf8');
   const worker = fs.readFileSync('src/worldgen/worldgenWorker.ts', 'utf8');
   const lab = fs.readFileSync('src/worldgen/diagnostics/worldgenClimateLabStandalone.ts', 'utf8');
-  assert.match(protocol, /WORLDGEN_PROTOCOL_VERSION = 23/);
+  assert.match(protocol, /WORLDGEN_PROTOCOL_VERSION = 24/);
   assert.match(protocol, /infillMetrics: WorldgenLakeSedimentInfillMetrics/);
   assert.match(protocol, /postInfillSolidElevationM: Float32Array/);
   assert.match(worker, /infill_post_infill_drainage_hash_hex/);
