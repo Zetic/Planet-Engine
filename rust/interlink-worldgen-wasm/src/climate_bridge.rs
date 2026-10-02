@@ -594,6 +594,39 @@ impl WasmWorldgenClimate {
     pub fn maximum_solid_elevation_m(&self) -> f64 {
         self.terrain.metrics.maximum_solid_elevation_m
     }
+    pub fn mean_solid_elevation_m(&self) -> f64 {
+        self.terrain.metrics.mean_solid_elevation_m
+    }
+    pub fn p05_solid_elevation_m(&self) -> f64 {
+        self.terrain.metrics.p05_solid_elevation_m
+    }
+    pub fn median_solid_elevation_m(&self) -> f64 {
+        self.terrain.metrics.median_solid_elevation_m
+    }
+    pub fn p95_solid_elevation_m(&self) -> f64 {
+        self.terrain.metrics.p95_solid_elevation_m
+    }
+    pub fn mean_land_elevation_m(&self) -> f64 {
+        self.terrain.metrics.mean_land_elevation_m
+    }
+    pub fn mean_water_depth_m(&self) -> f64 {
+        self.terrain.metrics.mean_water_depth_m
+    }
+    pub fn maximum_water_depth_m(&self) -> f64 {
+        self.terrain.metrics.maximum_water_depth_m
+    }
+    pub fn target_water_volume_m3(&self) -> f64 {
+        self.terrain.metrics.target_water_volume_m3
+    }
+    pub fn solved_water_volume_m3(&self) -> f64 {
+        self.terrain.metrics.solved_water_volume_m3
+    }
+    pub fn water_volume_relative_error(&self) -> f64 {
+        self.terrain.metrics.water_volume_relative_error
+    }
+    pub fn clamped_sample_count(&self) -> u32 {
+        self.terrain.metrics.clamped_sample_count
+    }
 
     pub fn radius_m(&self) -> f64 {
         self.planet.radius_m
