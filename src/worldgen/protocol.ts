@@ -581,6 +581,9 @@ export interface WorldgenClimateResult {
   positions: Float64Array;
   neighborOffsets: Uint32Array;
   neighbors: Uint32Array;
+  historicalIdentityHash: string;
+  historicalMorphologyHash: string;
+  continentalMarginMaterial: Uint8Array;
   originPlateIds: Uint16Array;
   historicalFragmentIds: Uint16Array;
   currentPlateIds: Uint16Array;
