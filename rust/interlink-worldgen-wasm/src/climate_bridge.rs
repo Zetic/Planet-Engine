@@ -770,6 +770,30 @@ impl WasmWorldgenClimate {
     pub fn crust_thickness_km(&self) -> Vec<f32> {
         self.inherited.crust_thickness_km.clone()
     }
+    pub fn crust_density_kg_per_m3(&self) -> Vec<f32> {
+        self.inherited.crust_density_kg_per_m3.clone()
+    }
+    pub fn rift_history(&self) -> Vec<f32> {
+        self.inherited.rift_history.clone()
+    }
+    pub fn subsidence_history(&self) -> Vec<f32> {
+        self.inherited.subsidence_history.clone()
+    }
+    pub fn basin_potential(&self) -> Vec<f32> {
+        self.inherited.basin_potential.clone()
+    }
+    pub fn crustal_strain(&self) -> Vec<f32> {
+        self.inherited.crustal_strain.clone()
+    }
+    pub fn compensated_buoyancy_index(&self) -> Vec<f32> {
+        self.inherited.compensated_buoyancy_index.clone()
+    }
+    pub fn effective_elastic_thickness_km(&self) -> Vec<f32> {
+        self.inherited.effective_elastic_thickness_km.clone()
+    }
+    pub fn structural_fabric_strength(&self) -> Vec<f32> {
+        self.inherited.structural_fabric_strength.clone()
+    }
     pub fn orogenic_history(&self) -> Vec<f32> {
         self.inherited.orogenic_history.clone()
     }
