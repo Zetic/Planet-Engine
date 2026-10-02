@@ -4,6 +4,8 @@ import test from 'node:test';
 test('calibration packet stays compact, versioned, and available from the Pages lab', async () => {
   const packet = await readFile('src/worldgen/calibrationPacket.ts', 'utf8');
   const controller = await readFile('src/worldgen/diagnostics/worldgenClimateLabStandalone.ts', 'utf8');
+  const worker = await readFile('src/worldgen/worldgenWorker.ts', 'utf8');
+  const bridge = await readFile('rust/interlink-worldgen-wasm/src/climate_bridge.rs', 'utf8');
   const html = await readFile('index.html', 'utf8');
   assert.match(packet, /planet-engine-calibration@1/);
   assert.match(packet, /RANKED_LIMIT = 8/);
@@ -15,6 +17,18 @@ test('calibration packet stays compact, versioned, and available from the Pages 
   assert.match(packet, /historical_identity/);
   assert.match(packet, /surface_water_mass_kg/);
   assert.match(packet, /water_volume_relative_error/);
+  assert.match(packet, /validateFreeboardCausalSummary/);
+  assert.match(packet, /causal_snapshot_consistent/);
+  assert.match(packet, /wg4-pre-scratch-release/);
+  assert.match(worker, /freeboardCausal/);
+  assert.match(worker, /freeboard_causal_sample_counts/);
+  assert.match(bridge, /build_freeboard_causal_observability/);
+  assert.match(bridge, /release_topography_scratch/);
+  assert.ok(bridge.indexOf('let freeboard_causal_observability =') < bridge.indexOf('inherited.release_topography_scratch()'), 'freeboard causal snapshot must be captured before WG-4 scratch release');
+  assert.doesNotMatch(packet, /result\.crustDensityKgPerM3/);
+  assert.doesNotMatch(packet, /result\.riftHistory/);
+  assert.doesNotMatch(packet, /result\.subsidenceHistory/);
+  assert.doesNotMatch(packet, /result\.basinPotential/);
   assert.doesNotMatch(packet, /JSON\.stringify\(result/);
   assert.match(controller, /worldCalibrationMarkdown/);
   assert.match(controller, /worldCalibrationJson/);
