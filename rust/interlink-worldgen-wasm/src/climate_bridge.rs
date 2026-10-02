@@ -7,6 +7,7 @@ use interlink_worldgen::{
     generate_post_erosion_hydrology, generate_runoff_discharge, generate_seasonal_hydrology,
     generate_tectonics, inherit_boundary_interfaces, inherit_historical_identity,
     inherit_physical_state, ClimatePhysicalParameters, ClimateRequest, ClimateState, CrustKind,
+    InheritedStructureKind,
     DrainageRequest, FluvialErosionRequest, FluvialErosionState, GeodesicTopology, GeologyRequest,
     HistoricalLithosphereRequest, InheritedBoundarySet, InheritedHistoricalIdentity,
     InheritedPhysicalState, LakeRequest, LakeSedimentInfillRequest, LakeSedimentInfillState,
@@ -69,12 +70,15 @@ struct FreeboardCausalObservability {
     compensated_buoyancy_index: [f64; FREEBOARD_CAUSAL_BUCKET_COUNT],
     effective_elastic_thickness_km: [f64; FREEBOARD_CAUSAL_BUCKET_COUNT],
     structural_fabric_strength: [f64; FREEBOARD_CAUSAL_BUCKET_COUNT],
+    continental_state_counts: [u32; 3],
 }
 
 fn build_freeboard_causal_observability(
     inherited: &InheritedPhysicalState,
     terrain: &TopographyState,
     continental_margin_material: &[u8],
+    passive_margin_index: &[f32],
+    historical_rift_intensity: &[f32],
 ) -> Result<FreeboardCausalObservability, &'static str> {
     let count = terrain.submerged_mask.len();
     let lengths = [
@@ -88,6 +92,8 @@ fn build_freeboard_causal_observability(
         inherited.effective_elastic_thickness_km.len(),
         inherited.structural_fabric_strength.len(),
         continental_margin_material.len(),
+        passive_margin_index.len(),
+        historical_rift_intensity.len(),
     ];
     if lengths.iter().any(|length| *length != count) {
         return Err("freeboard observability source fields do not match WG-4 sample count");
@@ -102,6 +108,7 @@ fn build_freeboard_causal_observability(
     let mut buoyancy = [0.0_f64; FREEBOARD_CAUSAL_BUCKET_COUNT];
     let mut elastic = [0.0_f64; FREEBOARD_CAUSAL_BUCKET_COUNT];
     let mut fabric = [0.0_f64; FREEBOARD_CAUSAL_BUCKET_COUNT];
+    let mut continental_state_counts = [0_u32; 3];
 
     let mut add = |bucket: usize, sample: usize| {
         sample_counts[bucket] = sample_counts[bucket].saturating_add(1);
@@ -130,6 +137,28 @@ fn build_freeboard_causal_observability(
         } else {
             add(FREEBOARD_BUCKET_OTHER_CONTINENTAL, sample);
         }
+
+        let structure = inherited.structural_zone_kind[sample];
+        let thickness = inherited.crust_thickness_km[sample];
+        let margin = structure == InheritedStructureKind::ContinentalMargin as u8
+            || passive_margin_index[sample] >= 0.35
+            || thickness < 36.0;
+        let rift = structure == InheritedStructureKind::InheritedRift as u8
+            || inherited.rift_history[sample] >= 0.35
+            || historical_rift_intensity[sample] >= 0.35;
+        let quiet = !margin
+            && !rift
+            && inherited.subsidence_history[sample] < 0.28
+            && inherited.basin_potential[sample] < 0.32;
+        if quiet {
+            continental_state_counts[0] = continental_state_counts[0].saturating_add(1);
+        }
+        if margin {
+            continental_state_counts[1] = continental_state_counts[1].saturating_add(1);
+        }
+        if rift {
+            continental_state_counts[2] = continental_state_counts[2].saturating_add(1);
+        }
     }
 
     let finish = |sums: [f64; FREEBOARD_CAUSAL_BUCKET_COUNT]| {
@@ -153,6 +182,7 @@ fn build_freeboard_causal_observability(
         compensated_buoyancy_index: finish(buoyancy),
         effective_elastic_thickness_km: finish(elastic),
         structural_fabric_strength: finish(fabric),
+        continental_state_counts,
     })
 }
 
@@ -316,8 +346,14 @@ impl WasmWorldgenClimate {
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
         report_generation_progress(progress, "lithology-substrate", 8, 1, 1);
         let freeboard_causal_observability =
-            build_freeboard_causal_observability(&inherited, &terrain, &continental_margin_material)
-                .map_err(JsValue::from_str)?;
+            build_freeboard_causal_observability(
+                &inherited,
+                &terrain,
+                &continental_margin_material,
+                &passive_margin_index,
+                &historical_rift_intensity,
+            )
+            .map_err(JsValue::from_str)?;
         inherited.release_topography_scratch();
         let coarse_topology_hash = coarse_topology.metrics().topology_hash_hex();
         let tectonic_hash = tectonics.metrics.tectonic_hash_hex();
@@ -946,6 +982,9 @@ impl WasmWorldgenClimate {
     }
     pub fn freeboard_mean_structural_fabric_strength(&self) -> Vec<f64> {
         self.freeboard_causal_observability.structural_fabric_strength.to_vec()
+    }
+    pub fn freeboard_continental_state_counts(&self) -> Vec<u32> {
+        self.freeboard_causal_observability.continental_state_counts.to_vec()
     }
     pub fn orogenic_history(&self) -> Vec<f32> {
         self.inherited.orogenic_history.clone()
