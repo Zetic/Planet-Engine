@@ -386,6 +386,14 @@ export interface WorldgenTopographyResult {
   lastTectonicReworkingAgeMyr: Float32Array;
   continentalStabilityIndex: Float32Array;
   crustThicknessKm: Float32Array;
+  crustDensityKgPerM3: Float32Array;
+  riftHistory: Float32Array;
+  subsidenceHistory: Float32Array;
+  basinPotential: Float32Array;
+  crustalStrain: Float32Array;
+  compensatedBuoyancyIndex: Float32Array;
+  effectiveElasticThicknessKm: Float32Array;
+  structuralFabricStrength: Float32Array;
   orogenicHistory: Float32Array;
   ridgeHistory: Float32Array;
   trenchHistory: Float32Array;
