@@ -53,6 +53,7 @@ export const wasmworldgenclimate_coarse_sample_count: (a: number) => number;
 export const wasmworldgenclimate_coarse_topology_hash_hex: (a: number) => [number, number];
 export const wasmworldgenclimate_compensated_buoyancy_index: (a: number) => [number, number];
 export const wasmworldgenclimate_continental_basement_age_myr: (a: number) => [number, number];
+export const wasmworldgenclimate_continental_margin_material: (a: number) => [number, number];
 export const wasmworldgenclimate_continental_stability_index: (a: number) => [number, number];
 export const wasmworldgenclimate_contributing_area_m2: (a: number) => [number, number];
 export const wasmworldgenclimate_convergence_temperature_rms_k: (a: number) => number;

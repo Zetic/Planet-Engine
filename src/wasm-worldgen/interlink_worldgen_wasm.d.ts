@@ -47,6 +47,7 @@ export class WasmWorldgenClimate {
     coarse_topology_hash_hex(): string;
     compensated_buoyancy_index(): Float32Array;
     continental_basement_age_myr(): Float32Array;
+    continental_margin_material(): Uint8Array;
     continental_stability_index(): Float32Array;
     contributing_area_m2(): Float64Array;
     convergence_temperature_rms_k(): number;
@@ -978,6 +979,7 @@ export interface InitOutput {
     readonly wasmworldgenclimate_coarse_topology_hash_hex: (a: number) => [number, number];
     readonly wasmworldgenclimate_compensated_buoyancy_index: (a: number) => [number, number];
     readonly wasmworldgenclimate_continental_basement_age_myr: (a: number) => [number, number];
+    readonly wasmworldgenclimate_continental_margin_material: (a: number) => [number, number];
     readonly wasmworldgenclimate_continental_stability_index: (a: number) => [number, number];
     readonly wasmworldgenclimate_contributing_area_m2: (a: number) => [number, number];
     readonly wasmworldgenclimate_convergence_temperature_rms_k: (a: number) => number;

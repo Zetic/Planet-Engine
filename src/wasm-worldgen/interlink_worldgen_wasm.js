@@ -397,6 +397,15 @@ export class WasmWorldgenClimate {
         return v1;
     }
     /**
+     * @returns {Uint8Array}
+     */
+    continental_margin_material() {
+        const ret = wasm.wasmworldgenclimate_continental_margin_material(this.__wbg_ptr);
+        var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        return v1;
+    }
+    /**
      * @returns {Float32Array}
      */
     continental_stability_index() {
