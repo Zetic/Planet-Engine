@@ -6,7 +6,7 @@ use interlink_worldgen::{
     generate_lithology_substrate, generate_lithosphere, generate_lithosphere_from_history,
     generate_post_erosion_hydrology, generate_runoff_discharge, generate_seasonal_hydrology,
     generate_tectonics, inherit_boundary_interfaces, inherit_historical_identity,
-    inherit_physical_state, ClimatePhysicalParameters, ClimateRequest, ClimateState,
+    inherit_physical_state, ClimatePhysicalParameters, ClimateRequest, ClimateState, CrustKind,
     DrainageRequest, FluvialErosionRequest, FluvialErosionState, GeodesicTopology, GeologyRequest,
     HistoricalLithosphereRequest, InheritedBoundarySet, InheritedHistoricalIdentity,
     InheritedPhysicalState, LakeRequest, LakeSedimentInfillRequest, LakeSedimentInfillState,
@@ -51,6 +51,111 @@ struct ReconciliationDiagnostics {
     flow_presence_delta: Vec<f32>,
 }
 
+const FREEBOARD_CAUSAL_BUCKET_COUNT: usize = 5;
+const FREEBOARD_BUCKET_ALL_CONTINENTAL: usize = 0;
+const FREEBOARD_BUCKET_EMERGENT_CONTINENTAL: usize = 1;
+const FREEBOARD_BUCKET_SUBMERGED_CONTINENTAL: usize = 2;
+const FREEBOARD_BUCKET_RESTORED_MARGIN_CONTINENTAL: usize = 3;
+const FREEBOARD_BUCKET_OTHER_CONTINENTAL: usize = 4;
+
+#[derive(Clone, Debug)]
+struct FreeboardCausalObservability {
+    sample_counts: [u32; FREEBOARD_CAUSAL_BUCKET_COUNT],
+    crust_density_kg_per_m3: [f64; FREEBOARD_CAUSAL_BUCKET_COUNT],
+    rift_history: [f64; FREEBOARD_CAUSAL_BUCKET_COUNT],
+    subsidence_history: [f64; FREEBOARD_CAUSAL_BUCKET_COUNT],
+    basin_potential: [f64; FREEBOARD_CAUSAL_BUCKET_COUNT],
+    crustal_strain: [f64; FREEBOARD_CAUSAL_BUCKET_COUNT],
+    compensated_buoyancy_index: [f64; FREEBOARD_CAUSAL_BUCKET_COUNT],
+    effective_elastic_thickness_km: [f64; FREEBOARD_CAUSAL_BUCKET_COUNT],
+    structural_fabric_strength: [f64; FREEBOARD_CAUSAL_BUCKET_COUNT],
+}
+
+fn build_freeboard_causal_observability(
+    inherited: &InheritedPhysicalState,
+    terrain: &TopographyState,
+    continental_margin_material: &[u8],
+) -> Result<FreeboardCausalObservability, &'static str> {
+    let count = terrain.submerged_mask.len();
+    let lengths = [
+        inherited.crust_kind.len(),
+        inherited.crust_density_kg_per_m3.len(),
+        inherited.rift_history.len(),
+        inherited.subsidence_history.len(),
+        inherited.basin_potential.len(),
+        inherited.crustal_strain.len(),
+        inherited.compensated_buoyancy_index.len(),
+        inherited.effective_elastic_thickness_km.len(),
+        inherited.structural_fabric_strength.len(),
+        continental_margin_material.len(),
+    ];
+    if lengths.iter().any(|length| *length != count) {
+        return Err("freeboard observability source fields do not match WG-4 sample count");
+    }
+
+    let mut sample_counts = [0_u32; FREEBOARD_CAUSAL_BUCKET_COUNT];
+    let mut density = [0.0_f64; FREEBOARD_CAUSAL_BUCKET_COUNT];
+    let mut rift = [0.0_f64; FREEBOARD_CAUSAL_BUCKET_COUNT];
+    let mut subsidence = [0.0_f64; FREEBOARD_CAUSAL_BUCKET_COUNT];
+    let mut basin = [0.0_f64; FREEBOARD_CAUSAL_BUCKET_COUNT];
+    let mut strain = [0.0_f64; FREEBOARD_CAUSAL_BUCKET_COUNT];
+    let mut buoyancy = [0.0_f64; FREEBOARD_CAUSAL_BUCKET_COUNT];
+    let mut elastic = [0.0_f64; FREEBOARD_CAUSAL_BUCKET_COUNT];
+    let mut fabric = [0.0_f64; FREEBOARD_CAUSAL_BUCKET_COUNT];
+
+    let mut add = |bucket: usize, sample: usize| {
+        sample_counts[bucket] = sample_counts[bucket].saturating_add(1);
+        density[bucket] += f64::from(inherited.crust_density_kg_per_m3[sample]);
+        rift[bucket] += f64::from(inherited.rift_history[sample]);
+        subsidence[bucket] += f64::from(inherited.subsidence_history[sample]);
+        basin[bucket] += f64::from(inherited.basin_potential[sample]);
+        strain[bucket] += f64::from(inherited.crustal_strain[sample]);
+        buoyancy[bucket] += f64::from(inherited.compensated_buoyancy_index[sample]);
+        elastic[bucket] += f64::from(inherited.effective_elastic_thickness_km[sample]);
+        fabric[bucket] += f64::from(inherited.structural_fabric_strength[sample]);
+    };
+
+    for sample in 0..count {
+        if inherited.crust_kind[sample] != CrustKind::Continental as u8 {
+            continue;
+        }
+        add(FREEBOARD_BUCKET_ALL_CONTINENTAL, sample);
+        if terrain.submerged_mask[sample] != 0 {
+            add(FREEBOARD_BUCKET_SUBMERGED_CONTINENTAL, sample);
+        } else {
+            add(FREEBOARD_BUCKET_EMERGENT_CONTINENTAL, sample);
+        }
+        if continental_margin_material[sample] != 0 {
+            add(FREEBOARD_BUCKET_RESTORED_MARGIN_CONTINENTAL, sample);
+        } else {
+            add(FREEBOARD_BUCKET_OTHER_CONTINENTAL, sample);
+        }
+    }
+
+    let finish = |sums: [f64; FREEBOARD_CAUSAL_BUCKET_COUNT]| {
+        std::array::from_fn(|bucket| {
+            let count = sample_counts[bucket];
+            if count == 0 {
+                0.0
+            } else {
+                sums[bucket] / f64::from(count)
+            }
+        })
+    };
+
+    Ok(FreeboardCausalObservability {
+        sample_counts,
+        crust_density_kg_per_m3: finish(density),
+        rift_history: finish(rift),
+        subsidence_history: finish(subsidence),
+        basin_potential: finish(basin),
+        crustal_strain: finish(strain),
+        compensated_buoyancy_index: finish(buoyancy),
+        effective_elastic_thickness_km: finish(elastic),
+        structural_fabric_strength: finish(fabric),
+    })
+}
+
 #[wasm_bindgen]
 pub struct WasmWorldgenClimate {
     fine_topology: GeodesicTopology,
@@ -58,6 +163,7 @@ pub struct WasmWorldgenClimate {
     historical_identity: InheritedHistoricalIdentity,
     historical_morphology_hash: String,
     continental_margin_material: Vec<u8>,
+    freeboard_causal_observability: FreeboardCausalObservability,
     latest_event_kind: Vec<u8>,
     latest_event_age_myr: Vec<f32>,
     historical_rift_intensity: Vec<f32>,
@@ -209,6 +315,9 @@ impl WasmWorldgenClimate {
         )
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
         report_generation_progress(progress, "lithology-substrate", 8, 1, 1);
+        let freeboard_causal_observability =
+            build_freeboard_causal_observability(&inherited, &terrain, &continental_margin_material)
+                .map_err(JsValue::from_str)?;
         inherited.release_topography_scratch();
         let coarse_topology_hash = coarse_topology.metrics().topology_hash_hex();
         let tectonic_hash = tectonics.metrics.tectonic_hash_hex();
@@ -401,6 +510,7 @@ impl WasmWorldgenClimate {
             historical_identity,
             historical_morphology_hash,
             continental_margin_material,
+            freeboard_causal_observability,
             latest_event_kind,
             latest_event_age_myr,
             historical_rift_intensity,
@@ -810,29 +920,32 @@ impl WasmWorldgenClimate {
     pub fn crust_thickness_km(&self) -> Vec<f32> {
         self.inherited.crust_thickness_km.clone()
     }
-    pub fn crust_density_kg_per_m3(&self) -> Vec<f32> {
-        self.inherited.crust_density_kg_per_m3.clone()
+    pub fn freeboard_causal_sample_counts(&self) -> Vec<u32> {
+        self.freeboard_causal_observability.sample_counts.to_vec()
     }
-    pub fn rift_history(&self) -> Vec<f32> {
-        self.inherited.rift_history.clone()
+    pub fn freeboard_mean_crust_density_kg_per_m3(&self) -> Vec<f64> {
+        self.freeboard_causal_observability.crust_density_kg_per_m3.to_vec()
     }
-    pub fn subsidence_history(&self) -> Vec<f32> {
-        self.inherited.subsidence_history.clone()
+    pub fn freeboard_mean_rift_history(&self) -> Vec<f64> {
+        self.freeboard_causal_observability.rift_history.to_vec()
     }
-    pub fn basin_potential(&self) -> Vec<f32> {
-        self.inherited.basin_potential.clone()
+    pub fn freeboard_mean_subsidence_history(&self) -> Vec<f64> {
+        self.freeboard_causal_observability.subsidence_history.to_vec()
     }
-    pub fn crustal_strain(&self) -> Vec<f32> {
-        self.inherited.crustal_strain.clone()
+    pub fn freeboard_mean_basin_potential(&self) -> Vec<f64> {
+        self.freeboard_causal_observability.basin_potential.to_vec()
     }
-    pub fn compensated_buoyancy_index(&self) -> Vec<f32> {
-        self.inherited.compensated_buoyancy_index.clone()
+    pub fn freeboard_mean_crustal_strain(&self) -> Vec<f64> {
+        self.freeboard_causal_observability.crustal_strain.to_vec()
     }
-    pub fn effective_elastic_thickness_km(&self) -> Vec<f32> {
-        self.inherited.effective_elastic_thickness_km.clone()
+    pub fn freeboard_mean_compensated_buoyancy_index(&self) -> Vec<f64> {
+        self.freeboard_causal_observability.compensated_buoyancy_index.to_vec()
     }
-    pub fn structural_fabric_strength(&self) -> Vec<f32> {
-        self.inherited.structural_fabric_strength.clone()
+    pub fn freeboard_mean_effective_elastic_thickness_km(&self) -> Vec<f64> {
+        self.freeboard_causal_observability.effective_elastic_thickness_km.to_vec()
+    }
+    pub fn freeboard_mean_structural_fabric_strength(&self) -> Vec<f64> {
+        self.freeboard_causal_observability.structural_fabric_strength.to_vec()
     }
     pub fn orogenic_history(&self) -> Vec<f32> {
         self.inherited.orogenic_history.clone()
