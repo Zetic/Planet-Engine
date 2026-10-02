@@ -154,28 +154,23 @@ function continentSummary(result: WorldgenClimateResult) {
 }
 
 function topographySummary(result: WorldgenClimateResult) {
-  const land: number[] = [];
-  const waterDepth: number[] = [];
-  for (let sample = 0; sample < result.metrics.fineSampleCount; sample += 1) {
-    if (result.submergedMask[sample]) waterDepth.push(Math.max(0, result.waterDepthM[sample]!));
-    else land.push(result.elevationAboveSeaLevelM[sample]!);
-  }
-  const solid = result.solidElevationM;
-  const mean = (values: number[]) => values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
   return {
     minimum_solid_elevation_m: result.metrics.minimumSolidElevationM,
-    p05_solid_elevation_m: percentile(solid, 0.05),
-    median_solid_elevation_m: percentile(solid, 0.50),
-    p95_solid_elevation_m: percentile(solid, 0.95),
+    mean_solid_elevation_m: result.metrics.meanSolidElevationM,
+    p05_solid_elevation_m: result.metrics.p05SolidElevationM,
+    median_solid_elevation_m: result.metrics.medianSolidElevationM,
+    p95_solid_elevation_m: result.metrics.p95SolidElevationM,
     maximum_solid_elevation_m: result.metrics.maximumSolidElevationM,
     sea_level_m: result.metrics.hasSeaLevel ? result.metrics.seaLevelM : null,
     land_area_fraction: result.metrics.landAreaFraction,
     ocean_area_fraction: result.metrics.oceanAreaFraction,
-    mean_land_elevation_m: mean(land),
-    mean_water_depth_m: mean(waterDepth),
-    maximum_water_depth_m: waterDepth.reduce((maximum, value) => Math.max(maximum, value), 0),
-    water_volume_relative_error: null,
-    clamped_sample_count: null,
+    mean_land_elevation_m: result.metrics.meanLandElevationM,
+    mean_water_depth_m: result.metrics.meanWaterDepthM,
+    maximum_water_depth_m: result.metrics.maximumWaterDepthM,
+    target_water_volume_m3: result.metrics.targetWaterVolumeM3,
+    solved_water_volume_m3: result.metrics.solvedWaterVolumeM3,
+    water_volume_relative_error: result.metrics.waterVolumeRelativeError,
+    clamped_sample_count: result.metrics.clampedSampleCount,
   };
 }
 
@@ -478,9 +473,9 @@ export function buildWorldCalibrationPacket(result: WorldgenClimateResult, seed:
       canonical_dual_cell_area: false,
       complete_internal_lake_budget: false,
       approximation_notes: [
-        'continental component area uses equal-sample area because protocol v18 does not transport dual-cell area',
-        'derived topography percentiles and means are unweighted sample summaries',
-        'per-lake gross inflow and evaporation are unavailable in protocol v18 and remain null',
+        'continental component and crust/freeboard area fractions use equal-sample weighting because the Pages cumulative result does not transport fine dual-cell area',
+        'topography summary scalars come from the canonical Rust WG-4 metrics rather than browser recomputation',
+        'per-lake gross inflow and evaporation are unavailable in the cumulative browser result and remain null',
       ],
     },
     run: {
@@ -490,6 +485,18 @@ export function buildWorldCalibrationPacket(result: WorldgenClimateResult, seed:
       fine_level: result.fineLevel,
       sample_count: result.metrics.fineSampleCount,
       plate_count: plateCount,
+    },
+    planet: {
+      radius_m: result.planet.radiusM,
+      surface_gravity_m_s2: result.planet.surfaceGravityMS2,
+      rotation_period_s: result.planet.rotationPeriodS,
+      axial_tilt_rad: result.planet.axialTiltRad,
+      orbital_period_s: result.planet.orbitalPeriodS,
+      stellar_flux_w_m2: result.planet.stellarFluxWM2,
+      reference_surface_pressure_pa: result.planet.referenceSurfacePressurePa,
+      surface_water_mass_kg: result.planet.surfaceWaterMassKg,
+      equivalent_global_water_depth_m: result.planet.equivalentGlobalWaterDepthM,
+      internal_heat_flux_w_per_m2: result.planet.internalHeatFluxWPerM2,
     },
     hashes: {
       coarse_topology: result.metrics.coarseTopologyHash,
