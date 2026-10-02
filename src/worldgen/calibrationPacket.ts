@@ -39,13 +39,6 @@ function sampleArc(result: WorldgenClimateResult, a: number, b: number): number 
   return arc(position(result, a), position(result, b));
 }
 
-function percentile(values: ArrayLike<number>, fraction: number): number {
-  if (values.length === 0) return 0;
-  const sorted = Array.from(values).sort((a, b) => a - b);
-  const index = Math.max(0, Math.min(sorted.length - 1, Math.round((sorted.length - 1) * fraction)));
-  return sorted[index]!;
-}
-
 function continentalComponents(result: WorldgenClimateResult): RawComponent[] {
   const count = result.metrics.fineSampleCount;
   const visited = new Uint8Array(count);
@@ -636,7 +629,7 @@ export function worldCalibrationMarkdown(result: WorldgenClimateResult, seed: st
     '# Planet Engine calibration report',
     '',
     `Schema: \`${packet.schema}\``,
-    'Fidelity: GitHub Pages packet · equal-sample continental area / unweighted derived topography summaries · partial per-lake budget',
+    'Fidelity: GitHub Pages packet · equal-sample morphology/freeboard areas · canonical WG-4 topography summaries · partial per-lake budget',
     `Seed: \`${seed}\` · L${result.coarseLevel} → L${result.fineLevel} · ${plateCount} plates · ${result.metrics.fineSampleCount.toLocaleString()} samples · engine v${result.engineVersion}`,
     '',
     '## Continental assembly',
