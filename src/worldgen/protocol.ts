@@ -452,6 +452,17 @@ export interface WorldgenClimateMetrics {
   oceanAreaFraction: number;
   minimumSolidElevationM: number;
   maximumSolidElevationM: number;
+  meanSolidElevationM: number;
+  p05SolidElevationM: number;
+  medianSolidElevationM: number;
+  p95SolidElevationM: number;
+  meanLandElevationM: number;
+  meanWaterDepthM: number;
+  maximumWaterDepthM: number;
+  targetWaterVolumeM3: number;
+  solvedWaterVolumeM3: number;
+  waterVolumeRelativeError: number;
+  clampedSampleCount: number;
   coarseTopologyHash: string;
   fineTopologyHash: string;
   tectonicHash: string;
