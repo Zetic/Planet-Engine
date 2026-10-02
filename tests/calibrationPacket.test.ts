@@ -34,6 +34,8 @@ test('calibration packet stays compact, versioned, and available from the Pages 
   assert.match(controller, /worldCalibrationJson/);
   assert.match(controller, /worldgen-copy-calibration/);
   assert.match(controller, /worldgen-download-calibration/);
+  assert.match(controller, /downloadTextFile/);
+  assert.match(controller, /Could not download calibration packet/);
   assert.match(html, /Copy LLM Summary/);
   assert.match(html, /Download Calibration JSON/);
 });
