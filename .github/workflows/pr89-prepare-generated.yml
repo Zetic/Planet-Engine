@@ -32,12 +32,12 @@ jobs:
         run: npm run typecheck
       - name: Build browser source
         run: npm run build
-      - name: Run browser regressions
-        run: npm run test:ts
       - name: Check browser WASM bridge
         run: npm run check:worldgen-wasm
       - name: Rebuild committed WASM package
         run: npm run build:worldgen-wasm
+      - name: Run browser regressions
+        run: npm run test:ts
       - name: Commit generated artifacts
         run: |
           git add dist src/wasm-worldgen
