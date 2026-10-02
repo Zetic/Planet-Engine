@@ -1,6 +1,7 @@
 import { createWorldgenClient } from '../worldgenClient.js';
 import { createWorldgenCrashRecorder, installWorldgenGlobalFailureCapture } from '../worldgenCrashReport.js';
 import { worldCalibrationJson, worldCalibrationMarkdown } from '../calibrationPacket.js';
+import { downloadTextFile } from '../browserDownload.js';
 import { clampEquirectangularCenterLatitude, equirectangularCameraForWorldDirectionAtScreen, equirectangularScreenToWorldDirection, mapVectorDelta, reconstructAnnualHarmonicFromBasis, wrapLongitudeRad } from './worldgenClimateMath.js';
 import { L8GlobeRenderer, buildRgbaColors, cameraForWorldDirectionAtScreen, pickNearestSample, screenToWorldDirection } from './worldgenL8GlobeRenderer.js';
 import {
@@ -2344,17 +2345,17 @@ async function copyCrashReportToClipboard(): Promise<void> {
 }
 function downloadCrashReportJson(): void {
   if (!crashRecorder.hasAttempt()) return;
-  const snapshot = crashRecorder.snapshot();
-  const blob = new Blob([crashRecorder.toJson()], { type: 'application/json;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = `planet-crash-report-${calibrationFileStem(snapshot.request?.seed ?? 'worldgen')}-${snapshot.runId.slice(0, 8)}.json`;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
-  status.textContent = 'Downloaded structured worldgen crash/debug report.';
+  try {
+    const snapshot = crashRecorder.snapshot();
+    downloadTextFile(
+      crashRecorder.toJson(),
+      `planet-crash-report-${calibrationFileStem(snapshot.request?.seed ?? 'worldgen')}-${snapshot.runId.slice(0, 8)}.json`,
+      'application/json;charset=utf-8',
+    );
+    status.textContent = 'Started structured worldgen crash/debug report download.';
+  } catch (error) {
+    status.textContent = `Could not download crash/debug report: ${error instanceof Error ? error.message : String(error)}`;
+  }
 }
 
 async function copyCalibrationReport(): Promise<void> {
@@ -2368,16 +2369,17 @@ async function copyCalibrationReport(): Promise<void> {
 }
 function downloadCalibrationReport(): void {
   if (!current || !currentCalibrationRequest) return;
-  const blob = new Blob([worldCalibrationJson(current, currentCalibrationRequest.seed, currentCalibrationRequest.plateCount)], { type: 'application/json;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = `planet-calibration-${calibrationFileStem(currentCalibrationRequest.seed)}.json`;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
-  status.textContent = 'Downloaded structured calibration packet.';
+  try {
+    const json = worldCalibrationJson(current, currentCalibrationRequest.seed, currentCalibrationRequest.plateCount);
+    downloadTextFile(
+      json,
+      `planet-calibration-${calibrationFileStem(currentCalibrationRequest.seed)}.json`,
+      'application/json;charset=utf-8',
+    );
+    status.textContent = 'Started structured calibration packet download.';
+  } catch (error) {
+    status.textContent = `Could not download calibration packet: ${error instanceof Error ? error.message : String(error)}`;
+  }
 }
 
 async function generatePlanet(): Promise<void> {
