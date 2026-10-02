@@ -7,6 +7,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: pr87-refresh-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   refresh:
     if: github.head_ref == 'interlink-pr87-calibration-causal-observability'
