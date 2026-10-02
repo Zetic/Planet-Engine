@@ -313,6 +313,8 @@ function crustFreeboardSummary(result: WorldgenClimateResult) {
   const continental = freeboardAccumulator();
   const emergentContinental = freeboardAccumulator();
   const submergedContinental = freeboardAccumulator();
+  const restoredMarginContinental = freeboardAccumulator();
+  const otherContinental = freeboardAccumulator();
   let thinnedBelow32 = 0;
   let thinned32To36 = 0;
   let normal36To42 = 0;
@@ -346,6 +348,8 @@ function crustFreeboardSummary(result: WorldgenClimateResult) {
     if (crust !== WORLDGEN_CRUST_CONTINENTAL) continue;
     addFreeboardSample(continental, result, sample);
     addFreeboardSample(submerged ? submergedContinental : emergentContinental, result, sample);
+    const restoredMargin = result.continentalMarginMaterial[sample] !== 0;
+    addFreeboardSample(restoredMargin ? restoredMarginContinental : otherContinental, result, sample);
 
     const thickness = result.crustThicknessKm[sample]!;
     if (thickness < 32) thinnedBelow32 += 1;
@@ -383,6 +387,9 @@ function crustFreeboardSummary(result: WorldgenClimateResult) {
       surface_water_mass_kg: result.planet.surfaceWaterMassKg,
       equivalent_global_water_depth_m: result.planet.equivalentGlobalWaterDepthM,
       solved_sea_level_m: result.metrics.hasSeaLevel ? result.metrics.seaLevelM : null,
+      target_water_volume_m3: result.metrics.targetWaterVolumeM3,
+      solved_water_volume_m3: result.metrics.solvedWaterVolumeM3,
+      water_volume_relative_error: result.metrics.waterVolumeRelativeError,
     },
     crust: {
       continental: crustSection('continental'),
@@ -394,6 +401,7 @@ function crustFreeboardSummary(result: WorldgenClimateResult) {
       quiet_fraction_of_continental: quietContinental / continentalCount,
       margin_fraction_of_continental: marginContinental / continentalCount,
       rift_fraction_of_continental: riftContinental / continentalCount,
+      restored_margin_material_fraction_of_continental: restoredMarginContinental.sampleCount / continentalCount,
       thickness_fraction_of_continental: {
         below_32_km: thinnedBelow32 / continentalCount,
         from_32_to_36_km: thinned32To36 / continentalCount,
@@ -404,6 +412,8 @@ function crustFreeboardSummary(result: WorldgenClimateResult) {
     all_continental: finalizeFreeboardBucket(continental),
     emergent_continental: finalizeFreeboardBucket(emergentContinental),
     submerged_continental: finalizeFreeboardBucket(submergedContinental),
+    restored_margin_continental: finalizeFreeboardBucket(restoredMarginContinental),
+    other_continental: finalizeFreeboardBucket(otherContinental),
   };
 }
 
@@ -497,6 +507,8 @@ export function buildWorldCalibrationPacket(result: WorldgenClimateResult, seed:
       tectonic: result.metrics.tectonicHash,
       geology: result.metrics.geologyHash,
       lithosphere: result.metrics.lithosphereHash,
+      historical_identity: result.historicalIdentityHash,
+      historical_morphology: result.historicalMorphologyHash,
       lithology: result.lithologyHash,
       inheritance: result.metrics.inheritanceHash,
       topography: result.metrics.topographyHash,
@@ -643,8 +655,8 @@ export function worldCalibrationMarkdown(result: WorldgenClimateResult, seed: st
     '## Crust / freeboard',
     `Water inventory: ${(cf.water_inventory.surface_water_mass_kg / 1e21).toFixed(3)}e21 kg · global equivalent depth ${cf.water_inventory.equivalent_global_water_depth_m.toFixed(0)} m · solved sea level ${cf.water_inventory.solved_sea_level_m?.toFixed(0) ?? 'none'} m`,
     `Crust C/T/O: ${(cf.crust.continental.surface_fraction * 100).toFixed(1)}%/${(cf.crust.transitional.surface_fraction * 100).toFixed(1)}%/${(cf.crust.oceanic.surface_fraction * 100).toFixed(1)}% · submerged ${(cf.crust.continental.submerged_fraction * 100).toFixed(1)}%/${(cf.crust.transitional.submerged_fraction * 100).toFixed(1)}%/${(cf.crust.oceanic.submerged_fraction * 100).toFixed(1)}%`,
-    `Continental state: quiet ${(cf.continental_state.quiet_fraction_of_continental * 100).toFixed(1)}% · margin ${(cf.continental_state.margin_fraction_of_continental * 100).toFixed(1)}% · rift ${(cf.continental_state.rift_fraction_of_continental * 100).toFixed(1)}% · <36 km crust ${((cf.continental_state.thickness_fraction_of_continental.below_32_km + cf.continental_state.thickness_fraction_of_continental.from_32_to_36_km) * 100).toFixed(1)}%`,
-    `Emergent/submerged continental: thickness ${cf.emergent_continental.mean_crust_thickness_km.toFixed(1)}/${cf.submerged_continental.mean_crust_thickness_km.toFixed(1)} km · density ${cf.emergent_continental.mean_crust_density_kg_per_m3.toFixed(0)}/${cf.submerged_continental.mean_crust_density_kg_per_m3.toFixed(0)} kg/m³ · shallow submerged ≤500 m ${(cf.submerged_continental.submerged_within_500m_fraction * 100).toFixed(1)}%`,
+    `Continental state: quiet ${(cf.continental_state.quiet_fraction_of_continental * 100).toFixed(1)}% · margin ${(cf.continental_state.margin_fraction_of_continental * 100).toFixed(1)}% · rift ${(cf.continental_state.rift_fraction_of_continental * 100).toFixed(1)}% · restored margin material ${(cf.continental_state.restored_margin_material_fraction_of_continental * 100).toFixed(1)}% · <36 km crust ${((cf.continental_state.thickness_fraction_of_continental.below_32_km + cf.continental_state.thickness_fraction_of_continental.from_32_to_36_km) * 100).toFixed(1)}%`,
+    `Emergent/submerged continental: thickness ${cf.emergent_continental.mean_crust_thickness_km.toFixed(1)}/${cf.submerged_continental.mean_crust_thickness_km.toFixed(1)} km · density ${cf.emergent_continental.mean_crust_density_kg_per_m3.toFixed(0)}/${cf.submerged_continental.mean_crust_density_kg_per_m3.toFixed(0)} kg/m³ · shallow submerged ≤500 m ${(cf.submerged_continental.submerged_within_500m_fraction * 100).toFixed(1)}% · restored-margin submerged ${(cf.restored_margin_continental.submerged_fraction * 100).toFixed(1)}%`,
     `Submerged drivers: rift/subsidence/basin ${cf.submerged_continental.mean_rift_history.toFixed(3)}/${cf.submerged_continental.mean_subsidence_history.toFixed(3)}/${cf.submerged_continental.mean_basin_potential.toFixed(3)} · passive margin ${cf.submerged_continental.mean_passive_margin_index.toFixed(3)} · isostatic/rift-basin/orogen ${cf.submerged_continental.elevation_budget_m.isostatic.toFixed(0)}/${cf.submerged_continental.elevation_budget_m.rift_basin.toFixed(0)}/${cf.submerged_continental.elevation_budget_m.orogenic.toFixed(0)} m`,
     '',
     '## Climate',
