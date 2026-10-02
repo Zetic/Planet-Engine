@@ -1,4 +1,4 @@
-export const WORLDGEN_PROTOCOL_VERSION = 23;
+export const WORLDGEN_PROTOCOL_VERSION = 24;
 export const WORLDGEN_SYNTHETIC_MAX_SAMPLES = 4_194_304;
 export const WORLDGEN_TOPOLOGY_MAX_LEVEL = 8;
 export const WORLDGEN_TECTONICS_MAX_LEVEL = 6;
@@ -498,6 +498,18 @@ export interface WorldgenClimatePhysicalProfile {
   atmosphericLongwaveOpticalDepth: number;
 }
 
+export interface WorldgenFreeboardCausalSummary {
+  sampleCounts: Uint32Array;
+  meanCrustDensityKgPerM3: Float64Array;
+  meanRiftHistory: Float64Array;
+  meanSubsidenceHistory: Float64Array;
+  meanBasinPotential: Float64Array;
+  meanCrustalStrain: Float64Array;
+  meanCompensatedBuoyancyIndex: Float64Array;
+  meanEffectiveElasticThicknessKm: Float64Array;
+  meanStructuralFabricStrength: Float64Array;
+}
+
 export interface WorldgenPostErosionHydrologyMetrics {
   sampleCount: number;
   preErosionLakeCount: number;
@@ -584,6 +596,7 @@ export interface WorldgenClimateResult {
   historicalIdentityHash: string;
   historicalMorphologyHash: string;
   continentalMarginMaterial: Uint8Array;
+  freeboardCausal: WorldgenFreeboardCausalSummary;
   originPlateIds: Uint16Array;
   historicalFragmentIds: Uint16Array;
   currentPlateIds: Uint16Array;
@@ -618,14 +631,6 @@ export interface WorldgenClimateResult {
   lastTectonicReworkingAgeMyr: Float32Array;
   continentalStabilityIndex: Float32Array;
   crustThicknessKm: Float32Array;
-  crustDensityKgPerM3: Float32Array;
-  riftHistory: Float32Array;
-  subsidenceHistory: Float32Array;
-  basinPotential: Float32Array;
-  crustalStrain: Float32Array;
-  compensatedBuoyancyIndex: Float32Array;
-  effectiveElasticThicknessKm: Float32Array;
-  structuralFabricStrength: Float32Array;
   orogenicHistory: Float32Array;
   ridgeHistory: Float32Array;
   trenchHistory: Float32Array;
