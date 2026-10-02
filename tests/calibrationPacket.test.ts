@@ -23,7 +23,7 @@ test('calibration packet stays compact, versioned, and available from the Pages 
   assert.match(worker, /freeboard_causal_sample_counts/);
   assert.match(bridge, /build_freeboard_causal_observability/);
   assert.match(bridge, /release_topography_scratch/);
-  assert.ok(bridge.indexOf('build_freeboard_causal_observability') < bridge.indexOf('release_topography_scratch'), 'freeboard causal snapshot must be captured before WG-4 scratch release');
+  assert.ok(bridge.indexOf('let freeboard_causal_observability =') < bridge.indexOf('inherited.release_topography_scratch()'), 'freeboard causal snapshot must be captured before WG-4 scratch release');
   assert.doesNotMatch(packet, /result\.crustDensityKgPerM3/);
   assert.doesNotMatch(packet, /result\.riftHistory/);
   assert.doesNotMatch(packet, /result\.subsidenceHistory/);
