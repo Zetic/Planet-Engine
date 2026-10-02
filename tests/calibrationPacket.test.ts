@@ -11,6 +11,8 @@ test('calibration packet stays compact, versioned, and available from the Pages 
   assert.match(packet, /mean_subsidence_history/);
   assert.match(packet, /mean_basin_potential/);
   assert.match(packet, /mean_crust_density_kg_per_m3/);
+  assert.match(packet, /restored_margin_material_fraction_of_continental/);
+  assert.match(packet, /historical_identity/);
   assert.match(packet, /surface_water_mass_kg/);
   assert.match(packet, /water_volume_relative_error/);
   assert.doesNotMatch(packet, /JSON\.stringify\(result/);
