@@ -1,6 +1,7 @@
 import { createWorldgenClient } from '../worldgenClient.js';
 import { createWorldgenCrashRecorder, installWorldgenGlobalFailureCapture } from '../worldgenCrashReport.js';
 import { worldCalibrationJson, worldCalibrationMarkdown } from '../calibrationPacket.js';
+import { downloadTextFile } from '../browserDownload.js';
 import { clampEquirectangularCenterLatitude, equirectangularCameraForWorldDirectionAtScreen, equirectangularScreenToWorldDirection, mapVectorDelta, reconstructAnnualHarmonicFromBasis, wrapLongitudeRad } from './worldgenClimateMath.js';
 import { L8GlobeRenderer, buildRgbaColors, cameraForWorldDirectionAtScreen, pickNearestSample, screenToWorldDirection } from './worldgenL8GlobeRenderer.js';
 import { WORLDGEN_BOUNDARY_CONVERGENT, WORLDGEN_BOUNDARY_DIVERGENT, WORLDGEN_BOUNDARY_TRANSFORM, WORLDGEN_BEDROCK_ACCRETED_TERRANE, WORLDGEN_BEDROCK_ARC_VOLCANIC, WORLDGEN_BEDROCK_CARBONATE_PLATFORM, WORLDGEN_BEDROCK_CLASTIC_SEDIMENTARY, WORLDGEN_BEDROCK_CRYSTALLINE_BASEMENT, WORLDGEN_BEDROCK_OCEANIC_BASALT, WORLDGEN_BEDROCK_OCEANIC_SEDIMENT, WORLDGEN_BEDROCK_OROGENIC_METAMORPHIC, WORLDGEN_BEDROCK_RIFT_VOLCANIC, WORLDGEN_CRUST_CONTINENTAL, WORLDGEN_CRUST_OCEANIC, WORLDGEN_CRUST_TRANSITIONAL, WORLDGEN_GEOLOGY_CONTINENTAL_COLLISION, WORLDGEN_GEOLOGY_CONTINENTAL_RIFT, WORLDGEN_GEOLOGY_OCEANIC_RIDGE, WORLDGEN_GEOLOGY_OCEANIC_SUBDUCTION, WORLDGEN_GEOLOGY_OCEAN_CONTINENT_SUBDUCTION, WORLDGEN_GEOLOGY_TRANSFORM, WORLDGEN_GEOLOGY_TRANSITIONAL_DIVERGENCE, WORLDGEN_STRUCTURE_CONTINENTAL_MARGIN, WORLDGEN_STRUCTURE_NONE, WORLDGEN_STRUCTURE_RIFT, WORLDGEN_STRUCTURE_SUTURE, WORLDGEN_STRUCTURE_TRANSFORM, WORLDGEN_INVALID_SAMPLE_ID, WORLDGEN_CLIMATE_COARSE_MAX_LEVEL, WORLDGEN_CLIMATE_FINE_MAX_LEVEL, WORLDGEN_PROTOCOL_VERSION, } from '../protocol.js';
@@ -2461,17 +2462,14 @@ async function copyCrashReportToClipboard() {
 function downloadCrashReportJson() {
     if (!crashRecorder.hasAttempt())
         return;
-    const snapshot = crashRecorder.snapshot();
-    const blob = new Blob([crashRecorder.toJson()], { type: 'application/json;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `planet-crash-report-${calibrationFileStem(snapshot.request?.seed ?? 'worldgen')}-${snapshot.runId.slice(0, 8)}.json`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(url);
-    status.textContent = 'Downloaded structured worldgen crash/debug report.';
+    try {
+        const snapshot = crashRecorder.snapshot();
+        downloadTextFile(crashRecorder.toJson(), `planet-crash-report-${calibrationFileStem(snapshot.request?.seed ?? 'worldgen')}-${snapshot.runId.slice(0, 8)}.json`, 'application/json;charset=utf-8');
+        status.textContent = 'Started structured worldgen crash/debug report download.';
+    }
+    catch (error) {
+        status.textContent = `Could not download crash/debug report: ${error instanceof Error ? error.message : String(error)}`;
+    }
 }
 async function copyCalibrationReport() {
     if (!current || !currentCalibrationRequest)
@@ -2487,16 +2485,14 @@ async function copyCalibrationReport() {
 function downloadCalibrationReport() {
     if (!current || !currentCalibrationRequest)
         return;
-    const blob = new Blob([worldCalibrationJson(current, currentCalibrationRequest.seed, currentCalibrationRequest.plateCount)], { type: 'application/json;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `planet-calibration-${calibrationFileStem(currentCalibrationRequest.seed)}.json`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(url);
-    status.textContent = 'Downloaded structured calibration packet.';
+    try {
+        const json = worldCalibrationJson(current, currentCalibrationRequest.seed, currentCalibrationRequest.plateCount);
+        downloadTextFile(json, `planet-calibration-${calibrationFileStem(currentCalibrationRequest.seed)}.json`, 'application/json;charset=utf-8');
+        status.textContent = 'Started structured calibration packet download.';
+    }
+    catch (error) {
+        status.textContent = `Could not download calibration packet: ${error instanceof Error ? error.message : String(error)}`;
+    }
 }
 async function generatePlanet() {
     const request = { seed: seed.value, coarseLevel: Number(coarseLevel.value), fineLevel: Number(fineLevel.value), plateCount: Number(plates.value) };
