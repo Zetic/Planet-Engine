@@ -57,6 +57,7 @@ pub struct WasmWorldgenClimate {
     inherited: InheritedPhysicalState,
     historical_identity: InheritedHistoricalIdentity,
     historical_morphology_hash: String,
+    continental_margin_material: Vec<u8>,
     latest_event_kind: Vec<u8>,
     latest_event_age_myr: Vec<f32>,
     historical_rift_intensity: Vec<f32>,
@@ -166,6 +167,8 @@ impl WasmWorldgenClimate {
                 .map(|source| values[*source as usize])
                 .collect::<Vec<_>>()
         };
+        let continental_margin_material =
+            inherit_u8(&frontend.historical.continental_margin_material);
         let latest_event_kind = inherit_u8(&morphology.latest_event_kind);
         let latest_event_age_myr = inherit_f32(&morphology.latest_event_age_myr);
         let historical_rift_intensity = inherit_f32(&morphology.rift_intensity);
@@ -397,6 +400,7 @@ impl WasmWorldgenClimate {
             inherited,
             historical_identity,
             historical_morphology_hash,
+            continental_margin_material,
             latest_event_kind,
             latest_event_age_myr,
             historical_rift_intensity,
@@ -693,6 +697,9 @@ impl WasmWorldgenClimate {
     }
     pub fn historical_morphology_hash_hex(&self) -> String {
         self.historical_morphology_hash.clone()
+    }
+    pub fn continental_margin_material(&self) -> Vec<u8> {
+        self.continental_margin_material.clone()
     }
     pub fn origin_plate_ids(&self) -> Vec<u16> {
         self.historical_identity.origin_plate_ids.clone()
