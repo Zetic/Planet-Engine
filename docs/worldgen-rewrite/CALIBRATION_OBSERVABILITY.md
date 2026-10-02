@@ -4,7 +4,7 @@ Planet Engine exposes a compact, versioned calibration packet for model-assisted
 
 ## Contents
 
-The report records run identity and causal hashes, continental-component morphology, topographic and climate summaries, final WG-7D drainage/runoff/lake/seasonal metrics, ranked large basins/depressions/lakes, and WG-7 geomorphic/sediment summaries. Ranked collections are capped at eight records to keep the packet bounded and useful in an LLM context.
+The report records run identity and causal hashes, planetary physical parameters, continental-component morphology, canonical WG-4 topography summaries, climate summaries, final WG-7D drainage/runoff/lake/seasonal metrics, ranked large basins/depressions/lakes, and WG-7 geomorphic/sediment summaries. It also includes a compact crust/freeboard causal budget: crust-class surface and submerged fractions, continental structural state, crust-thickness bands, submerged shelf depth, and emergent-vs-submerged continental means for crust thickness/density, rift/subsidence/basin history, passive-margin state, strain/buoyancy/mechanical fields, and every WG-4 elevation component. Ranked collections are capped at eight records to keep the packet bounded and useful in an LLM context.
 
 The report deliberately reports measurements rather than declaring visual or physical success. Existing stage acceptance tests remain authoritative. A later comparison layer may compare the same fixed-seed ensemble between two commits and classify statistically material deltas.
 
@@ -19,9 +19,9 @@ cargo run --release -p interlink-worldgen-cli --bin calibration-report -- \
 
 ## GitHub Pages
 
-The static Pages Lab requires no server. After generation, **Copy LLM Summary** copies the Markdown form and **Download Calibration JSON** creates the packet entirely in the browser from the already-transferred protocol-v18 cumulative result.
+The static Pages Lab requires no server. After generation, **Copy LLM Summary** copies the Markdown form and **Download Calibration JSON** serializes the full compact calibration packet in the browser from the already-transferred cumulative result. The Markdown summary is a selected rendering of that same packet; the JSON is the canonical browser artifact and contains every field available to the summary plus additional diagnostic detail.
 
-The browser does not export raw per-cell arrays. It aggregates them locally first. Because protocol v18 does not transport dual-cell area or every internal per-lake water-budget term, the Pages packet estimates continental component area from equal sample area, uses unweighted sample summaries for derived topography percentiles/means, and leaves unavailable per-lake terms null. These limitations are recorded in the packet itself under `fidelity`, so a detached JSON/Markdown export remains self-describing. Native export should be used when exact ensemble comparisons are required.
+The browser does not export the raw per-cell arrays. It aggregates them locally first. Canonical WG-4 topography scalars and water-closure metrics are now carried directly from Rust, while continental-component and crust/freeboard area fractions remain equal-sample estimates because the cumulative Pages result does not transport fine dual-cell area. Per-lake gross inflow and evaporation also remain unavailable and are emitted as null. These limitations are recorded under `fidelity`, so detached JSON/Markdown exports remain self-describing. Native export should still be used when exact area-weighted ensemble comparisons are required.
 
 ## Scope
 
