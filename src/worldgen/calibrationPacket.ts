@@ -386,6 +386,15 @@ function crustFreeboardSummary(result: WorldgenClimateResult) {
   const structureFractions = Object.fromEntries(
     Object.entries(structures).map(([key, value]) => [key, value / Math.max(1, count)]),
   );
+  const causalSnapshotConsistent =
+    result.freeboardCausal.sampleCounts[FREEBOARD_BUCKET_ALL_CONTINENTAL] === continental.sampleCount
+    && result.freeboardCausal.sampleCounts[FREEBOARD_BUCKET_EMERGENT_CONTINENTAL] === emergentContinental.sampleCount
+    && result.freeboardCausal.sampleCounts[FREEBOARD_BUCKET_SUBMERGED_CONTINENTAL] === submergedContinental.sampleCount
+    && result.freeboardCausal.sampleCounts[FREEBOARD_BUCKET_RESTORED_MARGIN_CONTINENTAL] === restoredMarginContinental.sampleCount
+    && result.freeboardCausal.sampleCounts[FREEBOARD_BUCKET_OTHER_CONTINENTAL] === otherContinental.sampleCount;
+  if (!causalSnapshotConsistent) {
+    throw new Error('Freeboard causal snapshot counts do not match the transported WG-4 classification fields.');
+  }
 
   return {
     water_inventory: {
@@ -414,12 +423,7 @@ function crustFreeboardSummary(result: WorldgenClimateResult) {
         at_or_above_42_km: thick42Plus / continentalCount,
       },
     },
-    causal_snapshot_consistent:
-      result.freeboardCausal.sampleCounts[FREEBOARD_BUCKET_ALL_CONTINENTAL] === continental.sampleCount
-      && result.freeboardCausal.sampleCounts[FREEBOARD_BUCKET_EMERGENT_CONTINENTAL] === emergentContinental.sampleCount
-      && result.freeboardCausal.sampleCounts[FREEBOARD_BUCKET_SUBMERGED_CONTINENTAL] === submergedContinental.sampleCount
-      && result.freeboardCausal.sampleCounts[FREEBOARD_BUCKET_RESTORED_MARGIN_CONTINENTAL] === restoredMarginContinental.sampleCount
-      && result.freeboardCausal.sampleCounts[FREEBOARD_BUCKET_OTHER_CONTINENTAL] === otherContinental.sampleCount,
+    causal_snapshot_consistent: causalSnapshotConsistent,
     all_continental: finalizeFreeboardBucket(continental, result, FREEBOARD_BUCKET_ALL_CONTINENTAL),
     emergent_continental: finalizeFreeboardBucket(emergentContinental, result, FREEBOARD_BUCKET_EMERGENT_CONTINENTAL),
     submerged_continental: finalizeFreeboardBucket(submergedContinental, result, FREEBOARD_BUCKET_SUBMERGED_CONTINENTAL),
