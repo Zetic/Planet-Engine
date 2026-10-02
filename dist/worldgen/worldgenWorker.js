@@ -378,14 +378,6 @@ async function generateClimate(command) {
         const lastTectonicReworkingAgeMyr = output.last_tectonic_reworking_age_myr();
         const continentalStabilityIndex = output.continental_stability_index();
         const crustThicknessKm = output.crust_thickness_km();
-        const crustDensityKgPerM3 = output.crust_density_kg_per_m3();
-        const riftHistory = output.rift_history();
-        const subsidenceHistory = output.subsidence_history();
-        const basinPotential = output.basin_potential();
-        const crustalStrain = output.crustal_strain();
-        const compensatedBuoyancyIndex = output.compensated_buoyancy_index();
-        const effectiveElasticThicknessKm = output.effective_elastic_thickness_km();
-        const structuralFabricStrength = output.structural_fabric_strength();
         const orogenicHistory = output.orogenic_history();
         const ridgeHistory = output.ridge_history();
         const trenchHistory = output.trench_history();
@@ -399,6 +391,18 @@ async function generateClimate(command) {
         const boundaryKinds = output.boundary_kinds();
         const geologicalBoundaryRegimes = output.geological_boundary_regimes();
         const boundaryCoarseSourceIndices = output.boundary_coarse_source_indices();
+        const freeboardCausal = {
+            sampleCounts: output.freeboard_causal_sample_counts(),
+            continentalStateCounts: output.freeboard_continental_state_counts(),
+            meanCrustDensityKgPerM3: output.freeboard_mean_crust_density_kg_per_m3(),
+            meanRiftHistory: output.freeboard_mean_rift_history(),
+            meanSubsidenceHistory: output.freeboard_mean_subsidence_history(),
+            meanBasinPotential: output.freeboard_mean_basin_potential(),
+            meanCrustalStrain: output.freeboard_mean_crustal_strain(),
+            meanCompensatedBuoyancyIndex: output.freeboard_mean_compensated_buoyancy_index(),
+            meanEffectiveElasticThicknessKm: output.freeboard_mean_effective_elastic_thickness_km(),
+            meanStructuralFabricStrength: output.freeboard_mean_structural_fabric_strength(),
+        };
         const isostaticElevationM = output.isostatic_elevation_m();
         const thermalElevationM = output.thermal_elevation_m();
         const orogenicElevationM = output.orogenic_elevation_m();
@@ -512,7 +516,7 @@ async function generateClimate(command) {
             },
             planet: { radiusM: output.radius_m(), surfaceGravityMS2: output.surface_gravity_m_s2(), rotationPeriodS: output.rotation_period_s(), axialTiltRad: output.axial_tilt_rad(), orbitalPeriodS: output.orbital_period_s(), stellarFluxWM2: output.stellar_flux_w_m2(), referenceSurfacePressurePa: output.reference_surface_pressure_pa(), surfaceWaterMassKg: output.surface_water_mass_kg(), equivalentGlobalWaterDepthM: output.equivalent_global_water_depth_m(), internalHeatFluxWPerM2: output.internal_heat_flux_w_per_m2() },
             climatePhysical: { orbitalEccentricity: output.orbital_eccentricity(), longitudeOfPeriapsisRad: output.longitude_of_periapsis_rad(), atmosphericMeanMolarMassKgPerMol: output.atmospheric_mean_molar_mass_kg_per_mol(), atmosphericSpecificHeatJPerKgK: output.atmospheric_specific_heat_j_per_kg_k(), atmosphericLongwaveOpticalDepth: output.atmospheric_longwave_optical_depth() },
-            positions, neighborOffsets, neighbors, historicalIdentityHash, historicalMorphologyHash, continentalMarginMaterial, originPlateIds, historicalFragmentIds, currentPlateIds, crustProvinceId, crustBirthAgeMyr, lithologyStage: { id: output.lithology_stage_id(), version: output.lithology_stage_version(), stageSeed: output.lithology_stage_seed_hex(), durationMs: 0 }, lithologyHash: output.lithology_hash_hex(), bedrockClass, rockStrengthIndex, lithologyErodibilityIndex, permeabilityIndex, weatheringSusceptibility, finesFraction, carbonateFraction, latestHistoricalEventKind, latestHistoricalEventAgeMyr, historicalRiftIntensity, historicalRiftAgeMyr, historicalShearIntensity, historicalSutureIntensity, historicalSutureAgeMyr, passiveMarginIndex, activeOrogenIntensity, fossilOrogenIntensity, plateIds, crustKind, nearestCoarseSource, inheritedSampleMask, crustAgeMyr, oceanicAgeMyr, continentalBasementAgeMyr, lastTectonicReworkingAgeMyr, continentalStabilityIndex, crustThicknessKm, crustDensityKgPerM3, riftHistory, subsidenceHistory, basinPotential, crustalStrain, compensatedBuoyancyIndex, effectiveElasticThicknessKm, structuralFabricStrength, orogenicHistory, ridgeHistory, trenchHistory, strengthIndex, weaknessIndex, mantleDynamicSupportIndex, structuralZoneKind, fragmentationPropensity, kinematicDomainIds, boundarySamples, boundaryKinds, geologicalBoundaryRegimes, boundaryCoarseSourceIndices,
+            positions, neighborOffsets, neighbors, historicalIdentityHash, historicalMorphologyHash, continentalMarginMaterial, freeboardCausal, originPlateIds, historicalFragmentIds, currentPlateIds, crustProvinceId, crustBirthAgeMyr, lithologyStage: { id: output.lithology_stage_id(), version: output.lithology_stage_version(), stageSeed: output.lithology_stage_seed_hex(), durationMs: 0 }, lithologyHash: output.lithology_hash_hex(), bedrockClass, rockStrengthIndex, lithologyErodibilityIndex, permeabilityIndex, weatheringSusceptibility, finesFraction, carbonateFraction, latestHistoricalEventKind, latestHistoricalEventAgeMyr, historicalRiftIntensity, historicalRiftAgeMyr, historicalShearIntensity, historicalSutureIntensity, historicalSutureAgeMyr, passiveMarginIndex, activeOrogenIntensity, fossilOrogenIntensity, plateIds, crustKind, nearestCoarseSource, inheritedSampleMask, crustAgeMyr, oceanicAgeMyr, continentalBasementAgeMyr, lastTectonicReworkingAgeMyr, continentalStabilityIndex, crustThicknessKm, orogenicHistory, ridgeHistory, trenchHistory, strengthIndex, weaknessIndex, mantleDynamicSupportIndex, structuralZoneKind, fragmentationPropensity, kinematicDomainIds, boundarySamples, boundaryKinds, geologicalBoundaryRegimes, boundaryCoarseSourceIndices,
             isostaticElevationM, thermalElevationM, orogenicElevationM, ridgeElevationM, riftBasinElevationM, trenchElevationM, arcElevationM, mantleDynamicElevationM, solidElevationM, elevationAboveSeaLevelM, waterDepthM, submergedMask,
             annualMeanInsolationWM2, seasonalInsolationAmplitudeWM2, temperatureMeanK, temperatureAnnualCosK, temperatureAnnualSinK, temperatureMinK, temperatureMaxK, localPressurePa, windEastMeanMS, windNorthMeanMS, windEastAnnualCosMS, windEastAnnualSinMS, windNorthAnnualCosMS, windNorthAnnualSinMS, seaSurfaceTemperatureMeanK, seaSurfaceTemperatureAnnualCosK, seaSurfaceTemperatureAnnualSinK, currentEastMeanMS, currentNorthMeanMS, currentEastAnnualCosMS, currentEastAnnualSinMS, currentNorthAnnualCosMS, currentNorthAnnualSinMS, currentSpeedMeanMS, oceanHeatTransportIndex, specificHumidityMean, annualPrecipitationMm, precipitationPhaseRateMmYear, precipitationSeasonality, potentialEvaporationMm, moistureBalanceMm, aridityIndex, snowfallFraction, persistentSnowPotential, seaIcePotential,
             drainageStage: { id: output.drainage_stage_id(), version: output.drainage_stage_version(), stageSeed: output.drainage_stage_seed_hex(), durationMs: 0 },
