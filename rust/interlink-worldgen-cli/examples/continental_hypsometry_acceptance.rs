@@ -216,6 +216,8 @@ fn verify_seed(seed: &str) -> Result<(), String> {
             terrain.metrics.p95_solid_elevation_m
         ));
     }
+    // The L4->L6 pass is a cheap smoke check; physical shelf width and highland-area authority
+    // live in the production L6->L8 gate below, where those features are actually resolved.
     if highland_2km > 0.45 || highland_3km > 0.25 {
         return Err(format!(
             "{seed}: continental highlands became too spatially broad: {:.1}% above 2 km, {:.1}% above 3 km",
