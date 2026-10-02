@@ -241,6 +241,13 @@ fn verify_seed(seed: &str) -> Result<usize, String> {
             young_transitional_fraction * 100.0
         ));
     }
+    let inherited_transitional_fraction = inherited_transitional_area / total_area;
+    if inherited_transitional_fraction > 0.25 {
+        return Err(format!(
+            "{seed}: inherited transitional margin remains continent-scale at {:.1}% of the surface",
+            inherited_transitional_fraction * 100.0
+        ));
+    }
 
     let generated_material_fragments = history
         .fragments
