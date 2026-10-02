@@ -1,6 +1,13 @@
 import {
   WORLDGEN_CRUST_CONTINENTAL,
+  WORLDGEN_CRUST_OCEANIC,
+  WORLDGEN_CRUST_TRANSITIONAL,
   WORLDGEN_INVALID_SAMPLE_ID,
+  WORLDGEN_STRUCTURE_CONTINENTAL_MARGIN,
+  WORLDGEN_STRUCTURE_NONE,
+  WORLDGEN_STRUCTURE_RIFT,
+  WORLDGEN_STRUCTURE_SUTURE,
+  WORLDGEN_STRUCTURE_TRANSFORM,
   type WorldgenClimateResult,
 } from './protocol.js';
 
@@ -30,13 +37,6 @@ function arc(a: [number, number, number], b: [number, number, number]): number {
 
 function sampleArc(result: WorldgenClimateResult, a: number, b: number): number {
   return arc(position(result, a), position(result, b));
-}
-
-function percentile(values: ArrayLike<number>, fraction: number): number {
-  if (values.length === 0) return 0;
-  const sorted = Array.from(values).sort((a, b) => a - b);
-  const index = Math.max(0, Math.min(sorted.length - 1, Math.round((sorted.length - 1) * fraction)));
-  return sorted[index]!;
 }
 
 function continentalComponents(result: WorldgenClimateResult): RawComponent[] {
@@ -147,28 +147,273 @@ function continentSummary(result: WorldgenClimateResult) {
 }
 
 function topographySummary(result: WorldgenClimateResult) {
-  const land: number[] = [];
-  const waterDepth: number[] = [];
-  for (let sample = 0; sample < result.metrics.fineSampleCount; sample += 1) {
-    if (result.submergedMask[sample]) waterDepth.push(Math.max(0, result.waterDepthM[sample]!));
-    else land.push(result.elevationAboveSeaLevelM[sample]!);
-  }
-  const solid = result.solidElevationM;
-  const mean = (values: number[]) => values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
   return {
     minimum_solid_elevation_m: result.metrics.minimumSolidElevationM,
-    p05_solid_elevation_m: percentile(solid, 0.05),
-    median_solid_elevation_m: percentile(solid, 0.50),
-    p95_solid_elevation_m: percentile(solid, 0.95),
+    mean_solid_elevation_m: result.metrics.meanSolidElevationM,
+    p05_solid_elevation_m: result.metrics.p05SolidElevationM,
+    median_solid_elevation_m: result.metrics.medianSolidElevationM,
+    p95_solid_elevation_m: result.metrics.p95SolidElevationM,
     maximum_solid_elevation_m: result.metrics.maximumSolidElevationM,
     sea_level_m: result.metrics.hasSeaLevel ? result.metrics.seaLevelM : null,
     land_area_fraction: result.metrics.landAreaFraction,
     ocean_area_fraction: result.metrics.oceanAreaFraction,
-    mean_land_elevation_m: mean(land),
-    mean_water_depth_m: mean(waterDepth),
-    maximum_water_depth_m: waterDepth.reduce((maximum, value) => Math.max(maximum, value), 0),
-    water_volume_relative_error: null,
-    clamped_sample_count: null,
+    mean_land_elevation_m: result.metrics.meanLandElevationM,
+    mean_water_depth_m: result.metrics.meanWaterDepthM,
+    maximum_water_depth_m: result.metrics.maximumWaterDepthM,
+    target_water_volume_m3: result.metrics.targetWaterVolumeM3,
+    solved_water_volume_m3: result.metrics.solvedWaterVolumeM3,
+    water_volume_relative_error: result.metrics.waterVolumeRelativeError,
+    clamped_sample_count: result.metrics.clampedSampleCount,
+  };
+}
+
+
+type FreeboardAccumulator = {
+  sampleCount: number;
+  submergedCount: number;
+  submergedDepthSum: number;
+  shallow200: number;
+  shallow500: number;
+  shallow1000: number;
+  thicknessSum: number;
+  densitySum: number;
+  stabilitySum: number;
+  riftHistorySum: number;
+  subsidenceHistorySum: number;
+  basinPotentialSum: number;
+  passiveMarginSum: number;
+  historicalRiftSum: number;
+  strainSum: number;
+  buoyancySum: number;
+  elasticThicknessSum: number;
+  fabricSum: number;
+  isostaticSum: number;
+  thermalSum: number;
+  orogenicSum: number;
+  ridgeSum: number;
+  riftBasinSum: number;
+  trenchSum: number;
+  arcSum: number;
+  mantleSum: number;
+  solidSum: number;
+  relativeElevationSum: number;
+};
+
+function freeboardAccumulator(): FreeboardAccumulator {
+  return {
+    sampleCount: 0,
+    submergedCount: 0,
+    submergedDepthSum: 0,
+    shallow200: 0,
+    shallow500: 0,
+    shallow1000: 0,
+    thicknessSum: 0,
+    densitySum: 0,
+    stabilitySum: 0,
+    riftHistorySum: 0,
+    subsidenceHistorySum: 0,
+    basinPotentialSum: 0,
+    passiveMarginSum: 0,
+    historicalRiftSum: 0,
+    strainSum: 0,
+    buoyancySum: 0,
+    elasticThicknessSum: 0,
+    fabricSum: 0,
+    isostaticSum: 0,
+    thermalSum: 0,
+    orogenicSum: 0,
+    ridgeSum: 0,
+    riftBasinSum: 0,
+    trenchSum: 0,
+    arcSum: 0,
+    mantleSum: 0,
+    solidSum: 0,
+    relativeElevationSum: 0,
+  };
+}
+
+function addFreeboardSample(bucket: FreeboardAccumulator, result: WorldgenClimateResult, sample: number): void {
+  bucket.sampleCount += 1;
+  const submerged = result.submergedMask[sample] !== 0;
+  if (submerged) {
+    const depth = Math.max(0, result.waterDepthM[sample]!);
+    bucket.submergedCount += 1;
+    bucket.submergedDepthSum += depth;
+    if (depth <= 200) bucket.shallow200 += 1;
+    if (depth <= 500) bucket.shallow500 += 1;
+    if (depth <= 1000) bucket.shallow1000 += 1;
+  }
+  bucket.thicknessSum += result.crustThicknessKm[sample]!;
+  bucket.densitySum += result.crustDensityKgPerM3[sample]!;
+  bucket.stabilitySum += result.continentalStabilityIndex[sample]!;
+  bucket.riftHistorySum += result.riftHistory[sample]!;
+  bucket.subsidenceHistorySum += result.subsidenceHistory[sample]!;
+  bucket.basinPotentialSum += result.basinPotential[sample]!;
+  bucket.passiveMarginSum += result.passiveMarginIndex[sample]!;
+  bucket.historicalRiftSum += result.historicalRiftIntensity[sample]!;
+  bucket.strainSum += result.crustalStrain[sample]!;
+  bucket.buoyancySum += result.compensatedBuoyancyIndex[sample]!;
+  bucket.elasticThicknessSum += result.effectiveElasticThicknessKm[sample]!;
+  bucket.fabricSum += result.structuralFabricStrength[sample]!;
+  bucket.isostaticSum += result.isostaticElevationM[sample]!;
+  bucket.thermalSum += result.thermalElevationM[sample]!;
+  bucket.orogenicSum += result.orogenicElevationM[sample]!;
+  bucket.ridgeSum += result.ridgeElevationM[sample]!;
+  bucket.riftBasinSum += result.riftBasinElevationM[sample]!;
+  bucket.trenchSum += result.trenchElevationM[sample]!;
+  bucket.arcSum += result.arcElevationM[sample]!;
+  bucket.mantleSum += result.mantleDynamicElevationM[sample]!;
+  bucket.solidSum += result.solidElevationM[sample]!;
+  bucket.relativeElevationSum += result.elevationAboveSeaLevelM[sample]!;
+}
+
+function finalizeFreeboardBucket(bucket: FreeboardAccumulator) {
+  const count = Math.max(1, bucket.sampleCount);
+  const submerged = Math.max(1, bucket.submergedCount);
+  return {
+    sample_count: bucket.sampleCount,
+    submerged_fraction: bucket.submergedCount / count,
+    mean_submerged_depth_m: bucket.submergedDepthSum / submerged,
+    submerged_within_200m_fraction: bucket.shallow200 / submerged,
+    submerged_within_500m_fraction: bucket.shallow500 / submerged,
+    submerged_within_1000m_fraction: bucket.shallow1000 / submerged,
+    mean_crust_thickness_km: bucket.thicknessSum / count,
+    mean_crust_density_kg_per_m3: bucket.densitySum / count,
+    mean_continental_stability_index: bucket.stabilitySum / count,
+    mean_rift_history: bucket.riftHistorySum / count,
+    mean_subsidence_history: bucket.subsidenceHistorySum / count,
+    mean_basin_potential: bucket.basinPotentialSum / count,
+    mean_passive_margin_index: bucket.passiveMarginSum / count,
+    mean_historical_rift_intensity: bucket.historicalRiftSum / count,
+    mean_crustal_strain: bucket.strainSum / count,
+    mean_compensated_buoyancy_index: bucket.buoyancySum / count,
+    mean_effective_elastic_thickness_km: bucket.elasticThicknessSum / count,
+    mean_structural_fabric_strength: bucket.fabricSum / count,
+    elevation_budget_m: {
+      isostatic: bucket.isostaticSum / count,
+      thermal: bucket.thermalSum / count,
+      orogenic: bucket.orogenicSum / count,
+      ridge: bucket.ridgeSum / count,
+      rift_basin: bucket.riftBasinSum / count,
+      trench: bucket.trenchSum / count,
+      arc: bucket.arcSum / count,
+      mantle_dynamic: bucket.mantleSum / count,
+      solid: bucket.solidSum / count,
+      relative_to_sea_level: bucket.relativeElevationSum / count,
+    },
+  };
+}
+
+function crustFreeboardSummary(result: WorldgenClimateResult) {
+  const count = result.metrics.fineSampleCount;
+  const crustCounts = { continental: 0, transitional: 0, oceanic: 0 };
+  const crustSubmerged = { continental: 0, transitional: 0, oceanic: 0 };
+  const crustDepth = { continental: 0, transitional: 0, oceanic: 0 };
+  const structures = { none: 0, suture: 0, rift: 0, transform: 0, continental_margin: 0, other: 0 };
+  const continental = freeboardAccumulator();
+  const emergentContinental = freeboardAccumulator();
+  const submergedContinental = freeboardAccumulator();
+  const restoredMarginContinental = freeboardAccumulator();
+  const otherContinental = freeboardAccumulator();
+  let thinnedBelow32 = 0;
+  let thinned32To36 = 0;
+  let normal36To42 = 0;
+  let thick42Plus = 0;
+  let quietContinental = 0;
+  let marginContinental = 0;
+  let riftContinental = 0;
+
+  for (let sample = 0; sample < count; sample += 1) {
+    const crust = result.crustKind[sample]!;
+    const submerged = result.submergedMask[sample] !== 0;
+    const depth = submerged ? Math.max(0, result.waterDepthM[sample]!) : 0;
+    let crustKey: keyof typeof crustCounts;
+    if (crust === WORLDGEN_CRUST_CONTINENTAL) crustKey = 'continental';
+    else if (crust === WORLDGEN_CRUST_TRANSITIONAL) crustKey = 'transitional';
+    else crustKey = 'oceanic';
+    crustCounts[crustKey] += 1;
+    if (submerged) {
+      crustSubmerged[crustKey] += 1;
+      crustDepth[crustKey] += depth;
+    }
+
+    const structure = result.structuralZoneKind[sample]!;
+    if (structure === WORLDGEN_STRUCTURE_NONE) structures.none += 1;
+    else if (structure === WORLDGEN_STRUCTURE_SUTURE) structures.suture += 1;
+    else if (structure === WORLDGEN_STRUCTURE_RIFT) structures.rift += 1;
+    else if (structure === WORLDGEN_STRUCTURE_TRANSFORM) structures.transform += 1;
+    else if (structure === WORLDGEN_STRUCTURE_CONTINENTAL_MARGIN) structures.continental_margin += 1;
+    else structures.other += 1;
+
+    if (crust !== WORLDGEN_CRUST_CONTINENTAL) continue;
+    addFreeboardSample(continental, result, sample);
+    addFreeboardSample(submerged ? submergedContinental : emergentContinental, result, sample);
+    const restoredMargin = result.continentalMarginMaterial[sample] !== 0;
+    addFreeboardSample(restoredMargin ? restoredMarginContinental : otherContinental, result, sample);
+
+    const thickness = result.crustThicknessKm[sample]!;
+    if (thickness < 32) thinnedBelow32 += 1;
+    else if (thickness < 36) thinned32To36 += 1;
+    else if (thickness < 42) normal36To42 += 1;
+    else thick42Plus += 1;
+
+    const margin = structure === WORLDGEN_STRUCTURE_CONTINENTAL_MARGIN
+      || result.passiveMarginIndex[sample]! >= 0.35
+      || thickness < 36;
+    const rift = structure === WORLDGEN_STRUCTURE_RIFT
+      || result.riftHistory[sample]! >= 0.35
+      || result.historicalRiftIntensity[sample]! >= 0.35;
+    const quiet = !margin
+      && !rift
+      && result.subsidenceHistory[sample]! < 0.28
+      && result.basinPotential[sample]! < 0.32;
+    if (margin) marginContinental += 1;
+    if (rift) riftContinental += 1;
+    if (quiet) quietContinental += 1;
+  }
+
+  const continentalCount = Math.max(1, crustCounts.continental);
+  const crustSection = (key: keyof typeof crustCounts) => ({
+    surface_fraction: crustCounts[key] / Math.max(1, count),
+    submerged_fraction: crustSubmerged[key] / Math.max(1, crustCounts[key]),
+    mean_submerged_depth_m: crustDepth[key] / Math.max(1, crustSubmerged[key]),
+  });
+  const structureFractions = Object.fromEntries(
+    Object.entries(structures).map(([key, value]) => [key, value / Math.max(1, count)]),
+  );
+
+  return {
+    water_inventory: {
+      surface_water_mass_kg: result.planet.surfaceWaterMassKg,
+      equivalent_global_water_depth_m: result.planet.equivalentGlobalWaterDepthM,
+      solved_sea_level_m: result.metrics.hasSeaLevel ? result.metrics.seaLevelM : null,
+      target_water_volume_m3: result.metrics.targetWaterVolumeM3,
+      solved_water_volume_m3: result.metrics.solvedWaterVolumeM3,
+      water_volume_relative_error: result.metrics.waterVolumeRelativeError,
+    },
+    crust: {
+      continental: crustSection('continental'),
+      transitional: crustSection('transitional'),
+      oceanic: crustSection('oceanic'),
+    },
+    structural_zone_surface_fraction: structureFractions,
+    continental_state: {
+      quiet_fraction_of_continental: quietContinental / continentalCount,
+      margin_fraction_of_continental: marginContinental / continentalCount,
+      rift_fraction_of_continental: riftContinental / continentalCount,
+      restored_margin_material_fraction_of_continental: restoredMarginContinental.sampleCount / continentalCount,
+      thickness_fraction_of_continental: {
+        below_32_km: thinnedBelow32 / continentalCount,
+        from_32_to_36_km: thinned32To36 / continentalCount,
+        from_36_to_42_km: normal36To42 / continentalCount,
+        at_or_above_42_km: thick42Plus / continentalCount,
+      },
+    },
+    all_continental: finalizeFreeboardBucket(continental),
+    emergent_continental: finalizeFreeboardBucket(emergentContinental),
+    submerged_continental: finalizeFreeboardBucket(submergedContinental),
+    restored_margin_continental: finalizeFreeboardBucket(restoredMarginContinental),
+    other_continental: finalizeFreeboardBucket(otherContinental),
   };
 }
 
@@ -231,9 +476,9 @@ export function buildWorldCalibrationPacket(result: WorldgenClimateResult, seed:
       canonical_dual_cell_area: false,
       complete_internal_lake_budget: false,
       approximation_notes: [
-        'continental component area uses equal-sample area because protocol v18 does not transport dual-cell area',
-        'derived topography percentiles and means are unweighted sample summaries',
-        'per-lake gross inflow and evaporation are unavailable in protocol v18 and remain null',
+        'continental component and crust/freeboard area fractions use equal-sample weighting because the Pages cumulative result does not transport fine dual-cell area',
+        'topography summary scalars come from the canonical Rust WG-4 metrics rather than browser recomputation',
+        'per-lake gross inflow and evaporation are unavailable in the cumulative browser result and remain null',
       ],
     },
     run: {
@@ -244,12 +489,26 @@ export function buildWorldCalibrationPacket(result: WorldgenClimateResult, seed:
       sample_count: result.metrics.fineSampleCount,
       plate_count: plateCount,
     },
+    planet: {
+      radius_m: result.planet.radiusM,
+      surface_gravity_m_s2: result.planet.surfaceGravityMS2,
+      rotation_period_s: result.planet.rotationPeriodS,
+      axial_tilt_rad: result.planet.axialTiltRad,
+      orbital_period_s: result.planet.orbitalPeriodS,
+      stellar_flux_w_m2: result.planet.stellarFluxWM2,
+      reference_surface_pressure_pa: result.planet.referenceSurfacePressurePa,
+      surface_water_mass_kg: result.planet.surfaceWaterMassKg,
+      equivalent_global_water_depth_m: result.planet.equivalentGlobalWaterDepthM,
+      internal_heat_flux_w_per_m2: result.planet.internalHeatFluxWPerM2,
+    },
     hashes: {
       coarse_topology: result.metrics.coarseTopologyHash,
       fine_topology: result.metrics.fineTopologyHash,
       tectonic: result.metrics.tectonicHash,
       geology: result.metrics.geologyHash,
       lithosphere: result.metrics.lithosphereHash,
+      historical_identity: result.historicalIdentityHash,
+      historical_morphology: result.historicalMorphologyHash,
       lithology: result.lithologyHash,
       inheritance: result.metrics.inheritanceHash,
       topography: result.metrics.topographyHash,
@@ -264,6 +523,7 @@ export function buildWorldCalibrationPacket(result: WorldgenClimateResult, seed:
       infill: result.infillMetrics.lakeSedimentInfillHash,
     },
     continents: continentSummary(result),
+    crust_freeboard: crustFreeboardSummary(result),
     topography: topographySummary(result),
     climate: {
       global_solver_level: result.metrics.globalSolverLevel,
@@ -373,6 +633,7 @@ export function worldCalibrationMarkdown(result: WorldgenClimateResult, seed: st
   const packet = buildWorldCalibrationPacket(result, seed, plateCount);
   const c = packet.continents;
   const t = packet.topography;
+  const cf = packet.crust_freeboard;
   const climate = packet.climate;
   const h = packet.hydrology;
   const g = packet.geomorphology;
@@ -380,7 +641,7 @@ export function worldCalibrationMarkdown(result: WorldgenClimateResult, seed: st
     '# Planet Engine calibration report',
     '',
     `Schema: \`${packet.schema}\``,
-    'Fidelity: GitHub Pages packet · equal-sample continental area / unweighted derived topography summaries · partial per-lake budget',
+    'Fidelity: GitHub Pages packet · equal-sample morphology/freeboard areas · canonical WG-4 topography summaries · partial per-lake budget',
     `Seed: \`${seed}\` · L${result.coarseLevel} → L${result.fineLevel} · ${plateCount} plates · ${result.metrics.fineSampleCount.toLocaleString()} samples · engine v${result.engineVersion}`,
     '',
     '## Continental assembly',
@@ -390,6 +651,13 @@ export function worldCalibrationMarkdown(result: WorldgenClimateResult, seed: st
     '## Topography',
     `Land/ocean: ${(t.land_area_fraction * 100).toFixed(1)}% / ${(t.ocean_area_fraction * 100).toFixed(1)}% · mean land elevation ${t.mean_land_elevation_m.toFixed(0)} m · mean/max water depth ${t.mean_water_depth_m.toFixed(0)}/${t.maximum_water_depth_m.toFixed(0)} m`,
     `Solid elevation P05/P50/P95: ${t.p05_solid_elevation_m.toFixed(0)}/${t.median_solid_elevation_m.toFixed(0)}/${t.p95_solid_elevation_m.toFixed(0)} m · range ${t.minimum_solid_elevation_m.toFixed(0)} → ${t.maximum_solid_elevation_m.toFixed(0)} m`,
+    '',
+    '## Crust / freeboard',
+    `Water inventory: ${(cf.water_inventory.surface_water_mass_kg / 1e21).toFixed(3)}e21 kg · global equivalent depth ${cf.water_inventory.equivalent_global_water_depth_m.toFixed(0)} m · solved sea level ${cf.water_inventory.solved_sea_level_m?.toFixed(0) ?? 'none'} m`,
+    `Crust C/T/O: ${(cf.crust.continental.surface_fraction * 100).toFixed(1)}%/${(cf.crust.transitional.surface_fraction * 100).toFixed(1)}%/${(cf.crust.oceanic.surface_fraction * 100).toFixed(1)}% · submerged ${(cf.crust.continental.submerged_fraction * 100).toFixed(1)}%/${(cf.crust.transitional.submerged_fraction * 100).toFixed(1)}%/${(cf.crust.oceanic.submerged_fraction * 100).toFixed(1)}%`,
+    `Continental state: quiet ${(cf.continental_state.quiet_fraction_of_continental * 100).toFixed(1)}% · margin ${(cf.continental_state.margin_fraction_of_continental * 100).toFixed(1)}% · rift ${(cf.continental_state.rift_fraction_of_continental * 100).toFixed(1)}% · restored margin material ${(cf.continental_state.restored_margin_material_fraction_of_continental * 100).toFixed(1)}% · <36 km crust ${((cf.continental_state.thickness_fraction_of_continental.below_32_km + cf.continental_state.thickness_fraction_of_continental.from_32_to_36_km) * 100).toFixed(1)}%`,
+    `Emergent/submerged continental: thickness ${cf.emergent_continental.mean_crust_thickness_km.toFixed(1)}/${cf.submerged_continental.mean_crust_thickness_km.toFixed(1)} km · density ${cf.emergent_continental.mean_crust_density_kg_per_m3.toFixed(0)}/${cf.submerged_continental.mean_crust_density_kg_per_m3.toFixed(0)} kg/m³ · shallow submerged ≤500 m ${(cf.submerged_continental.submerged_within_500m_fraction * 100).toFixed(1)}% · restored-margin submerged ${(cf.restored_margin_continental.submerged_fraction * 100).toFixed(1)}%`,
+    `Submerged drivers: rift/subsidence/basin ${cf.submerged_continental.mean_rift_history.toFixed(3)}/${cf.submerged_continental.mean_subsidence_history.toFixed(3)}/${cf.submerged_continental.mean_basin_potential.toFixed(3)} · passive margin ${cf.submerged_continental.mean_passive_margin_index.toFixed(3)} · isostatic/rift-basin/orogen ${cf.submerged_continental.elevation_budget_m.isostatic.toFixed(0)}/${cf.submerged_continental.elevation_budget_m.rift_basin.toFixed(0)}/${cf.submerged_continental.elevation_budget_m.orogenic.toFixed(0)} m`,
     '',
     '## Climate',
     `Temperature ${climate.minimum_temperature_k.toFixed(1)} → ${climate.maximum_temperature_k.toFixed(1)} K · mean ${climate.mean_temperature_k.toFixed(1)} K · land/ocean ${climate.mean_land_temperature_k.toFixed(1)}/${climate.mean_ocean_temperature_k.toFixed(1)} K · SST ${climate.mean_sst_k.toFixed(1)} K`,

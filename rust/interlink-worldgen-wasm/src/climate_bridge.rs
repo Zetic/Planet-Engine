@@ -57,6 +57,7 @@ pub struct WasmWorldgenClimate {
     inherited: InheritedPhysicalState,
     historical_identity: InheritedHistoricalIdentity,
     historical_morphology_hash: String,
+    continental_margin_material: Vec<u8>,
     latest_event_kind: Vec<u8>,
     latest_event_age_myr: Vec<f32>,
     historical_rift_intensity: Vec<f32>,
@@ -166,6 +167,8 @@ impl WasmWorldgenClimate {
                 .map(|source| values[*source as usize])
                 .collect::<Vec<_>>()
         };
+        let continental_margin_material =
+            inherit_u8(&frontend.historical.continental_margin_material);
         let latest_event_kind = inherit_u8(&morphology.latest_event_kind);
         let latest_event_age_myr = inherit_f32(&morphology.latest_event_age_myr);
         let historical_rift_intensity = inherit_f32(&morphology.rift_intensity);
@@ -397,6 +400,7 @@ impl WasmWorldgenClimate {
             inherited,
             historical_identity,
             historical_morphology_hash,
+            continental_margin_material,
             latest_event_kind,
             latest_event_age_myr,
             historical_rift_intensity,
@@ -594,6 +598,39 @@ impl WasmWorldgenClimate {
     pub fn maximum_solid_elevation_m(&self) -> f64 {
         self.terrain.metrics.maximum_solid_elevation_m
     }
+    pub fn mean_solid_elevation_m(&self) -> f64 {
+        self.terrain.metrics.mean_solid_elevation_m
+    }
+    pub fn p05_solid_elevation_m(&self) -> f64 {
+        self.terrain.metrics.p05_solid_elevation_m
+    }
+    pub fn median_solid_elevation_m(&self) -> f64 {
+        self.terrain.metrics.median_solid_elevation_m
+    }
+    pub fn p95_solid_elevation_m(&self) -> f64 {
+        self.terrain.metrics.p95_solid_elevation_m
+    }
+    pub fn mean_land_elevation_m(&self) -> f64 {
+        self.terrain.metrics.mean_land_elevation_m
+    }
+    pub fn mean_water_depth_m(&self) -> f64 {
+        self.terrain.metrics.mean_water_depth_m
+    }
+    pub fn maximum_water_depth_m(&self) -> f64 {
+        self.terrain.metrics.maximum_water_depth_m
+    }
+    pub fn target_water_volume_m3(&self) -> f64 {
+        self.terrain.metrics.target_water_volume_m3
+    }
+    pub fn solved_water_volume_m3(&self) -> f64 {
+        self.terrain.metrics.solved_water_volume_m3
+    }
+    pub fn water_volume_relative_error(&self) -> f64 {
+        self.terrain.metrics.water_volume_relative_error
+    }
+    pub fn clamped_sample_count(&self) -> u32 {
+        self.terrain.metrics.clamped_sample_count
+    }
 
     pub fn radius_m(&self) -> f64 {
         self.planet.radius_m
@@ -660,6 +697,9 @@ impl WasmWorldgenClimate {
     }
     pub fn historical_morphology_hash_hex(&self) -> String {
         self.historical_morphology_hash.clone()
+    }
+    pub fn continental_margin_material(&self) -> Vec<u8> {
+        self.continental_margin_material.clone()
     }
     pub fn origin_plate_ids(&self) -> Vec<u16> {
         self.historical_identity.origin_plate_ids.clone()
@@ -769,6 +809,30 @@ impl WasmWorldgenClimate {
     }
     pub fn crust_thickness_km(&self) -> Vec<f32> {
         self.inherited.crust_thickness_km.clone()
+    }
+    pub fn crust_density_kg_per_m3(&self) -> Vec<f32> {
+        self.inherited.crust_density_kg_per_m3.clone()
+    }
+    pub fn rift_history(&self) -> Vec<f32> {
+        self.inherited.rift_history.clone()
+    }
+    pub fn subsidence_history(&self) -> Vec<f32> {
+        self.inherited.subsidence_history.clone()
+    }
+    pub fn basin_potential(&self) -> Vec<f32> {
+        self.inherited.basin_potential.clone()
+    }
+    pub fn crustal_strain(&self) -> Vec<f32> {
+        self.inherited.crustal_strain.clone()
+    }
+    pub fn compensated_buoyancy_index(&self) -> Vec<f32> {
+        self.inherited.compensated_buoyancy_index.clone()
+    }
+    pub fn effective_elastic_thickness_km(&self) -> Vec<f32> {
+        self.inherited.effective_elastic_thickness_km.clone()
+    }
+    pub fn structural_fabric_strength(&self) -> Vec<f32> {
+        self.inherited.structural_fabric_strength.clone()
     }
     pub fn orogenic_history(&self) -> Vec<f32> {
         self.inherited.orogenic_history.clone()
