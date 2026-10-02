@@ -13,6 +13,7 @@ const SUBSTEP_MYR: f64 = EPOCH_DURATION_MYR / SUBSTEPS_PER_EPOCH as f64;
 const RIFT_STRAIN_NUCLEATION_MYR: f32 = 26.0;
 const RIFT_STRAIN_RELIEF_FACTOR: f32 = 0.22;
 const FORWARD_TRANSITION_MATURATION_MYR: f32 = 30.0;
+const INHERITED_TRANSITION_BREAKUP_STRAIN_MYR: f32 = 42.0;
 const MIN_QUIET_INHERITED_TRANSITION_WIDTH_KM: f64 = 220.0;
 const MAX_QUIET_INHERITED_TRANSITION_WIDTH_KM: f64 = 360.0;
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
@@ -2258,6 +2259,71 @@ fn split_fragments_at_final_boundaries<T: PlanetTopology>(
 }
 
 
+fn mature_reopened_inherited_transitional_crust<T: PlanetTopology>(
+    topology: &T,
+    model: &mut HistoricalLithosphereModel,
+    forward_generated_material: &[bool],
+    extensional_strain_myr: &[f32],
+) -> u32 {
+    let count = topology.sample_count() as usize;
+    debug_assert_eq!(forward_generated_material.len(), count);
+    debug_assert_eq!(extensional_strain_myr.len(), count);
+
+    // Complete inherited breakup only where forward kinematics supplied a strong extensional
+    // witness and the material remains connected to an oceanic endmember. Flood through the
+    // strongly strained inherited-transition subgraph so a multi-cell reopening corridor can
+    // mature coherently without allowing age alone to erase quiet passive margins.
+    let previous_kind = model.crust_kind.clone();
+    let eligible = (0..count)
+        .map(|sample| {
+            previous_kind[sample] == CrustKind::Transitional as u8
+                && !forward_generated_material[sample]
+                && extensional_strain_myr[sample] >= INHERITED_TRANSITION_BREAKUP_STRAIN_MYR
+        })
+        .collect::<Vec<_>>();
+    let mut reached = vec![false; count];
+    let mut queue = VecDeque::<u32>::new();
+
+    for sample in 0..topology.sample_count() {
+        let index = sample as usize;
+        if !eligible[index] {
+            continue;
+        }
+        if topology
+            .neighbors(sample)
+            .iter()
+            .any(|neighbor| previous_kind[*neighbor as usize] == CrustKind::Oceanic as u8)
+        {
+            reached[index] = true;
+            queue.push_back(sample);
+        }
+    }
+
+    while let Some(sample) = queue.pop_front() {
+        for neighbor in topology.neighbors(sample) {
+            let ni = *neighbor as usize;
+            if eligible[ni] && !reached[ni] {
+                reached[ni] = true;
+                queue.push_back(*neighbor);
+            }
+        }
+    }
+
+    let mut matured = 0_u32;
+    for sample in 0..count {
+        if !reached[sample] {
+            continue;
+        }
+        model.crust_kind[sample] = CrustKind::Oceanic as u8;
+        model.continental_margin_material[sample] = 0;
+        model.crust_birth_age_myr[sample] = 0.0;
+        model.lithospheric_weakness_index[sample] =
+            model.lithospheric_weakness_index[sample].min(0.55);
+        matured = matured.saturating_add(1);
+    }
+    matured
+}
+
 fn bound_quiet_inherited_transitional_margins<T: PlanetTopology>(
     topology: &T,
     model: &mut HistoricalLithosphereModel,
@@ -2619,8 +2685,15 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
         ));
     }
 
-    // Bound inherited passive-margin transition only after tectonic evolution is complete.
-    // This changes material interpretation without feeding a target geometry back into plate motion.
+    // Reopened inherited transition may complete breakup only after the forward integration is
+    // finished, so material maturation cannot feed a desired present geometry back into plate
+    // motion. Quiet inherited margin material is then bounded separately on the landward side.
+    let _matured_inherited_samples = mature_reopened_inherited_transitional_crust(
+        topology,
+        &mut model,
+        &forward_generated_material,
+        &extensional_strain_myr,
+    );
     let _restored_continental_samples = bound_quiet_inherited_transitional_margins(
         topology,
         &mut model,
