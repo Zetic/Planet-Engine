@@ -397,6 +397,7 @@ function crustFreeboardSummary(result: WorldgenClimateResult) {
   }
 
   return {
+    causal_snapshot_source: 'wg4-pre-scratch-release',
     water_inventory: {
       surface_water_mass_kg: result.planet.surfaceWaterMassKg,
       equivalent_global_water_depth_m: result.planet.equivalentGlobalWaterDepthM,
@@ -493,6 +494,7 @@ export function buildWorldCalibrationPacket(result: WorldgenClimateResult, seed:
       approximation_notes: [
         'continental component and crust/freeboard area fractions use equal-sample weighting because the Pages cumulative result does not transport fine dual-cell area',
         'topography summary scalars come from the canonical Rust WG-4 metrics rather than browser recomputation',
+        'freeboard causal means and continental-state counts are snapshotted in Rust at WG-4 before memory-only scratch fields are released',
         'per-lake gross inflow and evaporation are unavailable in the cumulative browser result and remain null',
       ],
     },
