@@ -176,17 +176,9 @@ type FreeboardAccumulator = {
   shallow500: number;
   shallow1000: number;
   thicknessSum: number;
-  densitySum: number;
   stabilitySum: number;
-  riftHistorySum: number;
-  subsidenceHistorySum: number;
-  basinPotentialSum: number;
   passiveMarginSum: number;
   historicalRiftSum: number;
-  strainSum: number;
-  buoyancySum: number;
-  elasticThicknessSum: number;
-  fabricSum: number;
   isostaticSum: number;
   thermalSum: number;
   orogenicSum: number;
@@ -208,17 +200,9 @@ function freeboardAccumulator(): FreeboardAccumulator {
     shallow500: 0,
     shallow1000: 0,
     thicknessSum: 0,
-    densitySum: 0,
     stabilitySum: 0,
-    riftHistorySum: 0,
-    subsidenceHistorySum: 0,
-    basinPotentialSum: 0,
     passiveMarginSum: 0,
     historicalRiftSum: 0,
-    strainSum: 0,
-    buoyancySum: 0,
-    elasticThicknessSum: 0,
-    fabricSum: 0,
     isostaticSum: 0,
     thermalSum: 0,
     orogenicSum: 0,
@@ -244,17 +228,9 @@ function addFreeboardSample(bucket: FreeboardAccumulator, result: WorldgenClimat
     if (depth <= 1000) bucket.shallow1000 += 1;
   }
   bucket.thicknessSum += result.crustThicknessKm[sample]!;
-  bucket.densitySum += result.crustDensityKgPerM3[sample]!;
   bucket.stabilitySum += result.continentalStabilityIndex[sample]!;
-  bucket.riftHistorySum += result.riftHistory[sample]!;
-  bucket.subsidenceHistorySum += result.subsidenceHistory[sample]!;
-  bucket.basinPotentialSum += result.basinPotential[sample]!;
   bucket.passiveMarginSum += result.passiveMarginIndex[sample]!;
   bucket.historicalRiftSum += result.historicalRiftIntensity[sample]!;
-  bucket.strainSum += result.crustalStrain[sample]!;
-  bucket.buoyancySum += result.compensatedBuoyancyIndex[sample]!;
-  bucket.elasticThicknessSum += result.effectiveElasticThicknessKm[sample]!;
-  bucket.fabricSum += result.structuralFabricStrength[sample]!;
   bucket.isostaticSum += result.isostaticElevationM[sample]!;
   bucket.thermalSum += result.thermalElevationM[sample]!;
   bucket.orogenicSum += result.orogenicElevationM[sample]!;
@@ -267,28 +243,72 @@ function addFreeboardSample(bucket: FreeboardAccumulator, result: WorldgenClimat
   bucket.relativeElevationSum += result.elevationAboveSeaLevelM[sample]!;
 }
 
-function finalizeFreeboardBucket(bucket: FreeboardAccumulator) {
+const FREEBOARD_BUCKET_ALL_CONTINENTAL = 0;
+const FREEBOARD_BUCKET_EMERGENT_CONTINENTAL = 1;
+const FREEBOARD_BUCKET_SUBMERGED_CONTINENTAL = 2;
+const FREEBOARD_BUCKET_RESTORED_MARGIN_CONTINENTAL = 3;
+const FREEBOARD_BUCKET_OTHER_CONTINENTAL = 4;
+const FREEBOARD_BUCKET_COUNT = 5;
+
+function validateFreeboardCausalSummary(result: WorldgenClimateResult): void {
+  const causal = result.freeboardCausal;
+  const fields: ArrayLike<number>[] = [
+    causal.sampleCounts,
+    causal.meanCrustDensityKgPerM3,
+    causal.meanRiftHistory,
+    causal.meanSubsidenceHistory,
+    causal.meanBasinPotential,
+    causal.meanCrustalStrain,
+    causal.meanCompensatedBuoyancyIndex,
+    causal.meanEffectiveElasticThicknessKm,
+    causal.meanStructuralFabricStrength,
+  ];
+  if (fields.some(values => values.length !== FREEBOARD_BUCKET_COUNT) || causal.continentalStateCounts.length !== 3) {
+    throw new Error('Freeboard causal observability packet has an invalid bucket shape.');
+  }
+  for (let bucket = 0; bucket < FREEBOARD_BUCKET_COUNT; bucket += 1) {
+    if (causal.sampleCounts[bucket] === 0) continue;
+    for (const values of fields.slice(1)) {
+      if (!Number.isFinite(values[bucket])) {
+        throw new Error(`Freeboard causal observability contains a non-finite mean in bucket ${bucket}.`);
+      }
+    }
+  }
+}
+
+function causalMean(values: ArrayLike<number>, sampleCount: number, bucket: number): number | null {
+  return sampleCount > 0 ? values[bucket]! : null;
+}
+
+function finalizeFreeboardBucket(
+  bucket: FreeboardAccumulator,
+  result: WorldgenClimateResult,
+  causalBucket: number,
+) {
   const count = Math.max(1, bucket.sampleCount);
   const submerged = Math.max(1, bucket.submergedCount);
+  const causal = result.freeboardCausal;
+  const causalCount = causal.sampleCounts[causalBucket]!;
   return {
     sample_count: bucket.sampleCount,
+    causal_snapshot_sample_count: causalCount,
     submerged_fraction: bucket.submergedCount / count,
     mean_submerged_depth_m: bucket.submergedDepthSum / submerged,
     submerged_within_200m_fraction: bucket.shallow200 / submerged,
     submerged_within_500m_fraction: bucket.shallow500 / submerged,
     submerged_within_1000m_fraction: bucket.shallow1000 / submerged,
     mean_crust_thickness_km: bucket.thicknessSum / count,
-    mean_crust_density_kg_per_m3: bucket.densitySum / count,
+    mean_crust_density_kg_per_m3: causalMean(causal.meanCrustDensityKgPerM3, causalCount, causalBucket),
     mean_continental_stability_index: bucket.stabilitySum / count,
-    mean_rift_history: bucket.riftHistorySum / count,
-    mean_subsidence_history: bucket.subsidenceHistorySum / count,
-    mean_basin_potential: bucket.basinPotentialSum / count,
+    mean_rift_history: causalMean(causal.meanRiftHistory, causalCount, causalBucket),
+    mean_subsidence_history: causalMean(causal.meanSubsidenceHistory, causalCount, causalBucket),
+    mean_basin_potential: causalMean(causal.meanBasinPotential, causalCount, causalBucket),
     mean_passive_margin_index: bucket.passiveMarginSum / count,
     mean_historical_rift_intensity: bucket.historicalRiftSum / count,
-    mean_crustal_strain: bucket.strainSum / count,
-    mean_compensated_buoyancy_index: bucket.buoyancySum / count,
-    mean_effective_elastic_thickness_km: bucket.elasticThicknessSum / count,
-    mean_structural_fabric_strength: bucket.fabricSum / count,
+    mean_crustal_strain: causalMean(causal.meanCrustalStrain, causalCount, causalBucket),
+    mean_compensated_buoyancy_index: causalMean(causal.meanCompensatedBuoyancyIndex, causalCount, causalBucket),
+    mean_effective_elastic_thickness_km: causalMean(causal.meanEffectiveElasticThicknessKm, causalCount, causalBucket),
+    mean_structural_fabric_strength: causalMean(causal.meanStructuralFabricStrength, causalCount, causalBucket),
     elevation_budget_m: {
       isostatic: bucket.isostaticSum / count,
       thermal: bucket.thermalSum / count,
@@ -305,6 +325,7 @@ function finalizeFreeboardBucket(bucket: FreeboardAccumulator) {
 }
 
 function crustFreeboardSummary(result: WorldgenClimateResult) {
+  validateFreeboardCausalSummary(result);
   const count = result.metrics.fineSampleCount;
   const crustCounts = { continental: 0, transitional: 0, oceanic: 0 };
   const crustSubmerged = { continental: 0, transitional: 0, oceanic: 0 };
@@ -319,9 +340,6 @@ function crustFreeboardSummary(result: WorldgenClimateResult) {
   let thinned32To36 = 0;
   let normal36To42 = 0;
   let thick42Plus = 0;
-  let quietContinental = 0;
-  let marginContinental = 0;
-  let riftContinental = 0;
 
   for (let sample = 0; sample < count; sample += 1) {
     const crust = result.crustKind[sample]!;
@@ -357,19 +375,6 @@ function crustFreeboardSummary(result: WorldgenClimateResult) {
     else if (thickness < 42) normal36To42 += 1;
     else thick42Plus += 1;
 
-    const margin = structure === WORLDGEN_STRUCTURE_CONTINENTAL_MARGIN
-      || result.passiveMarginIndex[sample]! >= 0.35
-      || thickness < 36;
-    const rift = structure === WORLDGEN_STRUCTURE_RIFT
-      || result.riftHistory[sample]! >= 0.35
-      || result.historicalRiftIntensity[sample]! >= 0.35;
-    const quiet = !margin
-      && !rift
-      && result.subsidenceHistory[sample]! < 0.28
-      && result.basinPotential[sample]! < 0.32;
-    if (margin) marginContinental += 1;
-    if (rift) riftContinental += 1;
-    if (quiet) quietContinental += 1;
   }
 
   const continentalCount = Math.max(1, crustCounts.continental);
@@ -398,9 +403,9 @@ function crustFreeboardSummary(result: WorldgenClimateResult) {
     },
     structural_zone_surface_fraction: structureFractions,
     continental_state: {
-      quiet_fraction_of_continental: quietContinental / continentalCount,
-      margin_fraction_of_continental: marginContinental / continentalCount,
-      rift_fraction_of_continental: riftContinental / continentalCount,
+      quiet_fraction_of_continental: result.freeboardCausal.continentalStateCounts[0]! / continentalCount,
+      margin_fraction_of_continental: result.freeboardCausal.continentalStateCounts[1]! / continentalCount,
+      rift_fraction_of_continental: result.freeboardCausal.continentalStateCounts[2]! / continentalCount,
       restored_margin_material_fraction_of_continental: restoredMarginContinental.sampleCount / continentalCount,
       thickness_fraction_of_continental: {
         below_32_km: thinnedBelow32 / continentalCount,
@@ -409,11 +414,17 @@ function crustFreeboardSummary(result: WorldgenClimateResult) {
         at_or_above_42_km: thick42Plus / continentalCount,
       },
     },
-    all_continental: finalizeFreeboardBucket(continental),
-    emergent_continental: finalizeFreeboardBucket(emergentContinental),
-    submerged_continental: finalizeFreeboardBucket(submergedContinental),
-    restored_margin_continental: finalizeFreeboardBucket(restoredMarginContinental),
-    other_continental: finalizeFreeboardBucket(otherContinental),
+    causal_snapshot_consistent:
+      result.freeboardCausal.sampleCounts[FREEBOARD_BUCKET_ALL_CONTINENTAL] === continental.sampleCount
+      && result.freeboardCausal.sampleCounts[FREEBOARD_BUCKET_EMERGENT_CONTINENTAL] === emergentContinental.sampleCount
+      && result.freeboardCausal.sampleCounts[FREEBOARD_BUCKET_SUBMERGED_CONTINENTAL] === submergedContinental.sampleCount
+      && result.freeboardCausal.sampleCounts[FREEBOARD_BUCKET_RESTORED_MARGIN_CONTINENTAL] === restoredMarginContinental.sampleCount
+      && result.freeboardCausal.sampleCounts[FREEBOARD_BUCKET_OTHER_CONTINENTAL] === otherContinental.sampleCount,
+    all_continental: finalizeFreeboardBucket(continental, result, FREEBOARD_BUCKET_ALL_CONTINENTAL),
+    emergent_continental: finalizeFreeboardBucket(emergentContinental, result, FREEBOARD_BUCKET_EMERGENT_CONTINENTAL),
+    submerged_continental: finalizeFreeboardBucket(submergedContinental, result, FREEBOARD_BUCKET_SUBMERGED_CONTINENTAL),
+    restored_margin_continental: finalizeFreeboardBucket(restoredMarginContinental, result, FREEBOARD_BUCKET_RESTORED_MARGIN_CONTINENTAL),
+    other_continental: finalizeFreeboardBucket(otherContinental, result, FREEBOARD_BUCKET_OTHER_CONTINENTAL),
   };
 }
 
