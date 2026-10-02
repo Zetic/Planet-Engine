@@ -1,6 +1,6 @@
 import { createWorldgenClient } from '../worldgenClient.js';
 import { createWorldgenCrashRecorder, installWorldgenGlobalFailureCapture } from '../worldgenCrashReport.js';
-import { worldCalibrationJson, worldCalibrationMarkdown } from '../calibrationPacket.js';
+import { worldCalibrationJson } from '../calibrationPacket.js';
 import { downloadTextFile } from '../browserDownload.js';
 import { clampEquirectangularCenterLatitude, equirectangularCameraForWorldDirectionAtScreen, equirectangularScreenToWorldDirection, mapVectorDelta, reconstructAnnualHarmonicFromBasis, wrapLongitudeRad } from './worldgenClimateMath.js';
 import { L8GlobeRenderer, buildRgbaColors, cameraForWorldDirectionAtScreen, pickNearestSample, screenToWorldDirection } from './worldgenL8GlobeRenderer.js';
@@ -1584,7 +1584,6 @@ const overlaySummary = element('worldgen-overlay-summary');
 const overlayInputs = Array.from(document.querySelectorAll('input[data-worldgen-overlay]'));
 const generate = element('worldgen-generate');
 const copyCalibration = element('worldgen-copy-calibration');
-const downloadCalibration = element('worldgen-download-calibration');
 const copyCrashReport = element('worldgen-copy-crash-report');
 const downloadCrashReport = element('worldgen-download-crash-report');
 const receiveOnlyDebug = element('worldgen-debug-receive-only');
@@ -2475,23 +2474,12 @@ async function copyCalibrationReport() {
     if (!current || !currentCalibrationRequest)
         return;
     try {
-        await navigator.clipboard.writeText(worldCalibrationMarkdown(current, currentCalibrationRequest.seed, currentCalibrationRequest.plateCount));
-        status.textContent = 'Copied compact LLM calibration summary to the clipboard.';
-    }
-    catch (error) {
-        status.textContent = `Could not copy calibration summary: ${error instanceof Error ? error.message : String(error)}`;
-    }
-}
-function downloadCalibrationReport() {
-    if (!current || !currentCalibrationRequest)
-        return;
-    try {
         const json = worldCalibrationJson(current, currentCalibrationRequest.seed, currentCalibrationRequest.plateCount);
-        downloadTextFile(json, `planet-calibration-${calibrationFileStem(currentCalibrationRequest.seed)}.json`, 'application/json;charset=utf-8');
-        status.textContent = 'Started structured calibration packet download.';
+        await navigator.clipboard.writeText(json);
+        status.textContent = 'Copied full calibration data to the clipboard.';
     }
     catch (error) {
-        status.textContent = `Could not download calibration packet: ${error instanceof Error ? error.message : String(error)}`;
+        status.textContent = `Could not copy calibration data: ${error instanceof Error ? error.message : String(error)}`;
     }
 }
 async function generatePlanet() {
@@ -2500,7 +2488,6 @@ async function generatePlanet() {
     refreshCrashDebugSummary();
     generate.disabled = true;
     copyCalibration.disabled = true;
-    downloadCalibration.disabled = true;
     startGenerationTelemetry();
     status.textContent = receiveOnlyDebug.checked
         ? 'Diagnostic receive-only run: generating through WG-7D and stopping immediately after transport / validation…'
@@ -2595,7 +2582,6 @@ async function generatePlanet() {
         current = loaded;
         currentCalibrationRequest = { seed: request.seed, plateCount: request.plateCount };
         copyCalibration.disabled = false;
-        downloadCalibration.disabled = false;
         crashRecorder.record('lab', 'viewer-projection-buffer-allocation-begin', { fineSampleCount: loaded.metrics.fineSampleCount });
         buffers = { x: new Float32Array(loaded.metrics.fineSampleCount), y: new Float32Array(loaded.metrics.fineSampleCount), visible: new Uint8Array(loaded.metrics.fineSampleCount) };
         crashRecorder.record('lab', 'viewer-projection-buffer-allocation-complete', { bytes: buffers.x.byteLength + buffers.y.byteLength + buffers.visible.byteLength });
@@ -2643,7 +2629,6 @@ async function generatePlanet() {
 }
 generate.addEventListener('click', () => void generatePlanet());
 copyCalibration.addEventListener('click', () => void copyCalibrationReport());
-downloadCalibration.addEventListener('click', downloadCalibrationReport);
 copyCrashReport.addEventListener('click', () => void copyCrashReportToClipboard());
 downloadCrashReport.addEventListener('click', downloadCrashReportJson);
 projection.addEventListener('change', () => { updateCameraControls(); redraw(false); });
