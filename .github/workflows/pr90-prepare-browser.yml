@@ -1,0 +1,45 @@
+name: PR90 Prepare Browser Artifacts
+
+on:
+  push:
+    branches:
+      - interlink-pr90-browser-download-reliability
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr90-prepare
+  cancel-in-progress: true
+
+jobs:
+  prepare:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: interlink-pr90-browser-download-reliability
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install Node dependencies
+        run: npm ci
+      - name: Typecheck browser source
+        run: npm run typecheck
+      - name: Build browser source
+        run: npm run build
+      - name: Run browser regressions
+        run: npm run test:ts
+      - name: Commit generated browser output
+        run: |
+          git add dist
+          if git diff --cached --quiet; then
+            echo "Generated browser output already synchronized."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "build: refresh browser download artifacts"
+          git push origin HEAD:interlink-pr90-browser-download-reliability
