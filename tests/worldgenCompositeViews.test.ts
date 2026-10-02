@@ -3,8 +3,8 @@ import fs from 'node:fs';
 import test from 'node:test';
 import { WORLDGEN_PROTOCOL_VERSION } from '../dist/worldgen/protocol.js';
 
-test('composite physical-world views retain WG-7C diagnostics under protocol v23', () => {
-  assert.equal(WORLDGEN_PROTOCOL_VERSION, 23);
+test('composite physical-world views retain WG-7C diagnostics under protocol v24', () => {
+  assert.equal(WORLDGEN_PROTOCOL_VERSION, 24);
   const html = fs.readFileSync('index.html', 'utf8');
   const source = fs.readFileSync('src/worldgen/diagnostics/worldgenClimateLabStandalone.ts', 'utf8');
   assert.match(html, /id="worldgen-preset"/);
