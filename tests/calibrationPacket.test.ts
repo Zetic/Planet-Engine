@@ -19,6 +19,7 @@ test('calibration packet stays compact, versioned, and available from the Pages 
   assert.match(packet, /water_volume_relative_error/);
   assert.match(packet, /validateFreeboardCausalSummary/);
   assert.match(packet, /causal_snapshot_consistent/);
+  assert.match(packet, /wg4-pre-scratch-release/);
   assert.match(worker, /freeboardCausal/);
   assert.match(worker, /freeboard_causal_sample_counts/);
   assert.match(bridge, /build_freeboard_causal_observability/);
