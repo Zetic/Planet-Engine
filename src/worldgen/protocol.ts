@@ -500,6 +500,7 @@ export interface WorldgenClimatePhysicalProfile {
 
 export interface WorldgenFreeboardCausalSummary {
   sampleCounts: Uint32Array;
+  continentalStateCounts: Uint32Array;
   meanCrustDensityKgPerM3: Float64Array;
   meanRiftHistory: Float64Array;
   meanSubsidenceHistory: Float64Array;
