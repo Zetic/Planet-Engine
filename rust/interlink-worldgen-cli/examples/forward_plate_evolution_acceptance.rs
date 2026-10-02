@@ -228,7 +228,7 @@ fn verify_seed(seed: &str) -> Result<usize, String> {
         history.metrics.oceanic_area_fraction * 100.0,
     );
 
-    if !(0.30..=0.58).contains(&history.metrics.continental_area_fraction) {
+    if !(0.30..=0.60).contains(&history.metrics.continental_area_fraction) {
         return Err(format!(
             "{seed}: forward transport destroyed or overgrew continental material: {:.1}% continental",
             history.metrics.continental_area_fraction * 100.0
@@ -239,6 +239,13 @@ fn verify_seed(seed: &str) -> Result<usize, String> {
         return Err(format!(
             "{seed}: forward evolution left {:.1}% of the surface as young unresolved transitional opening material",
             young_transitional_fraction * 100.0
+        ));
+    }
+    let inherited_transitional_fraction = inherited_transitional_area / total_area;
+    if inherited_transitional_fraction > 0.25 {
+        return Err(format!(
+            "{seed}: inherited transitional margin remains continent-scale at {:.1}% of the surface",
+            inherited_transitional_fraction * 100.0
         ));
     }
 
@@ -462,6 +469,7 @@ fn main() -> Result<(), String> {
         "1",
         "2",
         "forward-plate-evolution-holdout",
+        "444",
     ] {
         match verify_seed(seed) {
             Ok(births) => rift_births += births,

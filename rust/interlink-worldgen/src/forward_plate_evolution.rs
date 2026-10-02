@@ -5,7 +5,7 @@ use crate::{
 };
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
-const FORWARD_PLATE_NAMESPACE: &str = "worldgen:geology:forward-plate-evolution:v1";
+const FORWARD_PLATE_NAMESPACE: &str = "worldgen:geology:forward-plate-evolution:v2";
 const FORWARD_EPOCHS: usize = 8;
 const SUBSTEPS_PER_EPOCH: usize = 4;
 const EPOCH_DURATION_MYR: f64 = 20.0;
@@ -13,6 +13,8 @@ const SUBSTEP_MYR: f64 = EPOCH_DURATION_MYR / SUBSTEPS_PER_EPOCH as f64;
 const RIFT_STRAIN_NUCLEATION_MYR: f32 = 26.0;
 const RIFT_STRAIN_RELIEF_FACTOR: f32 = 0.22;
 const FORWARD_TRANSITION_MATURATION_MYR: f32 = 30.0;
+const MIN_QUIET_INHERITED_TRANSITION_WIDTH_KM: f64 = 220.0;
+const MAX_QUIET_INHERITED_TRANSITION_WIDTH_KM: f64 = 360.0;
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 
@@ -2256,6 +2258,99 @@ fn split_fragments_at_final_boundaries<T: PlanetTopology>(
 }
 
 
+fn bound_quiet_inherited_transitional_margins<T: PlanetTopology>(
+    topology: &T,
+    model: &mut HistoricalLithosphereModel,
+    forward_generated_material: &[bool],
+    extensional_strain_myr: &[f32],
+    planet: PlanetPhysicalParameters,
+) -> u32 {
+    let count = topology.sample_count() as usize;
+    debug_assert_eq!(forward_generated_material.len(), count);
+    debug_assert_eq!(extensional_strain_myr.len(), count);
+
+    // Quiet inherited transitional lithosphere is a continental-margin phase, not an arbitrarily
+    // wide shelf mask. Measure physical distance through the final transitional material graph to
+    // the nearest oceanic endmember. This runs after plate motion, birth/death, convergence and
+    // advection, so the material cleanup cannot steer tectonic geometry.
+    let mut distance_to_ocean_km = vec![f64::INFINITY; count];
+    let mut queued = vec![false; count];
+    let mut queue = VecDeque::<u32>::new();
+    for sample in 0..topology.sample_count() {
+        let index = sample as usize;
+        if model.crust_kind[index] != CrustKind::Transitional as u8 {
+            continue;
+        }
+        let neighbors = topology.neighbors(sample);
+        let lengths = topology.neighbor_arc_lengths_rad(sample);
+        let mut nearest = f64::INFINITY;
+        for (edge_index, neighbor) in neighbors.iter().enumerate() {
+            if model.crust_kind[*neighbor as usize] != CrustKind::Oceanic as u8 {
+                continue;
+            }
+            nearest = nearest.min(lengths[edge_index] * planet.radius_m / 1000.0);
+        }
+        if nearest.is_finite() {
+            distance_to_ocean_km[index] = nearest;
+            queued[index] = true;
+            queue.push_back(sample);
+        }
+    }
+
+    while let Some(sample) = queue.pop_front() {
+        let index = sample as usize;
+        queued[index] = false;
+        let neighbors = topology.neighbors(sample);
+        let lengths = topology.neighbor_arc_lengths_rad(sample);
+        for (edge_index, neighbor) in neighbors.iter().enumerate() {
+            let ni = *neighbor as usize;
+            if model.crust_kind[ni] != CrustKind::Transitional as u8 {
+                continue;
+            }
+            let candidate =
+                distance_to_ocean_km[index] + lengths[edge_index] * planet.radius_m / 1000.0;
+            if candidate + 1.0e-9 < distance_to_ocean_km[ni] {
+                distance_to_ocean_km[ni] = candidate;
+                if !queued[ni] {
+                    queued[ni] = true;
+                    queue.push_back(*neighbor);
+                }
+            }
+        }
+    }
+
+    let mut restored_continental_samples = 0_u32;
+    for sample in 0..count {
+        if model.crust_kind[sample] != CrustKind::Transitional as u8
+            || forward_generated_material[sample]
+            || extensional_strain_myr[sample] >= RIFT_STRAIN_NUCLEATION_MYR
+        {
+            continue;
+        }
+
+        // Preserve the oceanward transition and all active/forward-generated breakup material.
+        // Only quiet inherited material that lies implausibly far landward of oceanic crust is
+        // restored to continental-margin identity. This removes continent-scale blankets without
+        // deepening the adjacent ocean basin and pulling global sea level downward.
+        let strain_fraction =
+            (f64::from(extensional_strain_myr[sample]) / f64::from(RIFT_STRAIN_NUCLEATION_MYR))
+                .clamp(0.0, 1.0);
+        let allowed_width_km = MIN_QUIET_INHERITED_TRANSITION_WIDTH_KM
+            + (MAX_QUIET_INHERITED_TRANSITION_WIDTH_KM
+                - MIN_QUIET_INHERITED_TRANSITION_WIDTH_KM)
+                * strain_fraction;
+        if !distance_to_ocean_km[sample].is_finite()
+            || distance_to_ocean_km[sample] > allowed_width_km
+        {
+            model.crust_kind[sample] = CrustKind::Continental as u8;
+            model.continental_margin_material[sample] = 1;
+            restored_continental_samples = restored_continental_samples.saturating_add(1);
+        }
+    }
+
+    restored_continental_samples
+}
+
 fn refresh_material_metrics<T: PlanetTopology>(
     topology: &T,
     model: &mut HistoricalLithosphereModel,
@@ -2315,6 +2410,7 @@ fn forward_history_hash(model: &HistoricalLithosphereModel, stage_seed: u64) -> 
         hash = fnv_update(hash, &weakness.to_bits().to_le_bytes());
     }
     hash = fnv_update(hash, &model.crust_kind);
+    hash = fnv_update(hash, &model.continental_margin_material);
     for age in &model.crust_birth_age_myr {
         hash = fnv_update(hash, &age.to_bits().to_le_bytes());
     }
@@ -2341,6 +2437,7 @@ fn validate_forward_state<T: PlanetTopology>(
         || model.fragment_ids.len() != count
         || model.current_plate_ids.len() != count
         || model.crust_kind.len() != count
+        || model.continental_margin_material.len() != count
         || model.crust_birth_age_myr.len() != count
         || model.lithospheric_weakness_index.len() != count
         || model
@@ -2521,6 +2618,17 @@ pub fn evolve_modern_plate_geometry<T: PlanetTopology>(
             "forward plate evolution produced an unsupported emergent plate count",
         ));
     }
+
+    // Quiet inherited margin material is bounded only after the forward integration is complete.
+    // Existing transitional lithosphere is not wholesale relabeled as new oceanic crust: actual
+    // forward-generated spreading material remains the authority for new oceanic chronology.
+    let _restored_continental_samples = bound_quiet_inherited_transitional_margins(
+        topology,
+        &mut model,
+        &forward_generated_material,
+        &extensional_strain_myr,
+        planet,
+    );
 
     split_fragments_at_final_boundaries(topology, &mut model)?;
     refresh_active_fragment_summaries(topology, &mut model);

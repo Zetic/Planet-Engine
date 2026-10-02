@@ -117,6 +117,9 @@ pub struct HistoricalLithosphereModel {
     pub current_plate_angular_velocities_rad_per_myr: Vec<[f64; 3]>,
     pub lithospheric_weakness_index: Vec<f32>,
     pub crust_kind: Vec<u8>,
+    /// Terminal material interpretation for landward continent-ocean transition that remains
+    /// mechanically margin-like even after being classified as continental crust.
+    pub continental_margin_material: Vec<u8>,
     pub crust_birth_age_myr: Vec<f32>,
     pub fragments: Vec<CrustFragment>,
     pub events: Vec<HistoricalTectonicEvent>,
@@ -844,6 +847,7 @@ pub fn generate_historical_lithosphere<T: PlanetTopology>(
     request: &HistoricalLithosphereRequest,
     planet: PlanetPhysicalParameters,
 ) -> Result<HistoricalLithosphereModel, WorldgenError> {
+    let count = topology.sample_count() as usize;
     planet
         .validate()
         .map_err(WorldgenError::InvalidParameters)?;
@@ -925,6 +929,7 @@ pub fn generate_historical_lithosphere<T: PlanetTopology>(
         current_plate_history_ids,
         current_plate_angular_velocities_rad_per_myr,
         lithospheric_weakness_index,
+        continental_margin_material: vec![0_u8; count],
         crust_kind,
         crust_birth_age_myr,
         fragments,

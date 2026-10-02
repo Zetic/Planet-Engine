@@ -635,13 +635,26 @@ fn build_material_properties<T: PlanetTopology>(
         let basement = basement_age[sample];
 
         let (cell_thickness, cell_density) = match kind {
-            CrustKind::Continental => (
-                // Preserve the accepted Earth-like mean continental column without using
-                // basement formation age as a thickness/density shortcut. Spatial variation is
-                // sample-owned; event history below supplies the causal thickening/thinning.
-                (40.5 + jitter * 1.40).clamp(36.5, 44.5),
-                (2738.0 + jitter * 14.0).clamp(2698.0, 2778.0),
-            ),
+            CrustKind::Continental => {
+                if historical.continental_margin_material[sample] != 0 {
+                    // Landward transition restored to continental identity is still mechanically
+                    // thinned margin crust, not a cratonic 40 km column. Keep an intermediate
+                    // column so the material map can be continental without creating a new
+                    // continent-scale topographic pedestal.
+                    (
+                        (35.0 + jitter * 1.25).clamp(32.0, 36.0),
+                        (2775.0 + jitter * 13.0).clamp(2745.0, 2805.0),
+                    )
+                } else {
+                    // Preserve the accepted Earth-like mean continental column without using
+                    // basement formation age as a thickness/density shortcut. Spatial variation
+                    // is sample-owned; event history below supplies the causal thickening/thinning.
+                    (
+                        (40.5 + jitter * 1.40).clamp(36.5, 44.5),
+                        (2738.0 + jitter * 14.0).clamp(2698.0, 2778.0),
+                    )
+                }
+            },
             CrustKind::Transitional => (
                 (19.0 + jitter * 1.8).clamp(14.0, 24.0),
                 (2875.0 + jitter * 18.0).clamp(2830.0, 2925.0),
@@ -1240,6 +1253,7 @@ pub fn project_historical_crust<T: PlanetTopology>(
 ) -> Result<CrustalModel, WorldgenError> {
     let count = topology.sample_count() as usize;
     if historical.crust_kind.len() != count
+        || historical.continental_margin_material.len() != count
         || historical.crust_birth_age_myr.len() != count
         || historical.fragment_ids.len() != count
         || tectonics.plate_ids.len() != count

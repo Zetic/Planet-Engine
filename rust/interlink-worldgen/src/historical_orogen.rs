@@ -1,5 +1,5 @@
 use crate::{
-    generate_tectonic_orogen_provinces, HistoricalMorphologyModel, OrogenProvinceKind,
+    generate_tectonic_orogen_provinces, CrustKind, HistoricalMorphologyModel, OrogenProvinceKind,
     OrogenProvinceModel, OrogenProvinceRequest, PlanetPhysicalParameters, PlanetTopology,
     PreOrogenicLithosphereModel, TectonicHistoryModel, TectonicModel, WorldgenError,
 };
@@ -30,7 +30,7 @@ fn hash_u8(mut hash: u64, values: &[u8]) -> u64 {
 }
 fn event_driven_hash(base_hash: u64, morphology_hash: u64, model: &OrogenProvinceModel) -> u64 {
     let mut hash = FNV_OFFSET_BASIS;
-    hash = fnv_update(hash, b"geology:event-driven-orogen-provinces:v2\0");
+    hash = fnv_update(hash, b"geology:event-driven-orogen-provinces:v3\0");
     hash = fnv_update(hash, &base_hash.to_le_bytes());
     hash = fnv_update(hash, &morphology_hash.to_le_bytes());
     hash = hash_u8(hash, &model.province_kind);
@@ -165,6 +165,43 @@ pub fn generate_event_driven_orogen_provinces<T: PlanetTopology>(
                     model.province_kind[sample] = OrogenProvinceKind::ContinentalCollision as u8;
                 }
             }
+        }
+
+        // A terminally restored continental margin is still mechanically thinned shelf crust.
+        // If no active convergence is present, do not preserve a stale collision/plateau label
+        // simply because the same material carried older convergent memory before breakup.
+        // Fossil relief remains as bounded inherited intensity, while explicit high-relief
+        // structural fields are capped to shelf-compatible values.
+        let restored_passive_margin = geology.crust_kind[sample] == CrustKind::Continental as u8
+            && geology.crust_thickness_km[sample] < 36.0
+            && f64::from(morphology.passive_margin_index[sample]) >= 0.35
+            && active < 0.20;
+        if restored_passive_margin {
+            let kind = model.province_kind[sample];
+            let stale_collision = kind == OrogenProvinceKind::ContinentalCollision as u8
+                || kind == OrogenProvinceKind::CollisionalPlateau as u8
+                || kind == OrogenProvinceKind::TerraneAccretion as u8
+                || kind == OrogenProvinceKind::TranspressionalOrogen as u8;
+            if stale_collision {
+                model.province_kind[sample] = 0;
+            }
+            let inherited_cap = (0.16 + 0.34 * fossil).clamp(0.16, 0.42);
+            model.orogenic_intensity[sample] =
+                f64::from(model.orogenic_intensity[sample]).min(inherited_cap) as f32;
+            model.mountain_core_index[sample] =
+                f64::from(model.mountain_core_index[sample]).min(0.18) as f32;
+            model.crustal_root_index[sample] =
+                f64::from(model.crustal_root_index[sample]).min(0.22) as f32;
+            model.plateau_index[sample] =
+                f64::from(model.plateau_index[sample]).min(0.12) as f32;
+            model.fold_thrust_index[sample] =
+                f64::from(model.fold_thrust_index[sample]).min(0.24) as f32;
+            model.foreland_basin_index[sample] =
+                f64::from(model.foreland_basin_index[sample]).min(0.18) as f32;
+            model.transpression_index[sample] =
+                f64::from(model.transpression_index[sample]).min(0.18) as f32;
+            model.shortening_index[sample] =
+                f64::from(model.shortening_index[sample]).min(0.24) as f32;
         }
     }
 

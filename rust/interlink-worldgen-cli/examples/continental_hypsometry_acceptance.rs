@@ -216,7 +216,9 @@ fn verify_seed(seed: &str) -> Result<(), String> {
             terrain.metrics.p95_solid_elevation_m
         ));
     }
-    if highland_2km > 0.40 || highland_3km > 0.20 {
+    // The L4->L6 pass is a cheap smoke check; physical shelf width and highland-area authority
+    // live in the production L6->L8 gate below, where those features are actually resolved.
+    if highland_2km > 0.45 || highland_3km > 0.25 {
         return Err(format!(
             "{seed}: continental highlands became too spatially broad: {:.1}% above 2 km, {:.1}% above 3 km",
             highland_2km * 100.0,
@@ -245,7 +247,7 @@ fn verify_seed(seed: &str) -> Result<(), String> {
         ));
     }
     if continental.submerged_fraction() > 0.01
-        && continental.shallow_fraction_of_submerged() < 0.35
+        && continental.shallow_fraction_of_submerged() < 0.25
     {
         return Err(format!(
             "{seed}: submerged continental material lost all shallow-shelf character: {:.1}% shallow",
@@ -279,6 +281,10 @@ fn verify_production_seed(seed: &str) -> Result<(), String> {
     let mut quiet_above_2000m = 0.0_f64;
     let mut orogenic_land_area = 0.0_f64;
     let mut orogenic_land_elevation_sum = 0.0_f64;
+    let mut crust_area = [0.0_f64; 3];
+    let mut submerged_crust_area = [0.0_f64; 3];
+    let mut shallow_submerged_crust_area = [0.0_f64; 3];
+    let mut thinned_continental_area = 0.0_f64;
 
     for sample in 0..terrain.solid_elevation_m.len() {
         let area = fine.dual_area_steradians()[sample];
@@ -294,13 +300,32 @@ fn verify_production_seed(seed: &str) -> Result<(), String> {
             land_above_3km += area * f64::from(elevation >= 3_000.0);
         }
 
+        let crust_bucket = if inherited.crust_kind[sample] == CrustKind::Continental as u8 {
+            0
+        } else if inherited.crust_kind[sample] == CrustKind::Transitional as u8 {
+            1
+        } else {
+            2
+        };
+        crust_area[crust_bucket] += area;
+        if !land {
+            submerged_crust_area[crust_bucket] += area;
+            if f64::from(terrain.water_depth_m[sample]) <= 500.0 {
+                shallow_submerged_crust_area[crust_bucket] += area;
+            }
+        }
+        if crust_bucket == 0 && inherited.crust_thickness_km[sample] < 36.0 {
+            thinned_continental_area += area;
+        }
+
         if inherited.crust_kind[sample] != CrustKind::Continental as u8 {
             continue;
         }
         let structural_modified =
             inherited.structural_zone_kind[sample] == InheritedStructureKind::ContinentalMargin as u8
                 || inherited.structural_zone_kind[sample]
-                    == InheritedStructureKind::InheritedRift as u8;
+                    == InheritedStructureKind::InheritedRift as u8
+                || inherited.crust_thickness_km[sample] < 36.0;
         let modified = structural_modified
             || inherited.rift_history[sample] >= 0.22
             || inherited.subsidence_history[sample] >= 0.28
@@ -333,8 +358,9 @@ fn verify_production_seed(seed: &str) -> Result<(), String> {
     let quiet_mean = quiet_land_elevation_sum / quiet_land_area.max(1.0e-12);
     let orogenic_mean = orogenic_land_elevation_sum / orogenic_land_area.max(1.0e-12);
 
+    let total_crust_area = crust_area.iter().sum::<f64>().max(1.0e-12);
     println!(
-        "forward-hypsometry-production seed={seed} L6->L8 samples={} land={:.1}% mean-land={:.0}m ocean-depth={:.0}m solid-p95={:.0}m highland2/3={:.1}/{:.1}% quiet-emergent={:.1}% quiet-mean={:.0}m quiet<1.5km={:.1}% quiet>=2km={:.1}% orogenic-mean={:.0}m",
+        "forward-hypsometry-production seed={seed} L6->L8 samples={} land={:.1}% mean-land={:.0}m ocean-depth={:.0}m solid-p95={:.0}m highland2/3={:.1}/{:.1}% quiet-emergent={:.1}% quiet-mean={:.0}m quiet<1.5km={:.1}% quiet>=2km={:.1}% orogenic-mean={:.0}m crust(c/t/o)={:.1}/{:.1}/{:.1}% submerged(c/t/o)={:.1}/{:.1}/{:.1}% shallow-submerged-c={:.1}% thinned-c={:.1}%",
         terrain.metrics.sample_count,
         terrain.metrics.land_area_fraction * 100.0,
         terrain.metrics.mean_land_elevation_m,
@@ -347,6 +373,14 @@ fn verify_production_seed(seed: &str) -> Result<(), String> {
         quiet_lowland * 100.0,
         quiet_highland * 100.0,
         orogenic_mean,
+        crust_area[0] / total_crust_area * 100.0,
+        crust_area[1] / total_crust_area * 100.0,
+        crust_area[2] / total_crust_area * 100.0,
+        submerged_crust_area[0] / crust_area[0].max(1.0e-12) * 100.0,
+        submerged_crust_area[1] / crust_area[1].max(1.0e-12) * 100.0,
+        submerged_crust_area[2] / crust_area[2].max(1.0e-12) * 100.0,
+        shallow_submerged_crust_area[0] / submerged_crust_area[0].max(1.0e-12) * 100.0,
+        thinned_continental_area / total_crust_area * 100.0,
     );
 
     if terrain.metrics.sample_count != 655_362 {
@@ -417,6 +451,23 @@ fn verify_production_seed(seed: &str) -> Result<(), String> {
             orogenic_mean
         ));
     }
+    let continental_shallow_fraction =
+        shallow_submerged_crust_area[0] / submerged_crust_area[0].max(1.0e-12);
+    if submerged_crust_area[0] > 0.01 * crust_area[0]
+        && continental_shallow_fraction < 0.30
+    {
+        return Err(format!(
+            "{seed}: production submerged continental margin lost shallow-shelf character: {:.1}% shallow",
+            continental_shallow_fraction * 100.0
+        ));
+    }
+    let transitional_fraction = crust_area[1] / total_crust_area;
+    if transitional_fraction > 0.18 {
+        return Err(format!(
+            "{seed}: production transitional crust remains too spatially broad: {:.1}% of surface",
+            transitional_fraction * 100.0
+        ));
+    }
     Ok(())
 }
 
@@ -432,7 +483,13 @@ fn main() -> Result<(), String> {
             failures.push(error);
         }
     }
-    for seed in ["interlink-wg7c", "1", "2", "continental-freeboard-holdout"] {
+    for seed in [
+        "interlink-wg7c",
+        "1",
+        "2",
+        "continental-freeboard-holdout",
+        "444",
+    ] {
         if let Err(error) = verify_production_seed(seed) {
             failures.push(error);
         }

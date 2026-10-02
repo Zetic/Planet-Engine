@@ -194,6 +194,7 @@ fn validate_inputs<T: PlanetTopology>(
     if historical.fragment_ids.len() != count
         || historical.current_plate_ids.len() != count
         || historical.crust_kind.len() != count
+        || historical.continental_margin_material.len() != count
         || tectonics.plate_ids.len() != count
     {
         return Err(WorldgenError::InvalidLithosphere(
@@ -422,7 +423,12 @@ pub fn build_historical_tectonic_morphology<T: PlanetTopology>(
                     .max(f64::from(rift_intensity[index]).max(f64::from(rift_intensity[ni])));
             }
         }
-        passive_margin_seed[index] = clamp01(ocean_contact) as f32;
+        let terminal_margin = if historical.continental_margin_material[index] != 0 {
+            0.72
+        } else {
+            0.0
+        };
+        passive_margin_seed[index] = clamp01(ocean_contact.max(terminal_margin)) as f32;
     }
     let passive_margin_index = diffuse_signal(
         topology,

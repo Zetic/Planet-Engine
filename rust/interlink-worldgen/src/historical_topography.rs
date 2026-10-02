@@ -5,8 +5,8 @@ use crate::{
 };
 
 pub const HISTORICAL_TOPOGRAPHY_STAGE_ID: &str = "terrain:initial-topography";
-pub const HISTORICAL_TOPOGRAPHY_STAGE_VERSION: u32 = 20;
-const HISTORICAL_TOPOGRAPHY_NAMESPACE: &str = "terrain:historical-material-morphology:v6";
+pub const HISTORICAL_TOPOGRAPHY_STAGE_VERSION: u32 = 21;
+const HISTORICAL_TOPOGRAPHY_NAMESPACE: &str = "terrain:historical-material-morphology:v7";
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 
@@ -75,8 +75,15 @@ fn passive_margin_deflection_m(inherited: &InheritedPhysicalState, sample: usize
     let fabric = f64::from(inherited.structural_fabric_strength[sample]).clamp(0.0, 1.0);
     let weakness = f64::from(inherited.weakness_index[sample]).clamp(0.0, 1.0);
     let margin_memory = clamp01(fabric * (0.68 + 0.32 * weakness));
+    let thinned_continental_margin = inherited.crust_kind[sample] == CrustKind::Continental as u8
+        && inherited.crust_thickness_km[sample] < 36.0;
     let scale_m = if inherited.crust_kind[sample] == CrustKind::Transitional as u8 {
         900.0
+    } else if thinned_continental_margin {
+        // Terminally restored continent-ocean transition is mechanically thin shelf crust. Keep
+        // it preferentially low, but do not apply the full passive-margin sag a second time after
+        // its thinner/dense crustal column has already lowered isostatic support.
+        280.0
     } else {
         420.0
     };
@@ -129,6 +136,11 @@ fn stable_continental_buoyancy_support_m(
     // buoyancy instead. Actual thinning/subsidence is still expressed by the history fields and
     // the crust-thickness term, so modified margins remain preferentially lower than interiors.
     let structural_retention = match inherited.structural_zone_kind[sample] {
+        value if value == InheritedStructureKind::ContinentalMargin as u8
+            && inherited.crust_thickness_km[sample] < 36.0 =>
+        {
+            0.46
+        }
         value if value == InheritedStructureKind::ContinentalMargin as u8 => 0.32,
         value if value == InheritedStructureKind::InheritedRift as u8 => 0.42,
         value if value == InheritedStructureKind::ShearZone as u8 => 0.72,
@@ -173,6 +185,11 @@ fn continental_isostatic_expression(
         .max(f64::from(inherited.basin_potential[sample]))
         .clamp(0.0, 1.0);
     let structural_release = match inherited.structural_zone_kind[sample] {
+        value if value == InheritedStructureKind::ContinentalMargin as u8
+            && inherited.crust_thickness_km[sample] < 36.0 =>
+        {
+            0.78
+        }
         value if value == InheritedStructureKind::ContinentalMargin as u8 => 1.0,
         value if value == InheritedStructureKind::InheritedRift as u8 => 0.92,
         value if value == InheritedStructureKind::ShearZone as u8 => 0.30,
